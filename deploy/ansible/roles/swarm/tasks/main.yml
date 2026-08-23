@@ -1,0 +1,234 @@
+---
+- name: Check Docker availability after provisioning
+  ansible.builtin.command:
+    argv:
+      - docker
+      - version
+      - --format
+      - '{{ "{{" }}.Server.Version{{ "}}" }}'
+  register: swarm_docker_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# In check mode, APT predicts the Docker install without creating its binary.
+# Do not make Swarm changes—or report a misleading Docker failure—until apply.
+- name: Skip Swarm state changes in check mode
+  ansible.builtin.meta: end_host
+  when: ansible_check_mode
+
+- name: Require Docker after a non-check provisioning run
+  ansible.builtin.assert:
+    that:
+      - swarm_docker_version.rc == 0
+    fail_msg: Docker is unavailable after provisioning; inspect the Docker role output.
+
+- name: Read the local Swarm state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - '{{ "{{" }}.Swarm.LocalNodeState{{ "}}" }}'
+  register: swarm_state
+  changed_when: false
+
+- name: Initialise the primary Swarm manager
+  ansible.builtin.command:
+    argv:
+      - docker
+      - swarm
+      - init
+      - --advertise-addr
+      - "{{ swarm_advertise_addr }}"
+  when:
+    - inventory_hostname == swarm_primary_manager
+    - swarm_state.stdout | trim != 'active'
+
+- name: Read the primary manager cluster identifier
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - '{{ "{{" }}.Swarm.Cluster.ID{{ "}}" }}'
+  delegate_to: "{{ swarm_primary_manager }}"
+  run_once: true
+  register: swarm_primary_cluster_result
+  changed_when: false
+
+- name: Store the primary manager cluster identifier
+  ansible.builtin.set_fact:
+    swarm_primary_cluster_id: "{{ swarm_primary_cluster_result.stdout | trim }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  delegate_facts: true
+  run_once: true
+
+- name: Read cluster identifier from active nodes
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - '{{ "{{" }}.Swarm.Cluster.ID{{ "}}" }}'
+  register: swarm_node_cluster_id
+  changed_when: false
+  when: swarm_state.stdout | trim == 'active'
+
+- name: Refuse to join a node that belongs to a different Swarm
+  ansible.builtin.assert:
+    that:
+      - >-
+        (swarm_state.stdout | trim) != 'active' or
+        (swarm_node_cluster_id.stdout | default('') | trim) ==
+        hostvars[swarm_primary_manager].swarm_primary_cluster_id
+    fail_msg: >-
+      This host already belongs to another Swarm. Leave it only after verifying
+      that its current workloads and data can safely be moved.
+
+- name: Read the manager join token without logging it
+  ansible.builtin.command:
+    argv:
+      - docker
+      - swarm
+      - join-token
+      - --quiet
+      - manager
+  delegate_to: "{{ swarm_primary_manager }}"
+  run_once: true
+  register: swarm_manager_join_token_result
+  changed_when: false
+  no_log: true
+
+- name: Store the manager join token without logging it
+  ansible.builtin.set_fact:
+    swarm_manager_join_token: "{{ swarm_manager_join_token_result.stdout | trim }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  delegate_facts: true
+  run_once: true
+  no_log: true
+
+- name: Join non-primary nodes as Swarm managers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - swarm
+      - join
+      - --token
+      - "{{ hostvars[swarm_primary_manager].swarm_manager_join_token }}"
+      - "{{ hostvars[swarm_primary_manager].swarm_advertise_addr }}:2377"
+  when:
+    - inventory_hostname != swarm_primary_manager
+    - swarm_state.stdout | trim != 'active'
+  no_log: true
+
+- name: Read each Docker node name
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - '{{ "{{" }}.Name{{ "}}" }}'
+  register: swarm_node_name
+  changed_when: false
+
+- name: Inspect each node's Swarm role
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - inspect
+      - "{{ swarm_node_name.stdout | trim }}"
+      - --format
+      - '{{ "{{" }}.Spec.Role{{ "}}" }}'
+  delegate_to: "{{ swarm_primary_manager }}"
+  register: swarm_node_role
+  changed_when: false
+  retries: 10
+  delay: 2
+  until: swarm_node_role.rc == 0
+
+- name: Promote inventory nodes that are still workers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - promote
+      - "{{ swarm_node_name.stdout | trim }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  when: swarm_node_role.stdout | trim != 'manager'
+
+- name: Inspect the encrypted edge overlay network
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - inspect
+      - "{{ swarm_overlay_network }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  run_once: true
+  register: swarm_overlay_network_state
+  changed_when: false
+  failed_when: false
+
+- name: Create the encrypted edge overlay network
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - create
+      - --driver
+      - overlay
+      - --attachable
+      - --opt
+      - encrypted
+      - "{{ swarm_overlay_network }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  run_once: true
+  when: swarm_overlay_network_state.rc != 0
+
+- name: Inspect requested node labels
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - inspect
+      - "{{ swarm_node_name.stdout | trim }}"
+      - --format
+      - '{{ "{{" }} index .Spec.Labels "{{ item.key }}" {{ "}}" }}'
+  delegate_to: "{{ swarm_primary_manager }}"
+  loop: "{{ swarm_node_labels | dict2items }}"
+  register: swarm_existing_labels
+  changed_when: false
+  when: swarm_node_labels | length > 0
+
+- name: Set requested node labels
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - update
+      - --label-add
+      - "{{ item.item.key }}={{ item.item.value }}"
+      - "{{ swarm_node_name.stdout | trim }}"
+  delegate_to: "{{ swarm_primary_manager }}"
+  loop: "{{ swarm_existing_labels.results | default([]) }}"
+  when: (item.stdout | trim) != (item.item.value | string)
+
+- name: Show the resulting Swarm manager state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - node
+      - ls
+      - --format
+      - '{{ "{{" }}.Hostname{{ "}}" }} {{ "{{" }}.Status{{ "}}" }} {{ "{{" }}.ManagerStatus{{ "}}" }}'
+  delegate_to: "{{ swarm_primary_manager }}"
+  run_once: true
+  register: swarm_manager_state
+  changed_when: false
+
+- name: Report the resulting Swarm manager state
+  ansible.builtin.debug:
+    var: swarm_manager_state.stdout_lines
+  run_once: true

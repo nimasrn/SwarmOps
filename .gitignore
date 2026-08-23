@@ -1,0 +1,19 @@
+# Local dependencies and build output.
+node_modules/
+web/dist/
+docs/*.pptx.inspect.ndjson
+
+# Local infrastructure credentials and host inventory.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+deploy/hosts/*.env
+!deploy/hosts/example.env
+deploy/ansible/inventory.yml
+
+# Local editor and operating-system files.
+.DS_Store

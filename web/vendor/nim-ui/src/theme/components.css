@@ -1,0 +1,5422 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   nim — COMPONENT LAYER
+
+   Every class here is written against the token contract and nothing else. A
+   literal colour, radius, shadow, or type value in this file is a bug: it is a
+   decision that belongs to a theme.
+
+   Conventions
+     · Block / modifier: `.nim-card` + `.nim-card--raised`, element: `__body`.
+     · Logical properties only — no left/right — so RTL needs no mirror rules.
+     · Every interactive element gets a hover, a press, a focus ring, a
+       disabled state, and a minimum 44px touch target.
+     · Components own layout of their own parts only. They never set outer
+       margin; spacing between components is the page's job.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  /* ═══════════════════════════════════════════════════════════════════════
+     FOCUS · PRESS
+     Answered once, for every interactive surface in the kit. Until 0.2 the
+     focus token was defined by every theme and consumed by a single rule, so
+     tabbing through a nim screen showed nothing; and the press response was
+     copied per component, which is how interactive cards ended up applying
+     `scale` on a theme whose press language is `translate`.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-focusable:focus-visible,
+  .nim-button:focus-visible,
+  .nim-icon-button:focus-visible,
+  .nim-card--interactive:focus-visible,
+  .nim-list-row--interactive:focus-visible,
+  .nim-segmented__option:focus-visible,
+  .nim-tab:focus-visible,
+  .nim-menu__item:focus-visible,
+  .nim-pagination__item:focus-visible,
+  .nim-breadcrumb__link:focus-visible,
+  .nim-stepper__button:focus-visible,
+  .nim-calendar__day:focus-visible,
+  .nim-combobox__option:focus-visible,
+  .nim-input:focus-visible,
+  .nim-textarea:focus-visible,
+  .nim-select:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  /* Surfaces flush with their neighbours cannot afford an outset ring — the
+     parent's `overflow: hidden` would clip it. They take an inset outline
+     instead, which is drawn inside the element's own box. */
+  .nim-menu__item:focus-visible,
+  .nim-calendar__day:focus-visible,
+  .nim-combobox__option:focus-visible,
+  .nim-stepper__button:focus-visible,
+  .nim-table__sort:focus-visible {
+    box-shadow: none;
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: calc(-1 * var(--nim-size-focus-ring));
+  }
+
+  /* How a control answers a press is one theme decision (`--nim-press-*`),
+     applied identically everywhere. Ledger shifts into its offset shadow —
+     a key being struck; Vlora compresses. */
+  .nim-button:active:not(:disabled),
+  .nim-icon-button:active:not(:disabled),
+  .nim-card--interactive:active,
+  .nim-stepper__button:active:not(:disabled),
+  .nim-pagination__item:active:not(:disabled) {
+    scale: var(--nim-press-scale);
+    translate: var(--nim-press-translate) var(--nim-press-translate);
+    box-shadow: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TYPOGRAPHY ROLES
+     Text primitives so a product never reaches for a raw font-size.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-display {
+    font-family: var(--nim-type-display-family);
+    font-size: var(--nim-type-display-size);
+    line-height: var(--nim-type-display-line);
+    font-weight: var(--nim-type-display-weight);
+    letter-spacing: var(--nim-type-display-tracking);
+    text-wrap: balance;
+  }
+
+  .nim-title {
+    font-size: var(--nim-type-title-lg-size);
+    line-height: var(--nim-type-title-lg-line);
+    font-weight: var(--nim-type-title-lg-weight);
+    letter-spacing: var(--nim-tracking-tight);
+    text-wrap: balance;
+  }
+
+  .nim-title--md {
+    font-size: var(--nim-type-title-md-size);
+    line-height: var(--nim-type-title-md-line);
+    font-weight: var(--nim-type-title-md-weight);
+  }
+
+  .nim-body {
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    color: var(--nim-ink-secondary);
+    text-wrap: pretty;
+  }
+
+  .nim-body--sm {
+    font-size: var(--nim-type-body-sm-size);
+  }
+
+  /* The label is the theme's signature: mono/uppercase/tracked in Ledger,
+     plain sentence case in Vlora — one pair of tokens decides which. */
+  .nim-label {
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-type-label-weight);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-caption {
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-rule {
+    block-size: var(--nim-border-width);
+    background: var(--nim-line);
+    border: 0;
+    inline-size: 100%;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     BUTTON
+     One geometry, four emphases, three sizes. The press response is a theme
+     decision (`--nim-press-*`): Ledger shifts into its offset shadow, Vlora
+     compresses.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--nim-space-2);
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    padding-inline: var(--nim-space-6);
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-sm);
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-type-control-weight);
+    letter-spacing: var(--nim-type-control-tracking);
+    text-transform: var(--nim-type-control-transform);
+    white-space: nowrap;
+    cursor: pointer;
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard),
+      scale var(--nim-dur-fast) var(--nim-ease-standard),
+      translate var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-button--sm {
+    min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-4);
+  }
+
+  .nim-button--lg {
+    min-block-size: calc(var(--nim-control-lg) * var(--nim-density));
+    padding-inline: var(--nim-space-7);
+  }
+
+  .nim-button--full {
+    inline-size: 100%;
+  }
+
+  .nim-button--primary {
+    background: var(--nim-ink);
+    border-color: var(--nim-ink);
+    color: var(--nim-canvas);
+  }
+
+  /* Primary hovers along its own tone ramp. Jumping to the accent made the
+     button change hue under the pointer and made primary and accent
+     indistinguishable at the exact moment of deciding between them. */
+  .nim-button--primary:hover:not(:disabled) {
+    background: var(--nim-ink-secondary);
+    border-color: var(--nim-ink-secondary);
+  }
+
+  .nim-button--accent {
+    background: var(--nim-accent);
+    border-color: var(--nim-accent);
+    color: var(--nim-on-accent);
+  }
+
+  .nim-button--accent:hover:not(:disabled) {
+    background: var(--nim-accent-hover);
+    border-color: var(--nim-accent-hover);
+  }
+
+  .nim-button--secondary {
+    border-color: var(--nim-line-strong);
+    color: var(--nim-ink);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-button--secondary:hover:not(:disabled) {
+    border-color: var(--nim-ink);
+  }
+
+  .nim-button--ghost {
+    color: var(--nim-ink-secondary);
+    padding-inline: var(--nim-space-4);
+  }
+
+  .nim-button--ghost:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-button--danger {
+    background: var(--nim-danger);
+    border-color: var(--nim-danger);
+    color: var(--nim-on-accent);
+  }
+
+  /* `filter: brightness()` was the one variant styled by something no theme
+     could answer — and it inverts in dark, pushing a light-on-dark danger
+     colour toward the canvas instead of away from it. */
+  .nim-button--danger:hover:not(:disabled) {
+    background: var(--nim-danger-hover);
+    border-color: var(--nim-danger-hover);
+  }
+
+  .nim-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .nim-button--loading .nim-button__label {
+    opacity: 0.65;
+  }
+
+  .nim-button__spinner {
+    inline-size: var(--nim-size-icon-xs);
+    block-size: var(--nim-size-icon-xs);
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: var(--nim-radius-pill);
+    animation: nim-spin 700ms linear infinite;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ICON BUTTON — a square target that never falls below the touch minimum
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-icon-button {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    inline-size: calc(var(--nim-control-md) * var(--nim-density));
+    block-size: calc(var(--nim-control-md) * var(--nim-density));
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-sm);
+    color: var(--nim-ink-secondary);
+    background: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard),
+      scale var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-icon-button--sm {
+    inline-size: calc(var(--nim-control-sm) * var(--nim-density));
+    block-size: calc(var(--nim-control-sm) * var(--nim-density));
+  }
+
+  .nim-icon-button--lg {
+    inline-size: calc(var(--nim-control-lg) * var(--nim-density));
+    block-size: calc(var(--nim-control-lg) * var(--nim-density));
+  }
+
+  /* The contract says 44px is "never reduced, only visually inset" — which the
+     small variant did not honour until 0.2. The box stays 36px; the target
+     does not shrink with it. */
+  .nim-icon-button::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    translate: -50% -50%;
+    min-inline-size: var(--nim-touch-min);
+    min-block-size: var(--nim-touch-min);
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .nim-icon-button:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-icon-button--outline {
+    border-color: var(--nim-line);
+  }
+
+  .nim-icon-button--solid {
+    background: var(--nim-ink);
+    color: var(--nim-canvas);
+  }
+
+  .nim-icon-button--solid:hover:not(:disabled) {
+    background: var(--nim-accent);
+    color: var(--nim-on-accent);
+  }
+
+  .nim-icon-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ICON
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-icon {
+    flex: none;
+    color: currentColor;
+  }
+
+  /* A directional glyph travels with the reading direction. The set of which
+     glyphs are directional lives in `icon.tsx`, so no component decides it. */
+  [dir='rtl'] .nim-icon[data-flip] {
+    scale: -1 1;
+  }
+
+  .nim-icon[data-tone='accent'] {
+    color: var(--nim-accent);
+  }
+  .nim-icon[data-tone='muted'] {
+    color: var(--nim-ink-tertiary);
+  }
+  .nim-icon[data-tone='success'] {
+    color: var(--nim-success);
+  }
+  .nim-icon[data-tone='warning'] {
+    color: var(--nim-warning);
+  }
+  .nim-icon[data-tone='danger'] {
+    color: var(--nim-danger);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CARD
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-card {
+    position: relative;
+    display: block;
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+    color: var(--nim-ink);
+  }
+
+  .nim-card--muted {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-card--raised {
+    background: var(--nim-surface-raised);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-card--outline {
+    background: transparent;
+  }
+
+  .nim-card--accent {
+    background: var(--nim-accent-soft);
+    border-color: var(--nim-accent-line);
+  }
+
+  .nim-card--pad-sm {
+    padding: var(--nim-space-3);
+  }
+  .nim-card--pad-md {
+    padding: var(--nim-space-5);
+  }
+  .nim-card--pad-lg {
+    padding: var(--nim-space-7);
+  }
+  .nim-card--pad-none {
+    padding: 0;
+  }
+
+  /* Interactive cards are real buttons/links; this only supplies the feedback
+     so the whole plate reads as one target. */
+  .nim-card--interactive {
+    inline-size: 100%;
+    text-align: start;
+    cursor: pointer;
+    transition:
+      border-color var(--nim-dur-base) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-base) var(--nim-ease-standard),
+      scale var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-card--interactive:hover {
+    border-color: var(--nim-line-strong);
+    box-shadow: var(--nim-shadow-lg);
+  }
+
+
+  .nim-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+    padding-block-end: var(--nim-space-4);
+    margin-block-end: var(--nim-space-4);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-card__footer {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    padding-block-start: var(--nim-space-4);
+    margin-block-start: var(--nim-space-4);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     BADGE
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    padding-inline: var(--nim-space-3);
+    padding-block: var(--nim-space-1);
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-xs);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    line-height: 1.5;
+    white-space: nowrap;
+
+    /* Each variant sets only these two custom properties; the tone rules below
+       decide how they are used. That is what keeps 6 variants × 3 tones from
+       becoming 18 rules. */
+    --nim-badge-ink: var(--nim-ink-secondary);
+    --nim-badge-wash: var(--nim-surface-muted);
+  }
+
+  .nim-badge--pill {
+    border-radius: var(--nim-radius-pill);
+    padding-inline: var(--nim-space-4);
+  }
+
+  .nim-badge--sm {
+    font-size: var(--nim-text-11);
+    padding-inline: var(--nim-space-2);
+  }
+
+  .nim-badge--accent {
+    --nim-badge-ink: var(--nim-accent);
+    --nim-badge-wash: var(--nim-accent-soft);
+  }
+  .nim-badge--success {
+    --nim-badge-ink: var(--nim-success);
+    --nim-badge-wash: var(--nim-success-soft);
+  }
+  .nim-badge--warning {
+    --nim-badge-ink: var(--nim-warning);
+    --nim-badge-wash: var(--nim-warning-soft);
+  }
+  .nim-badge--danger {
+    --nim-badge-ink: var(--nim-danger);
+    --nim-badge-wash: var(--nim-danger-soft);
+  }
+  .nim-badge--info {
+    --nim-badge-ink: var(--nim-info);
+    --nim-badge-wash: var(--nim-info-soft);
+  }
+
+  .nim-badge--soft {
+    background: var(--nim-badge-wash);
+    color: var(--nim-badge-ink);
+  }
+
+  .nim-badge--solid {
+    background: var(--nim-badge-ink);
+    color: var(--nim-on-accent);
+  }
+
+  .nim-badge--outline {
+    border-color: var(--nim-line-strong);
+    color: var(--nim-badge-ink);
+  }
+
+  .nim-badge__dot {
+    inline-size: var(--nim-size-dot);
+    block-size: var(--nim-size-dot);
+    border-radius: var(--nim-radius-pill);
+    background: currentColor;
+    flex: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     FIELD — the shared frame for every form control
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-field {
+    display: grid;
+    gap: var(--nim-space-2);
+    inline-size: 100%;
+  }
+
+  .nim-field__label {
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-field__required {
+    color: var(--nim-accent);
+    margin-inline-start: var(--nim-space-1);
+  }
+
+  .nim-field__hint,
+  .nim-field__error {
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+  }
+
+  .nim-field__hint {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-field__error {
+    color: var(--nim-danger);
+  }
+
+  .nim-input,
+  .nim-textarea,
+  .nim-select {
+    inline-size: 100%;
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    padding-inline: var(--nim-space-4);
+    padding-block: var(--nim-space-2);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-sm);
+    color: var(--nim-ink);
+    font-size: var(--nim-type-body-size);
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-input::placeholder,
+  .nim-textarea::placeholder {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-input:hover:not(:disabled),
+  .nim-textarea:hover:not(:disabled),
+  .nim-select:hover:not(:disabled) {
+    border-color: var(--nim-line-strong);
+  }
+
+  /* The ring comes from the shared focus rule at the top of this layer; the
+     border colour is the resting-state half of the same signal. A 1px hue
+     shift is not a focus indicator on its own. */
+  .nim-input:focus-visible,
+  .nim-textarea:focus-visible,
+  .nim-select:focus-visible {
+    border-color: var(--nim-accent);
+  }
+
+  .nim-input:disabled,
+  .nim-textarea:disabled,
+  .nim-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-field--invalid :is(.nim-input, .nim-textarea, .nim-select) {
+    border-color: var(--nim-danger);
+  }
+
+  /* An invalid field focuses in danger, so the ring never contradicts the
+     error message printed directly under it. */
+  .nim-field--invalid :is(.nim-input, .nim-textarea, .nim-select):focus-visible {
+    border-color: var(--nim-danger);
+    box-shadow: var(--nim-shadow-focus-danger);
+  }
+
+  .nim-textarea {
+    min-block-size: calc(calc(var(--nim-control-md) * var(--nim-density)) * 2);
+    resize: vertical;
+    line-height: var(--nim-type-body-line);
+  }
+
+  .nim-select {
+    appearance: none;
+    /* Room for the chevron the component renders on the trailing edge. */
+    padding-inline-end: var(--nim-space-9);
+  }
+
+  .nim-input-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .nim-input-shell__affix {
+    position: absolute;
+    inset-block: 0;
+    display: grid;
+    place-items: center;
+    inline-size: var(--nim-space-9);
+    color: var(--nim-ink-tertiary);
+    pointer-events: none;
+  }
+
+  .nim-input-shell__affix--start {
+    inset-inline-start: 0;
+  }
+  .nim-input-shell__affix--end {
+    inset-inline-end: 0;
+  }
+
+  .nim-input-shell--has-start .nim-input {
+    padding-inline-start: var(--nim-space-9);
+  }
+  .nim-input-shell--has-end .nim-input {
+    padding-inline-end: var(--nim-space-9);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CHECKBOX & SWITCH
+     Both are real inputs with the native control hidden but focusable, so
+     keyboard behaviour, form submission, and assistive tech are untouched.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-choice {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--nim-space-3);
+    min-block-size: var(--nim-touch-min);
+    padding-block: var(--nim-space-2);
+    cursor: pointer;
+  }
+
+  .nim-choice__input {
+    position: absolute;
+    opacity: 0;
+    inline-size: 1px;
+    block-size: 1px;
+  }
+
+  .nim-choice__text {
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-normal);
+  }
+
+  .nim-choice__description {
+    display: block;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-choice:has(.nim-choice__input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .nim-checkbox__box {
+    flex: none;
+    display: grid;
+    place-items: center;
+    inline-size: var(--nim-size-check);
+    block-size: var(--nim-size-check);
+    margin-block-start: 2px;
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-xs);
+    background: var(--nim-surface);
+    color: transparent;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-choice__input:checked + .nim-checkbox__box {
+    background: var(--nim-accent);
+    border-color: var(--nim-accent);
+    color: var(--nim-on-accent);
+  }
+
+  .nim-choice__input:focus-visible + .nim-checkbox__box {
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-switch__track {
+    flex: none;
+    position: relative;
+    inline-size: var(--nim-size-switch-inline);
+    block-size: var(--nim-size-switch-block);
+    margin-block-start: 1px;
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface-muted);
+    transition:
+      background-color var(--nim-dur-base) var(--nim-ease-standard),
+      border-color var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-switch__thumb {
+    position: absolute;
+    inset-block-start: calc((var(--nim-size-switch-block) - var(--nim-size-switch-thumb)) / 2 - var(--nim-border-width));
+    inset-inline-start: calc((var(--nim-size-switch-block) - var(--nim-size-switch-thumb)) / 2 - var(--nim-border-width));
+    inline-size: var(--nim-size-switch-thumb);
+    block-size: var(--nim-size-switch-thumb);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-ink);
+    transition: translate var(--nim-dur-base) var(--nim-ease-spring);
+  }
+
+  .nim-choice__input:checked + .nim-switch__track {
+    background: var(--nim-accent);
+    border-color: var(--nim-accent);
+  }
+
+  .nim-choice__input:checked + .nim-switch__track .nim-switch__thumb {
+    translate: calc(var(--nim-size-switch-inline) - var(--nim-size-switch-block)) 0;
+    background: var(--nim-on-accent);
+  }
+
+  /* The thumb travels toward the reading edge in either direction. */
+  [dir='rtl'] .nim-choice__input:checked + .nim-switch__track .nim-switch__thumb {
+    translate: calc(calc(var(--nim-size-switch-inline) - var(--nim-size-switch-block)) * -1) 0;
+  }
+
+  .nim-choice__input:focus-visible + .nim-switch__track {
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SLIDER
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-slider {
+    inline-size: 100%;
+    block-size: var(--nim-touch-min);
+    background: transparent;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .nim-slider::-webkit-slider-runnable-track {
+    block-size: var(--nim-size-rail);
+    border-radius: var(--nim-radius-pill);
+    background: linear-gradient(
+      to right,
+      var(--nim-accent) var(--nim-slider-progress, 50%),
+      var(--nim-line) var(--nim-slider-progress, 50%)
+    );
+  }
+
+  .nim-slider::-moz-range-track {
+    block-size: var(--nim-size-rail);
+    border-radius: var(--nim-radius-pill);
+    background: linear-gradient(
+      to right,
+      var(--nim-accent) var(--nim-slider-progress, 50%),
+      var(--nim-line) var(--nim-slider-progress, 50%)
+    );
+  }
+
+  .nim-slider::-webkit-slider-thumb {
+    appearance: none;
+    inline-size: var(--nim-size-thumb);
+    block-size: var(--nim-size-thumb);
+    margin-block-start: calc((var(--nim-size-rail) - var(--nim-size-thumb)) / 2);
+    border: 0;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-ink);
+    box-shadow: var(--nim-shadow-sm);
+  }
+
+  .nim-slider::-moz-range-thumb {
+    inline-size: var(--nim-size-thumb);
+    block-size: var(--nim-size-thumb);
+    border: 0;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-ink);
+  }
+
+  .nim-slider:focus-visible {
+    outline: none;
+  }
+
+  .nim-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-slider:focus-visible::-moz-range-thumb {
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* `linear-gradient` takes physical directions, so the filled half of the
+     rail is the only part of the slider that RTL does not correct for free.
+     The native track pseudo-element cannot be given a logical gradient — it is
+     mirrored here instead, once, rather than by flipping the whole control. */
+  [dir='rtl'] .nim-slider::-webkit-slider-runnable-track,
+  [dir='rtl'] .nim-slider::-moz-range-track {
+    background: linear-gradient(
+      to left,
+      var(--nim-accent) var(--nim-slider-progress, 50%),
+      var(--nim-line) var(--nim-slider-progress, 50%)
+    );
+  }
+
+  /* The handle grows under the pointer and again while dragging: the only
+     feedback a slider can give before the value has moved. */
+  .nim-slider:not(:disabled):hover::-webkit-slider-thumb {
+    scale: 1.12;
+  }
+
+  .nim-slider:not(:disabled):hover::-moz-range-thumb {
+    scale: 1.12;
+  }
+
+  .nim-slider:not(:disabled):active::-webkit-slider-thumb {
+    scale: 1.2;
+  }
+
+  .nim-slider:not(:disabled):active::-moz-range-thumb {
+    scale: 1.2;
+  }
+
+  .nim-slider::-webkit-slider-thumb {
+    transition:
+      scale var(--nim-dur-fast) var(--nim-ease-spring),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-slider::-moz-range-thumb {
+    transition:
+      scale var(--nim-dur-fast) var(--nim-ease-spring),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     LIST
+     A grouped list is one ruled block, not a stack of cards — which is why
+     the divider lives on the group rather than on the row.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-list {
+    display: flex;
+    flex-direction: column;
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+    overflow: hidden;
+  }
+
+  .nim-list--plain {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .nim-list > * + * {
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-list-row {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-4);
+    inline-size: 100%;
+    /* Rows render as <button> or <a> when interactive, so the platform's own
+       button chrome has to be cleared explicitly. */
+    border: 0;
+    min-block-size: var(--nim-touch-min);
+    padding: calc(var(--nim-space-4) * var(--nim-density)) var(--nim-space-5);
+    text-align: start;
+    background: none;
+    color: inherit;
+    transition: background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-list-row--interactive {
+    cursor: pointer;
+  }
+
+  .nim-list-row--interactive:hover {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-list-row--interactive:active {
+    background: var(--nim-canvas-sunken);
+  }
+
+  .nim-list-row__leading,
+  .nim-list-row__trailing {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-list-row__content {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-list-row__title {
+    display: block;
+    font-size: var(--nim-type-body-size);
+    font-weight: var(--nim-weight-medium);
+    line-height: var(--nim-leading-normal);
+  }
+
+  .nim-list-row__subtitle {
+    display: block;
+    margin-block-start: var(--nim-space-1);
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* The chevron points the way the reader travels. */
+  .nim-list-row__chevron {
+    color: var(--nim-ink-tertiary);
+    transition: translate var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-list-row--interactive:hover .nim-list-row__chevron {
+    translate: 3px 0;
+    color: var(--nim-accent);
+  }
+
+  [dir='rtl'] .nim-list-row--interactive:hover .nim-list-row__chevron {
+    translate: -3px 0;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SECTION HEADER
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+    inline-size: 100%;
+  }
+
+  .nim-section-header__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    margin-block-end: var(--nim-space-2);
+  }
+
+  .nim-section-header__eyebrow::before {
+    content: '';
+    inline-size: var(--nim-size-dot);
+    block-size: var(--nim-size-dot);
+    background: var(--nim-accent);
+    border-radius: var(--nim-radius-xs);
+    flex: none;
+  }
+
+  .nim-section-header__description {
+    margin-block-start: var(--nim-space-2);
+    max-inline-size: var(--nim-measure);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     STAT — a figure and what it means
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-stat {
+    display: grid;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-stat__value {
+    font-family: var(--nim-font-numeric);
+    /* A figure that updates in place must not shift the ones beside it. */
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-text-32);
+    font-weight: var(--nim-weight-semibold);
+    line-height: 1;
+    letter-spacing: var(--nim-tracking-tight);
+    color: var(--nim-ink);
+  }
+
+  .nim-stat__unit {
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+    margin-inline-start: var(--nim-space-1);
+  }
+
+  .nim-stat__label {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-stat__delta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    font-size: var(--nim-type-caption-size);
+  }
+
+  .nim-stat__delta[data-direction='up'] {
+    color: var(--nim-success);
+  }
+  .nim-stat__delta[data-direction='down'] {
+    color: var(--nim-danger);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     BANNER
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-4);
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-normal);
+
+    --nim-banner-ink: var(--nim-ink-secondary);
+  }
+
+  .nim-banner--accent {
+    background: var(--nim-accent-soft);
+    border-color: var(--nim-accent-line);
+    --nim-banner-ink: var(--nim-accent);
+  }
+  .nim-banner--success {
+    background: var(--nim-success-soft);
+    --nim-banner-ink: var(--nim-success);
+  }
+  .nim-banner--warning {
+    background: var(--nim-warning-soft);
+    --nim-banner-ink: var(--nim-warning);
+  }
+  .nim-banner--danger {
+    background: var(--nim-danger-soft);
+    --nim-banner-ink: var(--nim-danger);
+  }
+  .nim-banner--info {
+    background: var(--nim-info-soft);
+    --nim-banner-ink: var(--nim-info);
+  }
+
+  .nim-banner__icon {
+    color: var(--nim-banner-ink);
+    margin-block-start: 1px;
+  }
+
+  .nim-banner__title {
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink);
+  }
+
+  .nim-banner__content {
+    flex: 1;
+    min-inline-size: 0;
+    display: grid;
+    gap: var(--nim-space-1);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     EMPTY STATE
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-empty {
+    display: grid;
+    justify-items: center;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-9) var(--nim-space-5);
+    text-align: center;
+  }
+
+  .nim-empty__icon {
+    display: grid;
+    place-items: center;
+    inline-size: 48px;
+    block-size: 48px;
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    color: var(--nim-ink-tertiary);
+    margin-block-end: var(--nim-space-2);
+  }
+
+  .nim-empty__body {
+    max-inline-size: 42ch;
+  }
+
+  .nim-empty__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--nim-space-3);
+    margin-block-start: var(--nim-space-3);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SEGMENTED CONTROL
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-segmented {
+    display: inline-flex;
+    padding: var(--nim-space-1);
+    background: var(--nim-surface-muted);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    gap: var(--nim-space-1);
+  }
+
+  .nim-segmented--full {
+    display: flex;
+    inline-size: 100%;
+  }
+
+  .nim-segmented__option {
+    flex: 1;
+    min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-4);
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-xs);
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-type-control-weight);
+    letter-spacing: var(--nim-type-control-tracking);
+    text-transform: var(--nim-type-control-transform);
+    color: var(--nim-ink-tertiary);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-segmented__option:hover {
+    color: var(--nim-ink);
+  }
+
+  /* A real border on four sides. `--nim-shadow-sm` is a bottom hairline on the
+     ledger presets, so the selected segment read as an underline against a
+     track only a few percent away from it. */
+  .nim-segmented__option[aria-selected='true'] {
+    background: var(--nim-surface);
+    color: var(--nim-ink);
+    border-color: var(--nim-line-strong);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     AVATAR
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-avatar {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    inline-size: var(--nim-size-avatar-md);
+    block-size: var(--nim-size-avatar-md);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface-muted);
+    border: var(--nim-border-width) solid var(--nim-line);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-caption-size);
+    font-weight: var(--nim-weight-medium);
+    overflow: hidden;
+  }
+
+  .nim-avatar--sm {
+    inline-size: var(--nim-size-avatar-sm);
+    block-size: var(--nim-size-avatar-sm);
+    font-size: var(--nim-text-11);
+  }
+  .nim-avatar--lg {
+    inline-size: var(--nim-size-avatar-lg);
+    block-size: var(--nim-size-avatar-lg);
+    font-size: var(--nim-text-16);
+  }
+  .nim-avatar--square {
+    border-radius: var(--nim-radius-md);
+  }
+
+  .nim-avatar img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PROGRESS · SPINNER · SKELETON
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-progress {
+    inline-size: 100%;
+    block-size: var(--nim-size-track);
+    background: var(--nim-line-soft);
+    border-radius: var(--nim-radius-pill);
+    overflow: hidden;
+  }
+
+  .nim-progress__fill {
+    block-size: 100%;
+    background: var(--nim-accent);
+    border-radius: inherit;
+    transition: inline-size var(--nim-dur-slow) var(--nim-ease-decelerate);
+  }
+
+  .nim-progress--indeterminate .nim-progress__fill {
+    inline-size: 40%;
+    animation: nim-slide 1.2s var(--nim-ease-standard) infinite;
+  }
+
+  .nim-spinner {
+    display: inline-block;
+    inline-size: var(--nim-size-icon-md);
+    block-size: var(--nim-size-icon-md);
+    border: 2px solid var(--nim-line);
+    border-block-start-color: var(--nim-accent);
+    border-radius: var(--nim-radius-pill);
+    animation: nim-spin 700ms linear infinite;
+  }
+
+  .nim-spinner--sm {
+    inline-size: var(--nim-size-icon-xs);
+    block-size: var(--nim-size-icon-xs);
+    border-width: 2px;
+  }
+  .nim-spinner--lg {
+    inline-size: var(--nim-size-icon-xl);
+    block-size: var(--nim-size-icon-xl);
+    border-width: 3px;
+  }
+
+  .nim-skeleton {
+    display: block;
+    background: var(--nim-surface-muted);
+    border-radius: var(--nim-radius-xs);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .nim-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--nim-line-soft), transparent);
+    animation: nim-sweep 1.4s var(--nim-ease-standard) infinite;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHEET — the bottom sheet, nim's primary modal surface on mobile
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-sheet__scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--nim-z-scrim);
+    background: var(--nim-scrim);
+    animation: nim-fade-in var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-sheet__panel {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: var(--nim-z-sheet);
+    display: flex;
+    flex-direction: column;
+    max-block-size: min(88dvh, 720px);
+    padding-block-end: calc(var(--nim-space-5) + var(--nim-safe-bottom));
+    margin-inline: auto;
+    inline-size: min(100%, var(--nim-frame-max));
+    background: var(--nim-surface);
+    border-block-start: var(--nim-border-width) solid var(--nim-line);
+    border-start-start-radius: var(--nim-radius-xl);
+    border-start-end-radius: var(--nim-radius-xl);
+    box-shadow: var(--nim-shadow-lg);
+    animation: nim-rise var(--nim-dur-base) var(--nim-ease-decelerate);
+  }
+
+  .nim-sheet__handle {
+    inline-size: var(--nim-size-handle);
+    block-size: var(--nim-size-handle-thickness);
+    margin: var(--nim-space-3) auto var(--nim-space-1);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line-strong);
+    flex: none;
+  }
+
+  .nim-sheet__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-4) var(--nim-space-5);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+    flex: none;
+  }
+
+  .nim-sheet__body {
+    padding: var(--nim-space-5);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .nim-sheet__footer {
+    display: flex;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-4) var(--nim-space-5) 0;
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    flex: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TOAST
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-toast-stack {
+    position: fixed;
+    inset-block-end: calc(var(--nim-space-5) + var(--nim-safe-bottom));
+    inset-inline: 0;
+    z-index: var(--nim-z-toast);
+    display: grid;
+    gap: var(--nim-space-2);
+    justify-items: center;
+    padding-inline: var(--nim-space-4);
+    pointer-events: none;
+  }
+
+  .nim-toast {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: min(100%, 440px);
+    padding: var(--nim-space-3) var(--nim-space-4);
+    background: var(--nim-ink);
+    color: var(--nim-canvas);
+    border-radius: var(--nim-radius-md);
+    box-shadow: var(--nim-shadow-lg);
+    font-size: var(--nim-type-body-sm-size);
+    pointer-events: auto;
+    animation: nim-rise var(--nim-dur-base) var(--nim-ease-spring);
+  }
+
+  .nim-toast__icon {
+    flex: none;
+  }
+  .nim-toast--success .nim-toast__icon {
+    color: var(--nim-success);
+  }
+  .nim-toast--danger .nim-toast__icon {
+    color: var(--nim-danger);
+  }
+  .nim-toast--accent .nim-toast__icon {
+    color: var(--nim-accent);
+  }
+
+  .nim-toast__message {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-toast__action {
+    flex: none;
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-accent);
+    cursor: pointer;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     APP FRAME — the mobile viewport, centred on a desktop screen
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-app-frame {
+    position: relative;
+    isolation: isolate;
+    inline-size: min(100%, var(--nim-frame-max));
+    margin-inline: auto;
+    min-block-size: 100%;
+    background: var(--nim-canvas);
+  }
+
+  .nim-stack {
+    display: grid;
+    gap: var(--nim-space-4);
+  }
+  .nim-stack--tight {
+    gap: var(--nim-space-2);
+  }
+  .nim-stack--loose {
+    gap: var(--nim-space-7);
+  }
+
+  .nim-inline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-inline--tight {
+    gap: var(--nim-space-2);
+  }
+
+  .nim-inline--loose {
+    gap: var(--nim-space-6);
+  }
+
+  .nim-inline--nowrap {
+    flex-wrap: nowrap;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     MENU — a list of actions, dismissed by choosing one
+     Anchored by the component to its trigger; this file owns only how it
+     looks. A menu holds actions, never inputs — that is a popover.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-menu {
+    position: fixed;
+    z-index: var(--nim-z-nav);
+    min-inline-size: 220px;
+    max-inline-size: min(320px, 100vw - var(--nim-space-8));
+    padding-block: var(--nim-space-1);
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-md);
+    box-shadow: var(--nim-shadow-lg);
+    animation: nim-pop var(--nim-dur-fast) var(--nim-ease-decelerate);
+  }
+
+  .nim-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-4);
+    border: 0;
+    background: none;
+    text-align: start;
+    color: var(--nim-ink);
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-weight-regular);
+    letter-spacing: var(--nim-type-control-tracking);
+    cursor: pointer;
+    transition: background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-menu__item:hover:not(:disabled),
+  .nim-menu__item[data-active='true'] {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-menu__item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .nim-menu__item--danger {
+    color: var(--nim-danger);
+  }
+
+  .nim-menu__icon {
+    flex: none;
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-menu__item--danger .nim-menu__icon {
+    color: currentColor;
+  }
+
+  /* Shortcut hints stay in the mono — the one place on a control where the
+     machine-shaped voice is the right one. */
+  .nim-menu__shortcut {
+    margin-inline-start: auto;
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-text-11);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-menu__label {
+    padding: var(--nim-space-2) var(--nim-space-4) var(--nim-space-1);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-text-11);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-menu__separator {
+    block-size: var(--nim-border-width);
+    margin-block: var(--nim-space-1);
+    background: var(--nim-line-soft);
+    border: 0;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     DIALOG — the centred modal, for a decision that must be made now
+     The sheet remains the mobile-first surface; a dialog is what a desktop
+     confirmation wants, and it renders as a real <dialog> so the top layer and
+     the focus trap come from the platform.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-dialog {
+    inline-size: min(100% - var(--nim-space-7), 440px);
+    max-block-size: min(84dvh, 720px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--nim-surface);
+    color: var(--nim-ink);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-lg);
+    box-shadow: var(--nim-shadow-lg);
+  }
+
+  .nim-dialog[open] {
+    animation: nim-rise var(--nim-dur-base) var(--nim-ease-decelerate);
+  }
+
+  .nim-dialog::backdrop {
+    background: var(--nim-scrim);
+    animation: nim-fade-in var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-dialog__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-5);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+    flex: none;
+  }
+
+  .nim-dialog__body {
+    padding: var(--nim-space-5);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .nim-dialog__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-5);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    flex: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     POPOVER — a menu's geometry with a form's contents
+     Unlike a menu it does not close on click-inside, because the thing inside
+     is what the viewer came for.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-popover {
+    position: fixed;
+    z-index: var(--nim-z-nav);
+    inline-size: min(320px, 100vw - var(--nim-space-8));
+    padding: var(--nim-space-5);
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-md);
+    box-shadow: var(--nim-shadow-lg);
+    animation: nim-pop var(--nim-dur-fast) var(--nim-ease-decelerate);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TOOLTIP — a name for a control that shows only an icon
+     Never the only place a label lives: the trigger carries its own
+     accessible name, and this repeats it for sighted pointer users.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-tooltip {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .nim-tooltip__bubble {
+    position: absolute;
+    inset-block-end: calc(100% + var(--nim-space-2));
+    inset-inline-start: 50%;
+    translate: -50% 0;
+    z-index: var(--nim-z-nav);
+    padding: var(--nim-space-1) var(--nim-space-3);
+    background: var(--nim-ink);
+    color: var(--nim-ink-inverse);
+    border-radius: var(--nim-radius-xs);
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--nim-dur-fast) var(--nim-ease-standard) 200ms;
+  }
+
+  /* Hover waits; keyboard focus does not — a viewer who tabbed here asked. */
+  .nim-tooltip:hover .nim-tooltip__bubble {
+    opacity: 1;
+  }
+
+  .nim-tooltip:focus-within .nim-tooltip__bubble {
+    opacity: 1;
+    transition-delay: 0ms;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TABS — switch a region of the page
+     Distinct from the segmented control, and the distinction is the point:
+     tabs change what is shown, a segmented control sets a value.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-tabs {
+    display: flex;
+    gap: var(--nim-space-6);
+    border-block-end: var(--nim-border-width) solid var(--nim-line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nim-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nim-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    padding-block: var(--nim-space-3) var(--nim-space-4);
+    border: 0;
+    background: none;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-type-control-weight);
+    letter-spacing: var(--nim-type-control-tracking);
+    text-transform: var(--nim-type-control-transform);
+    transition: color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-tab:hover:not(:disabled) {
+    color: var(--nim-ink);
+  }
+
+  .nim-tab[aria-selected='true'] {
+    color: var(--nim-ink);
+  }
+
+  .nim-tab[aria-selected='true']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: calc(-1 * var(--nim-border-width));
+    block-size: 2px;
+    background: var(--nim-accent);
+  }
+
+  .nim-tab:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .nim-tab__count {
+    padding-inline: var(--nim-space-1);
+    font-family: var(--nim-font-numeric);
+    font-size: var(--nim-text-11);
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink-tertiary);
+    border-radius: var(--nim-radius-xs);
+  }
+
+  .nim-tab[aria-selected='true'] .nim-tab__count {
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TABLE
+     Row height follows `--nim-density`, the same multiplier that drives the
+     control scale — which is the whole reason density is a token rather than
+     a prop on this component.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-table-wrap {
+    inline-size: 100%;
+    overflow-x: auto;
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+  }
+
+  .nim-table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    background: var(--nim-surface);
+  }
+
+  .nim-table th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--nim-z-sticky);
+    text-align: start;
+    padding: var(--nim-space-3) var(--nim-space-5);
+    background: var(--nim-surface);
+    border-block-end: var(--nim-border-width) solid var(--nim-line);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-text-11);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-tertiary);
+    white-space: nowrap;
+  }
+
+  .nim-table td {
+    padding: calc(var(--nim-space-4) * var(--nim-density)) var(--nim-space-5);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+    font-size: var(--nim-type-body-sm-size);
+    letter-spacing: var(--nim-tracking-normal);
+  }
+
+  .nim-table tbody tr:last-child td {
+    border-block-end: 0;
+  }
+
+  .nim-table tbody tr:hover td {
+    background: var(--nim-surface-muted);
+  }
+
+  /* Money and dates align to the trailing edge in tabular figures, so decimal
+     points stack without anyone setting a column width. The `th`/`td` in the
+     selector is not decoration: `.nim-table th` sets `text-align: start` at a
+     higher specificity, so without it a numeric column's header sat over the
+     opposite edge from its own figures. */
+  .nim-table :is(th, td).nim-table__cell--numeric {
+    text-align: end;
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-table__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    user-select: none;
+  }
+
+  .nim-table__sort:hover {
+    color: var(--nim-ink);
+  }
+
+  .nim-table th[aria-sort] .nim-table__sort {
+    color: var(--nim-accent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     COMBOBOX — a text input that suggests, and can still be typed into
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-combobox {
+    position: relative;
+  }
+
+  .nim-combobox__list {
+    position: absolute;
+    inset-inline: 0;
+    z-index: var(--nim-z-nav);
+    margin-block-start: calc(-1 * var(--nim-border-width));
+    max-block-size: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-sm);
+    box-shadow: var(--nim-shadow-lg);
+  }
+
+  .nim-combobox__option {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-4);
+    border: 0;
+    background: none;
+    text-align: start;
+    cursor: pointer;
+    color: var(--nim-ink);
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    letter-spacing: var(--nim-type-control-tracking);
+  }
+
+  .nim-combobox__option:hover,
+  .nim-combobox__option[aria-selected='true'] {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-combobox__meta {
+    margin-inline-start: auto;
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-text-11);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* A no-match state offers the way forward rather than dead-ending. */
+  .nim-combobox__empty {
+    padding: var(--nim-space-4);
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     DATE FIELD — a text input, with a calendar as an aid
+     Typing a date always works, which matters more than the grid does.
+     ═══════════════════════════════════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════════════════
+     DATE PICKER — the field, with the month behind a button
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-date-picker {
+    display: grid;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-date-picker__group {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+  }
+
+  .nim-date-picker__group > .nim-input {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  /* The same day on the other calendar. Quiet by design: it is a check, not
+     a second value — the field above is the one being edited. */
+  .nim-date-picker__equivalent {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    margin: 0;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-date-picker__equivalent > span {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-calendar {
+    inline-size: 100%;
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-calendar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-calendar__month {
+    font-family: var(--nim-type-control-family);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-weight-medium);
+  }
+
+  .nim-calendar__grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--nim-border-width);
+    background: var(--nim-line-soft);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-sm);
+    overflow: hidden;
+  }
+
+  .nim-calendar__weekday {
+    padding-block: var(--nim-space-2);
+    background: var(--nim-surface);
+    text-align: center;
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-text-11);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-calendar__day {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: var(--nim-surface);
+    cursor: pointer;
+    color: var(--nim-ink);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-caption-size);
+    transition: background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-calendar__day:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-calendar__day--outside {
+    color: var(--nim-ink-tertiary);
+    opacity: 0.45;
+  }
+
+  .nim-calendar__day--today {
+    color: var(--nim-accent);
+    font-weight: var(--nim-weight-semibold);
+  }
+
+  .nim-calendar__day--marked {
+    box-shadow: inset 0 -3px 0 var(--nim-accent);
+  }
+
+  .nim-calendar__day[aria-selected='true'] {
+    background: var(--nim-ink);
+    color: var(--nim-canvas);
+    font-weight: var(--nim-weight-semibold);
+  }
+
+  .nim-calendar__day:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     STEPPER — a number with two full-size targets
+     Both buttons are control-height squares, so the pair clears the touch
+     minimum instead of the usual cramped chevrons.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-sm);
+  }
+
+  .nim-stepper__button {
+    inline-size: calc(var(--nim-control-md) * var(--nim-density));
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--nim-ink-secondary);
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-stepper__button:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-stepper__button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .nim-stepper__value {
+    min-inline-size: calc(var(--nim-space-9) + var(--nim-space-4));
+    display: grid;
+    place-items: center;
+    border-inline: var(--nim-border-width) solid var(--nim-line);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-body-size);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PAGINATION
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+    flex-wrap: wrap;
+  }
+
+  .nim-pagination__summary {
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-pagination__list {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+  }
+
+  .nim-pagination__item {
+    min-inline-size: calc(var(--nim-control-sm) * var(--nim-density));
+    block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-2);
+    display: grid;
+    place-items: center;
+    border: var(--nim-border-width) solid transparent;
+    border-radius: var(--nim-radius-xs);
+    background: none;
+    cursor: pointer;
+    color: var(--nim-ink-secondary);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-caption-size);
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-pagination__item:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-pagination__item[aria-current='page'] {
+    background: var(--nim-ink);
+    color: var(--nim-canvas);
+  }
+
+  .nim-pagination__item:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .nim-pagination__ellipsis {
+    min-inline-size: calc(var(--nim-control-sm) * var(--nim-density));
+    block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    display: grid;
+    place-items: center;
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     BREADCRUMB
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    font-size: var(--nim-type-body-sm-size);
+  }
+
+  .nim-breadcrumb__link {
+    color: var(--nim-ink-tertiary);
+    text-decoration: none;
+    border-radius: var(--nim-radius-xs);
+    transition: color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-breadcrumb__link:hover {
+    color: var(--nim-accent);
+  }
+
+  .nim-breadcrumb__separator {
+    display: grid;
+    place-items: center;
+    color: var(--nim-line-strong);
+    flex: none;
+  }
+
+  .nim-breadcrumb__current {
+    color: var(--nim-ink);
+    font-weight: var(--nim-weight-medium);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ONBOARDING — the first-run carousel
+     A column with three fixed regions: art, copy, controls. The art region is
+     sized in viewport units and the copy region takes the slack, so a long
+     Persian paragraph pushes the illustration down rather than the CTA off
+     the screen.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-onboarding {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100%;
+    inline-size: 100%;
+    max-inline-size: var(--nim-frame-max);
+    margin-inline: auto;
+    padding-block: calc(var(--nim-safe-top) + var(--nim-space-4))
+      calc(var(--nim-safe-bottom) + var(--nim-space-6));
+    padding-inline: var(--nim-space-6);
+    background: var(--nim-canvas);
+  }
+
+  .nim-onboarding__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+    min-block-size: var(--nim-touch-min);
+    flex: none;
+  }
+
+  .nim-onboarding__stage {
+    flex: none;
+    display: grid;
+    justify-items: center;
+    gap: var(--nim-space-4);
+    padding-block: var(--nim-space-4);
+  }
+
+  .nim-onboarding__art {
+    inline-size: 100%;
+    max-inline-size: 292px;
+  }
+
+  .nim-onboarding__art > * {
+    inline-size: 100%;
+    block-size: auto;
+    display: block;
+  }
+
+  .nim-onboarding__proof {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    max-inline-size: 340px;
+    padding: var(--nim-space-3);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-lg);
+    box-shadow: var(--nim-shadow-sm);
+  }
+
+  .nim-onboarding__proof-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-avatar-md);
+    block-size: var(--nim-size-avatar-md);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    flex: none;
+  }
+
+  .nim-onboarding__proof-text {
+    display: grid;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+  }
+
+  .nim-onboarding__proof-title {
+    font-size: var(--nim-type-body-sm-size);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-onboarding__proof-points {
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-secondary);
+    /* One line of supporting points, truncated rather than wrapped — it is a
+       caption, and a two-line caption starts competing with the title. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nim-onboarding__copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--nim-space-3);
+    padding-block: var(--nim-space-5);
+    min-block-size: 0;
+  }
+
+  .nim-onboarding__chip {
+    align-self: start;
+    padding-block: var(--nim-space-1);
+    padding-inline: var(--nim-space-4);
+    border-radius: var(--nim-radius-pill);
+    border: var(--nim-border-width) solid var(--nim-accent-line);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-semibold);
+  }
+
+  .nim-onboarding__title {
+    margin: 0;
+    font-family: var(--nim-type-display-family);
+    font-size: var(--nim-type-title-lg-size);
+    font-weight: var(--nim-type-title-lg-weight);
+    line-height: var(--nim-leading-tight);
+    letter-spacing: var(--nim-tracking-tight);
+    color: var(--nim-ink);
+    /* Slides carry their own line breaks: the title is a two-line promise and
+       where it breaks is a copy decision, not a layout accident. */
+    white-space: pre-line;
+  }
+
+  .nim-onboarding__body {
+    margin: 0;
+    max-inline-size: var(--nim-measure);
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-onboarding__controls {
+    flex: none;
+    display: grid;
+    gap: var(--nim-space-4);
+  }
+
+  .nim-onboarding__dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-onboarding__dot {
+    inline-size: var(--nim-space-2);
+    block-size: var(--nim-space-2);
+    padding: 0;
+    border: 0;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line-strong);
+    cursor: pointer;
+    transition:
+      inline-size var(--nim-dur-base) var(--nim-ease-spring),
+      background-color var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  /* The dot row is small; the touch target is not. */
+  .nim-onboarding__dot::before {
+    content: '';
+    position: absolute;
+    inset-block: calc(-1 * var(--nim-space-4));
+    inset-inline: calc(-1 * var(--nim-space-1));
+  }
+
+  .nim-onboarding__dot {
+    position: relative;
+  }
+
+  .nim-onboarding__dot[aria-current='step'] {
+    inline-size: calc(var(--nim-space-7) - var(--nim-space-1));
+    background: var(--nim-accent);
+  }
+
+  .nim-onboarding__cta {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-onboarding__footnote {
+    margin: 0;
+    text-align: center;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     AUTH SCREEN — one step of a sign-in flow
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-auth {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100%;
+    inline-size: 100%;
+    max-inline-size: var(--nim-frame-max);
+    margin-inline: auto;
+    padding-block: calc(var(--nim-safe-top) + var(--nim-space-8))
+      calc(var(--nim-safe-bottom) + var(--nim-space-5));
+    padding-inline: var(--nim-space-6);
+    background: var(--nim-canvas);
+  }
+
+  .nim-auth__brand {
+    display: grid;
+    justify-items: center;
+    gap: var(--nim-space-2);
+    flex: none;
+  }
+
+  .nim-auth__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding-block-start: var(--nim-space-7);
+  }
+
+  .nim-auth__back {
+    align-self: start;
+    margin-block-end: var(--nim-space-5);
+  }
+
+  .nim-auth__title {
+    margin: 0 0 var(--nim-space-2);
+    font-size: var(--nim-type-title-lg-size);
+    font-weight: var(--nim-type-title-lg-weight);
+    line-height: var(--nim-leading-tight);
+    letter-spacing: var(--nim-tracking-tight);
+    color: var(--nim-ink);
+  }
+
+  .nim-auth__subtitle {
+    margin: 0 0 var(--nim-space-7);
+    max-inline-size: var(--nim-measure);
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-auth__fields {
+    display: grid;
+    gap: var(--nim-space-4);
+  }
+
+  .nim-auth__foot {
+    flex: none;
+    display: grid;
+    gap: var(--nim-space-4);
+    padding-block-start: var(--nim-space-6);
+  }
+
+  .nim-auth__footer {
+    text-align: center;
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-leading-normal);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     OTP INPUT
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-otp {
+    display: grid;
+    gap: var(--nim-space-3);
+    justify-items: center;
+  }
+
+  .nim-otp__boxes {
+    display: flex;
+    gap: var(--nim-space-2);
+    justify-content: center;
+  }
+
+  .nim-otp__box {
+    inline-size: calc(var(--nim-control-lg) - var(--nim-space-2));
+    block-size: calc(var(--nim-control-lg) * var(--nim-density));
+    padding: 0;
+    text-align: center;
+    font-family: var(--nim-font-numeric);
+    font-size: var(--nim-text-24);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    caret-color: var(--nim-accent);
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-otp__box[data-filled='true'] {
+    border-color: var(--nim-accent);
+    background: var(--nim-accent-soft);
+  }
+
+  .nim-otp__box:focus-visible {
+    outline: none;
+    border-color: var(--nim-accent);
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-otp--invalid .nim-otp__box {
+    border-color: var(--nim-danger);
+  }
+
+  .nim-otp__error {
+    margin: 0;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-danger);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PHONE FIELD — country picker welded to a number input
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-phone {
+    position: relative;
+  }
+
+  .nim-phone__shell {
+    display: flex;
+    align-items: stretch;
+    block-size: calc(var(--nim-control-lg) * var(--nim-density));
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    overflow: hidden;
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-phone__shell:focus-within {
+    border-color: var(--nim-accent);
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-phone__country {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    padding-inline: var(--nim-space-4);
+    /* The shell is pinned LTR, so this divider is a physical right border on
+       purpose: it is the boundary of a number, not of the page. */
+    border: 0;
+    border-right: var(--nim-border-width) solid var(--nim-line);
+    background: none;
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-weight-medium);
+    cursor: pointer;
+    flex: none;
+  }
+
+  .nim-phone__country:hover {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-phone__flag {
+    font-size: var(--nim-text-18);
+    line-height: 1;
+  }
+
+  .nim-phone__dial {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-phone__caret {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-phone__input {
+    flex: 1;
+    min-inline-size: 0;
+    border: 0;
+    background: transparent;
+    padding-inline: var(--nim-space-4);
+    font-family: var(--nim-font-numeric);
+    font-size: var(--nim-type-control-size);
+    letter-spacing: 0.04em;
+    color: var(--nim-ink);
+  }
+
+  .nim-phone__input:focus-visible {
+    outline: none;
+  }
+
+  .nim-phone__picker {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(100% + var(--nim-space-2));
+    z-index: var(--nim-z-nav);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-block-size: 18rem;
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    box-shadow: var(--nim-shadow-lg);
+    overflow: hidden;
+  }
+
+  .nim-phone__search {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    padding-inline: var(--nim-space-4);
+    block-size: calc(var(--nim-control-md) * var(--nim-density));
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-phone__search-input {
+    flex: 1;
+    min-inline-size: 0;
+    border: 0;
+    background: transparent;
+    font-size: var(--nim-type-control-size);
+    color: var(--nim-ink);
+  }
+
+  .nim-phone__search-input:focus-visible {
+    outline: none;
+  }
+
+  .nim-phone__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .nim-phone__option {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    min-block-size: var(--nim-touch-min);
+    padding-inline: var(--nim-space-4);
+    border: 0;
+    background: none;
+    color: var(--nim-ink);
+    font-size: var(--nim-type-body-sm-size);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .nim-phone__option:hover,
+  .nim-phone__option[aria-selected='true'] {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-phone__option:focus-visible {
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: calc(-1 * var(--nim-size-focus-ring));
+  }
+
+  .nim-phone__name {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-phone__option-dial {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-phone__empty {
+    padding: var(--nim-space-4);
+    text-align: center;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PASSWORD FIELD — reveal toggle and strength meter
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-password__toggle {
+    position: absolute;
+    inset-inline-end: var(--nim-space-2);
+    inset-block: var(--nim-space-1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-touch-min);
+    border: 0;
+    border-radius: var(--nim-radius-sm);
+    background: none;
+    color: var(--nim-ink-tertiary);
+    cursor: pointer;
+  }
+
+  .nim-password__toggle:hover {
+    color: var(--nim-ink);
+  }
+
+  .nim-password__toggle[aria-pressed='true'] {
+    color: var(--nim-accent);
+  }
+
+  .nim-password__toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-password__meter {
+    display: flex;
+    gap: var(--nim-space-1);
+    margin-block-start: var(--nim-space-2);
+  }
+
+  .nim-password__step {
+    flex: 1;
+    block-size: var(--nim-space-1);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line);
+    transition: background-color var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-password__meter[data-level='weak'] .nim-password__step[data-on] {
+    background: var(--nim-danger);
+  }
+  .nim-password__meter[data-level='fair'] .nim-password__step[data-on] {
+    background: var(--nim-warning);
+  }
+  .nim-password__meter[data-level='good'] .nim-password__step[data-on],
+  .nim-password__meter[data-level='strong'] .nim-password__step[data-on] {
+    background: var(--nim-success);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TAB BAR — floating bottom navigation
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-tab-bar {
+    position: sticky;
+    inset-block-end: calc(var(--nim-safe-bottom) + var(--nim-space-3));
+    z-index: var(--nim-z-nav);
+    inline-size: min(100%, var(--nim-content-max));
+    margin-inline: auto;
+    padding-inline: var(--nim-space-4);
+    /* The bar floats; the page scrolls under it. Only the row takes pointer
+       events so the gutters beside it stay tappable. */
+    pointer-events: none;
+  }
+
+  .nim-tab-bar__row {
+    pointer-events: auto;
+    display: grid;
+    grid-template-columns: repeat(var(--nim-tab-count, 4), minmax(0, 1fr));
+    align-items: center;
+    justify-items: center;
+    padding: var(--nim-space-2);
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-xl);
+    box-shadow: var(--nim-shadow-lg);
+  }
+
+  .nim-tab-bar__slot {
+    display: contents;
+  }
+
+  .nim-tab-bar__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--nim-space-1);
+    inline-size: 100%;
+    min-block-size: var(--nim-touch-min);
+    padding-block: var(--nim-space-2);
+    border: 0;
+    border-radius: var(--nim-radius-md);
+    background: none;
+    color: var(--nim-ink-secondary);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-tab-bar__item[data-active='true'] {
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+  }
+
+  .nim-tab-bar__item:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-tab-bar__label {
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    line-height: 1;
+    text-transform: var(--nim-label-transform);
+    letter-spacing: var(--nim-label-tracking);
+  }
+
+  /* The centre action is lifted out of the bar, which is what makes it read
+     as the product's one verb rather than a fifth destination. */
+  .nim-tab-bar__item--center {
+    margin-block-start: calc(-1 * var(--nim-space-5));
+    inline-size: calc(var(--nim-control-lg) + var(--nim-space-1));
+    min-block-size: calc(var(--nim-control-lg) + var(--nim-space-3));
+    background: var(--nim-accent);
+    color: var(--nim-on-accent);
+    border: var(--nim-border-width) solid var(--nim-accent-line);
+    border-radius: var(--nim-radius-lg);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-tab-bar__item--center[data-active='true'] {
+    background: var(--nim-accent-strong);
+    color: var(--nim-on-accent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PLAN CARD — one subscription tier
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-plan {
+    display: grid;
+    gap: var(--nim-space-4);
+    inline-size: 100%;
+    padding: var(--nim-space-5);
+    text-align: start;
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  article.nim-plan {
+    cursor: default;
+  }
+
+  .nim-plan:hover {
+    border-color: var(--nim-line-strong);
+  }
+
+  .nim-plan--selected {
+    border-color: var(--nim-accent);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-plan:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-plan__top {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-plan__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-avatar-md);
+    block-size: var(--nim-size-avatar-md);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    flex: none;
+  }
+
+  .nim-plan__heading {
+    display: grid;
+    gap: var(--nim-space-1);
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-plan__name {
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-plan__tagline {
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-plan__badge {
+    padding-block: var(--nim-space-1);
+    padding-inline: var(--nim-space-3);
+    border-radius: var(--nim-radius-pill);
+    border: var(--nim-border-width) solid var(--nim-accent-line);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-semibold);
+    white-space: nowrap;
+  }
+
+  .nim-plan__radio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-icon-lg);
+    block-size: var(--nim-size-icon-lg);
+    border-radius: var(--nim-radius-pill);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    color: var(--nim-on-accent);
+    flex: none;
+  }
+
+  .nim-plan--selected .nim-plan__radio {
+    background: var(--nim-accent);
+    border-color: var(--nim-accent);
+  }
+
+  .nim-plan__price-box {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+    padding: var(--nim-space-4);
+    background: var(--nim-canvas-sunken);
+    border-radius: var(--nim-radius-md);
+  }
+
+  .nim-plan__price-caption {
+    display: block;
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-plan__price {
+    display: block;
+    margin-block-start: var(--nim-space-1);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-text-24);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-plan__secondary {
+    text-align: end;
+  }
+
+  .nim-plan__secondary-value {
+    display: block;
+    margin-block-start: var(--nim-space-1);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-plan__features {
+    display: grid;
+    gap: var(--nim-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-plan__feature {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-normal);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-plan__feature[data-state='included'] > .nim-icon {
+    color: var(--nim-success);
+  }
+  .nim-plan__feature[data-state='pending'] > .nim-icon {
+    color: var(--nim-warning);
+  }
+  .nim-plan__feature[data-state='excluded'] {
+    color: var(--nim-ink-tertiary);
+  }
+  .nim-plan__feature[data-state='excluded'] > .nim-icon {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-plan__feature-label {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-plan__feature-note {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+    white-space: nowrap;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     AVATAR RING · PROFILE HEADER
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-avatar-ring {
+    position: relative;
+    inline-size: var(--nim-ring-size);
+    block-size: var(--nim-ring-size);
+    flex: none;
+  }
+
+  .nim-avatar-ring__arc {
+    position: absolute;
+    inset: 0;
+    /* Start the arc at twelve o'clock. Rotation, not a redrawn path, so the
+       cap stays round. */
+    rotate: -90deg;
+  }
+
+  .nim-avatar-ring__track {
+    stroke: var(--nim-line-soft);
+  }
+
+  .nim-avatar-ring__fill {
+    stroke: var(--nim-accent);
+    transition: stroke-dasharray var(--nim-dur-slow) var(--nim-ease-decelerate);
+  }
+
+  .nim-avatar-ring__face {
+    position: absolute;
+    inset: calc(var(--nim-ring-stroke) + var(--nim-space-1));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface-muted);
+    overflow: hidden;
+  }
+
+  .nim-avatar-ring__image {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  .nim-avatar-ring__initials {
+    font-size: var(--nim-text-24);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+    line-height: 1;
+  }
+
+  .nim-avatar-ring__caption {
+    margin-block-start: var(--nim-space-1);
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-accent);
+  }
+
+  .nim-profile-header {
+    display: grid;
+    gap: var(--nim-space-5);
+    padding: var(--nim-space-5);
+    background: var(--nim-surface-raised);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-xl);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-profile-header__identity {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-4);
+  }
+
+  .nim-profile-header__who {
+    min-inline-size: 0;
+    flex: 1;
+  }
+
+  .nim-profile-header__eyebrow {
+    margin: 0;
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-accent);
+  }
+
+  .nim-profile-header__name {
+    margin: var(--nim-space-1) 0 0;
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    line-height: var(--nim-leading-tight);
+    color: var(--nim-ink);
+  }
+
+  .nim-profile-header__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    margin-block-start: var(--nim-space-3);
+  }
+
+  .nim-profile-header__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr));
+    gap: var(--nim-space-3);
+    margin: 0;
+  }
+
+  /* Source order is label-then-figure so the pair reads correctly as a
+     definition list; the figure is shown first because that is what the eye
+     is scanning for. */
+  .nim-profile-header__stat {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    text-align: center;
+  }
+
+  .nim-profile-header__stat-value {
+    margin: 0;
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-text-18);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-profile-header__stat-label {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-profile-header__actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--nim-space-2);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     APP SHELL — header, one scroll region, tab bar
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-app-shell {
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    inline-size: 100%;
+    max-inline-size: var(--nim-frame-max);
+    margin-inline: auto;
+    background: var(--nim-canvas);
+    overflow: hidden;
+  }
+
+  .nim-app-shell__header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-block-size: var(--nim-control-lg);
+    padding-block: var(--nim-space-3);
+    padding-inline: var(--nim-space-4);
+    padding-block-start: calc(var(--nim-safe-top) + var(--nim-space-3));
+    background: var(--nim-surface);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-app-shell__content {
+    flex: 1;
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-inline: var(--nim-space-4);
+    padding-block: var(--nim-space-4);
+  }
+
+  /* The bar floats over the content, so the content owes it the room its last
+     row would otherwise be hidden under. */
+  .nim-app-shell__content[data-has-tabs] {
+    padding-block-end: 0;
+  }
+
+  .nim-app-shell > .nim-tab-bar {
+    flex: none;
+    margin-block-start: calc(-1 * var(--nim-space-4));
+    padding-block-end: var(--nim-space-3);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PLAN PICKER
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-plan-picker {
+    display: grid;
+    gap: var(--nim-space-5);
+  }
+
+  .nim-plan-picker__cycles {
+    display: grid;
+    gap: var(--nim-space-2);
+    justify-items: center;
+  }
+
+  .nim-plan-picker__save {
+    margin: 0;
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-accent);
+  }
+
+  .nim-plan-picker__plans {
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-plan-picker__foot {
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-plan-picker__note {
+    margin: 0;
+    text-align: center;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     PROFILE SCREEN
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-profile-screen {
+    display: grid;
+    gap: var(--nim-space-6);
+  }
+
+  .nim-profile-screen__section {
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-profile-screen__value {
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-list-row--danger .nim-list-row__title,
+  .nim-list-row--danger .nim-list-row__leading {
+    color: var(--nim-danger);
+  }
+
+  .nim-profile-screen__footer {
+    display: grid;
+    gap: var(--nim-space-2);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CHAT — transcript, bubbles, media
+     A conversation is one scroll region between a header and a composer, and
+     the bubbles are the only thing in the kit that changes side by author.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-chat {
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 0;
+    inline-size: 100%;
+    background: var(--nim-canvas);
+    overflow: hidden;
+  }
+
+  .nim-chat__header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-3) var(--nim-space-4);
+    background: var(--nim-surface);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-chat__scroll {
+    flex: 1;
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: var(--nim-space-4);
+  }
+
+  .nim-chat__list {
+    display: flex;
+    flex-direction: column;
+    /* Not `stretch`: a bubble is as wide as its message, and a stretched row
+       makes `max-inline-size` and the trailing alignment below both inert. */
+    align-items: flex-start;
+    gap: var(--nim-space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-chat-message {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--nim-space-2);
+    max-inline-size: 88%;
+  }
+
+  /* The viewer's own messages sit on the trailing edge — which mirrors under
+     RTL for free, because it is a logical alignment and not a left. */
+  .nim-chat-message--own {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .nim-chat-message__avatar {
+    flex: none;
+  }
+
+  .nim-chat-message__stack {
+    display: grid;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+  }
+
+  .nim-chat-message__author {
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-chat-message__bubble {
+    display: grid;
+    gap: var(--nim-space-2);
+    padding: var(--nim-space-3) var(--nim-space-4);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    /* Square off the corner nearest the speaker: the one shape cue that says
+       who is talking without any colour at all. */
+    border-radius: var(--nim-radius-lg);
+    border-start-start-radius: var(--nim-radius-xs);
+    box-shadow: var(--nim-shadow-sm);
+  }
+
+  .nim-chat-message--own .nim-chat-message__bubble {
+    background: var(--nim-accent-soft);
+    border-color: var(--nim-accent-line);
+    border-start-start-radius: var(--nim-radius-lg);
+    border-start-end-radius: var(--nim-radius-xs);
+  }
+
+  .nim-chat-message__text {
+    margin: 0;
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    color: var(--nim-ink);
+    /* A message keeps the line breaks the sender typed, and a pasted URL
+       breaks rather than stretching the bubble past the viewport. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .nim-chat-message__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-chat-message--own .nim-chat-message__meta {
+    justify-content: flex-end;
+  }
+
+  .nim-chat-message__status[data-status='read'] {
+    color: var(--nim-accent);
+  }
+
+  .nim-chat-message__status[data-status='failed'] {
+    color: var(--nim-danger);
+  }
+
+  .nim-chat__typing {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    margin: var(--nim-space-4) 0 0;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-chat__dots {
+    display: inline-flex;
+    gap: 3px;
+  }
+
+  .nim-chat__dots i {
+    inline-size: var(--nim-size-dot);
+    block-size: var(--nim-size-dot);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-ink-tertiary);
+    animation: nim-typing 1.1s var(--nim-ease-standard) infinite;
+  }
+
+  .nim-chat__dots i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .nim-chat__dots i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .nim-chat__footer {
+    margin-block-start: var(--nim-space-4);
+    text-align: center;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-chat__composer {
+    flex: none;
+    padding: var(--nim-space-3) var(--nim-space-4)
+      calc(var(--nim-safe-bottom) + var(--nim-space-3));
+    background: var(--nim-surface);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  /* ─── Voice message ─────────────────────────────────────────────────── */
+  .nim-chat-voice {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-inline-size: 11rem;
+  }
+
+  .nim-chat-voice__wave {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    block-size: var(--nim-space-6);
+  }
+
+  .nim-chat-voice__bar {
+    flex: 1;
+    min-inline-size: 2px;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line-strong);
+  }
+
+  .nim-chat-voice__bar[data-played] {
+    background: var(--nim-accent);
+  }
+
+  .nim-chat-voice__time {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ─── Image and video ───────────────────────────────────────────────── */
+  .nim-chat-media {
+    margin: 0;
+    display: grid;
+    gap: var(--nim-space-1);
+  }
+
+  .nim-chat-media img,
+  .nim-chat-media video {
+    inline-size: 100%;
+    max-inline-size: 17rem;
+    max-block-size: 20rem;
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-canvas-sunken);
+    display: block;
+  }
+
+  .nim-chat-media__meta {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── File ──────────────────────────────────────────────────────────── */
+  .nim-chat-file {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-block-size: var(--nim-touch-min);
+    padding: var(--nim-space-2);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-canvas-sunken);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .nim-chat-file:hover {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-chat-file__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-avatar-md);
+    block-size: var(--nim-size-avatar-md);
+    border-radius: var(--nim-radius-sm);
+    background: var(--nim-surface);
+    color: var(--nim-accent);
+    flex: none;
+  }
+
+  .nim-chat-file__text {
+    display: grid;
+    min-inline-size: 0;
+    flex: 1;
+  }
+
+  .nim-chat-file__name {
+    font-size: var(--nim-type-body-sm-size);
+    font-weight: var(--nim-weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-chat-file__size {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-chat-file__action {
+    color: var(--nim-ink-tertiary);
+    flex: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     COMPOSER — text, attachments, and a voice recorder
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-composer {
+    display: grid;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-composer__tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-composer__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    max-inline-size: 14rem;
+    padding-inline-start: var(--nim-space-3);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface-muted);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-label-size);
+  }
+
+  .nim-composer__chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-composer__row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--nim-space-1);
+    padding: var(--nim-space-1);
+    background: var(--nim-canvas-sunken);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+  }
+
+  .nim-composer__row:focus-within {
+    border-color: var(--nim-accent);
+  }
+
+  .nim-composer__input {
+    flex: 1;
+    min-inline-size: 0;
+    /* Grows with the message and stops before it owns the screen. */
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    max-block-size: 8rem;
+    padding-block: var(--nim-space-3);
+    padding-inline: var(--nim-space-2);
+    border: 0;
+    background: transparent;
+    resize: none;
+    font-family: inherit;
+    font-size: var(--nim-type-control-size);
+    line-height: var(--nim-leading-normal);
+    color: var(--nim-ink);
+    field-sizing: content;
+  }
+
+  .nim-composer__input:focus-visible {
+    outline: none;
+  }
+
+  .nim-composer__recording {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    padding-inline-start: var(--nim-space-3);
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+  }
+
+  .nim-composer__recording-label {
+    flex: 1;
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-composer__elapsed {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* The recording indicator is the one animation here that is information:
+     it is how the viewer knows the microphone is live. */
+  .nim-composer__pulse {
+    inline-size: var(--nim-space-3);
+    block-size: var(--nim-space-3);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-danger);
+    animation: nim-pulse 1.2s var(--nim-ease-standard) infinite;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     WIZARD — one question per screen
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-wizard {
+    display: flex;
+    flex-direction: column;
+    block-size: 100%;
+    inline-size: 100%;
+    max-inline-size: var(--nim-frame-max);
+    margin-inline: auto;
+    padding-block: calc(var(--nim-safe-top) + var(--nim-space-3))
+      calc(var(--nim-safe-bottom) + var(--nim-space-5));
+    padding-inline: var(--nim-space-5);
+    background: var(--nim-canvas);
+  }
+
+  .nim-wizard__bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+  }
+
+  /* Fixed-width slots on both ends keep the dots centred whether or not a
+     back control exists on this step. */
+  .nim-wizard__slot {
+    inline-size: var(--nim-touch-min);
+    display: flex;
+    justify-content: center;
+    flex: none;
+  }
+
+  .nim-wizard__dots {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--nim-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-wizard__dot {
+    inline-size: var(--nim-space-2);
+    block-size: var(--nim-space-2);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line-strong);
+    transition:
+      inline-size var(--nim-dur-base) var(--nim-ease-spring),
+      background-color var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-wizard__dot[data-done] {
+    background: var(--nim-accent-soft);
+  }
+
+  .nim-wizard__dot[data-on] {
+    inline-size: var(--nim-space-6);
+    background: var(--nim-accent);
+  }
+
+  .nim-wizard__ask {
+    flex: none;
+    padding-block: var(--nim-space-6) var(--nim-space-4);
+  }
+
+  .nim-wizard__question {
+    margin: 0;
+    font-size: var(--nim-type-title-lg-size);
+    font-weight: var(--nim-type-title-lg-weight);
+    line-height: var(--nim-leading-tight);
+    letter-spacing: var(--nim-tracking-tight);
+    color: var(--nim-ink);
+    text-wrap: balance;
+  }
+
+  .nim-wizard__subtitle {
+    margin: var(--nim-space-2) 0 0;
+    max-inline-size: var(--nim-measure);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-type-body-line);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-wizard__content {
+    flex: 1;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding-block: var(--nim-space-2);
+  }
+
+  .nim-wizard__foot {
+    flex: none;
+    padding-block-start: var(--nim-space-4);
+  }
+
+  /* ─── Choice grid ───────────────────────────────────────────────────── */
+  .nim-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+    gap: var(--nim-space-3);
+  }
+
+  .nim-choice-grid__tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--nim-space-2);
+    min-block-size: 6rem;
+    padding: var(--nim-space-3);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+    color: var(--nim-ink-secondary);
+    font-family: inherit;
+    font-size: var(--nim-type-body-sm-size);
+    text-align: center;
+    cursor: pointer;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-choice-grid__tile:hover:not(:disabled) {
+    border-color: var(--nim-line-strong);
+  }
+
+  .nim-choice-grid__tile[data-on] {
+    background: var(--nim-accent-soft);
+    border-color: var(--nim-accent);
+    color: var(--nim-accent);
+  }
+
+  .nim-choice-grid__tile:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-choice-grid__tile:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .nim-choice-grid__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nim-choice-grid__label {
+    line-height: var(--nim-leading-tight);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     OPTION CARD — one choice among several
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-option-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-block-size: var(--nim-touch-min);
+    padding: var(--nim-space-4);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+    cursor: pointer;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      border-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-option-card:hover {
+    border-color: var(--nim-line-strong);
+  }
+
+  .nim-option-card--selected {
+    background: var(--nim-accent-soft);
+    border-color: var(--nim-accent);
+  }
+
+  /* The radio is real and focusable; the card is its label, so the ring is
+     drawn on the plate the viewer is actually looking at. */
+  .nim-option-card__input {
+    position: absolute;
+    opacity: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: 0;
+  }
+
+  .nim-option-card:has(.nim-option-card__input:focus-visible) {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-option-card:has(.nim-option-card__input:disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .nim-option-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-avatar-md);
+    block-size: var(--nim-size-avatar-md);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-canvas-sunken);
+    color: var(--nim-accent);
+    flex: none;
+  }
+
+  .nim-option-card__text {
+    display: grid;
+    gap: var(--nim-space-1);
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-option-card__title {
+    font-size: var(--nim-type-body-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-option-card__description,
+  .nim-option-card__detail {
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-leading-normal);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-option-card__detail {
+    color: var(--nim-ink-secondary);
+    font-family: var(--nim-font-numeric);
+  }
+
+  .nim-option-card__badge {
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink-tertiary);
+    white-space: nowrap;
+    flex: none;
+  }
+
+  .nim-option-card--selected .nim-option-card__badge {
+    color: var(--nim-accent);
+  }
+
+  .nim-option-card__dot {
+    flex: none;
+    inline-size: var(--nim-size-icon-md);
+    block-size: var(--nim-size-icon-md);
+    border-radius: var(--nim-radius-pill);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    background: var(--nim-surface);
+    transition: border-width var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-option-card--selected .nim-option-card__dot {
+    border: 6px solid var(--nim-accent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ORDER SUMMARY · ACTION BAR
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-summary {
+    display: grid;
+    gap: var(--nim-space-4);
+    padding: var(--nim-space-5);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+  }
+
+  .nim-summary__title {
+    margin: 0;
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    color: var(--nim-ink);
+  }
+
+  .nim-summary__lines {
+    display: grid;
+    gap: var(--nim-space-3);
+    margin: 0;
+  }
+
+  .nim-summary__lines--totals {
+    gap: var(--nim-space-2);
+  }
+
+  .nim-summary__line {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+  }
+
+  .nim-summary__line > dt {
+    display: grid;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+
+  .nim-summary__label {
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink);
+  }
+
+  .nim-summary__meta {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-summary__value {
+    margin: 0;
+    flex: none;
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+    white-space: nowrap;
+  }
+
+  .nim-summary__lines--totals .nim-summary__label,
+  .nim-summary__lines--totals .nim-summary__value {
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* The total is the one line the eye should land on, so it is the only one
+     that gets weight — and there is at most one of it. */
+  .nim-summary__line[data-emphasis] .nim-summary__label,
+  .nim-summary__line[data-emphasis] .nim-summary__value {
+    font-size: var(--nim-type-body-size);
+    font-weight: var(--nim-weight-semibold);
+    color: var(--nim-ink);
+  }
+
+  .nim-summary__rule {
+    margin: 0;
+    border: 0;
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-action-bar {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: var(--nim-z-sticky);
+    display: grid;
+    gap: var(--nim-space-2);
+    padding: var(--nim-space-4) var(--nim-space-4)
+      calc(var(--nim-safe-bottom) + var(--nim-space-4));
+    background: var(--nim-surface);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    box-shadow: var(--nim-shadow-lg);
+  }
+
+  .nim-action-bar__row {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-4);
+  }
+
+  .nim-action-bar__total {
+    display: grid;
+    gap: 2px;
+    flex: none;
+  }
+
+  .nim-action-bar__total-label {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-action-bar__total-value {
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--nim-type-title-md-size);
+    color: var(--nim-ink);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-action-bar__action {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .nim-action-bar__note {
+    margin: 0;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TASK PROGRESS — a job with named stages
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-task {
+    display: grid;
+    gap: var(--nim-space-5);
+    padding: var(--nim-space-5);
+    background: var(--nim-surface);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-lg);
+  }
+
+  .nim-task__head {
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-task__title {
+    margin: 0;
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    color: var(--nim-ink);
+  }
+
+  .nim-task__caption {
+    margin: 0;
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-task--failed .nim-progress__fill {
+    background: var(--nim-danger);
+  }
+
+  .nim-task__steps {
+    display: grid;
+    gap: var(--nim-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-task__step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-task__marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-icon-lg);
+    block-size: var(--nim-size-icon-lg);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-canvas-sunken);
+    color: var(--nim-ink-tertiary);
+    flex: none;
+  }
+
+  .nim-task__step[data-status='done'] .nim-task__marker {
+    background: var(--nim-success-soft);
+    color: var(--nim-success);
+  }
+
+  .nim-task__step[data-status='failed'] .nim-task__marker {
+    background: var(--nim-danger-soft);
+    color: var(--nim-danger);
+  }
+
+  .nim-task__step[data-status='active'] .nim-task__marker {
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+  }
+
+  .nim-task__step-text {
+    display: grid;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+
+  .nim-task__step-label {
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink);
+  }
+
+  .nim-task__step[data-status='pending'] .nim-task__step-label,
+  .nim-task__step[data-status='skipped'] .nim-task__step-label {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-task__step-detail {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-task__step[data-status='failed'] .nim-task__step-detail {
+    color: var(--nim-danger);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ADMIN SHELL — sidebar, topbar, workspace
+     ═══════════════════════════════════════════════════════════════════════ */
+  /* A flex row rather than a grid, and its own container: the console is as
+     likely to be embedded in a panel as to fill a window, and a layout that
+     only answers the viewport is wrong in the first case. Sizing the sidebar
+     on the child instead of the parent is what lets the query below live on
+     descendants, which is the only place a container query may. */
+  .nim-admin {
+    container-type: inline-size;
+    display: flex;
+    block-size: 100%;
+    background: var(--nim-canvas-sunken);
+  }
+
+  .nim-admin__sidebar {
+    inline-size: 16rem;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--nim-space-5);
+    min-block-size: 0;
+    overflow-y: auto;
+    padding: var(--nim-space-5) var(--nim-space-4);
+    background: var(--nim-surface);
+    border-inline-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-admin__nav {
+    display: grid;
+    gap: var(--nim-space-5);
+    flex: 1;
+  }
+
+  .nim-admin__group {
+    display: grid;
+    gap: var(--nim-space-1);
+  }
+
+  .nim-admin__group-label {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    margin: 0 0 var(--nim-space-1);
+    padding-inline: var(--nim-space-3);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    text-transform: var(--nim-label-transform);
+    letter-spacing: var(--nim-label-tracking);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-admin__link {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    padding-inline: var(--nim-space-3);
+    border: 0;
+    border-radius: var(--nim-radius-md);
+    background: none;
+    color: var(--nim-ink-secondary);
+    font-family: inherit;
+    font-size: var(--nim-type-body-sm-size);
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--nim-dur-fast) var(--nim-ease-standard),
+      color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-admin__link:hover {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-admin__link[data-active] {
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    font-weight: var(--nim-weight-medium);
+  }
+
+  .nim-admin__link:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-admin__sidebar-foot {
+    display: grid;
+    gap: var(--nim-space-1);
+    padding-block-start: var(--nim-space-4);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-admin__workspace {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .nim-admin__topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-block-size: var(--nim-control-lg);
+    padding: var(--nim-space-3) var(--nim-space-5);
+    background: var(--nim-surface);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-admin__title {
+    margin: 0;
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    color: var(--nim-ink);
+  }
+
+  .nim-admin__toolbar {
+    margin-inline-start: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-admin__main {
+    flex: 1;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding: var(--nim-space-5);
+  }
+
+  /* The drawer only exists below the breakpoint; above it the sidebar is the
+     navigation and the trigger is not rendered at all. */
+  .nim-admin__menu,
+  .nim-admin__drawer {
+    display: none;
+  }
+
+  @container (max-width: 60rem) {
+    .nim-admin__sidebar {
+      display: none;
+    }
+
+    .nim-admin__menu {
+      display: inline-flex;
+    }
+
+    .nim-admin[data-drawer='open'] .nim-admin__drawer {
+      display: block;
+    }
+
+    .nim-admin__scrim {
+      position: fixed;
+      inset: 0;
+      z-index: var(--nim-z-scrim);
+      background: var(--nim-scrim);
+    }
+
+    .nim-admin__drawer-panel {
+      position: fixed;
+      inset-block: 0;
+      inset-inline-start: 0;
+      z-index: var(--nim-z-sheet);
+      inline-size: min(18rem, 84vw);
+      display: flex;
+      flex-direction: column;
+      gap: var(--nim-space-4);
+      overflow-y: auto;
+      padding: var(--nim-space-4);
+      background: var(--nim-surface);
+      box-shadow: var(--nim-shadow-lg);
+      animation: nim-drawer var(--nim-dur-base) var(--nim-ease-decelerate);
+    }
+
+    .nim-admin__drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--nim-space-3);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     DETAIL HEADER · FILTER CHIPS · ACTIVITY FEED
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-detail-header {
+    display: grid;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-detail-header__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    align-self: start;
+    min-block-size: var(--nim-touch-min);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--nim-ink-tertiary);
+    font-family: inherit;
+    font-size: var(--nim-type-body-sm-size);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .nim-detail-header__back:hover {
+    color: var(--nim-accent);
+  }
+
+  .nim-detail-header__row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--nim-space-4);
+    flex-wrap: wrap;
+  }
+
+  .nim-detail-header__headline {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    flex-wrap: wrap;
+  }
+
+  .nim-detail-header__title {
+    margin: 0;
+    font-size: var(--nim-type-title-lg-size);
+    font-weight: var(--nim-type-title-lg-weight);
+    line-height: var(--nim-leading-tight);
+    color: var(--nim-ink);
+  }
+
+  .nim-detail-header__subtitle {
+    margin: var(--nim-space-2) 0 0;
+    max-inline-size: var(--nim-measure);
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-detail-header__meta {
+    margin: var(--nim-space-1) 0 0;
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-detail-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    flex-wrap: wrap;
+  }
+
+  .nim-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    padding-inline-start: var(--nim-space-3);
+    border-radius: var(--nim-radius-pill);
+    border: var(--nim-border-width) solid var(--nim-accent-line);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+  }
+
+  .nim-filter-chip__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-control-sm);
+    block-size: var(--nim-control-sm);
+    border: 0;
+    border-radius: var(--nim-radius-pill);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .nim-filter-chip__remove:hover {
+    background: color-mix(in srgb, var(--nim-accent) 14%, transparent);
+  }
+
+  .nim-filter-chip__remove:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-filter-chips__clear {
+    min-block-size: var(--nim-control-sm);
+    padding-inline: var(--nim-space-2);
+    border: 0;
+    background: none;
+    color: var(--nim-ink-tertiary);
+    font-family: inherit;
+    font-size: var(--nim-type-label-size);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .nim-activity {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-activity__item {
+    position: relative;
+    display: flex;
+    gap: var(--nim-space-3);
+    padding-block: var(--nim-space-3);
+  }
+
+  /* The thread between markers is drawn by the items, so the last one has no
+     tail hanging off the end of the list. */
+  .nim-activity__item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    inset-block-start: calc(var(--nim-space-3) + var(--nim-size-icon-lg));
+    inset-block-end: 0;
+    inset-inline-start: calc(var(--nim-size-icon-lg) / 2);
+    inline-size: var(--nim-border-width);
+    background: var(--nim-line-soft);
+  }
+
+  .nim-activity__marker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--nim-size-icon-lg);
+    block-size: var(--nim-size-icon-lg);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-canvas-sunken);
+    color: var(--nim-ink-tertiary);
+    flex: none;
+  }
+
+  .nim-activity__item[data-tone='accent'] .nim-activity__marker {
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent);
+  }
+  .nim-activity__item[data-tone='success'] .nim-activity__marker {
+    background: var(--nim-success-soft);
+    color: var(--nim-success);
+  }
+  .nim-activity__item[data-tone='warning'] .nim-activity__marker {
+    background: var(--nim-warning-soft);
+    color: var(--nim-warning);
+  }
+  .nim-activity__item[data-tone='danger'] .nim-activity__marker {
+    background: var(--nim-danger-soft);
+    color: var(--nim-danger);
+  }
+
+  .nim-activity__body {
+    display: grid;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+
+  .nim-activity__action {
+    margin: 0;
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-normal);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-activity__action strong {
+    color: var(--nim-ink);
+    font-weight: var(--nim-weight-medium);
+  }
+
+  .nim-activity__target {
+    color: var(--nim-accent);
+  }
+
+  .nim-activity__time {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     RESOURCE METER — a labelled capacity reading for operator views
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-resource-meter {
+    display: grid;
+    gap: var(--nim-space-2);
+    min-inline-size: 0;
+  }
+
+  .nim-resource-meter__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+    min-inline-size: 0;
+  }
+
+  .nim-resource-meter__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-label-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-resource-meter__value {
+    color: var(--nim-ink);
+    font-size: var(--nim-type-label-size);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .nim-resource-meter__track {
+    block-size: var(--nim-size-track);
+    overflow: hidden;
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-line-soft);
+  }
+
+  .nim-resource-meter__fill {
+    display: block;
+    block-size: 100%;
+    border-radius: inherit;
+    background: var(--nim-accent);
+    transition: inline-size var(--nim-dur-slow) var(--nim-ease-decelerate);
+  }
+
+  .nim-resource-meter[data-tone='success'] .nim-resource-meter__fill {
+    background: var(--nim-success);
+  }
+
+  .nim-resource-meter[data-tone='warning'] .nim-resource-meter__fill {
+    background: var(--nim-warning);
+  }
+
+  .nim-resource-meter[data-tone='danger'] .nim-resource-meter__fill {
+    background: var(--nim-danger);
+  }
+
+  .nim-resource-meter__detail {
+    color: var(--nim-ink-tertiary);
+    font-size: var(--nim-type-label-size);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     RADIO
+     Same frame as the checkbox — the mark is the only thing that differs, so
+     a set of radios and a set of checkboxes line up on the same left edge.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-radio__mark {
+    flex: none;
+    position: relative;
+    display: grid;
+    place-items: center;
+    inline-size: var(--nim-size-check);
+    block-size: var(--nim-size-check);
+    margin-block-start: 2px;
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface);
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  /* The inner disc scales from nothing rather than appearing: at 140ms it
+     reads as the control answering the press, not as a repaint. */
+  .nim-radio__mark::after {
+    content: '';
+    inline-size: calc(var(--nim-size-check) / 2);
+    block-size: calc(var(--nim-size-check) / 2);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-on-accent);
+    scale: 0;
+    transition: scale var(--nim-dur-fast) var(--nim-ease-spring);
+  }
+
+  .nim-choice__input:checked + .nim-radio__mark {
+    border-color: var(--nim-accent);
+    background: var(--nim-accent);
+  }
+
+  .nim-choice__input:checked + .nim-radio__mark::after {
+    scale: 1;
+  }
+
+  .nim-choice__input:focus-visible + .nim-radio__mark {
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-choice--radio:hover .nim-choice__input:not(:disabled):not(:checked) + .nim-radio__mark,
+  .nim-choice--checkbox:hover .nim-choice__input:not(:disabled):not(:checked) + .nim-checkbox__box {
+    border-color: var(--nim-accent);
+  }
+
+  .nim-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nim-radio-group__legend {
+    padding: 0;
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-radio-group__options {
+    display: flex;
+    gap: var(--nim-space-2);
+  }
+
+  .nim-radio-group__options--stack {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .nim-radio-group__options--inline {
+    flex-wrap: wrap;
+    gap: var(--nim-space-5);
+  }
+
+  .nim-radio-group--invalid .nim-radio__mark {
+    border-color: var(--nim-danger);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     ACCORDION
+     The panel is a 0fr → 1fr grid row, which animates to the CONTENT's height
+     with no measurement in JavaScript and no `max-height` guess to overshoot.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-accordion {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .nim-accordion--panel {
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-surface);
+    overflow: hidden;
+  }
+
+  .nim-accordion__item + .nim-accordion__item {
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-accordion__trigger {
+    inline-size: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    padding: var(--nim-space-3) var(--nim-space-4);
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink);
+    text-align: start;
+    cursor: pointer;
+    transition: background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-accordion--plain .nim-accordion__trigger {
+    padding-inline: 0;
+  }
+
+  .nim-accordion__trigger:hover:not(:disabled) {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-accordion__trigger:focus-visible {
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: calc(var(--nim-size-focus-offset) * -1);
+  }
+
+  .nim-accordion__trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .nim-accordion__title {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-accordion__meta {
+    flex: none;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-accordion__chevron {
+    flex: none;
+    color: var(--nim-ink-tertiary);
+    transition: rotate var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-accordion__item[data-open] .nim-accordion__chevron {
+    rotate: 180deg;
+  }
+
+  .nim-accordion__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-accordion__item[data-open] .nim-accordion__panel {
+    grid-template-rows: 1fr;
+  }
+
+  .nim-accordion__panel-inner {
+    overflow: hidden;
+    min-block-size: 0;
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-relaxed);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-accordion__item[data-open] .nim-accordion__panel-inner {
+    padding-inline: var(--nim-space-4);
+    padding-block-end: var(--nim-space-4);
+  }
+
+  .nim-accordion--plain .nim-accordion__item[data-open] .nim-accordion__panel-inner {
+    padding-inline: 0;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CHIP · CHIP INPUT
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-chip {
+    display: inline-flex;
+    align-items: center;
+    max-inline-size: 100%;
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-label-size);
+    line-height: var(--nim-leading-tight);
+  }
+
+  .nim-chip__body {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+    padding: var(--nim-space-1) var(--nim-space-3);
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nim-chip--interactive .nim-chip__body {
+    cursor: pointer;
+    transition: color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-chip--interactive:hover:not(:has(:disabled)) {
+    border-color: var(--nim-line-strong);
+    color: var(--nim-ink);
+  }
+
+  .nim-chip__body:focus-visible {
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: var(--nim-size-focus-offset);
+    border-radius: var(--nim-radius-pill);
+  }
+
+  .nim-chip[data-selected] {
+    border-color: var(--nim-accent);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent-strong);
+  }
+
+  .nim-chip[data-tone='accent'] {
+    border-color: var(--nim-accent-line);
+    background: var(--nim-accent-soft);
+    color: var(--nim-accent-strong);
+  }
+
+  .nim-chip[data-tone='success'] {
+    background: var(--nim-success-soft);
+    color: var(--nim-success);
+    border-color: transparent;
+  }
+
+  .nim-chip[data-tone='warning'] {
+    background: var(--nim-warning-soft);
+    color: var(--nim-warning);
+    border-color: transparent;
+  }
+
+  .nim-chip[data-tone='danger'] {
+    background: var(--nim-danger-soft);
+    color: var(--nim-danger);
+    border-color: transparent;
+  }
+
+  /* The remove target is small on purpose — but it is padded, not shrunk, so
+     the pointer area stays a comfortable square inside a pill-height chip. */
+  .nim-chip__remove {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding-inline: var(--nim-space-2);
+    padding-block: var(--nim-space-1);
+    margin-inline-start: calc(var(--nim-space-2) * -1);
+    border: 0;
+    background: transparent;
+    color: var(--nim-ink-tertiary);
+    cursor: pointer;
+    border-start-end-radius: var(--nim-radius-pill);
+    border-end-end-radius: var(--nim-radius-pill);
+    transition: color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-chip__remove:hover:not(:disabled) {
+    color: var(--nim-danger);
+  }
+
+  .nim-chip__remove:focus-visible {
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: calc(var(--nim-size-focus-offset) * -1);
+  }
+
+  .nim-chip:has(:disabled) {
+    opacity: 0.5;
+  }
+
+  .nim-chip-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--nim-space-2);
+    min-block-size: calc(var(--nim-control-md) * var(--nim-density));
+    padding: var(--nim-space-2) var(--nim-space-3);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-sm);
+    background: var(--nim-surface);
+    cursor: text;
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  /* The ring belongs to the BOX, not to the bare input inside it: focusing a
+     token field should light the whole field, the way a single-line input
+     does. */
+  .nim-chip-input:focus-within {
+    border-color: var(--nim-accent);
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-field--invalid .nim-chip-input {
+    border-color: var(--nim-danger);
+  }
+
+  .nim-chip-input[data-disabled] {
+    opacity: 0.5;
+    background: var(--nim-surface-muted);
+    cursor: not-allowed;
+  }
+
+  .nim-chip-input__field {
+    flex: 1;
+    min-inline-size: 6ch;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font: inherit;
+    font-size: var(--nim-type-control-size);
+    color: var(--nim-ink);
+  }
+
+  .nim-chip-input__field:focus-visible {
+    outline: none;
+  }
+
+  .nim-chip-input__field::placeholder {
+    color: var(--nim-ink-tertiary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     TIMELINE
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-timeline {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nim-timeline__entry {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--nim-size-icon-lg) 1fr;
+    gap: var(--nim-space-3);
+    padding-block-end: var(--nim-space-5);
+  }
+
+  .nim-timeline--compact .nim-timeline__entry {
+    padding-block-end: var(--nim-space-3);
+  }
+
+  .nim-timeline__entry:last-child {
+    padding-block-end: 0;
+  }
+
+  /* The rail is drawn by the entry, offset to the marker's centre, and the
+     last entry simply does not draw one — which is why it stops at the final
+     dot instead of trailing into whitespace below the list. */
+  .nim-timeline__entry:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    inset-block: var(--nim-size-icon-lg) 0;
+    inset-inline-start: calc((var(--nim-size-icon-lg) - var(--nim-border-width)) / 2);
+    inline-size: var(--nim-border-width);
+    background: var(--nim-line);
+  }
+
+  .nim-timeline__marker {
+    flex: none;
+    display: grid;
+    place-items: center;
+    inline-size: var(--nim-size-icon-lg);
+    block-size: var(--nim-size-icon-lg);
+    border: var(--nim-border-width) solid var(--nim-line);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-surface);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-timeline__dot {
+    inline-size: var(--nim-size-dot);
+    block-size: var(--nim-size-dot);
+    border-radius: var(--nim-radius-pill);
+    background: var(--nim-ink-tertiary);
+  }
+
+  .nim-timeline__entry[data-tone='accent'] .nim-timeline__marker {
+    border-color: var(--nim-accent);
+    background: var(--nim-accent);
+    color: var(--nim-on-accent);
+  }
+
+  .nim-timeline__entry[data-tone='accent'] .nim-timeline__dot {
+    background: var(--nim-on-accent);
+  }
+
+  .nim-timeline__entry[data-tone='success'] .nim-timeline__marker {
+    border-color: transparent;
+    background: var(--nim-success-soft);
+    color: var(--nim-success);
+  }
+
+  .nim-timeline__entry[data-tone='success'] .nim-timeline__dot {
+    background: var(--nim-success);
+  }
+
+  .nim-timeline__entry[data-tone='warning'] .nim-timeline__marker {
+    border-color: transparent;
+    background: var(--nim-warning-soft);
+    color: var(--nim-warning);
+  }
+
+  .nim-timeline__entry[data-tone='warning'] .nim-timeline__dot {
+    background: var(--nim-warning);
+  }
+
+  .nim-timeline__entry[data-tone='danger'] .nim-timeline__marker {
+    border-color: transparent;
+    background: var(--nim-danger-soft);
+    color: var(--nim-danger);
+  }
+
+  .nim-timeline__entry[data-tone='danger'] .nim-timeline__dot {
+    background: var(--nim-danger);
+  }
+
+  .nim-timeline__entry[data-tone='muted'] .nim-timeline__marker {
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-timeline__content {
+    min-inline-size: 0;
+    padding-block-start: var(--nim-space-1);
+  }
+
+  .nim-timeline__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-timeline__title {
+    font-size: var(--nim-type-body-sm-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink);
+  }
+
+  .nim-timeline__time {
+    flex: none;
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-timeline__body {
+    margin-block-start: var(--nim-space-1);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-relaxed);
+    color: var(--nim-ink-secondary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     DATA LIST
+     ═══════════════════════════════════════════════════════════════════════ */
+  /* A container, so the stacked fallback below answers the column the list
+     is actually in — a data list is embedded in cards and drawers far more
+     often than it spans the window. */
+  .nim-data-list {
+    container-type: inline-size;
+    margin: 0;
+    min-inline-size: 0;
+  }
+
+  .nim-data-list__row {
+    display: grid;
+    gap: var(--nim-space-2);
+    padding-block: calc(var(--nim-space-3) * var(--nim-density));
+  }
+
+  .nim-data-list__row + .nim-data-list__row {
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  /* A fixed label column, not `auto`: values must start on the same edge down
+     the whole list, or the pairs stop reading as a table of facts. */
+  .nim-data-list--rows .nim-data-list__row {
+    grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+    align-items: baseline;
+  }
+
+  .nim-data-list__label {
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-data-list__value {
+    margin: 0;
+    min-inline-size: 0;
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink);
+    overflow-wrap: anywhere;
+  }
+
+  .nim-data-list__value--mono {
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-type-caption-size);
+  }
+
+  .nim-data-list__empty {
+    color: var(--nim-ink-tertiary);
+  }
+
+  @container (max-width: 28rem) {
+    .nim-data-list--rows .nim-data-list__row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     RATING
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: var(--nim-warning);
+  }
+
+  .nim-rating__star {
+    display: inline-grid;
+    place-items: center;
+    cursor: pointer;
+  }
+
+  .nim-rating__glyph {
+    position: relative;
+    display: inline-grid;
+    inline-size: var(--nim-size-icon-md);
+    block-size: var(--nim-size-icon-md);
+    transition: scale var(--nim-dur-fast) var(--nim-ease-spring);
+  }
+
+  .nim-rating--sm .nim-rating__glyph {
+    inline-size: var(--nim-size-icon-sm);
+    block-size: var(--nim-size-icon-sm);
+  }
+
+  .nim-rating--lg .nim-rating__glyph {
+    inline-size: var(--nim-size-icon-lg);
+    block-size: var(--nim-size-icon-lg);
+  }
+
+  .nim-rating__glyph .nim-icon {
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .nim-rating__outline {
+    color: var(--nim-line-strong);
+  }
+
+  /* Clipped to a fraction of the glyph's width — a partial star has to be
+     partly filled, not uniformly faded. */
+  .nim-rating__fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    overflow: hidden;
+    color: var(--nim-warning);
+  }
+
+  .nim-rating__fill .nim-icon {
+    inline-size: var(--nim-size-icon-md);
+    fill: currentColor;
+  }
+
+  .nim-rating--sm .nim-rating__fill .nim-icon {
+    inline-size: var(--nim-size-icon-sm);
+  }
+
+  .nim-rating--lg .nim-rating__fill .nim-icon {
+    inline-size: var(--nim-size-icon-lg);
+  }
+
+  .nim-rating__star:hover .nim-rating__glyph {
+    scale: 1.14;
+  }
+
+  .nim-rating__star:has(.nim-choice__input:focus-visible) .nim-rating__glyph {
+    outline: var(--nim-size-focus-ring) solid var(--nim-accent);
+    outline-offset: var(--nim-size-focus-offset);
+    border-radius: var(--nim-radius-xs);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     FILE DROP
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-file-drop {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--nim-space-1);
+    padding: var(--nim-space-7) var(--nim-space-5);
+    border: var(--nim-border-width) dashed var(--nim-line-strong);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-surface);
+    text-align: center;
+    cursor: pointer;
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      background-color var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-file-drop:hover:not([data-disabled]) {
+    border-color: var(--nim-accent);
+  }
+
+  /* The drag state is louder than hover on purpose: it is the answer to "will
+     it take this file", asked while the pointer is still holding one. */
+  .nim-file-drop[data-over] {
+    border-color: var(--nim-accent);
+    border-style: solid;
+    background: var(--nim-accent-soft);
+  }
+
+  .nim-file-drop:has(.nim-choice__input:focus-visible) {
+    box-shadow: var(--nim-shadow-focus);
+    border-color: var(--nim-accent);
+  }
+
+  .nim-file-drop[data-disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--nim-surface-muted);
+  }
+
+  .nim-file-drop__icon {
+    color: var(--nim-ink-tertiary);
+    transition: translate var(--nim-dur-base) var(--nim-ease-spring);
+  }
+
+  .nim-file-drop[data-over] .nim-file-drop__icon {
+    translate: 0 calc(var(--nim-space-1) * -1);
+    color: var(--nim-accent);
+  }
+
+  .nim-file-drop__label {
+    font-size: var(--nim-type-control-size);
+    font-weight: var(--nim-weight-medium);
+    color: var(--nim-ink);
+  }
+
+  .nim-file-drop__prompt {
+    font-size: var(--nim-type-body-sm-size);
+    color: var(--nim-ink-secondary);
+  }
+
+  .nim-file-drop__caption {
+    font-size: var(--nim-type-caption-size);
+    color: var(--nim-ink-tertiary);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KEYFRAMES — outside @layer so they are never shadowed by a consumer layer
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes nim-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes nim-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nim-rise {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+@keyframes nim-slide {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 300% 0;
+  }
+}
+
+@keyframes nim-sweep {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 100% 0;
+  }
+}
+
+@keyframes nim-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    translate: 0 0;
+  }
+  30% {
+    opacity: 1;
+    translate: 0 -3px;
+  }
+}
+
+@keyframes nim-pulse {
+  50% {
+    opacity: 0.35;
+    scale: 0.8;
+  }
+}
+
+@keyframes nim-drawer {
+  from {
+    translate: -100% 0;
+  }
+}
+
+@keyframes nim-pop {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REDUCED MOTION
+
+   Outside `@layer` so it wins against every component rule above.
+
+   The blanket rule is deliberately not the whole answer. Three of the kit's
+   animations are not decoration — they are the only signal that something is
+   happening, and stopping them outright leaves a viewer unable to tell a busy
+   interface from a hung one. Reduced motion is a vestibular accommodation, not
+   a request for less information.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .nim-root *,
+  .nim-root *::before,
+  .nim-root *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Still turning, slower: the spinner is the whole message. */
+  .nim-root .nim-spinner,
+  .nim-root .nim-button__spinner {
+    animation: nim-spin 1.4s linear infinite !important;
+  }
+
+  /* "Working, duration unknown" — said by filling rather than by sliding. */
+  .nim-root .nim-progress--indeterminate .nim-progress__fill {
+    inline-size: 100% !important;
+    opacity: 0.4;
+  }
+
+  /* "The microphone is live" — the pulse is the only thing saying so, and it
+     slows rather than stops. */
+  .nim-root .nim-composer__pulse {
+    animation: nim-pulse 2.4s var(--nim-ease-standard) infinite !important;
+  }
+
+  /* Pure decoration: the grey blocks already say what they need to. */
+  .nim-root .nim-skeleton::after {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORCED COLORS
+
+   Windows High Contrast replaces every colour in the kit with a system pair
+   and drops most backgrounds. Anything nim says with FILL alone — a checked
+   box, a selected segment, a toggled chip, a filled meter — says nothing at
+   all once that happens, so each of those states is restated with a border,
+   an outline, or a system colour that survives the substitution.
+
+   Outside `@layer` so it outranks the component rules it corrects.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (forced-colors: active) {
+  /* Focus is drawn as a box-shadow throughout the kit, and box-shadows are
+     removed entirely in forced colours. Every focusable surface gets a real
+     outline back. */
+  .nim-root :focus-visible {
+    outline: var(--nim-size-focus-ring) solid Highlight;
+    outline-offset: var(--nim-size-focus-offset);
+  }
+
+  /* Selected / checked / on — one rule per shape, all saying the same thing:
+     the state is the system's Highlight, not our accent. */
+  .nim-root :is(
+      .nim-choice__input:checked + .nim-checkbox__box,
+      .nim-choice__input:checked + .nim-radio__mark,
+      .nim-choice__input:checked + .nim-switch__track
+    ) {
+    background: Highlight;
+    border-color: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .nim-root :is(.nim-switch__thumb, .nim-radio__mark::after) {
+    background: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  /* Soft-tinted surfaces (badges, chips, banners, timeline markers, plan
+     highlights) lose their fill and would flatten into the page. A border is
+     what keeps them enclosed objects. */
+  .nim-root :is(.nim-badge, .nim-chip, .nim-banner, .nim-timeline__marker, .nim-toast, .nim-tooltip) {
+    border: var(--nim-border-width) solid CanvasText;
+  }
+
+  .nim-root :is(.nim-chip[data-selected], .nim-segmented__option[aria-selected='true']) {
+    outline: var(--nim-size-focus-ring) solid Highlight;
+    outline-offset: calc(var(--nim-size-focus-offset) * -1);
+  }
+
+  /* Progress, meters, and the slider's filled half are pure fill by nature —
+     they must be allowed to keep drawing themselves. */
+  .nim-root :is(.nim-progress__fill, .nim-resource-meter__fill, .nim-slider) {
+    forced-color-adjust: none;
+  }
+
+  /* Elevation is invisible in forced colours, so surfaces that were only
+     separated by a shadow get a line instead. */
+  .nim-root :is(.nim-card--raised, .nim-menu, .nim-sheet, .nim-dialog) {
+    border: var(--nim-border-width) solid CanvasText;
+  }
+
+  /* A dashed zone reads as a disabled control once colour is gone; the drag
+     state is restated as a solid Highlight edge. */
+  .nim-root .nim-file-drop[data-over] {
+    outline: var(--nim-size-focus-ring) solid Highlight;
+  }
+}

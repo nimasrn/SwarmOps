@@ -1,0 +1,226 @@
+# SwarmOps replaces Portainer as the audited, Git-aligned Swarm control plane.
+# Its API runs only on a designated manager; the inventory agent is global and
+# accepts only a read-only, token-authenticated snapshot request over the
+# internal swarmops overlay.
+version: "3.9"
+
+services:
+  api:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-api:${TAG:?set TAG}
+    environment:
+      SWARMOPS_ADMIN_PASSWORD_HASH_FILE: /run/secrets/swarmops_admin_password_hash
+      SWARMOPS_AGENT_TOKEN_FILE: /run/secrets/swarmops_agent_token
+      SWARMOPS_AGENT_SERVICE: swarmops_agent
+      SWARMOPS_BUILD_ENABLED: ${SWARMOPS_BUILD_ENABLED:-false}
+      SWARMOPS_BUILD_MAX_BYTES: ${SWARMOPS_BUILD_MAX_BYTES:-536870912}
+      SWARMOPS_BUILD_MAX_CPUS: ${SWARMOPS_BUILD_MAX_CPUS:-2}
+      SWARMOPS_BUILD_MAX_MEMORY_MIB: ${SWARMOPS_BUILD_MAX_MEMORY_MIB:-2048}
+      SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-ghcr.io/nimasrn/}
+      SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
+      SWARMOPS_REGISTRY_CONFIG_FILE: /run/secrets/swarmops_registry_config
+      SWARMOPS_SECURE_COOKIES: "true"
+      SWARMOPS_SESSION_KEY_FILE: /run/secrets/swarmops_session_key
+      SWARMOPS_TRAEFIK_DASHBOARD_URL: ${TRAEFIK_DASHBOARD_URL:-https://traefik.example.invalid/dashboard/}
+      # The checked-in Traefik asset itself requires this at reconcile time.
+      # Keeping it optional here lets SwarmOps start in inventory-only mode.
+      TRAEFIK_ACME_EMAIL: ${TRAEFIK_ACME_EMAIL:-}
+      TRAEFIK_CF_DNS_TOKEN_SECRET: ${TRAEFIK_CF_DNS_TOKEN_SECRET:-traefik_cf_dns_token_v1}
+      TRAEFIK_DASHBOARD_AUTH_SECRET: ${TRAEFIK_DASHBOARD_AUTH_SECRET:-traefik_dashboard_auth_v1}
+      TRAEFIK_DASHBOARD_HOST: ${TRAEFIK_DASHBOARD_HOST:-traefik.example.invalid}
+      TRAEFIK_DYNAMIC_CONFIG_NAME: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-swarmops_traefik_dynamic_v1}
+      TRAEFIK_IMAGE: ${TRAEFIK_IMAGE:-traefik:v3.6.13}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - swarmops_data:/var/lib/swarmops
+    configs:
+      - source: swarmops_logs_stack
+        target: /opt/swarmops/logs.yml
+        mode: 0444
+      - source: swarmops_observability_stack
+        target: /opt/swarmops/observability.yml
+        mode: 0444
+      - source: swarmops_alloy_config
+        target: /opt/swarmops/alloy.alloy
+        mode: 0444
+      - source: swarmops_grafana_datasources
+        target: /opt/swarmops/grafana-datasources.yml
+        mode: 0444
+      - source: swarmops_jaeger_config
+        target: /opt/swarmops/jaeger.yml
+        mode: 0444
+      - source: swarmops_loki_config
+        target: /opt/swarmops/loki.yml
+        mode: 0444
+      - source: swarmops_prometheus_config
+        target: /opt/swarmops/prometheus.yml
+        mode: 0444
+      - source: swarmops_traefik_stack
+        target: /opt/swarmops/traefik.yml
+        mode: 0444
+      - source: swarmops_traefik_dynamic
+        target: /opt/traefik/dynamic.yml
+        mode: 0444
+    secrets:
+      - source: swarmops_admin_password_hash
+        target: swarmops_admin_password_hash
+        mode: 0400
+      - source: swarmops_session_key
+        target: swarmops_session_key
+        mode: 0400
+      - source: swarmops_agent_token
+        target: swarmops_agent_token
+        mode: 0400
+      - source: swarmops_registry_config
+        target: swarmops_registry_config
+        mode: 0400
+    networks: [swarmops, traefik]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8084/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.labels.swarmops.control == true
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+        monitor: 45s
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+        limits:
+          cpus: "1.50"
+          memory: 1024M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik
+        - traefik.http.routers.swarmops.rule=Host(`${SWARMOPS_HOST:-swarmops.example.invalid}`)
+        - traefik.http.routers.swarmops.entrypoints=websecure
+        - traefik.http.routers.swarmops.tls.certresolver=le
+        - traefik.http.routers.swarmops.service=swarmops
+        - traefik.http.routers.swarmops-login.rule=Host(`${SWARMOPS_HOST:-swarmops.example.invalid}`) && Path(`/api/v1/auth/login`)
+        - traefik.http.routers.swarmops-login.entrypoints=websecure
+        - traefik.http.routers.swarmops-login.tls.certresolver=le
+        - traefik.http.routers.swarmops-login.priority=100
+        - traefik.http.routers.swarmops-login.middlewares=swarmops-login-rate
+        - traefik.http.routers.swarmops-login.service=swarmops
+        - traefik.http.middlewares.swarmops-login-rate.ratelimit.average=12
+        - traefik.http.middlewares.swarmops-login-rate.ratelimit.burst=24
+        - traefik.http.services.swarmops.loadbalancer.server.port=8084
+        - traefik.http.routers.swarmops-http.rule=Host(`${SWARMOPS_HOST:-swarmops.example.invalid}`)
+        - traefik.http.routers.swarmops-http.entrypoints=web
+        - traefik.http.routers.swarmops-http.service=noop@internal
+        - traefik.http.routers.swarmops-http.middlewares=swarmops-https
+        - traefik.http.middlewares.swarmops-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.swarmops-https.redirectscheme.permanent=true
+
+  agent:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-agent:${TAG:?set TAG}
+    environment:
+      NODE_NAME: "{{.Node.Hostname}}"
+      SWARMOPS_AGENT_TOKEN_FILE: /run/secrets/swarmops_agent_token
+      SWARMOPS_HOST_OS: /host/etc/os-release
+      SWARMOPS_HOST_PROC: /host/proc
+      SWARMOPS_HOST_ROOT: /host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # This mount is intentionally broad only because disk capacity must
+      # represent the host root filesystem. The agent exposes no file API.
+      - /:/host:ro
+    secrets:
+      - source: swarmops_agent_token
+        target: swarmops_agent_token
+        mode: 0400
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9180/healthz"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+        limits:
+          cpus: "0.25"
+          memory: 192M
+
+networks:
+  traefik:
+    external: true
+    name: traefik
+  swarmops:
+    name: swarmops
+    driver: overlay
+    internal: true
+
+volumes:
+  swarmops_data:
+
+configs:
+  swarmops_logs_stack:
+    file: ./swarmops-logs.yml
+    name: ${SWARMOPS_LOGS_STACK_CONFIG_NAME:-swarmops_logs_stack_v1}
+  swarmops_observability_stack:
+    file: ./swarmops-observability.yml
+    name: ${SWARMOPS_OBSERVABILITY_STACK_CONFIG_NAME:-swarmops_observability_stack_v1}
+  swarmops_alloy_config:
+    file: ../observability/alloy.alloy
+    name: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}
+  swarmops_grafana_datasources:
+    file: ../observability/grafana/provisioning/datasources/datasources.yml
+    name: ${SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME:-swarmops_grafana_datasources_v1}
+  swarmops_jaeger_config:
+    file: ../observability/jaeger.yml
+    name: ${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}
+  swarmops_loki_config:
+    file: ../observability/loki.yml
+    name: ${SWARMOPS_LOKI_CONFIG_NAME:-swarmops_loki_config_v1}
+  swarmops_prometheus_config:
+    file: ../observability/prometheus.yml
+    name: ${SWARMOPS_PROMETHEUS_CONFIG_NAME:-swarmops_prometheus_config_v1}
+  swarmops_traefik_stack:
+    file: ./traefik.yml
+    name: ${SWARMOPS_TRAEFIK_STACK_CONFIG_NAME:-swarmops_traefik_stack_v1}
+  swarmops_traefik_dynamic:
+    file: ../traefik/dynamic.yml
+    name: ${SWARMOPS_TRAEFIK_DYNAMIC_CONFIG_NAME:-swarmops_traefik_dynamic_config_v1}
+
+secrets:
+  swarmops_admin_password_hash:
+    external: true
+    name: ${SWARMOPS_ADMIN_PASSWORD_HASH_SECRET:-swarmops_admin_password_hash_v1}
+  swarmops_session_key:
+    external: true
+    name: ${SWARMOPS_SESSION_KEY_SECRET:-swarmops_session_key_v1}
+  swarmops_agent_token:
+    external: true
+    name: ${SWARMOPS_AGENT_TOKEN_SECRET:-swarmops_agent_token_v1}
+  swarmops_registry_config:
+    external: true
+    name: ${SWARMOPS_REGISTRY_CONFIG_SECRET:-swarmops_registry_config_v1}

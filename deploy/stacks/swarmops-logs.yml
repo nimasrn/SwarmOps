@@ -1,0 +1,75 @@
+# Log collection is a separate lifecycle because a global collector sees
+# application stdout/stderr on every node. SwarmOps requires an explicit
+# action to enable it and a typed confirmation to remove it.
+version: "3.9"
+
+services:
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:3.7.4}
+    command: ["-config.file=/etc/loki/config.yml"]
+    configs:
+      - source: loki_config
+        target: /etc/loki/config.yml
+        mode: 0444
+    volumes:
+      - swarmops_loki:/loki
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.swarmops.stateful == true
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.20"
+          memory: 512M
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  alloy:
+    image: ${ALLOY_IMAGE:-grafana/alloy:v1.18.1}
+    command: ["run", "/etc/alloy/config.alloy", "--server.http.listen-addr=0.0.0.0:12345"]
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+        mode: 0444
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.05"
+          memory: 96M
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+networks:
+  swarmops:
+    external: true
+    name: swarmops
+
+volumes:
+  swarmops_loki:
+
+configs:
+  alloy_config:
+    external: true
+    name: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}
+  loki_config:
+    external: true
+    name: ${SWARMOPS_LOKI_CONFIG_NAME:-swarmops_loki_config_v1}

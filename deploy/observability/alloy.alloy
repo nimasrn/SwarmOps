@@ -1,0 +1,23 @@
+// The collector intentionally tails only Docker's JSON log files. It does not
+// mount the Docker socket, so it cannot discover arbitrary metadata or control
+// the daemon. Each record carries its node and source path for investigation.
+local.file_match "docker" {
+  path_targets = [
+    {
+      __path__ = "/var/lib/docker/containers/*/*.log",
+      host     = constants.hostname,
+      source   = "docker-json",
+    },
+  ]
+}
+
+loki.source.file "docker" {
+  targets    = local.file_match.docker.targets
+  forward_to = [loki.write.cluster.receiver]
+}
+
+loki.write "cluster" {
+  endpoint {
+    url = "http://swarmops-logs_loki:3100/loki/api/v1/push"
+  }
+}

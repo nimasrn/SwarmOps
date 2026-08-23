@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: swarmops-api
+    dns_sd_configs:
+      - names: [tasks.swarmops_api]
+        type: A
+        port: 8084
+
+  - job_name: swarmops-node-agent
+    dns_sd_configs:
+      - names: [tasks.swarmops_agent]
+        type: A
+        port: 9180
+
+  - job_name: traefik
+    dns_sd_configs:
+      - names: [tasks.traefik_traefik]
+        type: A
+        port: 8082
+
+  - job_name: jaeger
+    dns_sd_configs:
+      - names: [tasks.swarmops-observability_jaeger]
+        type: A
+        port: 8888

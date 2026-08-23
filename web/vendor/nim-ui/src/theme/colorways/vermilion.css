@@ -1,0 +1,21 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · VERMILION  —  nim's default signal
+
+   A print vermilion on the shared paper neutrals, used only where it means
+   something: the live marker, the current item, the next action.
+
+   Selected with `data-nim-colorway="vermilion"`, and used when none is set.
+   The neutral half comes from `paper.css`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:where(:root),
+[data-nim-colorway='vermilion'] {
+  --nim-accent: light-dark(#b82f18, #ff7150);
+  /* The rung between rest and strong: a hover that moves along the tone ramp
+     instead of changing hue. */
+  --nim-accent-hover: light-dark(#a32914, #ff8262);
+  --nim-accent-strong: light-dark(#8f2411, #ff9070);
+  --nim-accent-soft: light-dark(#f6e7e2, rgba(255, 113, 80, 0.16));
+  --nim-accent-line: light-dark(rgba(184, 47, 24, 0.32), rgba(255, 113, 80, 0.38));
+  --nim-on-accent: light-dark(#fffaf7, #17130f);
+}
