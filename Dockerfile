@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags='-s -w' -o /out/swarmopsctl ./cmd/swarmopsctl
 
-FROM alpine:${ALPINE_VERSION} AS api-runtime
+FROM alpine:${ALPINE_VERSION} AS api
 RUN apk add --no-cache ca-certificates docker-cli tzdata \
     && mkdir -p /opt/swarmops /opt/traefik
 WORKDIR /app
@@ -38,7 +38,7 @@ COPY --from=go-build /out/swarmops-api /app/swarmops-api
 EXPOSE 8084
 ENTRYPOINT ["/app/swarmops-api"]
 
-FROM alpine:${ALPINE_VERSION} AS agent-runtime
+FROM alpine:${ALPINE_VERSION} AS agent
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-build /out/swarmops-agent /app/swarmops-agent
