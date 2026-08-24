@@ -455,9 +455,9 @@ function ServersPage({
       <DetailHeader subtitle="Install a native machine agent first, then connect it here with its HTTPS URL, port, certificate pin, and API key. SwarmOps never asks for a Docker socket or SSH account." title="Remote servers" />
       <Banner title="1. Install SwarmOps Agent on the Docker host" tone="info">
         <Rows gap="tight">
-          <Body size="sm">The host downloads the release binary from GitHub. It runs only <code>swarmops-agent</code> and the local rollback updater, <code>SwarmOps Warden</code>; it does not clone or compile source.</Body>
+          <Body size="sm">The host downloads the release binary from GitHub. It runs only <code>swarmops-agent</code> and the local rollback updater, <code>SwarmOps Warden</code>; it does not clone or compile source. The default setup listens on port <code>9180</code>, creates its pinned TLS identity under <code>/etc/swarmops-agent/tls</code>, and generates the API key.</Body>
           <CodeBlock label="Linux installer" wrap>{`curl --fail --location --remote-name https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-sudo bash install-swarmops-agent.sh --listen-addr 0.0.0.0:9180 --tls-cert-file /secure/swarmops-agent.crt --tls-key-file /secure/swarmops-agent.key`}</CodeBlock>
+sudo bash install-swarmops-agent.sh`}</CodeBlock>
           <Body size="sm">The installer prints the public TLS fingerprint, port, and protected API-key file path. Keep the API key private, then use the form below to add and connect the machine.</Body>
         </Rows>
       </Banner>

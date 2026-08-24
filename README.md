@@ -229,21 +229,25 @@ with `sudo`. On macOS, run it as the logged-in Docker Desktop user, without
 curl --fail --location --remote-name \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
 # Linux:
-sudo bash install-swarmops-agent.sh \
-  --listen-addr 0.0.0.0:9180 \
-  --tls-cert-file /secure/swarmops-agent.crt \
-  --tls-key-file /secure/swarmops-agent.key
-# macOS: use the same installer command without sudo.
+sudo bash install-swarmops-agent.sh
+# macOS:
+bash install-swarmops-agent.sh
 ```
 
 The installer downloads a checksum-verified GitHub Release bundle containing
 `swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
 systemd service on Linux or a per-user LaunchAgent on macOS. It requires Docker,
-curl, OpenSSL, and a non-symlink PEM certificate plus owner-only private-key
-file—not Git or Go. Pass `--install-dependencies` only when its documented
-Debian/Ubuntu or Homebrew package installation is appropriate. It does not
-install Docker, change the firewall, create a Swarm, or print the generated API
-key.
+curl, and OpenSSL—not Git, Go, or pre-created TLS files. By default it listens
+on `0.0.0.0:9180`, generates a P-256 self-signed certificate for SwarmOps'
+certificate-pin trust model, and writes its TLS identity to
+`/etc/swarmops-agent/tls/agent.crt` and `/etc/swarmops-agent/tls/agent.key` on
+Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
+`$HOME/.config/swarmops-agent/tls/agent.key` on macOS. Pass the paired
+`--tls-cert-file` and `--tls-key-file` flags only when an operator deliberately
+uses a different managed certificate. Pass `--install-dependencies` only when
+its documented Debian/Ubuntu or Homebrew package installation is appropriate.
+It does not install Docker, change the firewall, create a Swarm, or print the
+generated API key.
 
 It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_TLS_CERT_FILE`,
 `SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
@@ -251,9 +255,11 @@ It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_TLS_CERT_FILE`,
 into its protected service environment. Keep the token/key file owner-only;
 the agent refuses a symlink or group/world-readable token or TLS key.
 
-On Linux, keep the TLS files outside `/home`, `/root`, and `/run/user`: the
-installed systemd service protects home directories. The agent must remain
-reachable only from the controller through an explicit firewall rule.
+On Linux, the default TLS identity is already in the SwarmOps-owned
+`/etc/swarmops-agent/tls` directory. A custom TLS identity must stay outside
+`/home`, `/root`, and `/run/user`, because the installed systemd service
+protects home directories. The agent must remain reachable only from the
+controller through an explicit firewall rule.
 
 Warden checks GitHub Releases every 12 hours. It downloads and verifies a new
 bundle before stopping the agent, probes only the local health endpoint, rolls

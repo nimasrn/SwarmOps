@@ -8,9 +8,10 @@ umask 077
 
 github_repository='nimasrn/SwarmOps'
 release_version='latest'
-listen_addr=''
+listen_addr='0.0.0.0:9180'
 tls_cert_file=''
 tls_key_file=''
+managed_tls_material=false
 api_key_file=''
 docker_socket=''
 install_dependencies=false
@@ -20,20 +21,18 @@ usage() {
   printf '%s\n' \
     'Usage:' \
     '  Linux:' \
-    '    sudo bash install-swarmops-agent.sh --listen-addr <host:port> \' \
-    '      --tls-cert-file <absolute-path> --tls-key-file <absolute-path> [options]' \
+    '    sudo bash install-swarmops-agent.sh [options]' \
     '  macOS:' \
-    '    bash install-swarmops-agent.sh --listen-addr <host:port> \' \
-    '      --tls-cert-file <absolute-path> --tls-key-file <absolute-path> [options]' \
+    '    bash install-swarmops-agent.sh [options]' \
     '' \
     'Downloads a checksum-verified GitHub Release bundle containing the native' \
     'SwarmOps agent and SwarmOps Warden updater. Warden checks for published' \
     'updates every 12 hours, validates localhost health, rolls back failures,' \
     'and keeps the current plus two prior known-good releases.' \
     '' \
-    '--listen-addr <host:port>          Required listener, for example 0.0.0.0:9180.' \
-    '--tls-cert-file <path>             Required non-symlink PEM certificate.' \
-    '--tls-key-file <path>              Required owner-only non-symlink PEM key.' \
+    '--listen-addr <host:port>          Listener (default: 0.0.0.0:9180).' \
+    '--tls-cert-file <path>             Optional non-symlink PEM certificate; pair with --tls-key-file.' \
+    '--tls-key-file <path>              Optional owner-only PEM key; pair with --tls-cert-file.' \
     '--api-key-file <path>              Copy this protected key file; otherwise generate one.' \
     '--docker-socket <path>             Docker Unix socket; defaults by platform.' \
     '--release <tag|latest>             GitHub release tag, or latest (default: latest).' \
@@ -154,11 +153,99 @@ set_paths() {
     *) fail "unsupported operating system: $os_name" ;;
   esac
   release_dir="$runtime_dir/releases"
+  tls_dir="$config_dir/tls"
   api_key_destination="$config_dir/api-key"
   environment_file="$config_dir/agent.env"
   warden_environment_file="$config_dir/warden.env"
   launcher_file="$runtime_dir/run-agent.sh"
   warden_launcher_file="$runtime_dir/run-warden.sh"
+}
+
+select_tls_material() {
+  if [[ -z "$tls_cert_file" && -z "$tls_key_file" ]]; then
+    tls_cert_file="$tls_dir/agent.crt"
+    tls_key_file="$tls_dir/agent.key"
+    managed_tls_material=true
+  else
+    [[ -n "$tls_cert_file" && -n "$tls_key_file" ]] || fail '--tls-cert-file and --tls-key-file must be supplied together'
+  fi
+
+  require_safe_value '--tls-cert-file' "$tls_cert_file"
+  require_safe_value '--tls-key-file' "$tls_key_file"
+  if [[ "$os_name" == Linux ]]; then
+    for tls_path in "$tls_cert_file" "$tls_key_file"; do
+      case "$tls_path" in
+        /home/*|/root/*|/run/user/*) fail 'Linux TLS files must stay outside /home, /root, and /run/user because the systemd service protects home directories' ;;
+      esac
+    done
+  fi
+  if [[ "$managed_tls_material" == false ]]; then
+    require_regular_file '--tls-cert-file' "$tls_cert_file"
+    require_protected_file '--tls-key-file' "$tls_key_file"
+  fi
+}
+
+install_managed_tls_material() {
+  local temporary_key temporary_certificate temporary_config
+  [[ "$managed_tls_material" == true ]] || return
+
+  install -d -m 0700 "$tls_dir"
+  if [[ -L "$tls_cert_file" || -L "$tls_key_file" ]]; then
+    fail 'SwarmOps-managed TLS files must not be symlinks'
+  fi
+  if [[ -e "$tls_cert_file" || -e "$tls_key_file" ]]; then
+    if [[ -f "$tls_cert_file" && -f "$tls_key_file" ]]; then
+      require_regular_file 'SwarmOps-managed TLS certificate' "$tls_cert_file"
+      require_protected_file 'SwarmOps-managed TLS private key' "$tls_key_file"
+      openssl x509 -in "$tls_cert_file" -noout -checkend 0 >/dev/null || fail 'existing SwarmOps-managed TLS certificate is invalid or expired'
+      return
+    fi
+    fail 'SwarmOps-managed TLS material is incomplete; remove both files only after disconnecting this machine from SwarmOps'
+  fi
+
+  temporary_key="$(mktemp "$tls_dir/.agent-key.XXXXXX")"
+  temporary_certificate="$(mktemp "$tls_dir/.agent-cert.XXXXXX")"
+  temporary_config="$(mktemp "$tls_dir/.agent-openssl.XXXXXX")"
+  {
+    printf '%s\n' \
+      '[req]' \
+      'distinguished_name = subject' \
+      'x509_extensions = server_extensions' \
+      'prompt = no' \
+      '[subject]' \
+      'CN = swarmops-agent' \
+      '[server_extensions]' \
+      'basicConstraints = critical,CA:FALSE' \
+      'keyUsage = critical,digitalSignature' \
+      'extendedKeyUsage = serverAuth' \
+      'subjectAltName = @subject_alternative_names' \
+      '[subject_alternative_names]' \
+      'DNS.1 = localhost' \
+      'IP.1 = 127.0.0.1' \
+      'IP.2 = ::1'
+  } >"$temporary_config"
+  if ! openssl ecparam -name prime256v1 -genkey -noout -out "$temporary_key"; then
+    rm -f -- "$temporary_key" "$temporary_certificate" "$temporary_config"
+    fail 'generate SwarmOps TLS private key'
+  fi
+  if ! openssl req -new -x509 -sha256 -days 397 -key "$temporary_key" -out "$temporary_certificate" \
+    -config "$temporary_config" -extensions server_extensions; then
+    rm -f -- "$temporary_key" "$temporary_certificate" "$temporary_config"
+    fail 'generate SwarmOps TLS certificate'
+  fi
+  if ! openssl x509 -in "$temporary_certificate" -noout -checkend 0 >/dev/null; then
+    rm -f -- "$temporary_key" "$temporary_certificate" "$temporary_config"
+    fail 'validate generated SwarmOps TLS certificate'
+  fi
+  if ! install -m 0600 "$temporary_key" "$tls_key_file"; then
+    rm -f -- "$temporary_key" "$temporary_certificate" "$temporary_config"
+    fail 'install SwarmOps TLS private key'
+  fi
+  if ! install -m 0644 "$temporary_certificate" "$tls_cert_file"; then
+    rm -f -- "$tls_key_file" "$temporary_key" "$temporary_certificate" "$temporary_config"
+    fail 'install SwarmOps TLS certificate'
+  fi
+  rm -f -- "$temporary_key" "$temporary_certificate" "$temporary_config"
 }
 
 release_platform() {
@@ -479,20 +566,11 @@ case "$os_name" in
   *) fail "unsupported operating system: $os_name" ;;
 esac
 
+set_paths
 validate_listener "$listen_addr"
 validate_repository
 validate_release
-require_safe_value '--tls-cert-file' "$tls_cert_file"
-require_safe_value '--tls-key-file' "$tls_key_file"
-require_regular_file '--tls-cert-file' "$tls_cert_file"
-require_protected_file '--tls-key-file' "$tls_key_file"
-if [[ "$os_name" == Linux ]]; then
-  for tls_path in "$tls_cert_file" "$tls_key_file"; do
-    case "$tls_path" in
-      /home/*|/root/*|/run/user/*) fail 'Linux TLS files must stay outside /home, /root, and /run/user because the systemd service protects home directories' ;;
-    esac
-  done
-fi
+select_tls_material
 if [[ -n "$api_key_file" ]]; then
   require_safe_value '--api-key-file' "$api_key_file"
 fi
@@ -519,19 +597,19 @@ else
   require_command launchctl
 fi
 
-set_paths
-for install_path in "$config_dir" "$runtime_dir" "$release_dir" "$service_file" "$warden_service_file"; do
+for install_path in "$config_dir" "$tls_dir" "$runtime_dir" "$release_dir" "$service_file" "$warden_service_file"; do
   require_safe_value 'installation path' "$install_path"
 done
 if [[ -L "$release_dir/current" || -e "$release_dir/current" ]]; then
   fail 'a native agent is already installed; run its SwarmOps Warden updater instead of reinstalling it'
 fi
 install -d -m 0755 "$runtime_dir" "$release_dir"
+install_api_key
+install_managed_tls_material
 release_platform
 resolve_release_version
 install_release
 set_current_release
-install_api_key
 write_environment_file
 write_warden_environment_file
 case "$os_name" in
@@ -546,6 +624,8 @@ printf '%s\n' \
   'Installed the SwarmOps machine agent and SwarmOps Warden.' \
   "Release: $release_version" \
   "Machine API port: $port" \
+  "TLS certificate file: $tls_cert_file" \
+  "Protected TLS private key file: $tls_key_file" \
   "TLS certificate fingerprint: $fingerprint" \
   "Protected API key file: $api_key_destination" \
   'Warden checks GitHub Releases every 12 hours and rolls back unhealthy updates.' \

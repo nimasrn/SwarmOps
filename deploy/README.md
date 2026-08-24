@@ -139,19 +139,21 @@ machine agent on each Linux or macOS Docker host from a GitHub Release:
 ```bash
 curl --fail --location --remote-name \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-# Linux: run with sudo. macOS: run the second command without sudo.
-sudo bash install-swarmops-agent.sh \
-  --listen-addr 0.0.0.0:9180 \
-  --tls-cert-file /secure/swarmops-agent.crt \
-  --tls-key-file /secure/swarmops-agent.key
+# Linux:
+sudo bash install-swarmops-agent.sh
+# macOS:
+bash install-swarmops-agent.sh
 ```
 
 The installer downloads checksum-verified `swarmops-agent` and
-`swarmops-warden` binaries, configures TLS 1.3, and generates a protected
-API-key file when one is not supplied. It prints the public certificate
-fingerprint and key-file path, but never prints the key. Warden checks releases
-locally every 12 hours, rolls back an unhealthy candidate, and keeps three
-known-good versions. In **Servers**, add the machine's HTTPS origin
+`swarmops-warden` binaries, configures TLS 1.3, and generates its pinned
+P-256 TLS identity plus a protected API-key file. The Linux identity is stored
+at `/etc/swarmops-agent/tls/agent.crt` and
+`/etc/swarmops-agent/tls/agent.key`; macOS uses
+`$HOME/.config/swarmops-agent/tls/`. It prints the public certificate
+fingerprint and protected file paths, but never prints the key. Warden checks
+releases locally every 12 hours, rolls back an unhealthy candidate, and keeps
+three known-good versions. In **Servers**, add the machine's HTTPS origin
 without a port, its port, the printed `SHA256:<64-hex>` certificate fingerprint,
 and the API key through an approved secure channel. The key is held only in
 controller memory while connected and is cleared on disconnect or restart; the

@@ -60,18 +60,25 @@ it as the logged-in Docker Desktop user without `sudo`:
 curl --fail --location --remote-name \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
 # Linux:
-sudo bash install-swarmops-agent.sh \
-  --listen-addr 0.0.0.0:9180 \
-  --tls-cert-file /secure/swarmops-agent.crt \
-  --tls-key-file /secure/swarmops-agent.key
-# macOS: use the same installer command without sudo.
+sudo bash install-swarmops-agent.sh
+# macOS:
+bash install-swarmops-agent.sh
 ```
 
-The agent installer prints the TLS fingerprint, port, and protected API-key
-file path—never the API key. In the Core console, add a server with the HTTPS
-origin (without its port), port, fingerprint, and API key through an approved
-secure channel. The listener must bind all interfaces or loopback so Warden can
-perform its local health probe.
+The agent installer defaults to `0.0.0.0:9180` and creates a P-256,
+self-signed certificate and owner-only key itself. Their SwarmOps-owned paths
+are `/etc/swarmops-agent/tls/agent.crt` and
+`/etc/swarmops-agent/tls/agent.key` on Linux, or
+`$HOME/.config/swarmops-agent/tls/agent.crt` and
+`$HOME/.config/swarmops-agent/tls/agent.key` on macOS. The controller pins the
+exact leaf certificate, so no external CA or operator-supplied certificate is
+required. The installer prints the TLS fingerprint, port, certificate path,
+and protected API-key file path—never the API key. In the Core console, add a
+server with the HTTPS origin (without its port), port, fingerprint, and API key
+through an approved secure channel. The listener must remain reachable only
+from the controller through an explicit firewall rule. Advanced operators may
+provide a certificate only with the paired `--tls-cert-file` and
+`--tls-key-file` flags.
 
 ## Warden behavior
 
