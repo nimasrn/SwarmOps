@@ -6,6 +6,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -15,16 +17,26 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/moby/patternmatcher"
 	"github.com/moby/patternmatcher/ignorefile"
+	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/preflight"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 )
 
 const defaultContextLimit = 480 << 20
+
+var (
+	fleetLimitPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]+(,[A-Za-z0-9_.:-]+)*$`)
+	fleetRunIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -37,6 +49,21 @@ func main() {
 			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
 			os.Exit(1)
 		}
+	case "preflight":
+		if err := preflightCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			os.Exit(1)
+		}
+	case "fleet":
+		if err := fleet(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			os.Exit(1)
+		}
+	case "password-hash":
+		if err := passwordHash(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			os.Exit(1)
+		}
 	case "help", "--help", "-h":
 		usage(os.Stdout)
 	default:
@@ -46,17 +73,70 @@ func main() {
 	}
 }
 
+func passwordHash(arguments []string) error {
+	flags := flag.NewFlagSet("password-hash", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	stdin := flags.Bool("stdin", false, "read the password once from stdin")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if !*stdin || flags.NArg() != 0 {
+		return errors.New("password-hash requires --stdin and no positional arguments")
+	}
+	input, err := io.ReadAll(io.LimitReader(os.Stdin, 4097))
+	if err != nil {
+		return fmt.Errorf("read password: %w", err)
+	}
+	password := bytes.TrimSuffix(input, []byte("\n"))
+	password = bytes.TrimSuffix(password, []byte("\r"))
+	defer func() {
+		for index := range input {
+			input[index] = 0
+		}
+	}()
+	if len(password) < 16 {
+		return errors.New("password must contain at least 16 bytes")
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(os.Stdout, hash)
+	return err
+}
+
+func hashPassword(password []byte) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("hash password: %w", err)
+	}
+	return string(hash), nil
+}
+
 func usage(writer io.Writer) {
 	fmt.Fprint(writer, `SwarmOps trusted-workstation CLI
 
 Usage:
-  swarmopsctl build --url https://swarmops.example.invalid --username operator \
-    --context ./service --image ghcr.io/example/service:2026.08.23 [options]
+  swarmopsctl build --url https://swarmops.example.com --username operator \
+    --server-id <server-id> --context ./service --image ghcr.io/example/service:2026.08.23 [options]
+
+  swarmopsctl preflight --manifest deploy/swarmops/platform.yml [--json]
+  swarmopsctl preflight --manifest deploy/swarmops/platform.yml \
+    --url https://swarmops.example.com --username operator --server-id <server-id>
+
+  swarmopsctl password-hash --stdin
+
+  swarmopsctl fleet run --inventory deploy/ansible/inventory.yml \
+    --operation node-health-report [--limit manager-02]
+  swarmopsctl fleet status --url https://swarmops.example.com --username operator \
+    --server-id <server-id> --inventory deploy/ansible/inventory.yml --run-id <id>
 
 The password is prompted without echo from a terminal, or read only from stdin
 when --password-stdin is supplied. It is never accepted as a command argument.
 The local context honours .dockerignore, rejects symlinks/devices, and streams
 an archive to SwarmOps; it is never interpreted as a manager filesystem path.
+SwarmOps acknowledges a durable build command ID rather than returning remote
+build output to the workstation.
 
 Build options:
   --dockerfile <path>       Dockerfile path within the context (default Dockerfile)
@@ -65,13 +145,426 @@ Build options:
   --push                    Request registry push after a successful build
   --password-stdin          Read password once from standard input
   --max-context-mib <n>     Local preflight source-content cap (default 480)
+
+Preflight options:
+  --manifest <path>         Reviewed non-secret platform manifest
+  --json                    Emit the report as JSON for CI or a UI
+  --url <URL>               Check the manifest against live node inventory
+  --username <name>         SwarmOps operator for --url
+  --server-id <id>          Connected remote server profile for --url
+  --password-stdin          Read the operator password once from standard input
+
+Fleet operations are a reviewed allow-list. The command never accepts an
+arbitrary shell command. Run queues a transient systemd job through Ansible so
+accepted work survives SSH loss. Status retries the authenticated HTTP path
+first and uses the supplied inventory as an SSH fallback when an agent is
+unavailable. Passwords are prompted or read once from standard input.
 `)
+}
+
+func fleet(arguments []string) error {
+	if len(arguments) == 0 {
+		return errors.New("fleet requires run or status")
+	}
+	switch arguments[0] {
+	case "run":
+		return fleetRun(arguments[1:])
+	case "status":
+		return fleetStatus(arguments[1:])
+	default:
+		return fmt.Errorf("unknown fleet command %q", arguments[0])
+	}
+}
+
+func fleetRun(arguments []string) error {
+	flags := flag.NewFlagSet("fleet run", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	ansibleDir := flags.String("ansible-dir", "deploy/ansible", "Ansible directory")
+	askBecomePass := flags.Bool("ask-become-pass", false, "prompt Ansible for sudo password")
+	passwordAuth := flags.Bool("password-auth", false, "prompt Ansible for SSH password")
+	inventory := flags.String("inventory", "", "Ansible inventory path")
+	limit := flags.String("limit", "", "comma-separated inventory host names")
+	operation := flags.String("operation", "", "reviewed fleet operation")
+	runID := flags.String("run-id", "", "durable fleet run identifier")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*inventory) == "" || strings.TrimSpace(*operation) == "" {
+		return errors.New("--inventory and --operation are required")
+	}
+	if !allowedFleetOperation(*operation) {
+		return errors.New("--operation must be node-health-report or warm-docker-cache")
+	}
+	if *runID == "" {
+		generated, err := newFleetRunID()
+		if err != nil {
+			return err
+		}
+		*runID = generated
+	}
+	if !fleetRunIDPattern.MatchString(*runID) {
+		return errors.New("invalid --run-id")
+	}
+	if *limit != "" && !fleetLimitPattern.MatchString(*limit) {
+		return errors.New("--limit accepts only comma-separated inventory host names")
+	}
+	if err := runFleetAnsibleWithBackoff(context.Background(), *ansibleDir, *inventory, *limit, *passwordAuth, *askBecomePass, *runID, *operation); err != nil {
+		return err
+	}
+	fmt.Printf("Fleet run accepted: %s\n", *runID)
+	return nil
+}
+
+func fleetStatus(arguments []string) error {
+	flags := flag.NewFlagSet("fleet status", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	ansibleDir := flags.String("ansible-dir", "deploy/ansible", "Ansible directory")
+	askBecomePass := flags.Bool("ask-become-pass", false, "prompt Ansible for sudo password")
+	inventory := flags.String("inventory", "", "Ansible inventory path for SSH fallback")
+	limit := flags.String("limit", "", "comma-separated inventory host names")
+	passwordStdin := flags.Bool("password-stdin", false, "read the SwarmOps password once from stdin")
+	passwordAuth := flags.Bool("password-auth", false, "prompt Ansible for SSH password")
+	runID := flags.String("run-id", "", "durable fleet run identifier")
+	baseURL := flags.String("url", "", "SwarmOps URL for HTTP status")
+	serverID := flags.String("server-id", "", "connected remote server profile")
+	username := flags.String("username", "", "SwarmOps username")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if !fleetRunIDPattern.MatchString(*runID) {
+		return errors.New("a valid --run-id is required")
+	}
+	if *limit != "" && !fleetLimitPattern.MatchString(*limit) {
+		return errors.New("--limit accepts only comma-separated inventory host names")
+	}
+	if *baseURL != "" {
+		if *username == "" || strings.TrimSpace(*serverID) == "" {
+			return errors.New("--username and --server-id are required with --url")
+		}
+		endpoint, err := parseBaseURL(*baseURL)
+		if err != nil {
+			return err
+		}
+		password, err := readPassword(*passwordStdin)
+		if err != nil {
+			return err
+		}
+		status, err := fleetStatusHTTP(endpoint, *username, password, *serverID, *runID)
+		if err == nil && fleetStatusComplete(status) {
+			return writeFleetStatus(status)
+		}
+		if *inventory == "" {
+			if err != nil {
+				return err
+			}
+			return writeFleetStatus(status)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "SwarmOps HTTP fleet status is unavailable; falling back to SSH inventory status.")
+		} else {
+			fmt.Fprintln(os.Stderr, "Some node agents are unavailable; falling back to SSH inventory status.")
+		}
+	}
+	if *inventory == "" {
+		return errors.New("--inventory is required when HTTP status is not available")
+	}
+	return runAnsible(context.Background(), *ansibleDir, *inventory, "fleet-status.yml", *limit, *passwordAuth, *askBecomePass, "swarmops_fleet_run_id="+*runID)
+}
+
+func fleetStatusHTTP(endpoint *url.URL, username, password, serverID, runID string) (domain.FleetRun, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return domain.FleetRun{}, fmt.Errorf("create cookie jar: %w", err)
+	}
+	client := &http.Client{Jar: jar, Timeout: 8 * time.Second}
+	if _, err := login(client, endpoint, username, password); err != nil {
+		return domain.FleetRun{}, err
+	}
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		result, err := fleetStatusOnce(client, endpoint, serverID, runID)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
+		}
+	}
+	return domain.FleetRun{}, lastErr
+}
+
+func fleetStatusOnce(client *http.Client, endpoint *url.URL, serverID, runID string) (domain.FleetRun, error) {
+	statusURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/fleet/runs/" + runID})
+	request, err := http.NewRequest(http.MethodGet, statusURL.String(), nil)
+	if err != nil {
+		return domain.FleetRun{}, fmt.Errorf("create fleet status request: %w", err)
+	}
+	request.Header.Set("X-SwarmOps-Server-ID", serverID)
+	response, err := client.Do(request)
+	if err != nil {
+		return domain.FleetRun{}, fmt.Errorf("read fleet status: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return domain.FleetRun{}, responseError(response)
+	}
+	var result domain.FleetRun
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
+		return domain.FleetRun{}, fmt.Errorf("decode fleet status: %w", err)
+	}
+	return result, nil
+}
+
+func fleetStatusComplete(status domain.FleetRun) bool {
+	if len(status.Nodes) == 0 {
+		return false
+	}
+	for _, node := range status.Nodes {
+		if node.State == "unavailable" {
+			return false
+		}
+	}
+	return true
+}
+
+func writeFleetStatus(status domain.FleetRun) error {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(status); err != nil {
+		return fmt.Errorf("write fleet status: %w", err)
+	}
+	return nil
+}
+
+func runAnsible(ctx context.Context, ansibleDir, inventory, playbook, limit string, passwordAuth, askBecomePass bool, extraVars ...string) error {
+	if strings.TrimSpace(ansibleDir) == "" || strings.TrimSpace(inventory) == "" {
+		return errors.New("Ansible directory and inventory are required")
+	}
+	absInventory, err := filepath.Abs(inventory)
+	if err != nil {
+		return fmt.Errorf("resolve inventory: %w", err)
+	}
+	info, err := os.Stat(absInventory)
+	if err != nil {
+		return fmt.Errorf("read inventory: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("--inventory must name a file")
+	}
+	absAnsibleDir, err := filepath.Abs(ansibleDir)
+	if err != nil {
+		return fmt.Errorf("resolve Ansible directory: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(absAnsibleDir, playbook)); err != nil {
+		return fmt.Errorf("read Ansible playbook: %w", err)
+	}
+	args := []string{"-i", absInventory, filepath.Join(absAnsibleDir, playbook)}
+	if passwordAuth {
+		args = append(args, "--ask-pass")
+	}
+	if askBecomePass {
+		args = append(args, "--ask-become-pass")
+	}
+	if limit != "" {
+		args = append(args, "--limit", limit)
+	}
+	for _, variable := range extraVars {
+		args = append(args, "-e", variable)
+	}
+	command := exec.CommandContext(ctx, "ansible-playbook", args...)
+	command.Stdin = os.Stdin
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("run Ansible %s: %w", playbook, err)
+	}
+	return nil
+}
+
+// runFleetAnsibleWithBackoff re-submits the same reviewed run ID after a
+// transient Ansible/SSH failure. Hosts that already accepted it retain their
+// fixed status file, while hosts the previous play never reached are safely
+// picked up by the next pass.
+func runFleetAnsibleWithBackoff(ctx context.Context, ansibleDir, inventory, limit string, passwordAuth, askBecomePass bool, runID, operation string) error {
+	return retryFleetSubmission(ctx, func(ctx context.Context) error {
+		return runAnsible(ctx, ansibleDir, inventory, "fleet.yml", limit, passwordAuth, askBecomePass, "swarmops_fleet_run_id="+runID, "swarmops_fleet_operation="+operation)
+	}, waitForFleetBackoff, func(attempt uint, delay time.Duration) {
+		fmt.Fprintf(os.Stderr, "Fleet submission did not complete; retrying in %s (attempt %d/8).\n", delay, attempt+1)
+	})
+}
+
+func retryFleetSubmission(ctx context.Context, submit func(context.Context) error, wait func(context.Context, time.Duration) error, onRetry func(uint, time.Duration)) error {
+	var lastErr error
+	for attempt := uint(1); attempt <= 8; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := submit(ctx); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt == 8 {
+			break
+		}
+		delay := fleetBackoff(attempt)
+		if onRetry != nil {
+			onRetry(attempt, delay)
+		}
+		if err := wait(ctx, delay); err != nil {
+			return err
+		}
+	}
+	return fmt.Errorf("fleet submission did not complete after 8 attempts: %w", lastErr)
+}
+
+func fleetBackoff(attempt uint) time.Duration {
+	if attempt > 5 {
+		attempt = 5
+	}
+	return time.Second * time.Duration(1<<attempt)
+}
+
+func waitForFleetBackoff(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func allowedFleetOperation(value string) bool {
+	return value == "node-health-report" || value == "warm-docker-cache"
+}
+
+func newFleetRunID() (string, error) {
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate fleet run ID: %w", err)
+	}
+	return "fleet-" + time.Now().UTC().Format("20060102t150405") + "-" + hex.EncodeToString(bytes), nil
+}
+
+func preflightCommand(arguments []string) error {
+	flags := flag.NewFlagSet("preflight", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	manifestPath := flags.String("manifest", "", "platform manifest path")
+	jsonOutput := flags.Bool("json", false, "emit JSON")
+	baseURL := flags.String("url", "", "SwarmOps URL for live node validation")
+	serverID := flags.String("server-id", "", "connected remote server profile for live validation")
+	username := flags.String("username", "", "SwarmOps username for live node validation")
+	passwordStdin := flags.Bool("password-stdin", false, "read SwarmOps password once from stdin")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*manifestPath) == "" {
+		return errors.New("--manifest is required")
+	}
+	manifest, err := preflight.LoadFile(*manifestPath)
+	if err != nil {
+		return err
+	}
+	report := preflight.Check(manifest)
+	if *baseURL != "" {
+		if strings.TrimSpace(*username) == "" || strings.TrimSpace(*serverID) == "" {
+			return errors.New("--username and --server-id are required with --url")
+		}
+		endpoint, err := parseBaseURL(*baseURL)
+		if err != nil {
+			return err
+		}
+		password, err := readPassword(*passwordStdin)
+		if err != nil {
+			return err
+		}
+		observed, err := preflightNodesHTTP(endpoint, *username, password, *serverID)
+		if err != nil {
+			return err
+		}
+		report = preflight.CheckObserved(manifest, observed)
+	} else if strings.TrimSpace(*username) != "" || strings.TrimSpace(*serverID) != "" || *passwordStdin {
+		return errors.New("--username, --server-id, and --password-stdin require --url")
+	}
+	if *jsonOutput {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(report); err != nil {
+			return fmt.Errorf("write preflight report: %w", err)
+		}
+	} else {
+		state := "PASS"
+		if !report.Valid() {
+			state = "FAIL"
+		}
+		fmt.Printf("SwarmOps preflight: %s\n", state)
+		fmt.Printf("Namespace: %s\n", report.Namespace)
+		fmt.Printf("Reservations: %.2f CPU / %d MiB RAM / %d GiB disk\n", report.Totals.Requested.CPUCores, report.Totals.Requested.MemoryMiB, report.Totals.Requested.DiskGiB)
+		fmt.Printf("Available: %.2f CPU / %d MiB RAM / %d GiB disk\n", report.Totals.Available.CPUCores, report.Totals.Available.MemoryMiB, report.Totals.Available.DiskGiB)
+		for _, finding := range report.Findings {
+			fmt.Printf("%s %s: %s\n", strings.ToUpper(finding.Level), finding.Code, finding.Message)
+		}
+	}
+	return report.Error()
+}
+
+func preflightNodesHTTP(endpoint *url.URL, username, password, serverID string) ([]preflight.ObservedNode, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, fmt.Errorf("create cookie jar: %w", err)
+	}
+	client := &http.Client{Jar: jar, Timeout: 8 * time.Second}
+	if _, err := login(client, endpoint, username, password); err != nil {
+		return nil, err
+	}
+	nodesURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/nodes"})
+	request, err := http.NewRequest(http.MethodGet, nodesURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create live node request: %w", err)
+	}
+	request.Header.Set("X-SwarmOps-Server-ID", serverID)
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("read live node inventory: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, responseError(response)
+	}
+	var nodes []domain.Node
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&nodes); err != nil {
+		return nil, fmt.Errorf("decode live node inventory: %w", err)
+	}
+	return observedNodes(nodes), nil
+}
+
+func observedNodes(nodes []domain.Node) []preflight.ObservedNode {
+	const bytesPerMiB = 1024 * 1024
+	const bytesPerGiB = 1024 * 1024 * 1024
+	result := make([]preflight.ObservedNode, 0, len(nodes))
+	for _, node := range nodes {
+		result = append(result, preflight.ObservedNode{
+			AgentHealthy:       node.Agent.Healthy,
+			AvailableDiskGiB:   node.Disk.Available / bytesPerGiB,
+			AvailableMemoryMiB: node.Memory.Available / bytesPerMiB,
+			CPUCores:           float64(node.CPU.Capacity),
+			Labels:             node.Labels,
+			MemoryMiB:          node.Memory.Capacity / bytesPerMiB,
+			Name:               node.Hostname,
+			State:              node.State,
+		})
+	}
+	return result
 }
 
 func build(arguments []string) error {
 	flags := flag.NewFlagSet("build", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("url", "", "SwarmOps URL")
+	serverID := flags.String("server-id", "", "connected remote server profile")
 	username := flags.String("username", "", "SwarmOps username")
 	contextDir := flags.String("context", "", "local build context directory")
 	image := flags.String("image", "", "immutable image reference")
@@ -84,8 +577,8 @@ func build(arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*baseURL) == "" || strings.TrimSpace(*username) == "" || strings.TrimSpace(*contextDir) == "" || strings.TrimSpace(*image) == "" {
-		return errors.New("--url, --username, --context, and --image are required")
+	if strings.TrimSpace(*baseURL) == "" || strings.TrimSpace(*username) == "" || strings.TrimSpace(*serverID) == "" || strings.TrimSpace(*contextDir) == "" || strings.TrimSpace(*image) == "" {
+		return errors.New("--url, --username, --server-id, --context, and --image are required")
 	}
 	if *cpus <= 0 || *memoryMiB <= 0 || *maxContextMiB <= 0 {
 		return errors.New("build resource and context limits must be positive")
@@ -121,32 +614,43 @@ func build(arguments []string) error {
 	}
 	request.Header.Set("Content-Type", "application/x-tar")
 	request.Header.Set("X-CSRF-Token", csrf)
+	request.Header.Set("X-SwarmOps-Server-ID", *serverID)
 	request.Header.Set("X-SwarmOps-CPUs", fmt.Sprintf("%.4g", *cpus))
 	request.Header.Set("X-SwarmOps-Dockerfile", *dockerfile)
 	request.Header.Set("X-SwarmOps-Image", *image)
 	request.Header.Set("X-SwarmOps-Memory-MiB", fmt.Sprint(*memoryMiB))
 	request.Header.Set("X-SwarmOps-Push", fmt.Sprint(*push))
+	idempotencyKey, err := newCommandIdempotencyKey()
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Idempotency-Key", idempotencyKey)
 	response, err := client.Do(request)
 	archiveErr := <-finished
 	if err != nil {
 		return fmt.Errorf("send build context: %w", err)
 	}
-	if archiveErr != nil {
-		return archiveErr
-	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
 		return responseError(response)
 	}
-	var result struct {
-		Image string `json:"image"`
-		Log   string `json:"log"`
+	var command domain.Command
+	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&command); err != nil {
+		return fmt.Errorf("decode queued build response: %w", err)
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&result); err != nil {
-		return fmt.Errorf("decode build response: %w", err)
+	if archiveErr != nil {
+		return fmt.Errorf("build input did not finish; SwarmOps retained command %s for operator attention: %w", command.ID, archiveErr)
 	}
-	fmt.Printf("Built %s\n%s", result.Image, result.Log)
+	fmt.Printf("Build command queued: %s\n", command.ID)
 	return nil
+}
+
+func newCommandIdempotencyKey() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate command idempotency key: %w", err)
+	}
+	return "build-" + hex.EncodeToString(bytes), nil
 }
 
 func parseBaseURL(value string) (*url.URL, error) {

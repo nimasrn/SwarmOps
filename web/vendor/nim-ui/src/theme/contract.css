@@ -156,6 +156,28 @@
   --nim-safe-top: env(safe-area-inset-top, 0px);
   --nim-safe-bottom: env(safe-area-inset-bottom, 0px);
 
+  /* ─── Console geometry ─────────────────────────────────────────────────
+     The measurements an operator console is built out of. They live in the
+     contract rather than in a style because they are ergonomic facts about
+     a two-column tool — a sidebar narrower than 13rem truncates the nav
+     labels it exists to show, a workspace wider than 96rem puts the row
+     actions further from the row identity than the eye will track — and not
+     brand decisions. A product that disagrees overrides them on its
+     provider; a STYLE must not, or the same console would be a different
+     shape in each palette.
+
+     `--nim-workspace-max` is the reading limit for a console page, the
+     counterpart of `--nim-content-max` for prose. `--nim-scroller-max` is
+     how tall a log, a diff, or a JSON payload is allowed to grow before it
+     scrolls inside its own box instead of pushing the page's actions off
+     the bottom of the screen. */
+  --nim-sidebar-width: 15rem;
+  --nim-sidebar-width-drawer: 18rem;
+  --nim-topbar-height: 56px;
+  --nim-workspace-max: 96rem;
+  --nim-aside-width: 22rem;
+  --nim-scroller-max: 26rem;
+
   /* ─── Z layers ─────────────────────────────────────────────────────────
      Named so no component invents its own number. */
   --nim-z-sticky: 20;
@@ -189,6 +211,10 @@
               --nim-leading-base · -tight · -normal · -relaxed
    Voice      --nim-label-transform · --nim-label-tracking
               --nim-press-scale · --nim-press-translate
+
+   A style may not answer the console geometry in the invariants above:
+   `--nim-sidebar-width` and its siblings are the same in every style, which
+   is what keeps one console one shape across palettes.
 
    ── A COLOURWAY must define (`colorways/*.css`) ────────────────────────
    Every value as a `light-dark()` pair.

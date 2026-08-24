@@ -20,7 +20,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.labels.swarmops.stateful == true
+          - node.labels.nim.stateful == true
       restart_policy:
         condition: any
       resources:

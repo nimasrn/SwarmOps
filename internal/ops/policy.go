@@ -20,7 +20,7 @@ var (
 )
 
 // ValidateCompose rejects input that cannot safely become a Swarm stack in
-// this repository. The policy deliberately favors image-only, resource-bounded
+// this monorepo. The policy deliberately favors image-only, resource-bounded
 // services behind Traefik over accepting every Compose feature from the web.
 func ValidateCompose(raw []byte) (domain.ComposePlan, error) {
 	if len(raw) == 0 {

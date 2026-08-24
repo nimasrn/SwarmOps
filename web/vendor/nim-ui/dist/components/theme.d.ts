@@ -8,8 +8,8 @@ import { ReactNode } from 'react';
  * pairing, not a mistake — which is why they are two attributes rather than
  * one `theme` name multiplying out into a file per combination.
  */
-export type NimStyle = 'ledger' | 'vlora';
-export type NimColorway = 'coral' | 'oxblood' | 'teal' | 'vermilion';
+export type NimStyle = 'console' | 'ledger' | 'vlora';
+export type NimColorway = 'coral' | 'oxblood' | 'sable' | 'teal' | 'vermilion';
 /** `system` follows the OS and is resolved by CSS, not by JavaScript. */
 export type NimScheme = 'dark' | 'light' | 'system';
 export type NimDirection = 'ltr' | 'rtl';

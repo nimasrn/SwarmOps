@@ -4105,14 +4105,21 @@
     border-inline-end: var(--nim-border-width) solid var(--nim-line-soft);
   }
 
+  /* `flex: 1` makes the nav absorb the sidebar's free height so the footer
+     sits at the bottom — but a GRID that is taller than its rows distributes
+     that slack BETWEEN them by default, which spread eight nav groups down a
+     900px column and stretched the active item into a tall block. The slack
+     belongs at the end of the list, not between its items. */
   .nim-admin__nav {
     display: grid;
+    align-content: start;
     gap: var(--nim-space-5);
     flex: 1;
   }
 
   .nim-admin__group {
     display: grid;
+    align-content: start;
     gap: var(--nim-space-1);
   }
 
@@ -4175,7 +4182,12 @@
     color: var(--nim-ink-tertiary);
   }
 
+  /* The workspace takes every pixel the sidebar does not. Without `flex: 1` a
+     flex item is sized from its content, so a page whose own width is `100%`
+     — resolving against a parent that is itself shrink-to-fit — collapses to a
+     narrow column with the rest of the window left empty beside it. */
   .nim-admin__workspace {
+    flex: 1;
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
@@ -5233,6 +5245,615 @@
     font-size: var(--nim-type-caption-size);
     color: var(--nim-ink-tertiary);
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     CONSOLE — page · panel · toolbar · metric · facts · columns · code ·
+     status · record · detail · data table
+
+     Every block here is a container query, never a media query. A console
+     component is as likely to be sitting in a 30rem rail as filling a
+     workspace, and one that asks the viewport gets the rail wrong in exactly
+     the case that matters. `.nim-page` and each grid establish their own
+     containment so their children can be sized against the box they are
+     actually in.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-page {
+    container-type: inline-size;
+    display: grid;
+    align-content: start;
+    gap: var(--nim-space-6);
+    inline-size: 100%;
+    margin-inline: auto;
+  }
+
+  .nim-page[data-width='wide'] {
+    max-inline-size: var(--nim-workspace-max);
+  }
+
+  .nim-page[data-width='content'] {
+    max-inline-size: var(--nim-content-max);
+  }
+
+  /* ─── Panel ─────────────────────────────────────────────────────────────
+     A hairline and a contact shadow. In a console the rule does the
+     separating; the shadow is only there to say the panel is above the
+     sunken canvas the workspace paints. */
+  .nim-panel {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-lg);
+    background: var(--nim-surface);
+    box-shadow: var(--nim-shadow-sm);
+  }
+
+  .nim-panel__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--nim-space-3);
+    padding: calc(var(--nim-space-4) * var(--nim-density)) var(--nim-space-4);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-panel__heading {
+    display: grid;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+  }
+
+  .nim-panel__eyebrow {
+    margin: 0;
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-type-label-weight);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+  }
+
+  .nim-panel__title {
+    margin: 0;
+    color: var(--nim-ink);
+    font-size: var(--nim-type-title-md-size);
+    font-weight: var(--nim-type-title-md-weight);
+    line-height: var(--nim-type-title-md-line);
+    letter-spacing: var(--nim-tracking-tight);
+  }
+
+  .nim-panel__description {
+    margin: 0;
+    max-inline-size: var(--nim-measure);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-base);
+  }
+
+  .nim-panel__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    margin-inline-start: auto;
+  }
+
+  .nim-panel__body {
+    min-inline-size: 0;
+    padding: var(--nim-space-4);
+  }
+
+  /* A table or a log draws its own edges; padding around it only moves the
+     rules inward and breaks the alignment with the panel head. */
+  .nim-panel__body[data-flush='true'] {
+    padding: 0;
+  }
+
+  .nim-panel__foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-3);
+    padding: var(--nim-space-3) var(--nim-space-4);
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    background: var(--nim-surface-muted);
+    border-end-start-radius: var(--nim-radius-lg);
+    border-end-end-radius: var(--nim-radius-lg);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-body-sm-size);
+  }
+
+  /* ─── Toolbar ───────────────────────────────────────────────────────── */
+  .nim-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-3);
+    min-inline-size: 0;
+  }
+
+  .nim-toolbar__group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    flex: 1 1 16rem;
+    min-inline-size: 0;
+  }
+
+  .nim-toolbar__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    margin-inline-start: auto;
+  }
+
+  /* ─── Metric ────────────────────────────────────────────────────────── */
+  .nim-metric-grid {
+    container-type: inline-size;
+    display: grid;
+    gap: var(--nim-space-3);
+    grid-template-columns: repeat(var(--nim-metric-columns, 4), minmax(0, 1fr));
+  }
+
+  .nim-metric-grid[data-columns='2'] { --nim-metric-columns: 2; }
+  .nim-metric-grid[data-columns='3'] { --nim-metric-columns: 3; }
+  .nim-metric-grid[data-columns='4'] { --nim-metric-columns: 4; }
+  .nim-metric-grid[data-columns='5'] { --nim-metric-columns: 5; }
+
+  .nim-metric {
+    display: grid;
+    align-content: start;
+    gap: var(--nim-space-2);
+    min-inline-size: 0;
+    padding: calc(var(--nim-space-4) * var(--nim-density)) var(--nim-space-4);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-lg);
+    background: var(--nim-surface);
+    box-shadow: var(--nim-shadow-sm);
+    font-family: inherit;
+    text-align: start;
+  }
+
+  .nim-metric--interactive {
+    cursor: pointer;
+    transition:
+      border-color var(--nim-dur-fast) var(--nim-ease-standard),
+      box-shadow var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-metric--interactive:hover {
+    border-color: var(--nim-line-strong);
+    box-shadow: var(--nim-shadow-md);
+  }
+
+  .nim-metric--interactive:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  /* The tone is a rule on the leading edge, not a wash across the tile: a
+     filled danger tile in a row of six is louder than the incident it is
+     reporting, and unreadable once two of them are red. */
+  .nim-metric[data-tone] {
+    border-inline-start: 3px solid var(--nim-line-strong);
+  }
+
+  .nim-metric[data-tone='accent'] { border-inline-start-color: var(--nim-accent); }
+  .nim-metric[data-tone='success'] { border-inline-start-color: var(--nim-success); }
+  .nim-metric[data-tone='warning'] { border-inline-start-color: var(--nim-warning); }
+  .nim-metric[data-tone='danger'] { border-inline-start-color: var(--nim-danger); }
+  .nim-metric[data-tone='info'] { border-inline-start-color: var(--nim-info); }
+
+  .nim-metric__label {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    min-inline-size: 0;
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-type-label-weight);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+  }
+
+  /* Fixed size and tabular figures: a row of tiles is read by comparing the
+     numbers down the row, and a value that shrank to fit has left that
+     comparison. Long values ellipsize instead. */
+  .nim-metric__value {
+    overflow: hidden;
+    color: var(--nim-ink);
+    font-family: var(--nim-font-numeric);
+    font-size: var(--nim-text-24);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-tracking-tight);
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-metric__foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--nim-space-2);
+    font-size: var(--nim-type-caption-size);
+  }
+
+  .nim-metric__delta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    font-family: var(--nim-font-numeric);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nim-metric__delta[data-intent='good'] { color: var(--nim-success); }
+  .nim-metric__delta[data-intent='bad'] { color: var(--nim-danger); }
+
+  .nim-metric__hint {
+    overflow: hidden;
+    color: var(--nim-ink-tertiary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ─── Facts ─────────────────────────────────────────────────────────── */
+  .nim-facts {
+    container-type: inline-size;
+    display: grid;
+    gap: var(--nim-space-4) var(--nim-space-5);
+    margin: 0;
+    grid-template-columns: repeat(var(--nim-facts-columns, 2), minmax(0, 1fr));
+  }
+
+  .nim-facts[data-columns='1'] { --nim-facts-columns: 1; }
+  .nim-facts[data-columns='2'] { --nim-facts-columns: 2; }
+  .nim-facts[data-columns='3'] { --nim-facts-columns: 3; }
+
+  .nim-facts__item {
+    display: grid;
+    gap: var(--nim-space-1);
+    min-inline-size: 0;
+  }
+
+  .nim-facts__label {
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-type-label-weight);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+  }
+
+  .nim-facts__value {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--nim-ink);
+    font-size: var(--nim-type-body-sm-size);
+    line-height: var(--nim-leading-base);
+    overflow-wrap: anywhere;
+  }
+
+  .nim-facts__value[data-mono='true'] {
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-type-caption-size);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── Columns ───────────────────────────────────────────────────────── */
+  .nim-columns {
+    container-type: inline-size;
+    display: grid;
+    gap: var(--nim-space-5);
+    min-inline-size: 0;
+  }
+
+  .nim-columns > * {
+    min-inline-size: 0;
+  }
+
+  .nim-columns[data-template='halves'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nim-columns[data-template='thirds'] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nim-columns[data-template='quarters'] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .nim-columns[data-template='aside'] {
+    grid-template-columns: minmax(0, 1fr) var(--nim-aside-width);
+  }
+
+  .nim-columns[data-template='aside-start'] {
+    grid-template-columns: var(--nim-aside-width) minmax(0, 1fr);
+  }
+
+  /* ─── Detail layout ─────────────────────────────────────────────────── */
+  .nim-detail {
+    container-type: inline-size;
+    display: grid;
+    gap: var(--nim-space-5);
+    grid-template-columns: minmax(0, 1fr) var(--nim-aside-width);
+    align-items: start;
+  }
+
+  .nim-detail__main,
+  .nim-detail__aside {
+    display: grid;
+    align-content: start;
+    gap: var(--nim-space-5);
+    min-inline-size: 0;
+  }
+
+  /* ─── Code / log ────────────────────────────────────────────────────── */
+  .nim-code {
+    display: grid;
+    gap: var(--nim-space-2);
+    margin: 0;
+    min-inline-size: 0;
+  }
+
+  .nim-code__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--nim-space-3);
+  }
+
+  .nim-code__label {
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-type-label-family);
+    font-size: var(--nim-type-label-size);
+    letter-spacing: var(--nim-label-tracking);
+    text-transform: var(--nim-label-transform);
+  }
+
+  .nim-code__copy {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-1);
+    min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+    padding-inline: var(--nim-space-2);
+    border: 0;
+    border-radius: var(--nim-radius-sm);
+    background: none;
+    color: var(--nim-ink-secondary);
+    font-family: inherit;
+    font-size: var(--nim-type-caption-size);
+    cursor: pointer;
+  }
+
+  .nim-code__copy:hover {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-code__copy:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  /* Capped and scrollable. A log that grows to its own length pushes every
+     action on the page below the fold exactly when something is wrong. It is
+     focusable so the scroll region can be reached from the keyboard. */
+  .nim-code__body {
+    max-block-size: var(--nim-scroller-max);
+    overflow: auto;
+    margin: 0;
+    padding: var(--nim-space-3) var(--nim-space-4);
+    border: var(--nim-border-width) solid var(--nim-line-soft);
+    border-radius: var(--nim-radius-md);
+    background: var(--nim-canvas-sunken);
+    color: var(--nim-ink);
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-leading-base);
+    tab-size: 2;
+    white-space: pre;
+  }
+
+  .nim-code__body[data-wrap='true'] {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .nim-code__body:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  /* ─── Status ────────────────────────────────────────────────────────── */
+  .nim-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nim-space-2);
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-body-sm-size);
+    white-space: nowrap;
+  }
+
+  .nim-status__dot {
+    flex: none;
+    inline-size: var(--nim-size-dot);
+    block-size: var(--nim-size-dot);
+    border-radius: var(--nim-radius-pill);
+    background: currentColor;
+  }
+
+  .nim-status[data-tone='neutral'] .nim-status__dot { color: var(--nim-ink-tertiary); }
+  .nim-status[data-tone='accent'] .nim-status__dot { color: var(--nim-accent); }
+  .nim-status[data-tone='success'] .nim-status__dot { color: var(--nim-success); }
+  .nim-status[data-tone='warning'] .nim-status__dot { color: var(--nim-warning); }
+  .nim-status[data-tone='danger'] .nim-status__dot { color: var(--nim-danger); }
+  .nim-status[data-tone='info'] .nim-status__dot { color: var(--nim-info); }
+
+  .nim-status__dot[data-pulse='true'] {
+    animation: nim-status-pulse 1.8s var(--nim-ease-standard) infinite;
+  }
+
+  /* ─── Mono ─────────────────────────────────────────────────────────── */
+  .nim-mono {
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-font-mono);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  .nim-mono[data-size='sm'] {
+    font-size: var(--nim-type-caption-size);
+  }
+
+  /* ─── Record link ───────────────────────────────────────────────────── */
+  .nim-record {
+    display: grid;
+    gap: 2px;
+    max-inline-size: 24rem;
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    text-align: start;
+    text-decoration: none;
+  }
+
+  a.nim-record,
+  button.nim-record {
+    cursor: pointer;
+  }
+
+  a.nim-record:hover .nim-record__title,
+  button.nim-record:hover .nim-record__title {
+    color: var(--nim-accent);
+    text-decoration: underline;
+  }
+
+  a.nim-record:focus-visible,
+  button.nim-record:focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-record__title {
+    overflow: hidden;
+    color: var(--nim-ink);
+    font-size: var(--nim-type-body-sm-size);
+    font-weight: var(--nim-weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-record__meta {
+    overflow: hidden;
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-type-caption-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ─── Data table ────────────────────────────────────────────────────── */
+  .nim-data-table {
+    display: grid;
+    gap: var(--nim-space-3);
+    min-inline-size: 0;
+  }
+
+  .nim-data-table__body {
+    position: relative;
+    min-inline-size: 0;
+  }
+
+  /* A refetch dims the rows it is about to replace rather than removing
+     them. The operator keeps reading; the table just says it is not final. */
+  .nim-data-table[data-refreshing='true'] .nim-data-table__body {
+    opacity: 0.6;
+    transition: opacity var(--nim-dur-fast) var(--nim-ease-standard);
+  }
+
+  .nim-data-table__pulse {
+    position: absolute;
+    inset-block-start: var(--nim-space-2);
+    inset-inline-end: var(--nim-space-2);
+    display: inline-flex;
+    color: var(--nim-ink-tertiary);
+    animation: nim-spin 1s linear infinite;
+  }
+
+  .nim-data-table__state {
+    padding: var(--nim-space-7) var(--nim-space-4);
+  }
+
+  .nim-data-table__summary {
+    margin: 0;
+    color: var(--nim-ink-tertiary);
+    font-size: var(--nim-type-caption-size);
+  }
+
+  /* ─── Narrow containers ─────────────────────────────────────────────────
+     One breakpoint per grid, expressed against the component's own box. The
+     metric grid steps 5/4 → 3 → 2 → 1 rather than collapsing straight to one
+     column, because a counter row is still readable at two across and a
+     phone-width stack of six tiles is not. */
+  /* Each of these carries the `[data-…]` attribute the base rule uses, even
+     where the step is the same for every count. A container query does not
+     add specificity, so `.nim-metric-grid { … }` inside one loses to
+     `.nim-metric-grid[data-columns='4']` outside it and the grid silently
+     never steps down. */
+  @container (max-width: 68rem) {
+    .nim-metric-grid[data-columns='4'],
+    .nim-metric-grid[data-columns='5'] { --nim-metric-columns: 3; }
+    .nim-columns[data-template='quarters'],
+    .nim-columns[data-template='thirds'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @container (max-width: 56rem) {
+    .nim-metric-grid[data-columns] { --nim-metric-columns: 2; }
+    .nim-columns[data-template='aside'],
+    .nim-columns[data-template='aside-start'],
+    .nim-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @container (max-width: 38rem) {
+    /* On a phone the title still deserves its own reading line. Let a console
+       toolbar occupy a second, wrapping row instead of pushing session or
+       refresh controls beyond the viewport. */
+    .nim-admin__topbar {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .nim-admin__title {
+      flex: 1;
+      min-inline-size: 0;
+    }
+    .nim-admin__toolbar {
+      flex: 1 1 100%;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      margin-inline-start: 0;
+    }
+    .nim-metric-grid[data-columns] { --nim-metric-columns: 1; }
+    .nim-columns[data-template='halves'],
+    .nim-columns[data-template='quarters'],
+    .nim-columns[data-template='thirds'] { grid-template-columns: minmax(0, 1fr); }
+    .nim-facts[data-columns] { --nim-facts-columns: 1; }
+    .nim-panel__head { flex-direction: column; }
+    .nim-panel__actions { margin-inline-start: 0; }
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5292,6 +5913,19 @@
   50% {
     opacity: 0.35;
     scale: 0.8;
+  }
+}
+
+/* A status halo, not a fade: the dot keeps its colour at full strength the
+   whole time, so "provisioning" is never momentarily indistinguishable from
+   "unknown" at the dim end of a fade. */
+@keyframes nim-status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  70% {
+    box-shadow: 0 0 0 4px transparent;
   }
 }
 

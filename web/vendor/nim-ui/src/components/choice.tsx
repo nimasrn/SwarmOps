@@ -4,7 +4,12 @@ import { Icon } from '@/components/icon'
 import { cn } from '@/lib/cn'
 
 interface ChoiceBaseProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
-  children: ReactNode
+  /** Optional, because a checkbox in a table's selection column has no
+      visible label — the row beside it is the label, and the control names
+      itself with `aria-label`. Every other use should pass one: a bare
+      checkbox with no name and no `aria-label` is unusable, and that is a
+      review question rather than something the type system can decide. */
+  children?: ReactNode
   description?: string
 }
 

@@ -1,10 +1,14 @@
 package ops
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
@@ -16,6 +20,8 @@ import (
 type ControlPlane struct {
 	Agent                  AgentReader
 	AgentService           string
+	AgentStackFile         string
+	Admission              *PlatformAdmission
 	Audit                  *audit.Store
 	CLI                    DockerCLI
 	Docker                 *dockerapi.Client
@@ -24,21 +30,41 @@ type ControlPlane struct {
 	ObservabilityStackFile string
 	StackDeployer          StackDeployer
 	TraefikStackFile       string
+	TraefikSettings        TraefikStackSettings
+	TrustedStackSettings   TrustedStackSettings
 	now                    func() time.Time
 }
 
-func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.Store, agentReader AgentReader, agentService string, mutations bool, dataDir, logsStackFile, observabilityStackFile, traefikStackFile string) *ControlPlane {
+type ControlPlaneOptions struct {
+	Agent                  AgentReader
+	AgentService           string
+	AgentStackFile         string
+	Admission              *PlatformAdmission
+	DataDir                string
+	LogsStackFile          string
+	Mutations              bool
+	ObservabilityStackFile string
+	TraefikSettings        TraefikStackSettings
+	TraefikStackFile       string
+	TrustedStackSettings   TrustedStackSettings
+}
+
+func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.Store, options ControlPlaneOptions) *ControlPlane {
 	return &ControlPlane{
-		Agent:                  agentReader,
-		AgentService:           agentService,
+		Agent:                  options.Agent,
+		AgentService:           options.AgentService,
+		AgentStackFile:         options.AgentStackFile,
+		Admission:              options.Admission,
 		Audit:                  auditStore,
 		CLI:                    cli,
 		Docker:                 docker,
-		LogsStackFile:          logsStackFile,
-		Mutations:              mutations,
-		ObservabilityStackFile: observabilityStackFile,
-		StackDeployer:          StackDeployer{CLI: cli, DataDir: dataDir, Enabled: mutations},
-		TraefikStackFile:       traefikStackFile,
+		LogsStackFile:          options.LogsStackFile,
+		Mutations:              options.Mutations,
+		ObservabilityStackFile: options.ObservabilityStackFile,
+		StackDeployer:          StackDeployer{CLI: cli, DataDir: options.DataDir, Enabled: options.Mutations},
+		TraefikSettings:        options.TraefikSettings,
+		TraefikStackFile:       options.TraefikStackFile,
+		TrustedStackSettings:   options.TrustedStackSettings,
 		now:                    time.Now,
 	}
 }
@@ -58,7 +84,13 @@ func (c *ControlPlane) ReconcileTraefik(ctx context.Context, actor, requestID, c
 	if strings.TrimSpace(c.TraefikStackFile) == "" {
 		return fmt.Errorf("Traefik stack file is not configured")
 	}
-	_, err := c.CLI.Run(ctx, "stack", "deploy", "--detach=false", "--compose-file", c.TraefikStackFile, "traefik")
+	raw, err := os.ReadFile(c.TraefikStackFile)
+	if err == nil {
+		raw, err = RenderTraefikStack(raw, c.TraefikSettings)
+	}
+	if err == nil {
+		err = c.deployTrustedContent(ctx, raw, "traefik")
+	}
 	c.record(actor, requestID, "traefik.reconcile", "stack/traefik", err, nil)
 	return err
 }
@@ -77,7 +109,7 @@ func (c *ControlPlane) Overview(ctx context.Context) (domain.Overview, error) {
 		return domain.Overview{}, err
 	}
 	summary := summarize(nodes, services)
-	return domain.Overview{GeneratedAt: c.now().UTC(), Health: overallHealth(nodes, services), Nodes: nodes, Services: services, Summary: summary}, nil
+	return domain.Overview{GeneratedAt: c.now().UTC(), Health: overallHealth(nodes, services, agentInstalled(nodes)), Nodes: nodes, Services: services, Summary: summary}, nil
 }
 
 func (c *ControlPlane) Nodes(ctx context.Context) ([]domain.Node, error) {
@@ -115,6 +147,68 @@ func (c *ControlPlane) Node(ctx context.Context, id string) (domain.Node, error)
 		}
 	}
 	return domain.Node{}, fmt.Errorf("node not found")
+}
+
+// FleetRun reads the tiny, fixed status record written by a reviewed Ansible
+// systemd operation on each node. It neither starts jobs nor returns their
+// output; initiation remains a trusted-workstation Ansible workflow.
+func (c *ControlPlane) FleetRun(ctx context.Context, id string) (domain.FleetRun, error) {
+	if !agent.ValidRunID(id) {
+		return domain.FleetRun{}, fmt.Errorf("invalid fleet run id")
+	}
+	if c.Agent == nil || strings.TrimSpace(c.AgentService) == "" {
+		return domain.FleetRun{}, fmt.Errorf("fleet status requires a configured host probe; use swarmopsctl fleet status with its SSH inventory")
+	}
+	rawNodes, err := c.Docker.ListNodes(ctx)
+	if err != nil {
+		return domain.FleetRun{}, err
+	}
+	addresses := c.agentAddresses(ctx)
+	result := domain.FleetRun{ID: id, Nodes: make([]domain.FleetRunNode, len(rawNodes))}
+	workers := make(chan struct{}, 8)
+	var group sync.WaitGroup
+	for index, raw := range rawNodes {
+		index, raw := index, raw
+		result.Nodes[index] = domain.FleetRunNode{Hostname: raw.Description.Hostname, NodeID: raw.ID, State: "unavailable"}
+		address, found := addresses[raw.ID]
+		if !found || c.Agent == nil {
+			result.Nodes[index].Error = "agent status unavailable"
+			continue
+		}
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			select {
+			case workers <- struct{}{}:
+				defer func() { <-workers }()
+			case <-ctx.Done():
+				result.Nodes[index].Error = "status request cancelled"
+				return
+			}
+			requestContext, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			status, err := c.Agent.RunStatus(requestContext, address, id)
+			if errors.Is(err, agent.ErrRunNotFound) {
+				result.Nodes[index].State = "pending"
+				return
+			}
+			if err != nil {
+				result.Nodes[index].Error = "agent status unavailable"
+				return
+			}
+			result.Nodes[index].ExitCode = status.ExitCode
+			result.Nodes[index].FinishedAt = status.FinishedAt
+			result.Nodes[index].Attempt = status.Attempt
+			result.Nodes[index].MaxAttempts = status.MaxAttempts
+			result.Nodes[index].NextAttemptAt = status.NextAttemptAt
+			result.Nodes[index].Operation = status.Operation
+			result.Nodes[index].StartedAt = status.StartedAt
+			result.Nodes[index].State = status.State
+		}()
+	}
+	group.Wait()
+	sort.Slice(result.Nodes, func(left, right int) bool { return result.Nodes[left].Hostname < result.Nodes[right].Hostname })
+	return result, nil
 }
 
 func (c *ControlPlane) Services(ctx context.Context) ([]domain.Service, error) {
@@ -183,9 +277,15 @@ func (c *ControlPlane) TasksForNode(ctx context.Context, nodeID string) ([]domai
 	return result, nil
 }
 
-func (c *ControlPlane) ValidateStack(raw []byte, targetNodeID string) (domain.ComposePlan, error) {
+func (c *ControlPlane) ValidateStack(name string, raw []byte, targetNodeID string) (domain.ComposePlan, error) {
 	effective, err := PinComposeToNode(raw, targetNodeID)
 	if err != nil {
+		return domain.ComposePlan{}, err
+	}
+	if c.Admission == nil {
+		return domain.ComposePlan{}, fmt.Errorf("browser stack deployment requires a reviewed platform manifest")
+	}
+	if err := c.Admission.ValidateStack(name, effective); err != nil {
 		return domain.ComposePlan{}, err
 	}
 	plan, err := c.StackDeployer.Validate(effective)
@@ -203,6 +303,23 @@ func (c *ControlPlane) DeployStack(ctx context.Context, actor, requestID, name s
 		return domain.ComposePlan{}, err
 	}
 	effective, err := PinComposeToNode(raw, targetNodeID)
+	if err == nil {
+		if c.Admission == nil {
+			err = fmt.Errorf("browser stack deployment requires a reviewed platform manifest")
+		} else {
+			err = c.Admission.ValidateStack(name, effective)
+		}
+	}
+	if err == nil {
+		var nodes []domain.Node
+		nodes, err = c.Nodes(ctx)
+		if err == nil {
+			report := c.Admission.CheckLive(nodes)
+			if !report.Valid() {
+				err = fmt.Errorf("fresh platform admission failed: %s", summarizeFindings(report))
+			}
+		}
+	}
 	if err == nil {
 		var plan domain.ComposePlan
 		plan, err = c.StackDeployer.Deploy(ctx, name, effective)
@@ -293,7 +410,7 @@ func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID stri
 		if strings.TrimSpace(c.LogsStackFile) == "" {
 			return fmt.Errorf("logs stack file is not configured")
 		}
-		_, err = c.CLI.Run(ctx, "stack", "deploy", "--detach=false", "--compose-file", c.LogsStackFile, "swarmops-logs")
+		err = c.deployTrustedStack(ctx, c.LogsStackFile, "swarmops-logs")
 	} else {
 		if confirmation != "DISABLE_LOG_COLLECTION" {
 			return fmt.Errorf("disable requires confirmation DISABLE_LOG_COLLECTION")
@@ -301,6 +418,35 @@ func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID stri
 		_, err = c.CLI.Run(ctx, "stack", "rm", "swarmops-logs")
 	}
 	c.record(actor, requestID, "observability.logs", "stack/swarmops-logs", err, map[string]string{"enabled": fmt.Sprint(enabled)})
+	return err
+}
+
+// NodeAgentCollection installs or removes the separate high-trust, read-only
+// host-inventory agent. It is a global service and therefore needs a typed
+// confirmation in either direction.
+func (c *ControlPlane) NodeAgentCollection(ctx context.Context, actor, requestID string, enabled bool, confirmation string) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if err := c.requireAudit(); err != nil {
+		return err
+	}
+	var err error
+	if enabled {
+		if confirmation != "INSTALL_NODE_AGENT" {
+			return fmt.Errorf("installation requires confirmation INSTALL_NODE_AGENT")
+		}
+		if strings.TrimSpace(c.AgentStackFile) == "" {
+			return fmt.Errorf("node agent stack file is not configured")
+		}
+		err = c.deployTrustedStack(ctx, c.AgentStackFile, "swarmops-agent")
+	} else {
+		if confirmation != "REMOVE_NODE_AGENT" {
+			return fmt.Errorf("removal requires confirmation REMOVE_NODE_AGENT")
+		}
+		_, err = c.CLI.Run(ctx, "stack", "rm", "swarmops-agent")
+	}
+	c.record(actor, requestID, "observability.node-agent", "stack/swarmops-agent", err, map[string]string{"enabled": fmt.Sprint(enabled)})
 	return err
 }
 
@@ -319,7 +465,7 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 		if strings.TrimSpace(c.ObservabilityStackFile) == "" {
 			return fmt.Errorf("observability stack file is not configured")
 		}
-		_, err = c.CLI.Run(ctx, "stack", "deploy", "--detach=false", "--compose-file", c.ObservabilityStackFile, "swarmops-observability")
+		err = c.deployTrustedStack(ctx, c.ObservabilityStackFile, "swarmops-observability")
 	} else {
 		if confirmation != "REMOVE_OBSERVABILITY_CORE" {
 			return fmt.Errorf("removal requires confirmation REMOVE_OBSERVABILITY_CORE")
@@ -332,6 +478,44 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 
 func (c *ControlPlane) AuditEvents(limit int) ([]domain.AuditEvent, error) {
 	return c.Audit.Recent(limit)
+}
+
+// deployTrustedStack reads only a configured, server-owned asset and feeds it
+// to Docker through stdin. This keeps the same trusted-stack boundary while
+// allowing the Docker CLI to run through the remote machine API without
+// copying a Compose file onto that server's filesystem.
+func (c *ControlPlane) deployTrustedStack(ctx context.Context, file, name string) error {
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("read trusted stack asset: %w", err)
+	}
+	raw, err = RenderTrustedStack(name, raw, c.TrustedStackSettings)
+	if err != nil {
+		return fmt.Errorf("render trusted stack asset: %w", err)
+	}
+	return c.deployTrustedContent(ctx, raw, name)
+}
+
+func (c *ControlPlane) deployTrustedContent(ctx context.Context, raw []byte, name string) error {
+	args := []string{"stack", "deploy", "--detach=false"}
+	if c.CLI.ConfigDir != "" {
+		args = append(args, "--with-registry-auth")
+	}
+	args = append(args, "--compose-file", "-", name)
+	_, err := c.CLI.RunInput(ctx, bytes.NewReader(raw), args...)
+	if err != nil {
+		return fmt.Errorf("deploy trusted stack: %w", err)
+	}
+	return nil
+}
+
+func agentInstalled(nodes []domain.Node) bool {
+	for _, node := range nodes {
+		if strings.TrimSpace(node.Agent.Address) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ControlPlane) requireAudit() error {
@@ -483,10 +667,10 @@ func addCapacity(left, right domain.Capacity) domain.Capacity {
 	return capacity(left.Used+right.Used, left.Available+right.Available, left.Capacity+right.Capacity)
 }
 
-func overallHealth(nodes []domain.Node, services []domain.Service) domain.Health {
+func overallHealth(nodes []domain.Node, services []domain.Service, requireAgent bool) domain.Health {
 	state := domain.HealthHealthy
 	for _, node := range nodes {
-		if node.State != "ready" || !node.Agent.Healthy {
+		if node.State != "ready" || requireAgent && !node.Agent.Healthy {
 			state = combineHealth(state, domain.HealthDegraded)
 		}
 	}

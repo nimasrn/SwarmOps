@@ -23,6 +23,42 @@ export type {
   FilterChipsProps,
 } from '@/components/admin-shell'
 
+export {
+  CodeBlock,
+  Columns,
+  DetailLayout,
+  Facts,
+  Metric,
+  MetricGrid,
+  Mono,
+  Page,
+  Panel,
+  RecordLink,
+  StatusDot,
+  Toolbar,
+} from '@/components/console'
+export type {
+  CodeBlockProps,
+  ColumnsProps,
+  ColumnsTemplate,
+  DetailLayoutProps,
+  Fact,
+  FactsProps,
+  MetricGridProps,
+  MetricProps,
+  MonoProps,
+  PageProps,
+  PageWidth,
+  PanelProps,
+  RecordLinkProps,
+  StatusDotProps,
+  StatusTone,
+  ToolbarProps,
+} from '@/components/console'
+
+export { DataTable } from '@/components/data-table'
+export type { DataTableProps, DataTableSelection } from '@/components/data-table'
+
 export { Accordion } from '@/components/accordion'
 export type { AccordionItem, AccordionProps } from '@/components/accordion'
 
@@ -118,8 +154,8 @@ export type { ProgressProps, SkeletonProps, SpinnerProps } from '@/components/fe
 export { ResourceMeter } from '@/components/resource-meter'
 export type { ResourceMeterProps, ResourceMeterTone } from '@/components/resource-meter'
 
-export { Input, Select, Textarea } from '@/components/field'
-export type { InputProps, SelectOption, SelectProps, TextareaProps } from '@/components/field'
+export { Field, Input, Select, Textarea } from '@/components/field'
+export type { FieldProps, InputProps, SelectOption, SelectProps, TextareaProps } from '@/components/field'
 
 export { FileDrop } from '@/components/file-drop'
 export type { FileDropProps } from '@/components/file-drop'

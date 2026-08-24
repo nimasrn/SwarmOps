@@ -19,6 +19,11 @@ export function List({ children, className, plain = false, ...props }: ListProps
 export interface ListRowProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   /** Renders the row as a link. Mutually exclusive with `onClick`. */
   href?: string
+  /** Anchor attributes, meaningful only alongside `href`. A row that opens a
+      new tab needs both, and `rel` without `noreferrer` on a `_blank` link
+      hands the opened page a handle on this one. */
+  rel?: string
+  target?: string
   leading?: ReactNode
   subtitle?: ReactNode
   title: ReactNode
@@ -30,7 +35,9 @@ export function ListRow({
   href,
   leading,
   onClick,
+  rel,
   subtitle,
+  target,
   title,
   trailing,
   ...props
@@ -56,7 +63,13 @@ export function ListRow({
   // click handler — that is what gives it keyboard focus for free.
   if (href) {
     return (
-      <a className={classes} href={href} {...props}>
+      <a
+        className={classes}
+        href={href}
+        rel={target === '_blank' ? (rel ?? 'noreferrer') : rel}
+        target={target}
+        {...props}
+      >
         {content}
       </a>
     )

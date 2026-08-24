@@ -38,32 +38,9 @@ type Service struct {
 }
 
 func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader, requestID string) (domain.BuildResult, error) {
-	if !s.Enabled {
-		return domain.BuildResult{}, fmt.Errorf("image builds are disabled")
-	}
-	if !imagePattern.MatchString(request.Image) || strings.HasSuffix(request.Image, ":latest") {
-		return domain.BuildResult{}, fmt.Errorf("image must have a non-latest immutable tag")
-	}
-	if !allowedPrefix(request.Image, s.ImagePrefixes) {
-		return domain.BuildResult{}, fmt.Errorf("image registry is not allow-listed")
-	}
-	if request.Dockerfile == "" {
-		request.Dockerfile = "Dockerfile"
-	}
-	if strings.HasPrefix(request.Dockerfile, "/") || strings.Contains(request.Dockerfile, "..") {
-		return domain.BuildResult{}, fmt.Errorf("invalid Dockerfile path")
-	}
-	if request.CPUs <= 0 {
-		request.CPUs = s.MaxCPUs
-	}
-	if request.MemoryMiB <= 0 {
-		request.MemoryMiB = s.MaxMemoryMiB
-	}
-	if request.CPUs > s.MaxCPUs || request.MemoryMiB > s.MaxMemoryMiB {
-		return domain.BuildResult{}, fmt.Errorf("requested build resources exceed the configured cap")
-	}
-	if request.Push && len(s.RegistryAuth) == 0 {
-		return domain.BuildResult{}, fmt.Errorf("registry push requires a configured registry credential secret")
+	request, err := s.Validate(request)
+	if err != nil {
+		return domain.BuildResult{}, err
 	}
 	if s.Docker == nil {
 		return domain.BuildResult{}, fmt.Errorf("Docker client is not configured")
@@ -100,6 +77,41 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 		return domain.BuildResult{}, fmt.Errorf("Docker reported a build error")
 	}
 	return domain.BuildResult{Image: request.Image, Log: log, Pushed: request.Push, RequestID: requestID}, nil
+}
+
+// Validate normalizes a browser build request without touching Docker. The
+// command queue uses it before retaining a source archive, while Run calls it
+// again immediately before execution so a changed runtime policy remains
+// authoritative.
+func (s Service) Validate(request Request) (Request, error) {
+	if !s.Enabled {
+		return Request{}, fmt.Errorf("image builds are disabled")
+	}
+	if !imagePattern.MatchString(request.Image) || strings.HasSuffix(request.Image, ":latest") {
+		return Request{}, fmt.Errorf("image must have a non-latest immutable tag")
+	}
+	if !allowedPrefix(request.Image, s.ImagePrefixes) {
+		return Request{}, fmt.Errorf("image registry is not allow-listed")
+	}
+	if request.Dockerfile == "" {
+		request.Dockerfile = "Dockerfile"
+	}
+	if strings.HasPrefix(request.Dockerfile, "/") || strings.Contains(request.Dockerfile, "..") {
+		return Request{}, fmt.Errorf("invalid Dockerfile path")
+	}
+	if request.CPUs <= 0 {
+		request.CPUs = s.MaxCPUs
+	}
+	if request.MemoryMiB <= 0 {
+		request.MemoryMiB = s.MaxMemoryMiB
+	}
+	if request.CPUs > s.MaxCPUs || request.MemoryMiB > s.MaxMemoryMiB {
+		return Request{}, fmt.Errorf("requested build resources exceed the configured cap")
+	}
+	if request.Push && len(s.RegistryAuth) == 0 {
+		return Request{}, fmt.Errorf("registry push requires a configured registry credential secret")
+	}
+	return request, nil
 }
 
 func allowedPrefix(image string, prefixes []string) bool {

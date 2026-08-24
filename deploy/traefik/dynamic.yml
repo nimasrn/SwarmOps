@@ -8,3 +8,8 @@ http:
         # path; API/dashboard ports are never published directly.
         usersFile: /run/secrets/traefik_dashboard_auth
         removeHeader: true
+  serversTransports:
+    portainer-internal:
+      # Portainer creates its own certificate on 9443. The overlay network is
+      # encrypted and this transport is scoped solely to the Portainer service.
+      insecureSkipVerify: true

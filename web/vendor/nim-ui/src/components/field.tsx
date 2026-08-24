@@ -52,6 +52,25 @@ export function FieldShell({ children, className, error, hint, id, label, requir
   )
 }
 
+export interface FieldProps extends Omit<FieldShellProps, 'children'> {
+  children: ReactNode
+}
+
+/**
+ * The label/hint/error frame on its own, for a control the kit does not own —
+ * a colour picker, a rich-text area, a group of chips.
+ *
+ * It hands the control an id through `htmlFor` and nothing else, so the
+ * consumer still has to put that id on the thing being labelled. That is the
+ * honest contract: this component cannot reach inside an arbitrary child, and
+ * pretending otherwise is how a field ends up labelled in the markup and
+ * unlabelled to a screen reader. Every kit control already carries its own
+ * label prop and should use that instead of being wrapped in one of these.
+ */
+export function Field({ children, ...props }: FieldProps) {
+  return <FieldShell {...props}>{() => children}</FieldShell>
+}
+
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   error?: string
   hint?: string

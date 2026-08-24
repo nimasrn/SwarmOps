@@ -1,5 +1,5 @@
 # Shared Swarm edge. Deploy first, after creating the external traefik overlay
-# and the versioned Cloudflare DNS token secret.
+# plus versioned Cloudflare DNS-token and ArvanCloud API-key secrets.
 version: "3.9"
 
 services:
@@ -23,8 +23,19 @@ services:
       - --certificatesresolvers.le.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
       - --certificatesresolvers.le.acme.storage=/data/acme.json
       - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+      # Dedicated resolver names let a reviewed app choose its DNS authority
+      # without exposing provider credentials in the app stack. A single
+      # resolver has one DNS provider; use a CNAME delegation when one domain
+      # must be validated through another authority.
+      - --certificatesresolvers.arvan.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.arvan.acme.storage=/data/acme-arvan.json
+      - --certificatesresolvers.arvan.acme.dnschallenge.provider=arvancloud
+      - --certificatesresolvers.http.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.http.acme.storage=/data/acme-http.json
+      - --certificatesresolvers.http.acme.httpchallenge.entrypoint=web
     environment:
       CF_DNS_API_TOKEN_FILE: /run/secrets/traefik_cf_dns_token
+      ARVANCLOUD_API_KEY_FILE: /run/secrets/traefik_arvan_api_key
     ports:
       - target: 80
         published: 80
@@ -44,6 +55,9 @@ services:
       - source: traefik_cf_dns_token
         target: traefik_cf_dns_token
         mode: 0400
+      - source: traefik_arvan_api_key
+        target: traefik_arvan_api_key
+        mode: 0400
       - source: traefik_dashboard_auth
         target: traefik_dashboard_auth
         mode: 0400
@@ -59,7 +73,7 @@ services:
       placement:
         constraints:
           - node.role == manager
-          - node.labels.swarmops.edge == true
+          - node.labels.nim.edge == true
       update_config:
         order: stop-first
         parallelism: 1
@@ -79,12 +93,12 @@ services:
           memory: 256M
       labels:
         - traefik.enable=true
-        - traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.example.invalid}`)
+        - traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}`)
         - traefik.http.routers.traefik-dashboard.entrypoints=websecure
         - traefik.http.routers.traefik-dashboard.tls.certresolver=le
         - traefik.http.routers.traefik-dashboard.service=api@internal
         - traefik.http.routers.traefik-dashboard.middlewares=traefik-dashboard-auth@file
-        - traefik.http.routers.traefik-dashboard-http.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.example.invalid}`)
+        - traefik.http.routers.traefik-dashboard-http.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}`)
         - traefik.http.routers.traefik-dashboard-http.entrypoints=web
         - traefik.http.routers.traefik-dashboard-http.service=noop@internal
         - traefik.http.routers.traefik-dashboard-http.middlewares=traefik-dashboard-https
@@ -102,12 +116,15 @@ volumes:
 configs:
   traefik_dynamic:
     file: ../traefik/dynamic.yml
-    name: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-swarmops_traefik_dynamic_v1}
+    name: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}
 
 secrets:
   traefik_cf_dns_token:
     external: true
     name: ${TRAEFIK_CF_DNS_TOKEN_SECRET:-traefik_cf_dns_token_v1}
+  traefik_arvan_api_key:
+    external: true
+    name: ${TRAEFIK_ARVAN_API_KEY_SECRET:-traefik_arvan_api_key_v1}
   traefik_dashboard_auth:
     external: true
     name: ${TRAEFIK_DASHBOARD_AUTH_SECRET:-traefik_dashboard_auth_v1}

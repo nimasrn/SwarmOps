@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
@@ -18,11 +19,27 @@ type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (string, error)
 }
 
+// InputRunner is used only for reviewed Docker commands that read a validated
+// Compose document from standard input. It deliberately does not expose a
+// general remote shell or a caller-selected executable.
+type InputRunner interface {
+	RunInput(ctx context.Context, name string, input io.Reader, args ...string) (string, error)
+}
+
 type OSRunner struct{}
 
 func (OSRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
+	return runCommand(ctx, nil, name, args...)
+}
+
+func (OSRunner) RunInput(ctx context.Context, name string, input io.Reader, args ...string) (string, error) {
+	return runCommand(ctx, input, name, args...)
+}
+
+func runCommand(ctx context.Context, input io.Reader, name string, args ...string) (string, error) {
 	buffer := &limitedBuffer{limit: commandOutputLimit}
 	command := exec.CommandContext(ctx, name, args...)
+	command.Stdin = input
 	command.Stdout = buffer
 	command.Stderr = buffer
 	err := command.Run()
@@ -59,6 +76,33 @@ func (d DockerCLI) Run(ctx context.Context, args ...string) (string, error) {
 	}
 	base = append(base, args...)
 	return d.Runner.Run(ctx, binary, base...)
+}
+
+// RunInput runs the same bounded Docker CLI path while feeding a reviewed
+// document through stdin. This avoids writing browser-provided Compose content
+// to the remote server filesystem when the Engine is reached through the
+// machine API.
+func (d DockerCLI) RunInput(ctx context.Context, input io.Reader, args ...string) (string, error) {
+	if d.Runner == nil {
+		return "", fmt.Errorf("command runner is required")
+	}
+	runner, ok := d.Runner.(InputRunner)
+	if !ok {
+		return "", fmt.Errorf("command runner does not support standard input")
+	}
+	binary := d.Binary
+	if binary == "" {
+		binary = "docker"
+	}
+	base := make([]string, 0, len(args)+2)
+	if d.ConfigDir != "" {
+		base = append(base, "--config", d.ConfigDir)
+	}
+	if d.Socket != "" {
+		base = append(base, "--host", "unix://"+d.Socket)
+	}
+	base = append(base, args...)
+	return runner.RunInput(ctx, binary, input, base...)
 }
 
 type limitedBuffer struct {

@@ -1,5 +1,6 @@
-// Package agent gathers a bounded read-only hardware and software snapshot on
-// each Swarm node. It does not execute workload commands or accept mutations.
+// Package agent gathers bounded node inventory and, when explicitly enabled,
+// exposes a small fixed Docker-operation vocabulary for a pinned controller.
+// It never exposes arbitrary commands, files, or the Docker socket.
 package agent
 
 import (
@@ -19,14 +20,20 @@ import (
 )
 
 type Config struct {
-	Docker *dockerapi.Client
+	AllowedImagePrefixes []string
+	BuildEnabled         bool
+	BuildMaxBytes        int64
+	BuildMaxCPUs         float64
+	BuildMaxMemoryMiB    int64
+	Docker               *dockerapi.Client
 	// HostRoot is an optional read-only mount of the node root. The agent uses
 	// it solely for filesystem capacity; it never exposes arbitrary files.
-	HostRoot string
-	HostOS   string
-	HostProc string
-	NodeName string
-	Version  string
+	HostRoot             string
+	HostOS               string
+	HostProc             string
+	NodeName             string
+	RemoteControlEnabled bool
+	Version              string
 }
 
 type Snapshot struct {

@@ -1,7 +1,11 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { ElementType, HTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
 interface BoxProps extends HTMLAttributes<HTMLDivElement> {
+  /** `Stack` and `Inline` are rhythm, not semantics. A form laid out on the
+      stack rhythm is still a `<form>`, and wrapping one in a spacing div only
+      adds a node that means nothing to anything reading the page. */
+  as?: ElementType
   children: ReactNode
 }
 
@@ -17,15 +21,16 @@ export function AppFrame({ children, className, ...props }: BoxProps) {
 /** Vertical rhythm. Spacing between components belongs to the page, not to
     the components, and this is where the page expresses it. */
 export function Stack({
+  as: Component = 'div',
   children,
   className,
   gap = 'md',
   ...props
 }: BoxProps & { gap?: 'loose' | 'md' | 'tight' }) {
   return (
-    <div className={cn('nim-stack', gap !== 'md' && `nim-stack--${gap}`, className)} {...props}>
+    <Component className={cn('nim-stack', gap !== 'md' && `nim-stack--${gap}`, className)} {...props}>
       {children}
-    </div>
+    </Component>
   )
 }
 
@@ -34,6 +39,7 @@ export function Stack({
     two spacing systems, not one. Wrapping is the default: a row of controls
     that cannot wrap is a row that overflows on a phone. */
 export function Inline({
+  as: Component = 'div',
   children,
   className,
   gap = 'md',
@@ -41,11 +47,11 @@ export function Inline({
   ...props
 }: BoxProps & { gap?: 'loose' | 'md' | 'tight'; wrap?: boolean }) {
   return (
-    <div
+    <Component
       className={cn('nim-inline', gap !== 'md' && `nim-inline--${gap}`, !wrap && 'nim-inline--nowrap', className)}
       {...props}
     >
       {children}
-    </div>
+    </Component>
   )
 }

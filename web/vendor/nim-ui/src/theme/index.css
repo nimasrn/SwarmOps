@@ -19,12 +19,14 @@
 
 @import './styles/ledger.css';
 @import './styles/vlora.css';
+@import './styles/console.css';
 
 @import './colorways/paper.css';
 @import './colorways/vermilion.css';
 @import './colorways/oxblood.css';
 @import './colorways/coral.css';
 @import './colorways/teal.css';
+@import './colorways/sable.css';
 
 /* Script corrections come after the styles so they win on source order. */
 @import './persian.css';

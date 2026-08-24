@@ -4,6 +4,19 @@ package domain
 
 import "time"
 
+// CommandState describes the durable lifecycle of an approved SwarmOps
+// mutation. Read operations and machine-API key handoff are intentionally not
+// commands: retaining either would create a security or freshness hazard.
+type CommandState string
+
+const (
+	CommandQueued         CommandState = "queued"
+	CommandRunning        CommandState = "running"
+	CommandRetryScheduled CommandState = "retry_scheduled"
+	CommandSucceeded      CommandState = "succeeded"
+	CommandNeedsAttention CommandState = "needs_attention"
+)
+
 type Health string
 
 const (
@@ -26,6 +39,28 @@ type NodeAgent struct {
 	Error       string    `json:"error,omitempty"`
 	Healthy     bool      `json:"healthy"`
 	Version     string    `json:"version,omitempty"`
+}
+
+// Server is a non-secret remote target profile. Its API key remains only in
+// memory by the transport layer, so a server can be listed after restart but
+// must be explicitly reconnected with that key.
+type Server struct {
+	APIURL                    string    `json:"apiUrl,omitempty"`
+	Authentication            string    `json:"authentication"`
+	ConnectionState           string    `json:"connectionState"`
+	ConnectionType            string    `json:"connectionType,omitempty"`
+	DockerAvailable           bool      `json:"dockerAvailable"`
+	DockerVersion             string    `json:"dockerVersion,omitempty"`
+	Host                      string    `json:"host"`
+	HostKeyFingerprint        string    `json:"hostKeyFingerprint"`
+	ID                        string    `json:"id"`
+	LastConnectedAt           time.Time `json:"lastConnectedAt,omitempty"`
+	Name                      string    `json:"name"`
+	Port                      uint16    `json:"port"`
+	SwarmControlAvailable     bool      `json:"swarmControlAvailable"`
+	SwarmState                string    `json:"swarmState,omitempty"`
+	TLSCertificateFingerprint string    `json:"tlsCertificateFingerprint,omitempty"`
+	Username                  string    `json:"username"`
 }
 
 type Node struct {
@@ -146,4 +181,46 @@ type BuildResult struct {
 	Log       string `json:"log"`
 	Pushed    bool   `json:"pushed"`
 	RequestID string `json:"requestId"`
+}
+
+// Command is the public, non-sensitive record for an approved mutation. Its
+// execution payload is intentionally held only by the controller's private
+// queue store and is never returned from the API, audit log, or browser.
+type Command struct {
+	Action        string       `json:"action"`
+	Actor         string       `json:"actor"`
+	Attempt       uint         `json:"attempt"`
+	AutoRetry     bool         `json:"autoRetry"`
+	CreatedAt     time.Time    `json:"createdAt"`
+	ID            string       `json:"id"`
+	LastAttemptAt *time.Time   `json:"lastAttemptAt,omitempty"`
+	LastError     string       `json:"lastError,omitempty"`
+	MaxAttempts   uint         `json:"maxAttempts"`
+	NextAttemptAt *time.Time   `json:"nextAttemptAt,omitempty"`
+	RequestID     string       `json:"requestId,omitempty"`
+	ServerID      string       `json:"serverId"`
+	State         CommandState `json:"state"`
+	Target        string       `json:"target"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
+}
+
+// FleetRun reports durable, reviewed Ansible operations. It contains status
+// only; output stays on the host and is never streamed through the API.
+type FleetRun struct {
+	ID    string         `json:"id"`
+	Nodes []FleetRunNode `json:"nodes"`
+}
+
+type FleetRunNode struct {
+	Attempt       uint       `json:"attempt,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	ExitCode      *int       `json:"exitCode,omitempty"`
+	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	Hostname      string     `json:"hostname"`
+	MaxAttempts   uint       `json:"maxAttempts,omitempty"`
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+	NodeID        string     `json:"nodeId"`
+	Operation     string     `json:"operation,omitempty"`
+	StartedAt     time.Time  `json:"startedAt,omitempty"`
+	State         string     `json:"state"`
 }

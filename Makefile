@@ -5,11 +5,11 @@ REGISTRY_NS ?= nimasrn
 TAG         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli
-STACKS      := traefik swarmops swarmops-observability swarmops-logs
+STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs
 
-.PHONY: help test web-build build push registry-login context swarm-init swarm-network \
+.PHONY: help test web-build web-dev dev-api build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \
-	platform-deploy swarmops-provision ps service-ps logs scale rollback docs-check clean-worktree
+	platform-deploy swarmops-provision swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
 
 help:
 	@printf '%s\n' \
@@ -19,6 +19,7 @@ help:
 	  'Deploy:   make deploy STACK=<stack> HOST=<host>' \
 	  'Platform: make platform-deploy HOST=<host>  # Traefik, then SwarmOps' \
 	  'Bootstrap: make swarmops-provision' \
+	  'Native:   make swarmops-native-api  # no Docker; requires protected secret-file env vars' \
 	  'Secrets:  make secret-create HOST=<manager> SECRET=<versioned-name> FILE=<secure-file>'
 
 test:
@@ -27,6 +28,20 @@ test:
 web-build:
 	npm --prefix web run typecheck
 	npm --prefix web run build
+
+web-dev:
+	npm --prefix web run dev
+
+dev-api:
+	@set -e; \
+	  session_key="$$(openssl rand -hex 32)"; \
+	  SWARMOPS_INSECURE_DEV_AUTH=true \
+	  SWARMOPS_SECURE_COOKIES=false \
+	  SWARMOPS_ADMIN_USERNAME=admin \
+	  SWARMOPS_DEV_PASSWORD_HASH= \
+	  SWARMOPS_DEV_SESSION_KEY="$$session_key" \
+	  SWARMOPS_DATA_DIR="$${SWARMOPS_DATA_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}" \
+	  go run ./cmd/api
 
 clean-worktree:
 	@test -z "$$(git status --porcelain)" || { \
@@ -137,6 +152,22 @@ endif
 
 swarmops-provision:
 	@bash scripts/provision-swarmops.sh
+
+swarmops-native-api:
+	@bash scripts/run-swarmops-api.sh
+
+swarmops-native-bootstrap:
+ifndef LISTEN_IP
+	$(error set LISTEN_IP=<literal IP configured on the controller host>)
+endif
+ifndef ALLOW_CIDR
+	$(error set ALLOW_CIDR=<operator CIDR; repeat with comma-separated values if needed>)
+endif
+	@if [ "$(INSTALL_DEPS)" = 1 ]; then \
+	  bash scripts/bootstrap-swarmops-control-plane.sh --listen-ip '$(LISTEN_IP)' --allow-cidr '$(ALLOW_CIDR)' --install-dependencies; \
+	else \
+	  bash scripts/bootstrap-swarmops-control-plane.sh --listen-ip '$(LISTEN_IP)' --allow-cidr '$(ALLOW_CIDR)'; \
+	fi
 
 context:
 ifndef HOST

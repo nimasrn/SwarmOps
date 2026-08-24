@@ -102,7 +102,8 @@ type Info struct {
 	OperatingSystem string `json:"OperatingSystem"`
 	ServerVersion   string `json:"ServerVersion"`
 	Swarm           struct {
-		Cluster struct {
+		ControlAvailable bool `json:"ControlAvailable"`
+		Cluster          struct {
 			ID string `json:"ID"`
 		} `json:"Cluster"`
 		LocalNodeState string `json:"LocalNodeState"`

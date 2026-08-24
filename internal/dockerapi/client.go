@@ -16,13 +16,20 @@ import (
 
 const responseLimit = 8 << 20
 
-// Client connects through a Unix socket by default. A separate constructor
-// exists for tests, where an httptest server is safer than a real daemon.
+// Client speaks the Docker Engine HTTP API over a caller-supplied transport.
+// It supports a local Unix socket, the pinned machine-agent facade, legacy SSH
+// streams, and test HTTP servers without leaking transport concerns into the
+// control-plane domain.
 type Client struct {
 	baseURL   string
 	http      *http.Client
 	buildHTTP *http.Client
 }
+
+// DialContext matches http.Transport.DialContext. Keeping this small contract
+// lets SwarmOps talk to a remote Docker Engine without requiring a Docker
+// daemon or socket on the machine running the API.
+type DialContext func(ctx context.Context, network, address string) (net.Conn, error)
 
 func New(socket string) (*Client, error) {
 	socket = strings.TrimPrefix(strings.TrimSpace(socket), "unix://")
@@ -30,12 +37,18 @@ func New(socket string) (*Client, error) {
 		return nil, fmt.Errorf("Docker socket must be an absolute Unix path")
 	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", socket)
-		},
-		DisableCompression: true,
+	return NewWithDial(func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "unix", socket)
+	})
+}
+
+// NewWithDial creates a client using a private Docker API transport. The
+// target must be trusted: the Engine API is root-equivalent on its host.
+func NewWithDial(dial DialContext) (*Client, error) {
+	if dial == nil {
+		return nil, fmt.Errorf("Docker dialer is required")
 	}
+	transport := &http.Transport{DialContext: dial, DisableCompression: true, IdleConnTimeout: 30 * time.Second}
 	return &Client{
 		baseURL: "http://docker",
 		http:    &http.Client{Transport: transport, Timeout: 20 * time.Second},
@@ -47,14 +60,25 @@ func New(socket string) (*Client, error) {
 }
 
 func NewForURL(baseURL string, client *http.Client) (*Client, error) {
+	return NewForURLWithBuildClient(baseURL, client, client)
+}
+
+// NewForURLWithBuildClient creates a Docker client backed by HTTP clients
+// supplied by a trusted caller. Keeping the inventory and build clients
+// separate lets a remote transport retain short request deadlines for status
+// calls while allowing build streams to use their context-controlled timeout.
+func NewForURLWithBuildClient(baseURL string, client, buildClient *http.Client) (*Client, error) {
 	if client == nil {
 		return nil, fmt.Errorf("http client is required")
+	}
+	if buildClient == nil {
+		return nil, fmt.Errorf("Docker build HTTP client is required")
 	}
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("invalid Docker API URL")
 	}
-	return &Client{baseURL: strings.TrimSuffix(baseURL, "/"), http: client, buildHTTP: client}, nil
+	return &Client{baseURL: strings.TrimSuffix(baseURL, "/"), http: client, buildHTTP: buildClient}, nil
 }
 
 func (c *Client) Ping(ctx context.Context) error {
@@ -63,6 +87,21 @@ func (c *Client) Ping(ctx context.Context) error {
 		return err
 	}
 	return response.Body.Close()
+}
+
+// CloseIdleConnections releases any retained transport streams. Machine-agent
+// and legacy SSH clients use this when an operator disconnects a server so
+// credentials are no longer kept alive by an idle Docker API request.
+func (c *Client) CloseIdleConnections() {
+	if c == nil {
+		return
+	}
+	if c.http != nil {
+		c.http.CloseIdleConnections()
+	}
+	if c.buildHTTP != nil && c.buildHTTP != c.http {
+		c.buildHTTP.CloseIdleConnections()
+	}
 }
 
 func (c *Client) Info(ctx context.Context) (Info, error) {

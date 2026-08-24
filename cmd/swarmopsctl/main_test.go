@@ -3,10 +3,20 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/nimasrn/SwarmOps/internal/domain"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestArchiveContextRejectsDockerfileOutsideContext(t *testing.T) {
@@ -61,5 +71,163 @@ func TestArchiveContextHonorsDockerignoreButKeepsDockerfile(t *testing.T) {
 	}
 	if entries["ignored.txt"] {
 		t.Fatalf("ignored file was included: %#v", entries)
+	}
+}
+
+func TestPreflightNodesHTTPMapsAuthenticatedInventory(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v1/auth/login":
+			if request.Method != http.MethodPost {
+				t.Fatalf("login method = %s", request.Method)
+			}
+			http.SetCookie(response, &http.Cookie{Name: "swarmops_session", Value: "session", Path: "/"})
+			_ = json.NewEncoder(response).Encode(map[string]string{"csrfToken": "csrf"})
+		case "/api/v1/nodes":
+			if _, err := request.Cookie("swarmops_session"); err != nil {
+				t.Fatalf("missing session cookie: %v", err)
+			}
+			if got := request.Header.Get("X-SwarmOps-Server-ID"); got != "server-test" {
+				t.Fatalf("server header = %q", got)
+			}
+			nodes := []domain.Node{{Hostname: "node-01", State: "ready", Agent: domain.NodeAgent{Healthy: true}, Labels: map[string]string{"nim.mongo": "true"}}}
+			nodes[0].CPU.Capacity = 8
+			nodes[0].Memory.Capacity = 16 * 1024 * 1024 * 1024
+			nodes[0].Memory.Available = 12 * 1024 * 1024 * 1024
+			nodes[0].Disk.Available = 400 * 1024 * 1024 * 1024
+			_ = json.NewEncoder(response).Encode(nodes)
+		default:
+			t.Fatalf("unexpected path %s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	endpoint, err := parseBaseURL(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := preflightNodesHTTP(endpoint, "operator", "password", "server-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observed) != 1 || observed[0].Name != "node-01" || observed[0].AvailableMemoryMiB != 12288 || observed[0].AvailableDiskGiB != 400 {
+		t.Fatalf("observed = %#v", observed)
+	}
+}
+
+func TestHashPasswordUsesBcrypt(t *testing.T) {
+	t.Parallel()
+	password := []byte("a sufficiently long operator password")
+	hash, err := hashPassword(password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), password); err != nil {
+		t.Fatalf("generated hash does not verify: %v", err)
+	}
+}
+
+func TestRetryFleetSubmissionUsesBoundedExponentialBackoff(t *testing.T) {
+	t.Parallel()
+	attempts := 0
+	var delays []time.Duration
+	err := retryFleetSubmission(context.Background(), func(context.Context) error {
+		attempts++
+		if attempts < 4 {
+			return errors.New("SSH transport unavailable")
+		}
+		return nil
+	}, func(_ context.Context, delay time.Duration) error {
+		delays = append(delays, delay)
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 4 || len(delays) != 3 || delays[0] != 2*time.Second || delays[1] != 4*time.Second || delays[2] != 8*time.Second {
+		t.Fatalf("attempts=%d delays=%v", attempts, delays)
+	}
+}
+
+func TestNewCommandIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	first, err := newCommandIdempotencyKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newCommandIdempotencyKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(first, "build-") || len(first) != len("build-")+32 || first == second {
+		t.Fatalf("unexpected idempotency keys: %q, %q", first, second)
+	}
+}
+
+func TestBuildQueuesAnIdempotentCommand(t *testing.T) {
+	contextDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(contextDir, "Dockerfile"), []byte("FROM scratch\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var sawBuild bool
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/v1/auth/login":
+			http.SetCookie(response, &http.Cookie{Name: "swarmops_session", Value: "session", Path: "/"})
+			_ = json.NewEncoder(response).Encode(map[string]string{"csrfToken": "csrf"})
+		case "/api/v1/builds":
+			sawBuild = true
+			if got := request.Header.Get("X-CSRF-Token"); got != "csrf" {
+				t.Errorf("csrf header = %q", got)
+			}
+			if got := request.Header.Get("X-SwarmOps-Server-ID"); got != "server-test" {
+				t.Errorf("server header = %q", got)
+			}
+			key := request.Header.Get("Idempotency-Key")
+			if !strings.HasPrefix(key, "build-") || len(key) != len("build-")+32 {
+				t.Errorf("idempotency key = %q", key)
+			}
+			if _, err := io.ReadAll(request.Body); err != nil {
+				t.Errorf("read archive: %v", err)
+			}
+			response.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(response).Encode(domain.Command{ID: "cmd-0123456789abcdef0123456789abcdef", State: domain.CommandQueued})
+		default:
+			t.Errorf("unexpected path %s", request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	stdin, input, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := input.WriteString("test-password\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := input.Close(); err != nil {
+		t.Fatal(err)
+	}
+	previousStdin := os.Stdin
+	os.Stdin = stdin
+	t.Cleanup(func() {
+		os.Stdin = previousStdin
+		_ = stdin.Close()
+	})
+
+	err = build([]string{
+		"--url", server.URL,
+		"--username", "operator",
+		"--server-id", "server-test",
+		"--context", contextDir,
+		"--image", "ghcr.io/nimasrn/demo:2026.08.24",
+		"--password-stdin",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawBuild {
+		t.Fatal("build endpoint was not called")
 	}
 }

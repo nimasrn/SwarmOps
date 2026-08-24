@@ -2,7 +2,7 @@
   "name": "swarmops-web",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --pretty"
   },
   "dependencies": {
-    "nim": "file:./vendor/nim-ui",
+    "@nim.zone/ui": "file:./vendor/nim-ui",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

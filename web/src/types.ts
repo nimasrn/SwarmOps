@@ -15,6 +15,36 @@ export interface NodeAgent {
   version?: string
 }
 
+export interface Server {
+  apiUrl?: string
+  authentication: 'api_key' | 'password' | 'private_key'
+  connectionState: 'connected' | 'disconnected'
+  connectionType?: 'agent_api' | 'ssh'
+  dockerAvailable: boolean
+  dockerVersion?: string
+  host: string
+  hostKeyFingerprint: string
+  id: string
+  lastConnectedAt?: string
+  name: string
+  port: number
+  swarmControlAvailable: boolean
+  swarmState?: string
+  tlsCertificateFingerprint?: string
+  username: string
+}
+
+export interface ServerCredentials {
+  apiKey: string
+}
+
+export interface ServerInput extends ServerCredentials {
+  apiUrl: string
+  name: string
+  port: number
+  tlsCertificateFingerprint: string
+}
+
 export interface Node {
   address?: string
   agent: NodeAgent
@@ -108,11 +138,43 @@ export interface ComposePlan {
   warnings: string[]
 }
 
-export interface BuildResult {
-  image: string
-  log: string
-  pushed: boolean
-  requestId: string
+export type CommandState = 'queued' | 'running' | 'retry_scheduled' | 'succeeded' | 'needs_attention'
+
+export interface Command {
+  action: string
+  actor: string
+  attempt: number
+  autoRetry: boolean
+  createdAt: string
+  id: string
+  lastAttemptAt?: string
+  lastError?: string
+  maxAttempts: number
+  nextAttemptAt?: string
+  requestId?: string
+  serverId: string
+  state: CommandState
+  target: string
+  updatedAt: string
+}
+
+export interface FleetRun {
+  id: string
+  nodes: FleetRunNode[]
+}
+
+export interface FleetRunNode {
+  attempt?: number
+  error?: string
+  exitCode?: number
+  finishedAt?: string
+  hostname: string
+  maxAttempts?: number
+  nextAttemptAt?: string
+  nodeId: string
+  operation?: string
+  startedAt?: string
+  state: string
 }
 
 export interface Session {
@@ -126,6 +188,10 @@ export interface TraefikStatus {
 }
 
 export interface ObservabilityStatus {
+  agentHealthy: boolean
+  agentInstalled: boolean
+  coreHealthy: boolean
   coreInstalled: boolean
   logsEnabled: boolean
+  logsHealthy: boolean
 }

@@ -58,6 +58,103 @@ here) whenever the kit changes.
 
 ---
 
+## What changed in 0.8
+
+0.8 adds the layer an **admin panel** is actually built out of, and the style
+it is drawn in. Nothing was removed and no existing component changed shape.
+
+**The console style**
+
+`console` is the third style, and it exists because the other two are wrong
+for the one surface that had no answer. `ledger` is a print register — a voice,
+and a voice is tiring to read for eight hours. `vlora` is a consumer app, and a
+console that spends a fifth of its vertical budget on padding shows a fifth
+fewer rows. Console is the style of a tool you keep open all day: small
+consistent radii, elevation as a hairline plus a short shadow, type sized
+*down* from the body scale (14px working size, 11px sentence-case labels
+rather than tracked-out caps), tabular figures everywhere, and a press that is
+barely there. It sets `--nim-density: 0.84` at rest and returns it to `1` under
+`@media (pointer: coarse)` — density is a reading decision made for a mouse,
+and a finger does not get smaller because the screen is showing a table.
+
+**The console components**
+
+`AdminShell` gave a console its chrome in 0.6 and stopped there, so every panel
+built on it re-invented the same eight things below the topbar. Both consumers
+had grown their own copy — SwarmOps in 450 lines of app CSS, vlora-admin in
+6,000 — and the two copies did not agree on a single measurement.
+
+- `Page` — the scrolling body of one screen: how wide it may get, and how far
+  apart two sections sit.
+- `Panel` — a titled section. Heading level is `h2` by construction: a console
+  page has one `h1` and it is in the topbar.
+- `Toolbar` — what narrows a collection on one side, what can be done to it on
+  the other. Wraps rather than scrolls, because a toolbar that scrolls hides
+  the filter an operator already applied.
+- `Metric` / `MetricGrid` — one number, its name, and how it moved. `Metric`
+  takes `deltaIntent`, because errors falling is success and revenue falling is
+  not; a tile that colours every rise green lies on half its screens.
+- `Facts` — a record's properties as a real `<dl>`.
+- `Columns` — `halves` / `thirds` / `quarters` / `aside`, collapsing on a
+  **container** query.
+- `CodeBlock` — machine output in a box that scrolls at `--nim-scroller-max`
+  instead of growing, with copy. A log that grows to its own length pushes
+  every action below the fold exactly when something is wrong.
+- `StatusDot` — six tones, always beside a word. Colour alone is not a status.
+- `Mono` — an id, a host, a digest, inline, in tabular figures.
+- `RecordLink` — the identity cell of a row. Both consumers had written it, and
+  both had written it as a `<div onClick>`.
+- `DetailLayout` — a record and the rail of facts beside it.
+- `DataTable` — a collection screen in one component. It resolves the four
+  states a remote list is ever in — **error, first load, empty, rows**, in that
+  order — which is the part every hand-rolled version got wrong by showing an
+  empty state during the first load. A refetch dims the current rows rather
+  than replacing them with skeletons.
+
+**`sable`, the operator colourway**
+
+The one palette chosen for a constraint rather than a mood. A console is a
+screen full of status, and an accent drawn from the green/amber/red families is
+not a brand colour there — it is a fourth status nobody defined. Cobalt is the
+signal family that cannot be mistaken for any of the three. Its neutrals are
+cooled graphite: the warm cast that makes a consumer app feel like paper makes
+a table of numbers feel yellow by the afternoon.
+
+Dark is its primary scheme, with a canvas darker than the kit's others so a
+table's hairlines carry, and status comes from the `paper` ramp unchanged — a
+control plane is the last place to have an opinion about what red means. Every
+pair was measured rather than estimated: `ink-tertiary` is set at the darkest
+value that still reads as tertiary, because it labels every column header at
+11px and 11px is never large text.
+
+**Smaller changes the migration forced**
+
+- `Button` takes `href` and renders a real `<a>`. A control that navigates IS a
+  link; consumers without this reach for an `asChild` escape hatch and
+  hand-write the classes, which is how the focus ring drifts per call site.
+  `loading` and `disabled` stay button-only — there is no such thing as a
+  disabled link in HTML.
+- `Field` is exported: the label/hint/error frame on its own, for a control the
+  kit does not own. Every kit control still carries its own `label` and should
+  use that instead.
+- `ListRow` takes `rel` / `target`, and supplies `noreferrer` itself for
+  `_blank`.
+- `Stack` and `Inline` take `as`: they are rhythm, not semantics, and a form on
+  the stack rhythm is still a `<form>`.
+- `Checkbox`'s `children` is optional — a selection checkbox in a table has no
+  visible label, and names itself with `aria-label`.
+- Icons added: `activity` · `arrow-back` · `chart` · `cloud` · `database` ·
+  `globe` · `key` · `layers` · `link` · `more` · `package` · `refresh` ·
+  `server` · `shield` · `tag` · `terminal` · `users`.
+
+**Container queries and specificity** — the console grids step down inside
+`@container`, and every one of those rules carries the same `[data-…]`
+attribute its base rule uses. A container query adds no specificity, so
+`.nim-metric-grid { … }` inside one loses to `.nim-metric-grid[data-columns='4']`
+outside it, and the grid silently never steps down.
+
+---
+
 ## What changed in 0.7
 
 0.7 is a **completeness and finish** pass rather than a new layer: the kit was
@@ -168,8 +265,10 @@ rebuilding. Nothing was removed and no token changed.
   desktop-first, two-column and deeply nested; a phone app is one column with
   five destinations, and sharing a component would make every screen carry the
   other's assumptions. Below 60rem the same sidebar becomes a drawer — the same
-  markup, so the two cannot drift. The breakpoint is a **container** query, so
-  a console embedded in a panel answers its own width rather than the window's.
+  markup, so the two cannot drift. Below 38rem the topbar toolbar takes its own
+  wrapping row instead of pushing session controls beyond the viewport. The
+  breakpoints are **container** queries, so a console embedded in a panel
+  answers its own width rather than the window's.
 - `DetailHeader` — where a record sits, what it is, and what can be done to it.
   The actions are at the top, because an operator working a queue acts without
   reading the whole record and a button under a thousand rows is a button
@@ -443,6 +542,7 @@ src/
     colorways/oxblood.css     wax-seal red      (6 declarations)
     colorways/coral.css       warm cream + coral
     colorways/teal.css        clinical teal
+    colorways/sable.css       graphite + cobalt, for consoles
     reset.css           scoped to .nim-root, never global
     components.css      the only file that draws anything
     index.css           import entry (order is load-bearing)
@@ -468,21 +568,28 @@ A **style** owns shape, elevation geometry, type voice and press. A
 style's shadows are drawn in. Neither knows anything about the other: a style
 names no colour, and a colourway names no radius.
 
-| Styles | `ledger` (default) | `vlora` |
-|---|---|---|
-| Shape | `0` — square | `6–24px` — rounded |
-| Elevation | hard offset register mark | soft ambient shadow |
-| Labels | mono, uppercase, wide-tracked | text face, sentence case |
-| Leading | tight (1.45 base) | loose (1.84 base) — Persian needs the room |
-| Press | shifts into its shadow | compresses |
-| Default face | Geist / Geist Mono | Vazirmatn |
+| Styles | `ledger` (default) | `vlora` | `console` |
+|---|---|---|---|
+| For | print & record | a consumer app | a tool kept open all day |
+| Shape | `0` — square | `6–24px` — rounded | `3–14px` — small and consistent |
+| Elevation | hard offset register mark | soft ambient shadow | hairline + short contact shadow |
+| Labels | mono, uppercase, wide-tracked | text face, sentence case | text face, sentence case, 11px |
+| Body | 16px | 16px | **14px** — four more rows per screen |
+| Leading | tight (1.45 base) | loose (1.84 base) — Persian needs the room | 1.4 |
+| Density | `1` | `1` | **`0.84`**, back to `1` on coarse pointers |
+| Press | shifts into its shadow | compresses | almost nothing |
+| Default face | Geist / Geist Mono | Vazirmatn | Inter / Geist Mono |
 
-| Colourways | `vermilion` (default) | `oxblood` | `coral` | `teal` |
-|---|---|---|---|---|
-| Voice | print & record | law & institution | warm consumer product | clinical care |
-| Canvas | warm paper `#f7f4ee` | warm paper `#f7f4ee` | warm cream `#faf9f6` | cool mist `#f6faf9` |
-| Ink | near-black `#17150f` | near-black `#17150f` | slate `#131314` | near-black `#1d1d1f` |
-| Accent | vermilion `#b82f18` | seal red `#6b1f2a` | coral `#d97757` | teal `#00baba` |
+| Colourways | `vermilion` (default) | `oxblood` | `coral` | `teal` | `sable` |
+|---|---|---|---|---|---|
+| Voice | print & record | law & institution | warm consumer product | clinical care | operator console |
+| Canvas | warm paper `#f7f4ee` | warm paper `#f7f4ee` | warm cream `#faf9f6` | cool mist `#f6faf9` | graphite `#f6f7f9` |
+| Ink | near-black `#17150f` | near-black `#17150f` | slate `#131314` | near-black `#1d1d1f` | near-black `#12151a` |
+| Accent | vermilion `#b82f18` | seal red `#6b1f2a` | coral `#d97757` | teal `#00baba` | cobalt `#2f5bd7` |
+
+`sable` is the only colourway chosen for a constraint rather than a mood: it is
+the accent family that cannot be mistaken for a status colour, which is what a
+screen full of green/amber/red node states needs.
 
 ```tsx
 import { NimProvider } from '@nim.zone/ui'   // the stylesheet comes with the import
@@ -497,9 +604,10 @@ import { NimProvider } from '@nim.zone/ui'   // the stylesheet comes with the im
 dialogs, menus, toasts — inherit them from outside the React tree.
 
 The pairings that carry a product's identity are `ledger` + `vermilion` (nim
-itself), `ledger` + `oxblood` (legal), `vlora` + `coral` (Vlora), and `vlora` +
-`teal` (Fatemifar) — but the axes are genuinely orthogonal, so `ledger` + `teal`
-is a legal thing to try rather than a mistake.
+itself), `ledger` + `oxblood` (legal), `vlora` + `coral` (Vlora), `vlora` +
+`teal` (Fatemifar) and `console` + `sable` (SwarmOps) — but the axes are
+genuinely orthogonal, so `ledger` + `teal` is a legal thing to try rather than
+a mistake.
 
 ### Why two axes rather than more presets
 
@@ -646,7 +754,7 @@ accent, which is all `oxblood` is.
 | Flows | `Onboarding` · `SignInFlow` · `Wizard` · `PlanPicker` · `ProfileScreen` · `AppShell` · `TaskProgress` |
 | Flow parts | `AuthScreen` · `PhoneField` · `OtpInput` · `PasswordField` · `PlanCard` · `ProfileHeader` · `AvatarRing` · `ChoiceGrid` · `OptionCard` |
 | Commerce | `OrderSummary` · `ActionBar` |
-| Console | `AdminShell` · `DetailHeader` · `FilterChips` · `ActivityFeed` |
+| Console | `AdminShell` · `DetailHeader` · `FilterChips` · `ActivityFeed` · `Page` · `Panel` · `Toolbar` · `Metric` / `MetricGrid` · `Facts` · `Columns` · `DetailLayout` · `CodeBlock` · `StatusDot` · `Mono` · `RecordLink` · `DataTable` |
 | Chat | `Chat` · `ChatComposer` |
 | System | `NimProvider` · `useNim` · `useSchemeToggle` · `Icon` / `iconNames` · `cn` · `COUNTRIES` / `countryByIso2` / `countryByDial` / `countryNamer` / `toAsciiDigits` · `toE164` · `scorePassword` |
 
@@ -665,6 +773,17 @@ Picking between the near-neighbours:
   control sets a *value*. They look alike and mean different things.
 - **`Menu` vs `Popover`** — a menu holds actions and closes when one is chosen;
   a popover holds a form and does not close on a click inside it.
+- **`DataTable` vs `Table`** — `Table` is the primitive and is still right for
+  a table that is just a table. `DataTable` is the collection *screen*: toolbar,
+  selection, pagination, and the four states a remote list is ever in, resolved
+  in one place.
+- **`Panel` vs `Card`** — a panel is a titled section of a console page and
+  always carries a heading; a card is a piece of content that may not.
+- **`Metric` vs `Stat`** — `Stat` is a figure in a consumer layout; `Metric` is
+  a console tile: fixed value size so a row of them can be compared, a tone rule
+  on its leading edge, and `deltaIntent`.
+- **`Mono` vs `CodeBlock`** — an id inline in a sentence against a log that
+  scrolls in its own box.
 - **`AdminShell` vs `AppShell`** — a console and a phone app, not two sizes of
   one thing: two columns and a deep hierarchy against one column and five
   destinations.

@@ -1,10 +1,9 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
@@ -31,16 +30,10 @@ func (d StackDeployer) Deploy(ctx context.Context, name string, raw []byte) (dom
 	if err != nil {
 		return domain.ComposePlan{}, err
 	}
-	staging, err := os.MkdirTemp(d.DataDir, "stack-")
-	if err != nil {
-		return domain.ComposePlan{}, fmt.Errorf("create stack staging directory: %w", err)
-	}
-	defer os.RemoveAll(staging)
-	file := filepath.Join(staging, "stack.yml")
-	if err := os.WriteFile(file, raw, 0o600); err != nil {
-		return domain.ComposePlan{}, fmt.Errorf("write staged stack: %w", err)
-	}
-	if _, err := d.CLI.Run(ctx, "stack", "config", "--compose-file", file); err != nil {
+	// Docker accepts "-" as the Compose source. Supplying the already
+	// validated document through stdin avoids staging browser content on the
+	// target (and works unchanged for the optional local compatibility path).
+	if _, err := d.CLI.RunInput(ctx, bytes.NewReader(raw), "stack", "config", "--compose-file", "-"); err != nil {
 		return domain.ComposePlan{}, fmt.Errorf("render stack: %w", err)
 	}
 	deployArgs := []string{"stack", "deploy", "--detach=false", "--resolve-image=changed"}
@@ -50,8 +43,8 @@ func (d StackDeployer) Deploy(ctx context.Context, name string, raw []byte) (dom
 	if d.CLI.ConfigDir != "" {
 		deployArgs = append(deployArgs, "--with-registry-auth")
 	}
-	deployArgs = append(deployArgs, "--compose-file", file, name)
-	if _, err := d.CLI.Run(ctx, deployArgs...); err != nil {
+	deployArgs = append(deployArgs, "--compose-file", "-", name)
+	if _, err := d.CLI.RunInput(ctx, bytes.NewReader(raw), deployArgs...); err != nil {
 		return domain.ComposePlan{}, fmt.Errorf("deploy stack: %w", err)
 	}
 	return plan, nil

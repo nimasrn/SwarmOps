@@ -1,5 +1,5 @@
 # Jaeger 2.20 configuration, derived from the release's Badger example. The
-# stack pins this single durable store to swarmops.stateful=true; back up its volume
+# stack pins this single durable store to nim.stateful=true; back up its volume
 # before node maintenance. For HA trace storage, replace this config with the
 # documented OpenSearch backend in a versioned Swarm config.
 service:
