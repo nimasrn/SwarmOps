@@ -5,11 +5,15 @@ package config
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,6 +42,7 @@ type Config struct {
 	BuildMaxMemoryMiB               int64
 	DataDir                         string
 	DataEncryptionKey               []byte
+	DevMachineAPI                   *DevMachineAPI
 	ImagePrefixes                   []string
 	InsecureDevAuth                 bool
 	ListenAddr                      string
@@ -83,6 +88,18 @@ type Config struct {
 	TrustedRegistry                 string
 	TrustedRegistryNamespace        string
 	TrustedTag                      string
+}
+
+// DevMachineAPI is the loopback-only machine-agent connection used by the
+// local development commands. It is intentionally available only when the
+// caller opted into insecure development authentication. Its API key remains
+// process-local and is never stored in the server profile.
+type DevMachineAPI struct {
+	APIKey                    []byte
+	APIURL                    string
+	Name                      string
+	Port                      uint16
+	TLSCertificateFingerprint string
 }
 
 func Load() (Config, error) {
@@ -140,6 +157,9 @@ func Load() (Config, error) {
 		TrustedRegistryNamespace:        env("REGISTRY_NS", "nimasrn"),
 		TrustedTag:                      env("TAG", ""),
 	}
+	if !c.InsecureDevAuth && devMachineAPIConfigured() {
+		return Config{}, fmt.Errorf("SWARMOPS_DEV_MACHINE_API_* is available only with SWARMOPS_INSECURE_DEV_AUTH")
+	}
 
 	if c.BuildMaxBytes <= 0 || c.BuildMaxMemoryMiB <= 0 || c.BuildMaxCPUs <= 0 {
 		return Config{}, fmt.Errorf("build limits must be positive")
@@ -161,6 +181,11 @@ func Load() (Config, error) {
 		if len(c.SessionKey) < 32 {
 			return Config{}, fmt.Errorf("SWARMOPS_DEV_SESSION_KEY must contain at least 32 bytes when SWARMOPS_INSECURE_DEV_AUTH is enabled")
 		}
+		devMachineAPI, err := loadDevMachineAPI()
+		if err != nil {
+			return Config{}, err
+		}
+		c.DevMachineAPI = devMachineAPI
 		derivedKey := sha256.Sum256(c.SessionKey)
 		c.DataEncryptionKey = derivedKey[:]
 		return c, nil
@@ -223,6 +248,109 @@ func Load() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+func devMachineAPIConfigured() bool {
+	for _, name := range []string{
+		"SWARMOPS_DEV_MACHINE_API_CERT_FILE",
+		"SWARMOPS_DEV_MACHINE_API_KEY_FILE",
+		"SWARMOPS_DEV_MACHINE_API_NAME",
+		"SWARMOPS_DEV_MACHINE_API_PORT",
+		"SWARMOPS_DEV_MACHINE_API_URL",
+	} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func loadDevMachineAPI() (*DevMachineAPI, error) {
+	if !devMachineAPIConfigured() {
+		return nil, nil
+	}
+	keyFile := strings.TrimSpace(os.Getenv("SWARMOPS_DEV_MACHINE_API_KEY_FILE"))
+	certificateFile := strings.TrimSpace(os.Getenv("SWARMOPS_DEV_MACHINE_API_CERT_FILE"))
+	if keyFile == "" || certificateFile == "" {
+		return nil, fmt.Errorf("SWARMOPS_DEV_MACHINE_API_KEY_FILE and SWARMOPS_DEV_MACHINE_API_CERT_FILE must be configured together")
+	}
+	apiKey, err := readProtectedSecret(keyFile, "local development machine API key")
+	if err != nil {
+		return nil, fmt.Errorf("local development machine API key: %w", err)
+	}
+	apiKey = bytes.TrimSpace(apiKey)
+	if len(apiKey) < 16 || len(apiKey) > 4096 || bytes.ContainsAny(apiKey, " \t\r\n\x00") {
+		return nil, fmt.Errorf("local development machine API key must contain between 16 and 4096 non-whitespace bytes")
+	}
+	fingerprint, err := localCertificateFingerprint(certificateFile)
+	if err != nil {
+		return nil, err
+	}
+	apiURL, err := localMachineAPIURL(env("SWARMOPS_DEV_MACHINE_API_URL", "https://127.0.0.1"))
+	if err != nil {
+		return nil, err
+	}
+	port, err := localMachineAPIPort(env("SWARMOPS_DEV_MACHINE_API_PORT", "9180"))
+	if err != nil {
+		return nil, err
+	}
+	name := env("SWARMOPS_DEV_MACHINE_API_NAME", "Local machine")
+	if len(name) == 0 || len(name) > 96 || strings.ContainsAny(name, "\r\n\x00") {
+		return nil, fmt.Errorf("SWARMOPS_DEV_MACHINE_API_NAME must be between 1 and 96 characters")
+	}
+	return &DevMachineAPI{
+		APIKey:                    apiKey,
+		APIURL:                    apiURL,
+		Name:                      name,
+		Port:                      port,
+		TLSCertificateFingerprint: fingerprint,
+	}, nil
+}
+
+func localCertificateFingerprint(path string) (string, error) {
+	if err := requireRegularFile(path, "local development machine API certificate"); err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "", fmt.Errorf("read local development machine API certificate: %w", err)
+	}
+	block, rest := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
+		return "", fmt.Errorf("local development machine API certificate must contain one PEM certificate")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("parse local development machine API certificate: %w", err)
+	}
+	digest := sha256.Sum256(certificate.Raw)
+	return "SHA256:" + strings.ToUpper(hex.EncodeToString(digest[:])), nil
+}
+
+func localMachineAPIURL(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return "", fmt.Errorf("SWARMOPS_DEV_MACHINE_API_URL must be an absolute HTTPS loopback origin")
+	}
+	if parsed.User != nil || parsed.Port() != "" || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("SWARMOPS_DEV_MACHINE_API_URL must not include credentials, a port, path, query, or fragment")
+	}
+	host := strings.Trim(parsed.Hostname(), "[]")
+	if host != "localhost" {
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.IsLoopback() {
+			return "", fmt.Errorf("SWARMOPS_DEV_MACHINE_API_URL must use localhost or a loopback IP address")
+		}
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
+}
+
+func localMachineAPIPort(value string) (uint16, error) {
+	parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 16)
+	if err != nil || parsed == 0 {
+		return 0, fmt.Errorf("SWARMOPS_DEV_MACHINE_API_PORT must be between 1 and 65535")
+	}
+	return uint16(parsed), nil
 }
 
 func readSecret(name string) ([]byte, error) {

@@ -7,7 +7,7 @@ PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli
 STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs
 
-.PHONY: help test web-build web-dev dev-api build push registry-login context swarm-init swarm-network \
+.PHONY: help test web-build web-dev dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \
 	platform-deploy swarmops-provision swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
 
@@ -16,6 +16,8 @@ help:
 	  'Build:    make build [TARGET=api|agent|cli] [TAG=<immutable-tag>]' \
 	  'Push:     make registry-login && make push [TARGET=api|agent|cli]' \
 	  'Validate: make test | make stack-check STACK=<stack>' \
+	  'Local:    make dev-agent  # source-built loopback machine API' \
+	  '          make dev        # local Core + console; attaches to dev-agent automatically' \
 	  'Deploy:   make deploy STACK=<stack> HOST=<host>' \
 	  'Platform: make platform-deploy HOST=<host>  # Traefik, then SwarmOps' \
 	  'Bootstrap: make swarmops-provision' \
@@ -32,16 +34,42 @@ web-build:
 web-dev:
 	npm --prefix web run dev
 
+dev:
+	@set -eu; \
+	  command -v curl >/dev/null 2>&1 || { echo 'curl is required for make dev'; exit 1; }; \
+	  $(MAKE) --no-print-directory dev-api & api_pid=$$!; \
+	  cleanup() { kill "$$api_pid" >/dev/null 2>&1 || true; wait "$$api_pid" >/dev/null 2>&1 || true; }; \
+	  trap cleanup EXIT; \
+	  attempts=0; \
+	  until curl --fail --silent --show-error --max-time 1 http://127.0.0.1:8084/healthz >/dev/null; do \
+	    if ! kill -0 "$$api_pid" 2>/dev/null; then wait "$$api_pid"; exit 1; fi; \
+	    attempts=$$((attempts + 1)); \
+	    if [ "$$attempts" -ge 100 ]; then echo 'local SwarmOps API did not become healthy on 127.0.0.1:8084'; exit 1; fi; \
+	    sleep 0.2; \
+	  done; \
+	  $(MAKE) --no-print-directory web-dev
+
 dev-api:
 	@set -e; \
-	  session_key="$$(openssl rand -hex 32)"; \
+	  dev_root="$${SWARMOPS_DEV_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}"; \
+	  SWARMOPS_DEV_DIR="$$dev_root" bash scripts/run-dev-machine-agent.sh --prepare; \
+	  if [ -n "$${SWARMOPS_DEV_SESSION_KEY:-}" ]; then session_key="$${SWARMOPS_DEV_SESSION_KEY}"; else session_key="$$(tr -d '[:space:]' <"$$dev_root/core-session-key")"; fi; \
 	  SWARMOPS_INSECURE_DEV_AUTH=true \
 	  SWARMOPS_SECURE_COOKIES=false \
 	  SWARMOPS_ADMIN_USERNAME=admin \
 	  SWARMOPS_DEV_PASSWORD_HASH= \
 	  SWARMOPS_DEV_SESSION_KEY="$$session_key" \
-	  SWARMOPS_DATA_DIR="$${SWARMOPS_DATA_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}" \
+	  SWARMOPS_DATA_DIR="$${SWARMOPS_DATA_DIR:-$$dev_root/core}" \
+	  SWARMOPS_LISTEN_ADDR="$${SWARMOPS_LISTEN_ADDR:-127.0.0.1:8084}" \
+	  SWARMOPS_DEV_MACHINE_API_CERT_FILE="$${SWARMOPS_DEV_MACHINE_API_CERT_FILE:-$$dev_root/machine-agent/tls.crt}" \
+	  SWARMOPS_DEV_MACHINE_API_KEY_FILE="$${SWARMOPS_DEV_MACHINE_API_KEY_FILE:-$$dev_root/machine-agent/api-key}" \
+	  SWARMOPS_DEV_MACHINE_API_NAME="$${SWARMOPS_DEV_MACHINE_API_NAME:-Local machine}" \
+	  SWARMOPS_DEV_MACHINE_API_PORT="$${SWARMOPS_DEV_MACHINE_API_PORT:-9180}" \
+	  SWARMOPS_DEV_MACHINE_API_URL="$${SWARMOPS_DEV_MACHINE_API_URL:-https://127.0.0.1}" \
 	  go run ./cmd/api
+
+dev-agent:
+	@bash scripts/run-dev-machine-agent.sh
 
 clean-worktree:
 	@test -z "$$(git status --porcelain)" || { \

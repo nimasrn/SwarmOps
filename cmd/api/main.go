@@ -55,6 +55,7 @@ func main() {
 		logger.Error("load remote server profiles", "error", err)
 		os.Exit(1)
 	}
+	startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
 	admission, err := ops.LoadPlatformAdmission(cfg.PlatformManifestFile)
 	if err != nil {
 		logger.Error("load platform admission", "error", err)

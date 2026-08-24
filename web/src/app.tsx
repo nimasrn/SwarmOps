@@ -1002,7 +1002,11 @@ function useServers(onExpired: () => void) {
       setLoading(false)
     }
   }, [onExpired])
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5000)
+    return () => window.clearInterval(timer)
+  }, [refresh])
   return { error, loading, refresh, servers }
 }
 

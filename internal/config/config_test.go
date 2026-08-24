@@ -2,11 +2,21 @@ package config
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -64,6 +74,47 @@ func TestLoadInsecureDevAuthAcceptsExplicitMaterial(t *testing.T) {
 	}
 	if got := cfg.AdminUsername; got != "local-operator" {
 		t.Fatalf("AdminUsername = %q, want explicit local username", got)
+	}
+}
+
+func TestLoadInsecureDevAuthConfiguresLoopbackMachineAPI(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_DEV_SESSION_KEY", strings.Repeat("s", 32))
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_KEY_FILE", writeSecretFile(t, "local-machine-api-key", []byte("local-development-machine-key")))
+	certificateFile, fingerprint := writeDevMachineCertificate(t)
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_CERT_FILE", certificateFile)
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_URL", "https://127.0.0.1")
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_PORT", "9180")
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_NAME", "Local Docker")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DevMachineAPI == nil {
+		t.Fatal("DevMachineAPI = nil")
+	}
+	if got, want := cfg.DevMachineAPI.APIURL, "https://127.0.0.1"; got != want {
+		t.Fatalf("DevMachineAPI.APIURL = %q, want %q", got, want)
+	}
+	if got, want := cfg.DevMachineAPI.Port, uint16(9180); got != want {
+		t.Fatalf("DevMachineAPI.Port = %d, want %d", got, want)
+	}
+	if got, want := cfg.DevMachineAPI.TLSCertificateFingerprint, fingerprint; got != want {
+		t.Fatalf("DevMachineAPI.TLSCertificateFingerprint = %q, want %q", got, want)
+	}
+	if got := string(cfg.DevMachineAPI.APIKey); got != "local-development-machine-key" {
+		t.Fatalf("DevMachineAPI.APIKey = %q", got)
+	}
+}
+
+func TestLoadProductionRejectsDevelopmentMachineAPISettings(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "false")
+	t.Setenv("SWARMOPS_DEV_MACHINE_API_URL", "https://127.0.0.1")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_DEV_MACHINE_API_*") {
+		t.Fatalf("Load() error = %v, want development-machine-API rejection", err)
 	}
 }
 
@@ -167,4 +218,32 @@ func writeSecretFile(t *testing.T, name string, content []byte) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func writeDevMachineCertificate(t *testing.T) (string, string) {
+	t.Helper()
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	certificateTemplate := &x509.Certificate{
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"localhost"},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		NotAfter:              now.Add(time.Hour),
+		NotBefore:             now.Add(-time.Minute),
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "swarmops-local-agent"},
+	}
+	rawCertificate, err := x509.CreateCertificate(rand.Reader, certificateTemplate, certificateTemplate, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "local-machine-agent.crt")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rawCertificate}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(rawCertificate)
+	return path, "SHA256:" + strings.ToUpper(hex.EncodeToString(digest[:]))
 }

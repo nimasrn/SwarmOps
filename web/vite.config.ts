@@ -52,6 +52,7 @@ export default defineConfig(({ mode }) => {
       outDir: '../internal/web/static',
     },
     server: {
+      host: '127.0.0.1',
       port: 5284,
       proxy: {
         '/api': proxy,

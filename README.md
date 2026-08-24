@@ -172,13 +172,46 @@ the headroom card) are shown only when every selected node has a healthy
 read-only host probe; otherwise the console labels the source-coverage gap and
 shows capacity without a misleading percentage.
 
-`make dev-api` remains available only for isolated API development. It starts a
-disposable local API with `admin` / `admin`, generates a fresh local session
+`make dev-api` starts the local Core API with `admin` / `admin`, uses an
+owner-only development session
 value, and does not represent or share the manager's control-plane state. The
 development password hash can be overridden with `SWARMOPS_DEV_PASSWORD_HASH`
 when launching the API manually. `SWARMOPS_INSECURE_DEV_AUTH` is absent from
 the Swarm manifest, which always uses external secrets; never set the
 development flag or values in a host environment file or Swarm service.
+
+### Full local development
+
+When developing the Core API and a source-built machine agent on the same
+computer, run the agent in one terminal and the Core plus console in another:
+
+```bash
+# Terminal 1: starts the loopback machine API.
+make dev-agent
+
+# Terminal 2: starts the local Core API and Vite console.
+make dev
+```
+
+`make dev-agent` creates a private development API key and pinned P-256 TLS
+identity in SwarmOps' local development directory, then serves the agent only
+at `https://127.0.0.1:9180`. `make dev-api` uses that same local identity and
+automatically adds and connects the **Local machine** profile without sending a
+key through the browser. It continues waiting if the agent starts after Core;
+the console refreshes the server list and selects it automatically when the
+local Docker Engine is a Swarm manager. The local identity remains owner-only
+where private and is never printed.
+
+By default the shared development directory is
+`${TMPDIR:-/tmp}/swarmops-dev`; set `SWARMOPS_DEV_DIR` to another absolute
+non-root directory when needed. To run Core yourself instead of `make dev`,
+use `make dev-api` and `make web-dev`; Vite already proxies relative browser
+requests to `http://127.0.0.1:8084` automatically. This shortcut is available
+only with `SWARMOPS_INSECURE_DEV_AUTH`, accepts only a loopback HTTPS agent,
+and is rejected by production configuration. Core's encrypted development
+state lives under that directory's `core` subdirectory, so it remains readable
+across local restarts but stays separate from earlier disposable development
+state at the directory root.
 
 ## Direct Docker-free controller
 
