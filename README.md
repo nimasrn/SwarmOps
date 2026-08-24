@@ -183,7 +183,19 @@ development flag or values in a host environment file or Swarm service.
 ### Full local development
 
 When developing the Core API and a source-built machine agent on the same
-computer, run the agent in one terminal and the Core plus console in another:
+computer, start the complete local environment with one command:
+
+```bash
+make local
+```
+
+It prepares the local identity, starts the loopback machine API, waits for its
+TLS health check, then starts Core and the Vite console. On exit, it cleans up
+the processes it started. Docker must be running locally for the source-built
+machine API to start.
+
+To debug the two parts independently, run the agent in one terminal and Core
+plus the console in another:
 
 ```bash
 # Terminal 1: starts the loopback machine API.

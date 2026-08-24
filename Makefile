@@ -7,7 +7,7 @@ PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli
 STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs
 
-.PHONY: help test web-build web-dev dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
+.PHONY: help test web-build web-dev local dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \
 	platform-deploy swarmops-provision swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
 
@@ -16,7 +16,8 @@ help:
 	  'Build:    make build [TARGET=api|agent|cli] [TAG=<immutable-tag>]' \
 	  'Push:     make registry-login && make push [TARGET=api|agent|cli]' \
 	  'Validate: make test | make stack-check STACK=<stack>' \
-	  'Local:    make dev-agent  # source-built loopback machine API' \
+	  'Local:    make local      # loopback Agent + Core + console' \
+	  'Dev:      make dev-agent  # source-built loopback machine API' \
 	  '          make dev        # local Core + console; attaches to dev-agent automatically' \
 	  'Deploy:   make deploy STACK=<stack> HOST=<host>' \
 	  'Platform: make platform-deploy HOST=<host>  # Traefik, then SwarmOps' \
@@ -33,6 +34,31 @@ web-build:
 
 web-dev:
 	npm --prefix web run dev
+
+local:
+	@set -eu; \
+	  command -v curl >/dev/null 2>&1 || { echo 'curl is required for make local'; exit 1; }; \
+	  dev_root="$${SWARMOPS_DEV_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}"; \
+	  export SWARMOPS_DEV_DIR="$$dev_root"; \
+	  bash scripts/run-dev-machine-agent.sh --prepare; \
+	  agent_pid=''; \
+	  cleanup() { \
+	    if [ -n "$$agent_pid" ]; then \
+	      kill "$$agent_pid" >/dev/null 2>&1 || true; \
+	      wait "$$agent_pid" >/dev/null 2>&1 || true; \
+	    fi; \
+	  }; \
+	  trap cleanup EXIT; \
+	  trap 'exit 130' INT TERM; \
+	  bash scripts/run-dev-machine-agent.sh & agent_pid=$$!; \
+	  attempts=0; \
+	  until curl --insecure --fail --silent --max-time 1 "https://127.0.0.1:$${SWARMOPS_DEV_MACHINE_API_PORT:-9180}/healthz" >/dev/null; do \
+	    if ! kill -0 "$$agent_pid" 2>/dev/null; then wait "$$agent_pid" || true; echo 'local SwarmOps machine API exited before becoming healthy'; exit 1; fi; \
+	    attempts=$$((attempts + 1)); \
+	    if [ "$$attempts" -ge 150 ]; then echo 'local SwarmOps machine API did not become healthy within 30 seconds'; exit 1; fi; \
+	    sleep 0.2; \
+	  done; \
+	  $(MAKE) --no-print-directory dev
 
 dev:
 	@set -eu; \
