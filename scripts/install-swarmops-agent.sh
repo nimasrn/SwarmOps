@@ -34,7 +34,7 @@ usage() {
     '--tls-cert-file <path>             Optional non-symlink PEM certificate; pair with --tls-key-file.' \
     '--tls-key-file <path>              Optional owner-only PEM key; pair with --tls-cert-file.' \
     '--api-key-file <path>              Copy this protected key file; otherwise generate one.' \
-    '--docker-socket <path>             Docker Unix socket; defaults by platform.' \
+    '--docker-socket <path>             Docker Unix socket; defaults by platform and may be unavailable at install time.' \
     '--release <tag|latest>             GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>   Release repository (default: nimasrn/SwarmOps).' \
     '--install-dependencies             Install curl, CA certificates, and OpenSSL where supported.' \
@@ -153,6 +153,7 @@ set_paths() {
     *) fail "unsupported operating system: $os_name" ;;
   esac
   release_dir="$runtime_dir/releases"
+  agent_path='/opt/homebrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin'
   tls_dir="$config_dir/tls"
   api_key_destination="$config_dir/api-key"
   environment_file="$config_dir/agent.env"
@@ -379,7 +380,7 @@ write_environment_file() {
       "SWARMOPS_AGENT_TLS_KEY_FILE=$tls_key_file" \
       "SWARMOPS_AGENT_LISTEN_ADDR=$listen_addr" \
       "SWARMOPS_DOCKER_SOCKET=$docker_socket" \
-      "PATH=$docker_bin_dir:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "PATH=$agent_path" \
       'SWARMOPS_HOST_ROOT=/' \
       'SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true' \
       'SWARMOPS_AGENT_BUILD_ENABLED=false'
@@ -421,7 +422,7 @@ write_linux_services() {
   temporary_agent="$(mktemp '/etc/systemd/system/.swarmops-agent.XXXXXX')"
   {
     printf '%s\n' \
-      '[Unit]' 'Description=SwarmOps pinned machine API agent' 'Wants=network-online.target' 'After=network-online.target docker.service' '' \
+      '[Unit]' 'Description=SwarmOps pinned machine API agent' 'Wants=network-online.target' 'After=network-online.target' '' \
       '[Service]' 'Type=simple' "EnvironmentFile=$environment_file" "ExecStart=$release_dir/current/swarmops-agent" \
       'Restart=on-failure' 'RestartSec=5s' 'NoNewPrivileges=yes' 'PrivateTmp=yes' 'PrivateDevices=yes' \
       'ProtectSystem=full' 'ProtectHome=yes' 'ProtectKernelTunables=yes' 'ProtectKernelModules=yes' 'ProtectKernelLogs=yes' \
@@ -562,7 +563,7 @@ done
 
 case "$os_name" in
   Linux) [[ "$(id -u)" == 0 ]] || fail 'run this command with sudo on Linux' ;;
-  Darwin) [[ "$(id -u)" != 0 ]] || fail 'run this command as the logged-in Docker Desktop user on macOS, without sudo' ;;
+  Darwin) [[ "$(id -u)" != 0 ]] || fail 'run this command as the logged-in macOS user, without sudo' ;;
   *) fail "unsupported operating system: $os_name" ;;
 esac
 
@@ -579,18 +580,14 @@ if [[ -z "$docker_socket" ]]; then
 fi
 require_safe_value '--docker-socket' "$docker_socket"
 [[ "$docker_socket" == /* && "$docker_socket" != / ]] || fail '--docker-socket must be an absolute, non-root path'
-[[ -S "$docker_socket" ]] || fail "Docker socket is not available: $docker_socket"
 
 if [[ "$install_dependencies" == true ]]; then
   install_host_dependencies
 fi
 require_command curl
 require_command openssl
-require_command docker
 require_command tar
 command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || fail 'sha256sum or shasum is required'
-docker_bin_dir="$(dirname "$(command -v docker)")"
-require_safe_value 'Docker command directory' "$docker_bin_dir"
 if [[ "$os_name" == Linux ]]; then
   require_command systemctl
 else

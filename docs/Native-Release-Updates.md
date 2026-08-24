@@ -5,8 +5,9 @@ SwarmOps native installations use exactly two executables on a host:
 - `swarmops-core` is the Docker-free control-plane API, embedded console, and
   reviewed deployment-assets process. Its encrypted state remains outside a
   release at `/var/lib/swarmops`.
-- `swarmops-agent` is the constrained machine API on a Docker host. It remains
-  separate from Core so the controller never receives a Docker socket.
+- `swarmops-agent` is the constrained host-side machine API. It remains
+  separate from Core so the controller never receives a Docker socket, and it
+  stays healthy when Docker is not yet running.
 - `swarmops-warden` is the shared local updater. A Core host has Core + Warden;
   an agent host has Agent + Warden. It has no network control endpoint.
 
@@ -51,10 +52,10 @@ Its listener uses a wildcard bind so Warden can query its own loopback
 operator CIDRs supplied at installation. It does not receive a Docker socket or
 Docker-group membership.
 
-## Install Agent on a Docker host
+## Install Agent on a host
 
 On Linux, download the release installer and run it with `sudo`. On macOS, run
-it as the logged-in Docker Desktop user without `sudo`:
+it as the logged-in user without `sudo`:
 
 ```bash
 curl --fail --location --remote-name \
@@ -79,6 +80,11 @@ through an approved secure channel. The listener must remain reachable only
 from the controller through an explicit firewall rule. Advanced operators may
 provide a certificate only with the paired `--tls-cert-file` and
 `--tls-key-file` flags.
+
+The agent service starts without a Docker CLI or live Docker socket. It reports
+the host as connected but Docker-unavailable until Docker starts; Core blocks
+Docker and Swarm operations during that state. This lets Warden supervise the
+host agent and its pinned TLS health endpoint independently of Docker startup.
 
 ## Warden behavior
 

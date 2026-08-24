@@ -5,7 +5,8 @@ umask 077
 # Run the source-built machine API for local development. This is deliberately
 # separate from the production installer: it binds only loopback, makes no
 # service-manager changes, and shares a local-only identity with
-# `make dev-api` so Core can attach without browser-entered credentials.
+# `make dev-api` so Core can attach without browser-entered credentials. It is
+# a host process: Docker may come online after the agent starts.
 
 prepare_only=false
 dev_root="${SWARMOPS_DEV_DIR:-${TMPDIR:-/tmp}/swarmops-dev}"
@@ -21,6 +22,7 @@ tls_key_file="$machine_dir/tls.key"
 temporary_key=''
 temporary_certificate=''
 temporary_config=''
+temporary_binary=''
 
 usage() {
   printf '%s\n' \
@@ -39,7 +41,7 @@ fail() {
 }
 
 cleanup() {
-  for path in "$temporary_key" "$temporary_certificate" "$temporary_config"; do
+  for path in "$temporary_key" "$temporary_certificate" "$temporary_config" "$temporary_binary"; do
     if [[ -n "$path" ]]; then
       rm -f -- "$path"
     fi
@@ -187,11 +189,21 @@ if [[ -z "$docker_socket" ]]; then
     *) fail "unsupported operating system: $(uname -s)" ;;
   esac
 fi
-[[ -S "$docker_socket" ]] || fail "Docker socket is not available: $docker_socket"
+if [[ ! -S "$docker_socket" ]]; then
+  printf '%s\n' "SwarmOps development machine API: Docker is not available at $docker_socket; the host agent will start, but Docker and Swarm operations remain unavailable until it starts." >&2
+fi
+
+agent_binary="$machine_dir/swarmops-agent"
+temporary_binary="$(mktemp "$machine_dir/.swarmops-agent.XXXXXX")"
+if ! (cd "$repository_dir" && go build -o "$temporary_binary" ./cmd/agent); then
+  fail 'build source development machine agent'
+fi
+chmod 0700 "$temporary_binary"
+mv -f "$temporary_binary" "$agent_binary"
+temporary_binary=''
 
 printf 'SwarmOps development machine API: https://127.0.0.1:%s\n' "$machine_port"
 printf '%s\n' 'The local Core development server will connect automatically.'
-cd "$repository_dir"
 exec env \
   NODE_NAME="$machine_name" \
   SWARMOPS_AGENT_BUILD_ENABLED=false \
@@ -204,4 +216,4 @@ exec env \
   SWARMOPS_HOST_OS=/etc/os-release \
   SWARMOPS_HOST_PROC=/proc \
   SWARMOPS_HOST_ROOT=/ \
-  go run ./cmd/agent
+  "$agent_binary"

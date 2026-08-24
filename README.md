@@ -43,7 +43,7 @@ Published native installations and their rollback behavior are documented in
 | Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmopsctl build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
 | Edge / TLS | Discover and reconcile the checked-in Traefik stack; protected dashboard, internal Prometheus metrics, and ACME DNS challenge | DNS/provider tokens and dashboard credentials remain external Swarm secrets; the browser never supplies routes or credentials. |
 | Observability | One Grafana + Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection | Core, host-probe, and log-collector removal require exact typed confirmations. |
-| Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Docker installation and Swarm formation remain reviewed Ansible operator actions; install the machine API only after the host has Docker. |
+| Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Docker installation and Swarm formation remain reviewed Ansible operator actions; the machine API may be installed first, but Docker/Swarm operations wait for Docker to become available. |
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
 | Fleet jobs | Queue an allow-listed Ansible operation on every selected inventory host and read durable status | A node-owned transient systemd job survives an accepted SSH control-channel loss; the remote model uses the trusted-workstation SSH inventory status path and never exposes command output in the browser. |
 | Backups | Install an opt-in Restic timer for local Docker named-volume paths to S3-compatible storage | Credentials are supplied only through a protected controller-side file; repository initialisation and restore validation stay explicit operator actions. |
@@ -191,8 +191,9 @@ make local
 
 It prepares the local identity, starts the loopback machine API, waits for its
 TLS health check, then starts Core and the Vite console. On exit, it cleans up
-the processes it started. Docker must be running locally for the source-built
-machine API to start.
+the processes it started. The machine API is a host process and starts even
+when Docker is not running. Core connects it automatically, while Docker and
+Swarm operations remain unavailable until the local Docker Engine comes up.
 
 To debug the two parts independently, run the agent in one terminal and Core
 plus the console in another:
@@ -265,10 +266,12 @@ losing it makes saved controller state unrecoverable.
 
 ## Direct machine agent (Linux and macOS)
 
-The target Docker machine runs a native agent from a published release; it is not
-the global read-only `swarmops-agent` Swarm service. On Linux, run the installer
-with `sudo`. On macOS, run it as the logged-in Docker Desktop user, without
-`sudo`:
+The target machine runs a native agent from a published release as a host
+process; it is not the global read-only `swarmops-agent` Swarm service. It can
+start before Docker is installed or running, reports that Docker is unavailable
+until the Engine appears, and needs a ready Docker Engine only for inventory or
+Swarm operations. On Linux, run the installer with `sudo`. On macOS, run it as
+the logged-in user, without `sudo`:
 
 ```bash
 curl --fail --location --remote-name \
@@ -281,9 +284,10 @@ bash install-swarmops-agent.sh
 
 The installer downloads a checksum-verified GitHub Release bundle containing
 `swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
-systemd service on Linux or a per-user LaunchAgent on macOS. It requires Docker,
-curl, and OpenSSL—not Git, Go, or pre-created TLS files. By default it listens
-on `0.0.0.0:9180`, generates a P-256 self-signed certificate for SwarmOps'
+systemd service on Linux or a per-user LaunchAgent on macOS. It requires curl,
+OpenSSL, and the platform service manager—not a live Docker socket, Docker CLI,
+Git, Go, or pre-created TLS files. By default it listens on `0.0.0.0:9180`,
+generates a P-256 self-signed certificate for SwarmOps'
 certificate-pin trust model, and writes its TLS identity to
 `/etc/swarmops-agent/tls/agent.crt` and `/etc/swarmops-agent/tls/agent.key` on
 Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
@@ -379,9 +383,11 @@ make stack-check STACK=swarmops-logs TAG=<immutable-tag>
 ```
 
 No Docker daemon or Swarm is required to run the local UI against the deployed
-API or use the console's Servers page. The target machine must already run the
-native agent and Docker before it can connect. A remote Swarm manager is
-required to verify cluster placement, service operations, or Swarm mutations.
+API or use the console's Servers page. The target machine must run the native
+agent before it can connect, but it may connect before Docker is available;
+Docker and Swarm operations remain unavailable until the engine starts. A
+remote Swarm manager is required to verify cluster placement, service
+operations, or Swarm mutations.
 A local Docker daemon is still needed only to build the container images in the
 optional image-build checks above.
 
@@ -693,10 +699,12 @@ explicit verified profile update.
   control manager because its audit/command volume and in-memory machine API
   connections are local to that task. A separate shared state and credential
   design is required before it can become HA.
-- A remote host must run Docker and the native machine agent before it can be
-  added. Cluster operations require a selected remote Swarm manager; use the
-  reviewed Ansible provisioning workflow to prepare a fresh Debian/Ubuntu
-  host. SwarmOps does not install Docker or form a Swarm from the browser.
+- A remote host must run the native machine agent before it can be added. It
+  can connect before Docker starts, but Docker and cluster operations remain
+  unavailable until the engine is ready. Cluster operations require a selected
+  remote Swarm manager; use the reviewed Ansible provisioning workflow to
+  prepare a fresh Debian/Ubuntu host. SwarmOps does not install Docker or form
+  a Swarm from the browser.
 - Jaeger’s checked-in Badger store is durable only on its labelled stateful
   node. Use documented OpenSearch config and a tested backup/restore plan when
   trace HA/retention requires it.
