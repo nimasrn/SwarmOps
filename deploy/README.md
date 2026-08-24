@@ -17,6 +17,11 @@ it owns the reviewed manifests for unrelated applications and the corresponding
 operator automation. Publishing this release does not build images, change
 servers, or deploy a stack.
 
+`make build` passes its immutable `TAG` to the API and agent binaries as their
+reported version. Native GitHub Release bundles are a separate path for a
+Docker-free controller or native machine agent; see
+[`../docs/Native-Release-Updates.md`](../docs/Native-Release-Updates.md).
+
 Git and these manifests are the source of truth. SwarmOps is the authenticated,
 audited control surface for observing node/service state, deploying a bounded
 image-only Compose stack, selecting an eligible node, inspecting logs, and
@@ -129,20 +134,24 @@ SWARMOPS_API_URL=https://swarmops.example.com make -C apps/swarmops web-dev
 
 The local server proxies browser API requests to the manager; it has no
 SwarmOps data directory, Docker dependency, or local API process. Install the
-machine agent on each Linux or macOS Docker host from a reviewed Git checkout:
+machine agent on each Linux or macOS Docker host from a GitHub Release:
 
 ```bash
-# Linux: run with sudo. macOS: run as the logged-in Docker Desktop user.
-bash scripts/install-swarmops-agent.sh \
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
+# Linux: run with sudo. macOS: run the second command without sudo.
+sudo bash install-swarmops-agent.sh \
   --listen-addr 0.0.0.0:9180 \
   --tls-cert-file /secure/swarmops-agent.crt \
   --tls-key-file /secure/swarmops-agent.key
 ```
 
-The installer clones/fast-forwards the selected Git branch, builds the native
-agent, configures TLS 1.3, and generates a protected API-key file when one is
-not supplied. It prints the public certificate fingerprint and key-file path,
-but never prints the key. In **Servers**, add the machine's HTTPS origin
+The installer downloads checksum-verified `swarmops-agent` and
+`swarmops-warden` binaries, configures TLS 1.3, and generates a protected
+API-key file when one is not supplied. It prints the public certificate
+fingerprint and key-file path, but never prints the key. Warden checks releases
+locally every 12 hours, rolls back an unhealthy candidate, and keeps three
+known-good versions. In **Servers**, add the machine's HTTPS origin
 without a port, its port, the printed `SHA256:<64-hex>` certificate fingerprint,
 and the API key through an approved secure channel. The key is held only in
 controller memory while connected and is cleared on disconnect or restart; the
@@ -158,23 +167,25 @@ not expose it as the machine-control endpoint.
 ### Separate Docker-free controller
 
 The Swarm stack remains the default production topology. If the designated
-controller must not run Docker or join a cluster, bootstrap it from a reviewed
-checkout on that host instead of deploying the `swarmops` stack:
+controller must not run Docker or join a cluster, install the native Core
+release on that host instead of deploying the `swarmops` stack:
 
 ```bash
-sudo make swarmops-native-bootstrap \
-  LISTEN_IP=<literal-controller-ip> \
-  ALLOW_CIDR=<operator-device-ip>/32 \
-  INSTALL_DEPS=1
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
+sudo bash install-swarmops-core.sh \
+  --listen-ip <literal-controller-ip> \
+  --allow-cidr <operator-device-ip>/32
 ```
 
-The bootstrap serves the embedded GUI and API directly from that controller IP
-through a generated TLS 1.3 certificate on a random high port. It prints the
-certificate fingerprint, creates a dedicated service account with no Docker
-group, enforces the supplied client CIDR in the API, and starts with remote
-builds and mutations disabled. The random port is not the security boundary:
-verify the fingerprint and enforce the same operator CIDR at the host/cloud
-firewall.
+The bootstrap downloads `swarmops-core` and `swarmops-warden`, then serves the
+embedded GUI and API through a generated TLS 1.3 certificate on a random high
+port. It prints the certificate fingerprint, creates a dedicated service
+account with no Docker group, enforces the supplied client CIDR in the API, and
+starts with remote builds and mutations disabled. Core's Warden follows the
+same local health/rollback/three-version policy. The random port is not the
+security boundary: verify the fingerprint and enforce the same operator CIDR
+at the host/cloud firewall.
 
 Server profiles, audit history, command metadata/payload, and pending build
 contexts are AES-256-GCM sealed in `/var/lib/swarmops`. The unrelated

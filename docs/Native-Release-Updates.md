@@ -1,0 +1,105 @@
+# Native release installation and updates
+
+SwarmOps native installations use exactly two executables on a host:
+
+- `swarmops-core` is the Docker-free control-plane API, embedded console, and
+  reviewed deployment-assets process. Its encrypted state remains outside a
+  release at `/var/lib/swarmops`.
+- `swarmops-agent` is the constrained machine API on a Docker host. It remains
+  separate from Core so the controller never receives a Docker socket.
+- `swarmops-warden` is the shared local updater. A Core host has Core + Warden;
+  an agent host has Agent + Warden. It has no network control endpoint.
+
+The GitHub release workflow builds the following assets for every immutable
+`v*` tag:
+
+```text
+swarmops-agent_<tag>_linux_amd64.tar.gz
+swarmops-agent_<tag>_linux_arm64.tar.gz
+swarmops-agent_<tag>_darwin_amd64.tar.gz
+swarmops-agent_<tag>_darwin_arm64.tar.gz
+swarmops-core_<tag>_linux_amd64.tar.gz
+swarmops-core_<tag>_linux_arm64.tar.gz
+checksums.txt
+install-swarmops-agent.sh
+install-swarmops-core.sh
+```
+
+The installer resolves `latest` by default, downloads only HTTPS GitHub release
+assets, validates the matching SHA-256 entry in `checksums.txt`, rejects archive
+contents other than the expected files, and never clones or compiles source on
+the target. The GitHub repository and immutable release tag remain the trust
+root; the checksum catches transfer corruption or an incomplete download but is
+not an independently signed provenance statement.
+
+## Install Core on the controller and data host
+
+Download the release installer, then run it as root on a fresh Linux controller:
+
+```bash
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
+sudo bash install-swarmops-core.sh \
+  --listen-ip <literal-server-ip> \
+  --allow-cidr <operator-device-ip>/32
+```
+
+Core obtains a random high port, direct TLS certificate, independent session
+and data-encryption keys, and a restricted `swarmops-control-plane.service`.
+Its listener uses a wildcard bind so Warden can query its own loopback
+`/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
+operator CIDRs supplied at installation. It does not receive a Docker socket or
+Docker-group membership.
+
+## Install Agent on a Docker host
+
+On Linux, download the release installer and run it with `sudo`. On macOS, run
+it as the logged-in Docker Desktop user without `sudo`:
+
+```bash
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
+# Linux:
+sudo bash install-swarmops-agent.sh \
+  --listen-addr 0.0.0.0:9180 \
+  --tls-cert-file /secure/swarmops-agent.crt \
+  --tls-key-file /secure/swarmops-agent.key
+# macOS: use the same installer command without sudo.
+```
+
+The agent installer prints the TLS fingerprint, port, and protected API-key
+file path—never the API key. In the Core console, add a server with the HTTPS
+origin (without its port), port, fingerprint, and API key through an approved
+secure channel. The listener must bind all interfaces or loopback so Warden can
+perform its local health probe.
+
+## Warden behavior
+
+Linux timers check every 12 hours after an initial 15-minute delay:
+
+```bash
+sudo systemctl start swarmops-core-warden.service
+sudo systemctl start swarmops-agent-warden.service
+```
+
+Only run the unit installed for that component. On macOS, the agent updater is
+the `com.nimasrn.swarmops-warden` LaunchAgent.
+
+For an update, Warden downloads and checksum-verifies the candidate before it
+stops the local service. It atomically changes only the `current` symlink in
+the component's release directory, starts the fixed service, and waits for the
+local `/healthz` (Agent) or `/readyz` (Core) probe. A failed candidate is
+stopped, the previous symlink is restored, the previous service is started and
+checked, and the failed candidate directory is removed. A successful update
+keeps the current release plus the two most recent prior known-good release
+directories. It never deletes `/var/lib/swarmops`, `/etc/swarmops`, the agent
+API key, or TLS material.
+
+## Publishing a release
+
+Pushing an existing immutable tag that matches `v*` triggers
+`.github/workflows/release.yml`. The action runs Go, documentation, deployment
+asset, and embedded-console checks, builds the native bundles, and creates (or
+updates) the matching GitHub Release. Its manual dispatch requires an existing
+tag and checks out that exact tag before publishing; it does not build an
+arbitrary branch as a release.

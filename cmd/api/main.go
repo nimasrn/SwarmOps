@@ -2,10 +2,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,11 +22,21 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
+	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.2.0"
+// version is set by the release build with -ldflags. Keeping a development
+// fallback makes local go run and test workflows deterministic.
+var version = "dev"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "password-hash" {
+		if err := passwordHash(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "swarmops-core password-hash:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -178,6 +190,34 @@ func main() {
 	if err := server.Shutdown(shutdown); err != nil {
 		logger.Error("shutdown HTTP server", "error", err)
 	}
+}
+
+// passwordHash is intentionally a mode of the released core binary so a
+// fresh controller installation never has to fetch source or a compiler just
+// to create its first bcrypt administrator password hash.
+func passwordHash(input io.Reader, output io.Writer) error {
+	password, err := io.ReadAll(io.LimitReader(input, 4097))
+	if err != nil {
+		return fmt.Errorf("read password: %w", err)
+	}
+	defer func() {
+		for index := range password {
+			password[index] = 0
+		}
+	}()
+	password = bytes.TrimSuffix(password, []byte("\n"))
+	password = bytes.TrimSuffix(password, []byte("\r"))
+	if len(password) < 16 {
+		return errors.New("password must contain at least 16 bytes")
+	}
+	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	if _, err := fmt.Fprintln(output, string(hash)); err != nil {
+		return fmt.Errorf("write password hash: %w", err)
+	}
+	return nil
 }
 
 func serve(server *http.Server, cfg config.Config) error {

@@ -452,7 +452,15 @@ function ServersPage({
   const connectionReady = Boolean(apiKey) && Boolean(apiURL) && Boolean(tlsFingerprint)
   return (
     <Page>
-      <DetailHeader subtitle="SwarmOps connects to the authenticated machine API instead of a Docker socket or SSH session. Install the agent from Git on the target, then add its HTTPS URL, port, certificate pin, and API key here." title="Remote servers" />
+      <DetailHeader subtitle="Install a native machine agent first, then connect it here with its HTTPS URL, port, certificate pin, and API key. SwarmOps never asks for a Docker socket or SSH account." title="Remote servers" />
+      <Banner title="1. Install SwarmOps Agent on the Docker host" tone="info">
+        <Rows gap="tight">
+          <Body size="sm">The host downloads the release binary from GitHub. It runs only <code>swarmops-agent</code> and the local rollback updater, <code>SwarmOps Warden</code>; it does not clone or compile source.</Body>
+          <CodeBlock label="Linux installer" wrap>{`curl --fail --location --remote-name https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
+sudo bash install-swarmops-agent.sh --listen-addr 0.0.0.0:9180 --tls-cert-file /secure/swarmops-agent.crt --tls-key-file /secure/swarmops-agent.key`}</CodeBlock>
+          <Body size="sm">The installer prints the public TLS fingerprint, port, and protected API-key file path. Keep the API key private, then use the form below to add and connect the machine.</Body>
+        </Rows>
+      </Banner>
       <Banner title="Use the machine API certificate pin" tone="info">
         <Rows gap="tight">
           <p>The API key authorizes SwarmOps but does not encrypt it. Use the machine agent’s HTTPS listener and enter its public certificate fingerprint in <code>SHA256:&lt;64-hex&gt;</code> form.</p>
@@ -461,7 +469,7 @@ function ServersPage({
         </Rows>
       </Banner>
       <Columns>
-        <Panel eyebrow={editing ? 'Reconnect saved target' : 'New target'} title={editing ? `Reconnect ${editing.name}` : 'Add a server'}>
+        <Panel eyebrow={editing ? 'Reconnect saved target' : '2. Add the installed machine'} title={editing ? `Reconnect ${editing.name}` : 'Add and connect a server'}>
           <Rows as="form" onSubmit={submit}>
             <Input disabled={Boolean(editing)} hint="A local label only; it never affects the remote host." label="Name" onChange={(event) => setName(event.target.value)} required value={name} />
             <Input disabled={Boolean(editing)} hint="HTTPS origin only, for example https://manager.example.com. Enter its port separately." label="Machine API URL" onChange={(event) => setAPIURL(event.target.value)} required type="url" value={apiURL} />
@@ -471,7 +479,7 @@ function ServersPage({
             <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit">{editing ? 'Reconnect server' : 'Add and connect server'}</Button>{editing ? <Button onClick={reset} type="button" variant="ghost">Cancel</Button> : null}</Inline>
           </Rows>
         </Panel>
-        <Panel eyebrow="Before connection" title="What SwarmOps checks">
+        <Panel eyebrow="3. Verify the connection" title="What SwarmOps checks">
           <TaskProgress caption="A successful connection verifies the certificate pin, authenticates the key, and then asks the local agent for Docker/Swarm readiness." steps={[{ id: 'tls', label: 'Match the required TLS certificate fingerprint', status: 'pending' }, { id: 'key', label: 'Authenticate with the supplied machine API key', status: 'pending' }, { id: 'docker', label: 'Probe Docker and Swarm readiness through fixed API operations', status: 'pending' }]} title="Connection sequence" />
           <Body size="sm">The machine agent must be installed and running first. A connected machine without Docker remains visible, but cluster pages and mutations require a remote Swarm manager.</Body>
         </Panel>
@@ -480,7 +488,7 @@ function ServersPage({
         <DataTable
           caption="Remote server profiles"
           columns={columns}
-          empty={<EmptyState description="Install the machine agent from Git on a Linux or macOS Docker host, then add its HTTPS URL, port, certificate fingerprint, and API key." icon="server" title="No servers connected" />}
+          empty={<EmptyState description="Install the release agent on a Linux or macOS Docker host, then add its HTTPS URL, port, certificate fingerprint, and API key above." icon="server" title="No servers connected" />}
           rowKey={(server) => server.id}
           rows={servers}
         />

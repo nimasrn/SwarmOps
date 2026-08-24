@@ -13,6 +13,7 @@ RUN npm --prefix web ci \
     && npm --prefix web run build
 
 FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS go-build
+ARG APP_VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -22,10 +23,10 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags='-s -w' -o /out/swarmops-api ./cmd/api
+    go build -trimpath -ldflags="-s -w -X main.version=${APP_VERSION}" -o /out/swarmops-api ./cmd/api
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags='-s -w' -o /out/swarmops-agent ./cmd/agent
+    go build -trimpath -ldflags="-s -w -X main.version=${APP_VERSION}" -o /out/swarmops-agent ./cmd/agent
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags='-s -w' -o /out/swarmopsctl ./cmd/swarmopsctl

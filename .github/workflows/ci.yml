@@ -30,6 +30,13 @@ jobs:
           go test ./...
           go vet ./...
 
+      - name: Verify native release bundles
+        run: |
+          bash scripts/build-release-bundles.sh v0.0.0 "$RUNNER_TEMP/swarmops-release"
+          test -s "$RUNNER_TEMP/swarmops-release/checksums.txt"
+          test -x "$RUNNER_TEMP/swarmops-release/install-swarmops-agent.sh"
+          test -x "$RUNNER_TEMP/swarmops-release/install-swarmops-core.sh"
+
       - name: Verify web console
         working-directory: web
         run: |

@@ -23,10 +23,11 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 )
 
-const (
-	version      = "0.2.0"
-	buildTimeout = 30 * time.Minute
-)
+const buildTimeout = 30 * time.Minute
+
+// version is set by the release build with -ldflags. Keeping a development
+// fallback makes local go run and test workflows deterministic.
+var version = "dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))

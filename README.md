@@ -28,6 +28,9 @@ installers. The wider `nim` platform manifests and operator automation remain
 in [nimasrn/nim](https://github.com/nimasrn/nim). When an operational procedure
 below uses an `apps/swarmops` path, run it from that monorepo checkout.
 
+Published native installations and their rollback behavior are documented in
+[Native release installation and updates](docs/Native-Release-Updates.md).
+
 ## What it operates
 
 | Area | Capability | Boundary |
@@ -120,6 +123,9 @@ commands and remain synchronous.
   and rollout gates for this lifecycle.
 - [Docker-free controller ADR](https://github.com/nimasrn/nim/blob/main/docs/adr/ADR-0003-docker-free-swarmops-controller.md)
   records the security trade-offs and production evidence gates.
+- [Native release installation and updates](docs/Native-Release-Updates.md)
+  records the Core/Agent/Warden host layout, GitHub Release assets, update
+  health checks, rollback behavior, and retention policy.
 - [Business review](docs/SwarmOps-Business-Review.pptx) frames the adoption
   decision and its explicit production-evidence gates.
 - [Operating review](docs/SwarmOps-Operating-Review.pptx) is the operator
@@ -176,24 +182,26 @@ development flag or values in a host environment file or Swarm service.
 
 ## Direct Docker-free controller
 
-For a separate, freshly installed controller host, run the bootstrap from a
-reviewed checkout. It serves the compiled GUI and API from that host only; it
-does not install Docker, join a Swarm, or contact a cluster.
+For a separate, freshly installed controller host, download the published
+native Core installer. It serves the bundled GUI and API from that host only;
+it does not install Docker, join a Swarm, or contact a cluster.
 
 ```bash
-sudo bash scripts/bootstrap-swarmops-control-plane.sh \
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
+sudo bash install-swarmops-core.sh \
   --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32 \
-  --install-dependencies
+  --allow-cidr <operator-device-ip>/32
 ```
 
 The command requires the exact IP already configured on the server and one or
 more trusted operator CIDRs. It prompts for a 16+ character administrator
-password, generates independent session and AES-256-GCM data keys, builds the
-embedded React console, installs a restricted systemd service, and chooses a
-random high TCP port. It prints the HTTPS URL and the SHA-256 certificate
-fingerprint. Verify that fingerprint from a trusted server console before
-accepting the self-signed IP certificate in a browser.
+password, generates independent session and AES-256-GCM data keys, installs a
+restricted systemd service, and chooses a random high TCP port. It prints the
+HTTPS URL and the SHA-256 certificate fingerprint. Verify that fingerprint
+from a trusted server console before accepting the self-signed IP certificate
+in a browser. The controller downloads a release binary; it does not need Git,
+Go, or npm on the server.
 
 The service account has no Docker-group membership or capabilities, and the
 service gets no Docker socket. Browser mutations and remote builds begin
@@ -212,25 +220,30 @@ losing it makes saved controller state unrecoverable.
 
 ## Direct machine agent (Linux and macOS)
 
-The target Docker machine runs a native agent from this repository; it is not
+The target Docker machine runs a native agent from a published release; it is not
 the global read-only `swarmops-agent` Swarm service. On Linux, run the installer
 with `sudo`. On macOS, run it as the logged-in Docker Desktop user, without
 `sudo`:
 
 ```bash
-bash scripts/install-swarmops-agent.sh \
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
+# Linux:
+sudo bash install-swarmops-agent.sh \
   --listen-addr 0.0.0.0:9180 \
   --tls-cert-file /secure/swarmops-agent.crt \
   --tls-key-file /secure/swarmops-agent.key
+# macOS: use the same installer command without sudo.
 ```
 
-The installer clones or fast-forwards `https://github.com/nimasrn/SwarmOps.git`
-(`main` by default), builds `cmd/agent`, and installs a systemd service on
-Linux or a per-user LaunchAgent on macOS. It requires Docker, Git, Go, OpenSSL,
-and a non-symlink PEM certificate plus owner-only private-key file. Pass
-`--install-dependencies` only when its documented Debian/Ubuntu or Homebrew
-package installation is appropriate. It does not install Docker, change the
-firewall, create a Swarm, or print the generated API key.
+The installer downloads a checksum-verified GitHub Release bundle containing
+`swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
+systemd service on Linux or a per-user LaunchAgent on macOS. It requires Docker,
+curl, OpenSSL, and a non-symlink PEM certificate plus owner-only private-key
+file—not Git or Go. Pass `--install-dependencies` only when its documented
+Debian/Ubuntu or Homebrew package installation is appropriate. It does not
+install Docker, change the firewall, create a Swarm, or print the generated API
+key.
 
 It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_TLS_CERT_FILE`,
 `SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
@@ -241,6 +254,13 @@ the agent refuses a symlink or group/world-readable token or TLS key.
 On Linux, keep the TLS files outside `/home`, `/root`, and `/run/user`: the
 installed systemd service protects home directories. The agent must remain
 reachable only from the controller through an explicit firewall rule.
+
+Warden checks GitHub Releases every 12 hours. It downloads and verifies a new
+bundle before stopping the agent, probes only the local health endpoint, rolls
+back a failed candidate, and retains the current release plus two prior
+known-good releases. Start `swarmops-agent-warden.service` manually for an
+immediate Linux check; see the native-release document for the controller and
+macOS equivalents.
 
 The installer prints the machine API port and a public TLS certificate
 fingerprint in `SHA256:<64-hex>` form, and gives the protected key-file path.
