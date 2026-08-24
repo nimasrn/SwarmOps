@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the native, self-updating release assets published by GitHub Actions.
-# The target never compiles source: each agent/core bundle includes its matching
-# Warden updater and a checksums.txt file is generated alongside the assets.
+# Build every supported native, self-updating release asset published by GitHub
+# Actions. The target never compiles source: each Agent/Core bundle includes its
+# matching Warden updater and a checksums.txt file is generated alongside it.
+#
+# Agent: Linux (amd64, arm64) and macOS (amd64, arm64)
+# Core: Linux (amd64, arm64); Core uses systemd and is the controller/data host.
 
 release_version="${1:-}"
 output_dir="${2:-}"
@@ -65,7 +68,8 @@ build_bundle() {
   fi
 }
 
-for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+agent_platforms=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64)
+for platform in "${agent_platforms[@]}"; do
   operating_system="${platform%/*}"
   architecture="${platform#*/}"
   build_bundle agent ./cmd/agent swarmops-agent "$operating_system" "$architecture"
@@ -74,7 +78,8 @@ done
 # The Docker-free controller remains a distinct trust boundary from the agent.
 # Its bundle allows the same Warden rollout policy on the one machine that owns
 # controller state, without giving that process a Docker socket.
-for platform in linux/amd64 linux/arm64; do
+core_platforms=(linux/amd64 linux/arm64)
+for platform in "${core_platforms[@]}"; do
   operating_system="${platform%/*}"
   architecture="${platform#*/}"
   build_bundle core ./cmd/api swarmops-core "$operating_system" "$architecture"

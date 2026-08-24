@@ -97,9 +97,9 @@ API key, or TLS material.
 
 ## Publishing a release
 
-Pushing an existing immutable tag that matches `v*` triggers
-`.github/workflows/release.yml`. The action runs Go, documentation, deployment
-asset, and embedded-console checks, builds the native bundles, and creates (or
-updates) the matching GitHub Release. Its manual dispatch requires an existing
-tag and checks out that exact tag before publishing; it does not build an
-arbitrary branch as a release.
+Creating and pushing a new immutable tag that matches `v*` is the only event
+that triggers `.github/workflows/release.yml`. The action runs Go,
+documentation, deployment-asset, and embedded-console checks; builds every
+supported native bundle; then creates (or updates) the matching GitHub Release.
+It does not run for branch pushes or manually dispatched workflows, and it
+skips moved or deleted tags.

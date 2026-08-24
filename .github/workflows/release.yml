@@ -2,19 +2,17 @@ name: Release native binaries
 
 on:
   push:
-    tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing signed-off Git tag to publish
-        required: true
-        type: string
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
 
 jobs:
   release:
+    # `push.tags` also observes a moved or deleted tag. Only a newly created
+    # immutable version tag is allowed to publish a release.
+    if: github.event.created && !github.event.deleted
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,7 +33,7 @@ jobs:
       - name: Select immutable tag
         id: release
         env:
-          REQUESTED_TAG: ${{ inputs.tag || github.ref_name }}
+          REQUESTED_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           [[ "$REQUESTED_TAG" =~ ^v[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
