@@ -56,6 +56,8 @@ type Server struct {
 	logger       *slog.Logger
 	requestTotal atomic.Uint64
 	servers      *remote.Manager
+	apps         *ops.ApplicationStore
+	namespace    string
 	targets      TargetResolver
 }
 
@@ -66,11 +68,19 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if logger == nil {
 		logger = slog.Default()
 	}
+	// Retention bounds default for callers that build a Config directly
+	// instead of going through config.Load validation.
+	if cfg.AuditMaxEvents < 1 {
+		cfg.AuditMaxEvents = config.DefaultAuditMaxEvents
+	}
+	if cfg.CommandHistoryLimit < 1 {
+		cfg.CommandHistoryLimit = config.DefaultCommandHistoryLimit
+	}
 	authService, err := auth.New(cfg.AdminUsername, cfg.AdminPasswordHash, cfg.SessionKey, cfg.SessionTTL)
 	if err != nil {
 		return nil, err
 	}
-	commandStore, err := queue.Open(cfg.DataDir, cfg.DataEncryptionKey)
+	commandStore, err := queue.Open(cfg.DataDir, cfg.DataEncryptionKey, cfg.CommandHistoryLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -82,11 +92,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)
+	// Prometheus HTTP service discovery for rendered applications. It sits
+	// under /metrics so the same edge rule that hides the metrics endpoint
+	// from the public hostname hides this too; it carries no credential and no
+	// cluster state beyond service DNS names, ports, and paths.
+	mux.HandleFunc("GET /metrics/targets", s.metricsTargets)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("GET /api/v1/auth/me", s.withAuth(false, s.me))
 	mux.HandleFunc("POST /api/v1/auth/logout", s.withAuth(true, s.logout))
 	mux.HandleFunc("GET /api/v1/servers", s.withAuth(false, s.serversList))
 	mux.HandleFunc("POST /api/v1/servers", s.withAuth(true, s.serverAdd))
+	mux.HandleFunc("POST /api/v1/servers/enroll", s.withAuth(true, s.serverEnroll))
 	mux.HandleFunc("POST /api/v1/servers/{id}/connect", s.withAuth(true, s.serverConnect))
 	mux.HandleFunc("POST /api/v1/servers/{id}/disconnect", s.withAuth(true, s.serverDisconnect))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withAuth(true, s.serverRemove))
@@ -109,6 +125,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/observability/node-agent", s.withAuth(true, s.nodeAgentCollection))
 	mux.HandleFunc("POST /api/v1/observability/core", s.withAuth(true, s.coreObservability))
 	mux.HandleFunc("POST /api/v1/observability/logs", s.withAuth(true, s.logsCollection))
+	mux.HandleFunc("GET /api/v1/applications", s.withAuth(false, s.applications))
+	mux.HandleFunc("GET /api/v1/applications/approved", s.withAuth(false, s.approvedApplications))
+	mux.HandleFunc("POST /api/v1/applications/plan", s.withAuth(true, s.applicationPlan))
+	mux.HandleFunc("POST /api/v1/applications", s.withAuth(true, s.applicationDeploy))
+	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withAuth(true, s.applicationRemove))
+	mux.HandleFunc("GET /api/v1/databases", s.withAuth(false, s.databases))
+	mux.HandleFunc("POST /api/v1/databases/{engine}", s.withAuth(true, s.databaseSet))
 	mux.HandleFunc("GET /api/v1/audit-events", s.withAuth(false, s.auditEvents))
 	mux.HandleFunc("GET /api/v1/commands", s.withAuth(false, s.commandsList))
 	mux.HandleFunc("GET /api/v1/commands/{id}", s.withAuth(false, s.commandGet))
@@ -157,7 +180,7 @@ func (s *Server) login(response http.ResponseWriter, request *http.Request) {
 		writeError(response, http.StatusUnauthorized, "Invalid username or password")
 		return
 	}
-	key := loginAttemptKey(request, input.Username)
+	key := loginAttemptKey(request, input.Username, s.config.TrustedProxyCIDRs)
 	if !s.loginLimiter.Allow(key) {
 		writeError(response, http.StatusTooManyRequests, "Too many login attempts; try again later")
 		return
@@ -187,6 +210,29 @@ func (s *Server) logout(response http.ResponseWriter, request *http.Request, cla
 
 func (s *Server) serversList(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
 	writeJSON(response, http.StatusOK, s.servers.List())
+}
+
+// serverEnroll is the one-paste path: the operator supplies only the token the
+// installer printed. The controller performs the one-time secret exchange and
+// never shows the machine API key it receives; the manager may retain only an
+// encrypted copy so the host can reconnect after a controller restart.
+func (s *Server) serverEnroll(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input struct {
+		Name  string `json:"name"`
+		Token string `json:"token"`
+	}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	defer func() { input.Token = "" }()
+	server, err := s.servers.Enroll(request.Context(), input.Token, input.Name)
+	if err != nil {
+		s.record(claims.Username, requestID(request), "server.enroll", "server/connection", err, map[string]string{"connection_type": remote.ConnectionAgentAPI})
+		s.connectionError(response, request, err)
+		return
+	}
+	s.record(claims.Username, requestID(request), "server.enroll", "server/"+server.ID, nil, map[string]string{"connection_type": server.ConnectionType, "authentication": server.Authentication})
+	writeJSON(response, http.StatusCreated, server)
 }
 
 func (s *Server) serverAdd(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
@@ -512,6 +558,108 @@ func (s *Server) traefikReconcile(response http.ResponseWriter, request *http.Re
 	s.submitTraefik(response, request, claims, input.Confirmation)
 }
 
+// metricsTargets serves the Prometheus HTTP service-discovery document for
+// every rendered application that publishes metrics.
+func (s *Server) metricsTargets(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusOK, ops.MetricsTargetsFor(s.apps, s.namespace))
+}
+
+// SetApplicationDiscovery supplies the stored applications and reviewed
+// namespace used by the Prometheus discovery endpoint. It is separate from the
+// per-server control planes because discovery must answer even when no machine
+// API is connected.
+func (s *Server) SetApplicationDiscovery(apps *ops.ApplicationStore, namespace string) {
+	s.apps = apps
+	s.namespace = namespace
+}
+
+func (s *Server) applications(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	statuses, err := target.Control.Applications(request.Context())
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, statuses)
+}
+
+// approvedApplications tells the console which application names, domains,
+// resolvers, and resource ceilings the reviewed manifest allows. The console
+// offers these rather than free-form input.
+func (s *Server) approvedApplications(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	writeJSON(response, http.StatusOK, target.Control.ApprovedApplications())
+}
+
+// applicationPlan renders and fully validates without deploying, so an
+// operator can read the exact Compose before queueing it.
+func (s *Server) applicationPlan(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	var spec ops.ApplicationSpec
+	if !decodeJSON(response, request, &spec) {
+		return
+	}
+	rendered, err := target.Control.PlanApplication(request.Context(), spec)
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]string{"compose": string(rendered)})
+}
+
+func (s *Server) applicationDeploy(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var spec ops.ApplicationSpec
+	if !decodeJSON(response, request, &spec) {
+		return
+	}
+	s.submitApplicationDeploy(response, request, claims, spec)
+}
+
+func (s *Server) applicationRemove(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input struct {
+		Confirmation string `json:"confirmation"`
+	}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitApplicationRemove(response, request, claims, request.PathValue("name"), input.Confirmation)
+}
+
+// databases lists the reviewed managed engines and whether each is running.
+// It returns no password, connection secret, or volume content.
+func (s *Server) databases(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	statuses, err := target.Control.Databases(request.Context())
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, statuses)
+}
+
+func (s *Server) databaseSet(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input struct {
+		Confirmation string `json:"confirmation"`
+		Enabled      bool   `json:"enabled"`
+	}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitDatabase(response, request, claims, databaseCommand{Confirmation: input.Confirmation, Enabled: input.Enabled, Engine: request.PathValue("engine")})
+}
+
 func (s *Server) observabilityStatus(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	target, ok := s.targetFor(response, request)
 	if !ok {
@@ -703,7 +851,13 @@ func (s *Server) record(actor, id, action, target string, err error, detail map[
 	if err != nil {
 		outcome = "failure"
 	}
-	_, _ = s.audit.Record(domain.AuditEvent{Action: action, Actor: actor, Detail: detail, Outcome: outcome, RequestID: id, Target: target})
+	event := domain.AuditEvent{Action: action, Actor: actor, Detail: detail, Outcome: outcome, RequestID: id, Target: target}
+	if _, recordErr := s.audit.Record(event); recordErr != nil {
+		// The operation itself has already happened by the time this runs, so
+		// a failed audit write must at minimum surface loudly in the logs
+		// instead of disappearing into an ignored return value.
+		s.logger.Error("SwarmOps audit record was not persisted", "request_id", id, "action", action, "target", target, "outcome", outcome, "error", recordErr)
+	}
 }
 
 func decodeJSON(response http.ResponseWriter, request *http.Request, target any) bool {
@@ -757,9 +911,51 @@ func newRequestID() string {
 	return hex.EncodeToString(bytes)
 }
 
-func loginAttemptKey(request *http.Request, username string) string {
+func loginAttemptKey(request *http.Request, username string, trustedProxies []netip.Prefix) string {
 	// Forwarded client-address headers are client controlled unless a dedicated
-	// trusted-proxy boundary validates them. Direct TLS uses the socket peer,
-	// which cannot be forged by the browser.
-	return strings.ToLower(strings.TrimSpace(username)) + "|" + request.RemoteAddr
+	// trusted-proxy boundary validates them. Without configured trusted proxy
+	// networks the socket peer is used directly, which cannot be forged by the
+	// browser behind direct TLS.
+	return strings.ToLower(strings.TrimSpace(username)) + "|" + clientAddress(request, trustedProxies)
+}
+
+// clientAddress returns the limiter identity for one request: the first
+// untrusted address in X-Forwarded-For when the socket peer is itself a
+// configured trusted proxy, otherwise the socket peer. A malformed or fully
+// trusted forwarding chain falls back to the socket peer rather than trusting
+// an attacker-supplied value.
+func clientAddress(request *http.Request, trustedProxies []netip.Prefix) string {
+	peer, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		return request.RemoteAddr
+	}
+	address, err := netip.ParseAddr(peer)
+	if err != nil {
+		return peer
+	}
+	if len(trustedProxies) == 0 || !containsPrefix(trustedProxies, address) {
+		return peer
+	}
+	forwarded := strings.Split(request.Header.Get("X-Forwarded-For"), ",")
+	for index := len(forwarded) - 1; index >= 0; index-- {
+		value := strings.TrimSpace(forwarded[index])
+		candidate, err := netip.ParseAddr(value)
+		if err != nil || !candidate.IsValid() {
+			return peer
+		}
+		if containsPrefix(trustedProxies, candidate) {
+			continue
+		}
+		return candidate.String()
+	}
+	return peer
+}
+
+func containsPrefix(prefixes []netip.Prefix, address netip.Addr) bool {
+	for _, prefix := range prefixes {
+		if prefix.Contains(address) {
+			return true
+		}
+	}
+	return false
 }

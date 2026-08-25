@@ -27,8 +27,9 @@ const (
 )
 
 type Server struct {
-	config Config
-	token  []byte
+	config     Config
+	enrollment *enrollment
+	token      []byte
 }
 
 func NewServer(config Config, token []byte) (*Server, error) {
@@ -41,7 +42,11 @@ func NewServer(config Config, token []byte) (*Server, error) {
 	if config.RemoteControlEnabled && (config.BuildMaxBytes < 0 || config.BuildMaxCPUs < 0 || config.BuildMaxMemoryMiB < 0) {
 		return nil, fmt.Errorf("remote-control build limits cannot be negative")
 	}
-	return &Server{config: config, token: append([]byte(nil), token...)}, nil
+	pending, err := newEnrollment(config.EnrollmentSecret, config.EnrollmentSecretFile)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{config: config, enrollment: pending, token: append([]byte(nil), token...)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -51,6 +56,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/status", s.status)
 	mux.HandleFunc("GET /v1/snapshot", s.snapshot)
 	mux.HandleFunc("GET /v1/fleet-runs/{id}", s.fleetRun)
+	if s.enrollment != nil {
+		// One-time, single-use exchange of the installer's enrollment secret
+		// for the machine API key. It closes permanently after first use.
+		mux.HandleFunc("POST /v1/enroll", s.enroll)
+	}
 	if s.config.RemoteControlEnabled {
 		// These are fixed, authenticated operations backed by the local Docker
 		// client. They are not a Docker-socket or arbitrary-command proxy.
@@ -294,7 +304,8 @@ func (s *Server) command(response http.ResponseWriter, request *http.Request) {
 		http.Error(response, "machine command failed", http.StatusBadGateway)
 		return
 	}
-	if input.Operation == agentcontrol.OperationServiceLogs {
+	switch input.Operation {
+	case agentcontrol.OperationServiceLogs, agentcontrol.OperationSecretList:
 		writeJSON(response, map[string]string{"output": output})
 		return
 	}
@@ -446,8 +457,12 @@ func allowedImage(image string, prefixes []string) bool {
 }
 
 func (s *Server) authorized(request *http.Request) bool {
-	value := strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer ")
+	value := bearer(request)
 	return value != "" && subtle.ConstantTimeCompare([]byte(value), s.token) == 1
+}
+
+func bearer(request *http.Request) string {
+	return strings.TrimSpace(strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer "))
 }
 
 func escape(value string) string {

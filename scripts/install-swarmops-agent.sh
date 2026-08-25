@@ -15,6 +15,9 @@ managed_tls_material=false
 api_key_file=''
 docker_socket=''
 install_dependencies=false
+advertise_host=''
+install_docker=false
+init_swarm=false
 os_name="$(uname -s)"
 
 usage() {
@@ -37,6 +40,9 @@ usage() {
     '--docker-socket <path>             Docker Unix socket; defaults by platform and may be unavailable at install time.' \
     '--release <tag|latest>             GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>   Release repository (default: nimasrn/SwarmOps).' \
+    '--advertise-host <hostname|IP>     Address the controller should dial; auto-detected by default.' \
+    '--install-docker                   Install Docker Engine on Debian/Ubuntu when absent.' \
+    '--init-swarm                       Form a single-node Swarm when the host is not in one.' \
     '--install-dependencies             Install curl, CA certificates, and OpenSSL where supported.' \
     '                                   The listener must include loopback or all interfaces so Warden can health-check it locally.' \
     '-h, --help                         Show this help.'
@@ -156,6 +162,7 @@ set_paths() {
   agent_path='/opt/homebrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin'
   tls_dir="$config_dir/tls"
   api_key_destination="$config_dir/api-key"
+  enrollment_destination="$config_dir/enrollment-secret"
   environment_file="$config_dir/agent.env"
   warden_environment_file="$config_dir/warden.env"
   launcher_file="$runtime_dir/run-agent.sh"
@@ -376,6 +383,7 @@ write_environment_file() {
   {
     printf '%s\n' \
       "SWARMOPS_AGENT_TOKEN_FILE=$api_key_destination" \
+      "SWARMOPS_AGENT_ENROLLMENT_FILE=$enrollment_destination" \
       "SWARMOPS_AGENT_TLS_CERT_FILE=$tls_cert_file" \
       "SWARMOPS_AGENT_TLS_KEY_FILE=$tls_key_file" \
       "SWARMOPS_AGENT_LISTEN_ADDR=$listen_addr" \
@@ -539,6 +547,91 @@ check_local_health() {
   fail 'machine agent did not pass its localhost health check'
 }
 
+# detect_advertise_host picks the address an off-host controller can dial. It
+# prefers an explicit --advertise-host, then the primary routable interface,
+# and never contacts an external service to discover it.
+detect_advertise_host() {
+  local candidate=''
+  case "$os_name" in
+    Linux)
+      candidate="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") {print $(i+1); exit}}')"
+      [[ -n "$candidate" ]] || candidate="$(hostname -I 2>/dev/null | awk '{print $1}')"
+      ;;
+    Darwin)
+      candidate="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2; exit}')"
+      [[ -n "$candidate" ]] && candidate="$(ipconfig getifaddr "$candidate" 2>/dev/null || true)"
+      ;;
+  esac
+  [[ -n "$candidate" ]] || candidate="$(hostname 2>/dev/null || true)"
+  [[ -n "$candidate" ]] || fail 'cannot detect this host address; pass --advertise-host'
+  printf '%s\n' "$candidate"
+}
+
+# install_docker_engine installs Docker Engine from Docker's own signed apt
+# repository. Convenience scripts piped from the network are deliberately not
+# used: the repository key is verified and pinned here.
+install_docker_engine() {
+  if command -v docker >/dev/null 2>&1; then
+    return
+  fi
+  [[ "$os_name" == Linux ]] || fail '--install-docker supports Debian and Ubuntu Linux only; install Docker Desktop manually on macOS'
+  [[ -f /etc/os-release ]] || fail '--install-docker requires /etc/os-release'
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  case "$ID" in
+    debian|ubuntu) ;;
+    *) fail '--install-docker supports Debian and Ubuntu Linux only' ;;
+  esac
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install --yes --no-install-recommends ca-certificates curl gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc || fail 'download the Docker repository key'
+  chmod 0644 /etc/apt/keyrings/docker.asc
+  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
+    "$(dpkg --print-architecture)" "$ID" "$VERSION_CODENAME" >/etc/apt/sources.list.d/docker.list
+  apt-get update
+  apt-get install --yes --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+  command -v docker >/dev/null 2>&1 || fail 'Docker Engine installation did not produce a docker command'
+}
+
+# initialize_swarm forms a single-node Swarm only when this host is not already
+# in one. Joining an existing cluster stays an explicit operator action.
+initialize_swarm() {
+  local state
+  state="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || true)"
+  if [[ "$state" == 'active' ]]; then
+    return
+  fi
+  [[ "$state" == 'inactive' ]] || fail "this host is in Swarm state '$state'; resolve it before --init-swarm"
+  docker swarm init --advertise-addr "$advertise_host" >/dev/null || fail 'docker swarm init failed'
+}
+
+# install_enrollment_secret writes the one-time secret the agent trades for the
+# machine API key. The agent deletes this file the first time it is used.
+install_enrollment_secret() {
+  local temporary_secret
+  temporary_secret="$(mktemp "$config_dir/.enrollment.XXXXXX")"
+  if ! openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' >"$temporary_secret"; then
+    rm -f "$temporary_secret"
+    fail 'generate the enrollment secret'
+  fi
+  enrollment_secret="$(cat "$temporary_secret")"
+  [[ "$enrollment_secret" =~ ^[A-Za-z0-9_-]{22,128}$ ]] || { rm -f "$temporary_secret"; fail 'generate the enrollment secret'; }
+  install -m 0600 "$temporary_secret" "$enrollment_destination"
+  rm -f "$temporary_secret"
+}
+
+# enrollment_token renders the single string an operator pastes into SwarmOps.
+# It carries the origin, the pinned fingerprint, and the one-time secret, and
+# never the long-lived machine API key.
+enrollment_token() {
+  local payload
+  payload="$(printf '{"f":"%s","h":"%s","p":%s,"s":"%s"}' "$fingerprint" "$advertise_host" "$port" "$enrollment_secret")"
+  printf 'swarmops1.%s\n' "$(printf '%s' "$payload" | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
+}
+
 certificate_fingerprint() {
   local digest
   digest="$(openssl x509 -in "$tls_cert_file" -outform DER | openssl dgst -sha256 -hex | awk '{print $NF}')" || fail 'compute TLS certificate fingerprint'
@@ -555,6 +648,9 @@ while [[ "$#" -gt 0 ]]; do
     --docker-socket) [[ "$#" -ge 2 ]] || fail '--docker-socket requires a value'; docker_socket="$2"; shift 2 ;;
     --release) [[ "$#" -ge 2 ]] || fail '--release requires a value'; release_version="$2"; shift 2 ;;
     --github-repository) [[ "$#" -ge 2 ]] || fail '--github-repository requires a value'; github_repository="$2"; shift 2 ;;
+    --advertise-host) [[ "$#" -ge 2 ]] || fail '--advertise-host requires a value'; advertise_host="$2"; shift 2 ;;
+    --install-docker) install_docker=true; shift ;;
+    --init-swarm) init_swarm=true; shift ;;
     --install-dependencies) install_dependencies=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown option: $1" ;;
@@ -581,6 +677,13 @@ fi
 require_safe_value '--docker-socket' "$docker_socket"
 [[ "$docker_socket" == /* && "$docker_socket" != / ]] || fail '--docker-socket must be an absolute, non-root path'
 
+port="${listen_addr##*:}"
+if [[ -z "$advertise_host" ]]; then
+  advertise_host="$(detect_advertise_host)"
+fi
+require_safe_value '--advertise-host' "$advertise_host"
+[[ "$advertise_host" != *[/:]* || "$advertise_host" == *:*:* ]] || fail '--advertise-host must be a hostname or IP address without a port'
+
 if [[ "$install_dependencies" == true ]]; then
   install_host_dependencies
 fi
@@ -594,6 +697,14 @@ else
   require_command launchctl
 fi
 
+if [[ "$install_docker" == true ]]; then
+  install_docker_engine
+fi
+if [[ "$init_swarm" == true ]]; then
+  require_command docker
+  initialize_swarm
+fi
+
 for install_path in "$config_dir" "$tls_dir" "$runtime_dir" "$release_dir" "$service_file" "$warden_service_file"; do
   require_safe_value 'installation path' "$install_path"
 done
@@ -602,6 +713,7 @@ if [[ -L "$release_dir/current" || -e "$release_dir/current" ]]; then
 fi
 install -d -m 0755 "$runtime_dir" "$release_dir"
 install_api_key
+install_enrollment_secret
 install_managed_tls_material
 release_platform
 resolve_release_version
@@ -616,7 +728,6 @@ esac
 check_local_health
 
 fingerprint="$(certificate_fingerprint)"
-port="${listen_addr##*:}"
 printf '%s\n' \
   'Installed the SwarmOps machine agent and SwarmOps Warden.' \
   "Release: $release_version" \
@@ -624,8 +735,14 @@ printf '%s\n' \
   "TLS certificate file: $tls_cert_file" \
   "Protected TLS private key file: $tls_key_file" \
   "TLS certificate fingerprint: $fingerprint" \
-  "Protected API key file: $api_key_destination" \
   'Warden checks GitHub Releases every 12 hours and rolls back unhealthy updates.' \
-  'In SwarmOps, add this machine with its HTTPS URL (without a port), the port above,' \
-  'the certificate fingerprint above, and the API key read through your approved secure channel.' \
-  'The installer never prints the API key.'
+  '' \
+  'Paste this enrollment token into the SwarmOps console (Servers -> Add server):' \
+  '' \
+  "  $(enrollment_token)" \
+  '' \
+  'The token is single-use. It carries this host address, the pinned certificate' \
+  'fingerprint, and a one-time secret that the console trades for the machine API' \
+  'key over the pinned connection. The API key itself is never printed and never' \
+  'leaves this host by any other path. Allow only the SwarmOps controller to reach' \
+  "TCP port $port."

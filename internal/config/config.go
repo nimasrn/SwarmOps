@@ -24,6 +24,12 @@ import (
 const (
 	productionDefaultAdminUsername = "operator"
 	localDevAdminUsername          = "admin"
+	// DefaultAuditMaxEvents bounds the encrypted audit ledger when
+	// SWARMOPS_AUDIT_MAX_EVENTS is unset.
+	DefaultAuditMaxEvents = 10000
+	// DefaultCommandHistoryLimit bounds the retained succeeded commands when
+	// SWARMOPS_COMMAND_HISTORY_LIMIT is unset.
+	DefaultCommandHistoryLimit = 2000
 	// This deliberately public bcrypt value is selected only after the caller
 	// explicitly opts into insecure local development authentication.
 	localDevAdminPasswordHash = "$2y$04$bZU0e5IpRYxctcXBNjDMm.KCRQJbRGzSOYZr619Wh0OeK8kdmiucm"
@@ -36,10 +42,12 @@ type Config struct {
 	AgentToken                      []byte
 	AgentStackFile                  string
 	AllowedClientCIDRs              []netip.Prefix
+	AuditMaxEvents                  int
 	BuildEnabled                    bool
 	BuildMaxBytes                   int64
 	BuildMaxCPUs                    float64
 	BuildMaxMemoryMiB               int64
+	CommandHistoryLimit             int
 	DataDir                         string
 	DataEncryptionKey               []byte
 	DevMachineAPI                   *DevMachineAPI
@@ -47,8 +55,18 @@ type Config struct {
 	InsecureDevAuth                 bool
 	ListenAddr                      string
 	LogsStackFile                   string
+	MongoImage                      string
+	MongoPasswordSecret             string
+	MongoStackFile                  string
 	MutationEnabled                 bool
 	ObservabilityStackFile          string
+	PostgresImage                   string
+	PostgresPasswordSecret          string
+	PostgresStackFile               string
+	RedisImage                      string
+	RedisPasswordSecret             string
+	RedisStackFile                  string
+	RetainMachineKeys               bool
 	PlatformManifestFile            string
 	RegistryAuth                    []byte
 	SecureCookies                   bool
@@ -85,6 +103,7 @@ type Config struct {
 	TrustedPrometheusImage          string
 	TrustedPrometheusRetention      string
 	TrustedPrometheusRules          string
+	TrustedProxyCIDRs               []netip.Prefix
 	TrustedRegistry                 string
 	TrustedRegistryNamespace        string
 	TrustedTag                      string
@@ -105,20 +124,35 @@ type DevMachineAPI struct {
 func Load() (Config, error) {
 	assetDir := env("SWARMOPS_ASSET_DIR", "/opt/swarmops")
 	c := Config{
-		AdminUsername:                   env("SWARMOPS_ADMIN_USERNAME", productionDefaultAdminUsername),
-		AgentService:                    env("SWARMOPS_AGENT_SERVICE", "swarmops-agent_agent"),
-		AgentStackFile:                  env("SWARMOPS_AGENT_STACK_FILE", filepath.Join(assetDir, "agent.yml")),
-		BuildEnabled:                    envBool("SWARMOPS_BUILD_ENABLED", false),
-		BuildMaxBytes:                   envInt64("SWARMOPS_BUILD_MAX_BYTES", 512<<20),
-		BuildMaxCPUs:                    envFloat("SWARMOPS_BUILD_MAX_CPUS", 2),
-		BuildMaxMemoryMiB:               envInt64("SWARMOPS_BUILD_MAX_MEMORY_MIB", 2048),
-		DataDir:                         env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
-		ImagePrefixes:                   csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
-		InsecureDevAuth:                 envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
-		ListenAddr:                      env("SWARMOPS_LISTEN_ADDR", ":8084"),
-		LogsStackFile:                   env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
-		MutationEnabled:                 envBool("SWARMOPS_MUTATIONS_ENABLED", false),
-		ObservabilityStackFile:          env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
+		AdminUsername:          env("SWARMOPS_ADMIN_USERNAME", productionDefaultAdminUsername),
+		AgentService:           env("SWARMOPS_AGENT_SERVICE", "swarmops-agent_agent"),
+		AgentStackFile:         env("SWARMOPS_AGENT_STACK_FILE", filepath.Join(assetDir, "agent.yml")),
+		AuditMaxEvents:         int(envInt64("SWARMOPS_AUDIT_MAX_EVENTS", DefaultAuditMaxEvents)),
+		BuildEnabled:           envBool("SWARMOPS_BUILD_ENABLED", false),
+		BuildMaxBytes:          envInt64("SWARMOPS_BUILD_MAX_BYTES", 512<<20),
+		BuildMaxCPUs:           envFloat("SWARMOPS_BUILD_MAX_CPUS", 2),
+		BuildMaxMemoryMiB:      envInt64("SWARMOPS_BUILD_MAX_MEMORY_MIB", 2048),
+		CommandHistoryLimit:    int(envInt64("SWARMOPS_COMMAND_HISTORY_LIMIT", DefaultCommandHistoryLimit)),
+		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
+		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
+		InsecureDevAuth:        envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
+		ListenAddr:             env("SWARMOPS_LISTEN_ADDR", ":8084"),
+		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
+		MongoImage:             env("MONGO_IMAGE", "mongo:8.2.3"),
+		MongoPasswordSecret:    env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
+		MongoStackFile:         env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
+		MutationEnabled:        envBool("SWARMOPS_MUTATIONS_ENABLED", false),
+		ObservabilityStackFile: env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
+		PostgresImage:          env("POSTGRES_IMAGE", "postgres:18.2-alpine"),
+		PostgresPasswordSecret: env("SWARMOPS_POSTGRES_PASSWORD_SECRET", "swarmops_postgres_password_v1"),
+		PostgresStackFile:      env("SWARMOPS_POSTGRES_STACK_FILE", filepath.Join(assetDir, "postgres.yml")),
+		RedisImage:             env("REDIS_IMAGE", "redis:8.4-alpine"),
+		RedisPasswordSecret:    env("SWARMOPS_REDIS_PASSWORD_SECRET", "swarmops_redis_password_v1"),
+		RedisStackFile:         env("SWARMOPS_REDIS_STACK_FILE", filepath.Join(assetDir, "redis.yml")),
+		// Enrollment never shows the operator a machine API key, so the sealed
+		// copy is what lets a restarted controller reconnect. Set this to false
+		// to restore the memory-only posture and reconnect each host by hand.
+		RetainMachineKeys:               envBool("SWARMOPS_RETAIN_MACHINE_KEYS", true),
 		PlatformManifestFile:            env("SWARMOPS_PLATFORM_MANIFEST_FILE", ""),
 		SecureCookies:                   envBool("SWARMOPS_SECURE_COOKIES", true),
 		SessionTTL:                      envDuration("SWARMOPS_SESSION_TTL", 12*time.Hour),
@@ -164,6 +198,12 @@ func Load() (Config, error) {
 	if c.BuildMaxBytes <= 0 || c.BuildMaxMemoryMiB <= 0 || c.BuildMaxCPUs <= 0 {
 		return Config{}, fmt.Errorf("build limits must be positive")
 	}
+	if c.AuditMaxEvents < 100 || c.AuditMaxEvents > 1_000_000 {
+		return Config{}, fmt.Errorf("SWARMOPS_AUDIT_MAX_EVENTS must be between 100 and 1000000")
+	}
+	if c.CommandHistoryLimit < 100 || c.CommandHistoryLimit > 100_000 {
+		return Config{}, fmt.Errorf("SWARMOPS_COMMAND_HISTORY_LIMIT must be between 100 and 100000")
+	}
 	if c.SessionTTL < time.Minute || c.SessionTTL > 7*24*time.Hour {
 		return Config{}, fmt.Errorf("SWARMOPS_SESSION_TTL must be between one minute and seven days")
 	}
@@ -172,6 +212,10 @@ func Load() (Config, error) {
 	}
 	if err := os.MkdirAll(c.DataDir, 0o700); err != nil {
 		return Config{}, fmt.Errorf("create data directory: %w", err)
+	}
+	var cidrErr error
+	if c.TrustedProxyCIDRs, cidrErr = parseClientCIDRs(env("SWARMOPS_TRUSTED_PROXY_CIDRS", "")); cidrErr != nil {
+		return Config{}, fmt.Errorf("SWARMOPS_TRUSTED_PROXY_CIDRS: %w", cidrErr)
 	}
 
 	if c.InsecureDevAuth {
@@ -246,6 +290,9 @@ func Load() (Config, error) {
 				return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for direct TLS on a non-loopback listener")
 			}
 		}
+	}
+	if c.TrustedProxyCIDRs, err = parseClientCIDRs(env("SWARMOPS_TRUSTED_PROXY_CIDRS", "")); err != nil {
+		return Config{}, fmt.Errorf("SWARMOPS_TRUSTED_PROXY_CIDRS: %w", err)
 	}
 	return c, nil
 }

@@ -57,6 +57,11 @@ func isPermanent(err error) bool {
 	return errors.As(err, &value)
 }
 
+// IsPermanent reports whether an execution failure was explicitly marked as
+// never-retryable. Command classifiers and callers use it so an already
+// classified outcome cannot be reinterpreted by later heuristics.
+func IsPermanent(err error) bool { return isPermanent(err) }
+
 // SubmitInput is deliberately limited to safe command metadata. Any raw
 // Compose document or build archive remains private to the queue store and is
 // never copied into an audit record.
@@ -96,19 +101,26 @@ type storeFile struct {
 // Store keeps the command ledger and any transient input artifacts under the
 // controller's existing protected data directory. Every state transition is
 // fsync'd and atomically renamed before an API success response is returned.
+// Succeeded commands are pruned oldest-first beyond historyLimit so a
+// long-lived controller keeps bounded memory, disk, and sealed rewrite cost;
+// active commands are never pruned.
 type Store struct {
-	dir       string
-	inputsDir string
-	now       func() time.Time
-	path      string
-	records   []storedRecord
-	sealer    *securestore.Sealer
-	mu        sync.Mutex
+	dir          string
+	inputsDir    string
+	historyLimit int
+	now          func() time.Time
+	path         string
+	records      []storedRecord
+	sealer       *securestore.Sealer
+	mu           sync.Mutex
 }
 
-func Open(dataDir string, dataEncryptionKey []byte) (*Store, error) {
+func Open(dataDir string, dataEncryptionKey []byte, historyLimit int) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("command data directory is required")
+	}
+	if historyLimit < 1 {
+		return nil, fmt.Errorf("command history limit must be positive")
 	}
 	sealer, err := securestore.New(dataEncryptionKey)
 	if err != nil {
@@ -122,7 +134,7 @@ func Open(dataDir string, dataEncryptionKey []byte) (*Store, error) {
 	if err := os.MkdirAll(inputsDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create command input directory: %w", err)
 	}
-	store := &Store{dir: dir, inputsDir: inputsDir, now: time.Now, path: filepath.Join(dir, "commands.sealed"), sealer: sealer}
+	store := &Store{dir: dir, inputsDir: inputsDir, historyLimit: historyLimit, now: time.Now, path: filepath.Join(dir, "commands.sealed"), sealer: sealer}
 	data, err := store.sealer.ReadFile(store.path, stateKey)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("read command store: %w", err)
@@ -170,6 +182,11 @@ func (s *Store) Submit(input SubmitInput) (domain.Command, bool, error) {
 		return domain.Command{}, false, err
 	}
 	s.records = append(s.records, record)
+	// Pruning only ever removes terminal records. If this save fails the
+	// in-memory ledger keeps the smaller history while the previous sealed
+	// file still holds everything; the next successful transition persists
+	// the same bounded result.
+	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		s.records = s.records[:len(s.records)-1]
 		return domain.Command{}, false, err
@@ -315,6 +332,12 @@ func (s *Store) RetryNow(id string) (domain.Command, error) {
 		return domain.Command{}, fmt.Errorf("command is not ready for an operator retry")
 	}
 	now := s.now().UTC()
+	previousAttempt := record.Command.Attempt
+	previousError := record.Command.LastError
+	previousLastAttemptAt := record.Command.LastAttemptAt
+	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousState := record.Command.State
+	previousUpdatedAt := record.Command.UpdatedAt
 	record.Command.Attempt = 0
 	record.Command.LastError = ""
 	record.Command.LastAttemptAt = nil
@@ -322,6 +345,12 @@ func (s *Store) RetryNow(id string) (domain.Command, error) {
 	record.Command.State = domain.CommandQueued
 	record.Command.UpdatedAt = now
 	if err := s.saveLocked(); err != nil {
+		record.Command.Attempt = previousAttempt
+		record.Command.LastError = previousError
+		record.Command.LastAttemptAt = previousLastAttemptAt
+		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.State = previousState
+		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, err
 	}
 	return cloneCommand(record.Command), nil
@@ -354,12 +383,24 @@ func (s *Store) ClaimDue() (Record, bool, error) {
 		return Record{}, false, nil
 	}
 	record := &s.records[index]
+	previousAttempt := record.Command.Attempt
+	previousLastAttemptAt := record.Command.LastAttemptAt
+	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousState := record.Command.State
+	previousUpdatedAt := record.Command.UpdatedAt
 	record.Command.Attempt++
 	record.Command.LastAttemptAt = &now
 	record.Command.NextAttemptAt = nil
 	record.Command.State = domain.CommandRunning
 	record.Command.UpdatedAt = now
 	if err := s.saveLocked(); err != nil {
+		// Without this rollback a failed durable write would leave a phantom
+		// running command in memory that permanently blocks every later claim.
+		record.Command.Attempt = previousAttempt
+		record.Command.LastAttemptAt = previousLastAttemptAt
+		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.State = previousState
+		record.Command.UpdatedAt = previousUpdatedAt
 		return Record{}, false, err
 	}
 	return cloneRecord(*record), true, nil
@@ -378,6 +419,12 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 		return domain.Command{}, fmt.Errorf("command is not running")
 	}
 	now := s.now().UTC()
+	previousError := record.Command.LastError
+	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousState := record.Command.State
+	previousUpdatedAt := record.Command.UpdatedAt
+	previousPayload := record.Payload
+	previousArtifact := record.Artifact
 	record.Command.LastError = ""
 	record.Command.NextAttemptAt = nil
 	record.Command.State = domain.CommandSucceeded
@@ -387,7 +434,14 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	record.Payload = nil
 	artifact := record.Artifact
 	record.Artifact = false
+	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
+		record.Command.LastError = previousError
+		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.State = previousState
+		record.Command.UpdatedAt = previousUpdatedAt
+		record.Payload = previousPayload
+		record.Artifact = previousArtifact
 		s.mu.Unlock()
 		return domain.Command{}, err
 	}
@@ -414,6 +468,10 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		return domain.Command{}, "", fmt.Errorf("command is not running")
 	}
 	now := s.now().UTC()
+	previousError := record.Command.LastError
+	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousState := record.Command.State
+	previousUpdatedAt := record.Command.UpdatedAt
 	event := "needs_attention"
 	if record.Command.AutoRetry && !isPermanent(executionErr) && record.Command.Attempt < record.Command.MaxAttempts {
 		next := now.Add(backoff(record.Command.Attempt))
@@ -427,7 +485,12 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	record.Command.UpdatedAt = now
+	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
+		record.Command.LastError = previousError
+		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.State = previousState
+		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, "", err
 	}
 	return cloneCommand(record.Command), event, nil
@@ -654,6 +717,32 @@ func (s *Store) saveLocked() error {
 		return fmt.Errorf("save encrypted command store: %w", err)
 	}
 	return nil
+}
+
+// pruneTerminalLocked drops the oldest succeeded commands once the terminal
+// history exceeds the configured bound. Queued, running, retry-scheduled, and
+// needs-attention commands are never removed, so pruning cannot lose pending
+// work or an operator's explicit retry decision.
+func (s *Store) pruneTerminalLocked() {
+	total := 0
+	for i := range s.records {
+		if s.records[i].Command.State == domain.CommandSucceeded {
+			total++
+		}
+	}
+	excess := total - s.historyLimit
+	if excess <= 0 {
+		return
+	}
+	retained := make([]storedRecord, 0, len(s.records)-excess)
+	for _, record := range s.records {
+		if excess > 0 && record.Command.State == domain.CommandSucceeded {
+			excess--
+			continue
+		}
+		retained = append(retained, record)
+	}
+	s.records = retained
 }
 
 func validateInput(input SubmitInput, artifact bool) error {

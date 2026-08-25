@@ -187,6 +187,60 @@ export interface TraefikStatus {
   service: Service | null
 }
 
+export interface ApplicationSpec {
+  backend?: string
+  cpus: number
+  databaseDelivery?: 'secret' | 'env'
+  databases?: string[]
+  domain?: string
+  Env?: Record<string, string>
+  healthCommand?: string[]
+  healthPath?: string
+  image: string
+  memoryMiB: number
+  metrics: boolean
+  metricsPath?: string
+  metricsPort?: number
+  name: string
+  port: number
+  replicas: number
+  resolver?: string
+}
+
+export interface ApplicationStatus {
+  deployed: boolean
+  runningTasks: number
+  service: string
+  spec: ApplicationSpec
+  stack: string
+  url?: string
+}
+
+export interface ApprovedWorkload {
+  cpuCores: number
+  domain?: string
+  memoryMiB: number
+  name: string
+  replicas: number
+  resolver?: string
+}
+
+export interface DatabaseStatus {
+  database?: string
+  displayName: string
+  engine: string
+  host: string
+  image: string
+  installed: boolean
+  port: number
+  runningTasks: number
+  service: string
+  stack: string
+  uriSecret: string
+  username?: string
+  volume: string
+}
+
 export interface ObservabilityStatus {
   agentHealthy: boolean
   agentInstalled: boolean

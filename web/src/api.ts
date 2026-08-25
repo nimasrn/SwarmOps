@@ -1,7 +1,11 @@
 import type {
+  ApplicationSpec,
+  ApplicationStatus,
+  ApprovedWorkload,
   AuditEvent,
   Command,
   ComposePlan,
+  DatabaseStatus,
   FleetRun,
   Node,
   ObservabilityStatus,
@@ -53,6 +57,13 @@ export class SwarmOpsAPI {
 
   servers() { return this.request<Server[]>('/api/v1/servers') }
 
+  enrollServer(token: string, name: string) {
+    return this.request<Server>('/api/v1/servers/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ token, name }),
+    })
+  }
+
   addServer(input: ServerInput) {
     return this.request<Server>('/api/v1/servers', {
       method: 'POST',
@@ -88,6 +99,37 @@ export class SwarmOpsAPI {
   retryCommand(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}/retry`, { method: 'POST' }) }
   traefik() { return this.request<TraefikStatus>('/api/v1/traefik/status') }
   observability() { return this.request<ObservabilityStatus>('/api/v1/observability/status') }
+  databases() { return this.request<DatabaseStatus[]>('/api/v1/databases') }
+  applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
+  approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
+
+  planApplication(spec: ApplicationSpec) {
+    return this.request<{ compose: string }>('/api/v1/applications/plan', {
+      method: 'POST',
+      body: JSON.stringify(spec),
+    })
+  }
+
+  deployApplication(spec: ApplicationSpec) {
+    return this.commandRequest<Command>('/api/v1/applications', {
+      method: 'POST',
+      body: JSON.stringify(spec),
+    })
+  }
+
+  removeApplication(name: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/applications/${encodeURIComponent(name)}/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmation }),
+    })
+  }
+
+  setDatabase(engine: string, enabled: boolean, confirmation = '') {
+    return this.commandRequest<Command>(`/api/v1/databases/${encodeURIComponent(engine)}`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled, confirmation }),
+    })
+  }
 
   reconcileTraefik(confirmation: string) {
     return this.commandRequest<Command>('/api/v1/traefik/reconcile', {

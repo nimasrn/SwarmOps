@@ -211,6 +211,52 @@ func TestLoadDirectTLSParsesClientNetwork(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsAndBoundsForRetentionValues(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_DEV_SESSION_KEY", strings.Repeat("s", 32))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AuditMaxEvents != 10000 {
+		t.Fatalf("AuditMaxEvents = %d, want the 10000 default", cfg.AuditMaxEvents)
+	}
+	if cfg.CommandHistoryLimit != 2000 {
+		t.Fatalf("CommandHistoryLimit = %d, want the 2000 default", cfg.CommandHistoryLimit)
+	}
+	if len(cfg.TrustedProxyCIDRs) != 0 {
+		t.Fatalf("TrustedProxyCIDRs = %#v, want none by default", cfg.TrustedProxyCIDRs)
+	}
+
+	t.Setenv("SWARMOPS_AUDIT_MAX_EVENTS", "50")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_AUDIT_MAX_EVENTS") {
+		t.Fatalf("Load() error = %v, want bounded audit retention failure", err)
+	}
+	t.Setenv("SWARMOPS_AUDIT_MAX_EVENTS", "")
+
+	t.Setenv("SWARMOPS_COMMAND_HISTORY_LIMIT", "10")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_COMMAND_HISTORY_LIMIT") {
+		t.Fatalf("Load() error = %v, want bounded command history failure", err)
+	}
+	t.Setenv("SWARMOPS_COMMAND_HISTORY_LIMIT", "")
+
+	t.Setenv("SWARMOPS_TRUSTED_PROXY_CIDRS", "10.20.0.0/16")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(cfg.TrustedProxyCIDRs), 1; got != want || cfg.TrustedProxyCIDRs[0].String() != "10.20.0.0/16" {
+		t.Fatalf("TrustedProxyCIDRs = %#v, want one 10.20.0.0/16 prefix", cfg.TrustedProxyCIDRs)
+	}
+
+	t.Setenv("SWARMOPS_TRUSTED_PROXY_CIDRS", "not-a-network")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_TRUSTED_PROXY_CIDRS") {
+		t.Fatalf("Load() error = %v, want trusted proxy parse failure", err)
+	}
+}
+
 func writeSecretFile(t *testing.T, name string, content []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)

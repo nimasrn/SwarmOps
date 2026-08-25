@@ -45,12 +45,7 @@ func TestCheckedInTrustedStackAssetsRenderWithoutRemoteEnvironment(t *testing.T)
 	if !ok {
 		t.Fatal("locate trusted stack test source")
 	}
-	// SwarmOps is a top-level module in this release, while the nim monorepo
-	// keeps it at apps/swarmops. Support both checked-in source layouts.
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../.."))
-	if _, err := os.Stat(filepath.Join(repoRoot, "deploy", "stacks")); os.IsNotExist(err) {
-		repoRoot = filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../../../.."))
-	}
 	for stack, file := range map[string]string{
 		"swarmops-agent":         "swarmops-agent.yml",
 		"swarmops-logs":          "swarmops-logs.yml",

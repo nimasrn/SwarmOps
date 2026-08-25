@@ -13,7 +13,7 @@ import (
 func TestStoreEncryptsAndReloadsAuditEvents(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	store, err := Open(dataDir, testDataEncryptionKey())
+	store, err := Open(dataDir, testDataEncryptionKey(), testMaxEvents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestStoreEncryptsAndReloadsAuditEvents(t *testing.T) {
 	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
 		t.Fatalf("audit file mode = %o, want %o", got, want)
 	}
-	reloaded, err := Open(dataDir, testDataEncryptionKey())
+	reloaded, err := Open(dataDir, testDataEncryptionKey(), testMaxEvents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestStoreMigratesLegacyPlaintextAuditLog(t *testing.T) {
 	if err := os.WriteFile(legacyPath, append(event, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := Open(dataDir, testDataEncryptionKey())
+	store, err := Open(dataDir, testDataEncryptionKey(), testMaxEvents)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,4 +90,50 @@ func TestStoreMigratesLegacyPlaintextAuditLog(t *testing.T) {
 
 func testDataEncryptionKey() []byte {
 	return bytes.Repeat([]byte{29}, 32)
+}
+
+const testMaxEvents = 100
+
+func TestStoreRetainsOnlyTheNewestEventsWithinLimit(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	store, err := Open(dataDir, testDataEncryptionKey(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, 5)
+	for index := range 5 {
+		event, err := store.Record(domain.AuditEvent{
+			Action:  "command.queued",
+			Actor:   "operator",
+			Outcome: "success",
+			Target:  "command/test-" + string(rune('a'+index)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, event.ID)
+	}
+	recent, err := store.Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 3 {
+		t.Fatalf("retained events = %d, want 3", len(recent))
+	}
+	// Recent returns newest first; the two oldest records must be gone.
+	if recent[0].ID != ids[4] || recent[1].ID != ids[3] || recent[2].ID != ids[2] {
+		t.Fatalf("retained order = %#v", recent)
+	}
+	reloaded, err := Open(dataDir, testDataEncryptionKey(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := reloaded.Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted) != 3 || persisted[0].ID != ids[4] {
+		t.Fatalf("persisted retention = %#v", persisted)
+	}
 }

@@ -21,6 +21,19 @@ type PlatformAdmission struct {
 	workloads map[string]preflight.Workload
 }
 
+// sharedExternalNetworks is the closed set of cluster networks a
+// browser-originated or SwarmOps-rendered stack may join.
+var sharedExternalNetworks = map[string]bool{"traefik": true, "swarmops-data": true}
+
+func sortedSharedNetworks() []string {
+	names := make([]string, 0, len(sharedExternalNetworks))
+	for name := range sharedExternalNetworks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 var (
 	memoryQuantityPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([kKmMgGtT]i?[bB]?|[bB])?$`)
 	routerRulePattern     = regexp.MustCompile(`^Host\(\s*[` + "`'\"" + `]?([^` + "`'\"" + `)\s]+)[` + "`'\"" + `]?\s*\)$`)
@@ -444,8 +457,12 @@ func validateExternalNetworks(root map[string]any) error {
 			continue
 		}
 		physicalName, _ := network["name"].(string)
-		if logicalName != "traefik" || strings.TrimSpace(physicalName) != "traefik" {
-			return fmt.Errorf("only the external traefik network is available to browser deployments")
+		// Two shared networks are available: the edge network Traefik routes
+		// on, and the internal data plane that carries traffic to SwarmOps'
+		// managed databases. Both are created and owned by SwarmOps itself.
+		// Everything else stays a reviewed Git manifest decision.
+		if logicalName != strings.TrimSpace(physicalName) || !sharedExternalNetworks[logicalName] {
+			return fmt.Errorf("only the external %s networks are available to browser deployments", strings.Join(sortedSharedNetworks(), " and "))
 		}
 	}
 	return nil
@@ -503,4 +520,42 @@ func summarizeFindings(report preflight.Report) string {
 		values = append(values[:5], "…")
 	}
 	return strings.Join(values, ", ")
+}
+
+// ApprovedWorkload is the browser-safe description of one application slot the
+// reviewed manifest allows. The console offers these rather than free-form
+// input, so an operator picks an approved name, domain, and resolver and
+// cannot invent one that another workload owns.
+type ApprovedWorkload struct {
+	CPUCores  float64 `json:"cpuCores"`
+	Domain    string  `json:"domain,omitempty"`
+	MemoryMiB uint64  `json:"memoryMiB"`
+	Name      string  `json:"name"`
+	Replicas  int     `json:"replicas"`
+	Resolver  string  `json:"resolver,omitempty"`
+}
+
+// ApprovedApplications lists the manifest's application-profile workloads with
+// the resource ceiling admission will enforce for each.
+func (a *PlatformAdmission) ApprovedApplications() []ApprovedWorkload {
+	if a == nil {
+		return nil
+	}
+	approved := make([]ApprovedWorkload, 0, len(a.workloads))
+	for _, workload := range a.manifest.Workloads {
+		if workload.Profile != "application" {
+			continue
+		}
+		budget := applicationResourceBudget(workload)
+		approved = append(approved, ApprovedWorkload{
+			CPUCores:  budget.CPUCores,
+			Domain:    strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), ".")),
+			MemoryMiB: budget.MemoryMiB,
+			Name:      workload.Name,
+			Replicas:  workload.Replicas,
+			Resolver:  workload.Resolver,
+		})
+	}
+	sort.Slice(approved, func(left, right int) bool { return approved[left].Name < approved[right].Name })
+	return approved
 }

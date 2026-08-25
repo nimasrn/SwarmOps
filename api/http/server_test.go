@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
+	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -94,7 +96,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{5}, 32)
-	store, err := audit.Open(t.TempDir(), dataEncryptionKey)
+	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{7}, 32)
-	store, err := audit.Open(t.TempDir(), dataEncryptionKey)
+	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,5 +269,55 @@ func TestHandlerRestrictsDirectTLSClientNetworks(t *testing.T) {
 	}
 	if got := permittedResponse.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("security headers missing from direct response: %q", got)
+	}
+}
+
+func TestLoginAttemptKeyUsesTrustedProxyForwardedAddress(t *testing.T) {
+	t.Parallel()
+	proxies := []netip.Prefix{netip.MustParsePrefix("10.30.0.0/16")}
+
+	newRequest := func(remoteAddr, forwarded string) *http.Request {
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		request.RemoteAddr = remoteAddr
+		if forwarded != "" {
+			request.Header.Set("X-Forwarded-For", forwarded)
+		}
+		return request
+	}
+
+	// Without trusted proxies the socket peer is used even if a header lies.
+	if got := loginAttemptKey(newRequest("203.0.113.9:5555", "198.51.100.1"), "Operator", nil); !strings.HasSuffix(got, "|203.0.113.9") {
+		t.Fatalf("untrusted proxy key = %q", got)
+	}
+	// A trusted proxy chain resolves to the first untrusted hop from the right.
+	key := loginAttemptKey(newRequest("10.30.4.7:5555", "198.51.100.1, 10.30.4.7"), "operator", proxies)
+	if got, want := key, "operator|198.51.100.1"; got != want {
+		t.Fatalf("trusted proxy key = %q, want %q", got, want)
+	}
+	// A fully trusted or malformed chain falls back to the socket peer.
+	if got := loginAttemptKey(newRequest("10.30.4.7:5555", "10.30.4.7"), "operator", proxies); !strings.HasSuffix(got, "|10.30.4.7") {
+		t.Fatalf("fully trusted chain key = %q", got)
+	}
+	if got := loginAttemptKey(newRequest("10.30.4.7:5555", "not-an-address"), "operator", proxies); !strings.HasSuffix(got, "|10.30.4.7") {
+		t.Fatalf("malformed forwarded header key = %q", got)
+	}
+}
+
+func TestClassifyCommandErrorRespectsExplicitlyPermanentOutcomes(t *testing.T) {
+	t.Parallel()
+	permanent := queue.PermanentError(errors.New("remote outcome is unknowable"))
+	if classified := classifyCommandError(permanent); classified != permanent {
+		t.Fatalf("permanent error was reclassified: %v", classified)
+	}
+	retriable := errors.New("connection reset by machine API")
+	if classified := classifyCommandError(retriable); queue.IsPermanent(classified) {
+		t.Fatalf("transient error became permanent: %v", classified)
+	}
+	policy := errors.New("image registry is not allow-listed")
+	if classified := classifyCommandError(policy); !queue.IsPermanent(classified) {
+		t.Fatalf("policy error stayed retriable: %v", classified)
+	}
+	if classified := classifyCommandError(nil); classified != nil {
+		t.Fatalf("nil error classified = %v", classified)
 	}
 }

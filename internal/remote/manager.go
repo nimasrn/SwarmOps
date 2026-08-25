@@ -1,8 +1,8 @@
 // Package remote owns the credential-safe machine-API boundary for remote
-// Docker servers. It stores only non-secret target metadata on disk; API keys
-// live in process memory until disconnect or restart and are never returned to
-// callers. It retains the legacy SSH transport only to reconnect pre-existing
-// saved profiles during migration.
+// Docker servers. It seals target metadata and, when retention is enabled,
+// machine API keys on the controller; keys are never returned to callers or
+// written to audit events. It retains the legacy SSH transport only to
+// reconnect pre-existing saved profiles during migration.
 package remote
 
 import (
@@ -75,7 +75,7 @@ func ConnectionErrorDetails(err error) (message, detail string, ok bool) {
 		return "Machine API certificate fingerprint mismatch", "Verify the SHA256 TLS certificate fingerprint from the machine's trusted console, then update this saved profile only after the endpoint and port are confirmed.", true
 	}
 	if errors.Is(err, ErrAgentAPIUnauthorized) {
-		return "Machine API key was rejected", "Verify the API key configured on the machine. The key is never saved in the controller profile or audit trail.", true
+		return "Machine API key was rejected", "Verify the API key configured on the machine. The key is never returned or written to the audit trail; enrollment-based installations keep only an encrypted controller copy.", true
 	}
 	if errors.Is(err, ErrAgentAPIDisabled) {
 		return "Machine API remote control is disabled", "Install or reconfigure the machine agent with SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true and TLS before reconnecting.", true
@@ -166,18 +166,31 @@ type profileFile struct {
 	Version int             `json:"version"`
 }
 
-// Manager persists safe target metadata and holds active authentication
-// material only in memory. It is safe for concurrent HTTP requests.
+// Manager persists sealed target metadata and can retain sealed machine API
+// keys while keeping active authentication in memory. It is safe for
+// concurrent HTTP requests.
 type Manager struct {
 	connections map[string]*Connection
+	keys        map[string]string
+	keysPath    string
 	legacyPath  string
 	path        string
 	profiles    map[string]domain.Server
+	retainKeys  bool
 	store       *securestore.Sealer
 	mu          sync.RWMutex
 }
 
+// NewManager keeps the memory-only credential posture: keys live only until
+// disconnect or restart.
 func NewManager(dataDir string, dataEncryptionKey []byte) (*Manager, error) {
+	return NewManagerWithOptions(dataDir, dataEncryptionKey, ManagerOptions{})
+}
+
+// NewManagerWithOptions additionally allows sealed machine-API key retention,
+// which an enrollment-based install needs so a controller restart does not
+// strand every host. See keystore.go for the trade this makes.
+func NewManagerWithOptions(dataDir string, dataEncryptionKey []byte, options ManagerOptions) (*Manager, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("server profile data directory is required")
 	}
@@ -187,14 +200,20 @@ func NewManager(dataDir string, dataEncryptionKey []byte) (*Manager, error) {
 	}
 	manager := &Manager{
 		connections: map[string]*Connection{},
+		keys:        map[string]string{},
+		keysPath:    keysPathFor(dataDir),
 		legacyPath:  filepath.Join(dataDir, "servers.json"),
 		path:        filepath.Join(dataDir, "servers.sealed"),
 		profiles:    map[string]domain.Server{},
+		retainKeys:  options.RetainKeys,
 		store:       store,
 	}
 	data, err := manager.store.ReadFile(manager.path, profileStateKey)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := manager.loadLegacyProfiles(); err != nil {
+			return nil, err
+		}
+		if err := manager.loadKeys(); err != nil {
 			return nil, err
 		}
 		return manager, nil
@@ -208,6 +227,9 @@ func NewManager(dataDir string, dataEncryptionKey []byte) (*Manager, error) {
 		return nil, fmt.Errorf("check legacy server profiles: %w", err)
 	}
 	if err := manager.loadProfiles(data); err != nil {
+		return nil, err
+	}
+	if err := manager.loadKeys(); err != nil {
 		return nil, err
 	}
 	return manager, nil
@@ -283,6 +305,7 @@ func (m *Manager) Add(ctx context.Context, input AddInput) (domain.Server, error
 	if err != nil {
 		return domain.Server{}, err
 	}
+	apiKey := credentials.APIKey
 	connection, profile, err := establish(ctx, profile, credentials)
 	scrubCredentials(&credentials)
 	if err != nil {
@@ -299,12 +322,17 @@ func (m *Manager) Add(ctx context.Context, input AddInput) (domain.Server, error
 		connection.close()
 		return domain.Server{}, err
 	}
+	if profile.ConnectionType == ConnectionAgentAPI {
+		if err := m.rememberKeyLocked(profile.ID, apiKey); err != nil {
+			return domain.Server{}, err
+		}
+	}
 	return profile, nil
 }
 
 // Connect rehydrates a saved non-secret profile. The credential is checked
-// against the profile's declared authentication method, then held only while
-// the process remains alive.
+// against the profile's declared authentication method, then optionally sealed
+// for restart recovery when machine-key retention is enabled.
 func (m *Manager) Connect(ctx context.Context, id string, credentials Credentials) (domain.Server, error) {
 	m.mu.RLock()
 	profile, found := m.profiles[id]
@@ -320,6 +348,7 @@ func (m *Manager) Connect(ctx context.Context, id string, credentials Credential
 		scrubCredentials(&credentials)
 		return domain.Server{}, fmt.Errorf("authentication method does not match this server")
 	}
+	apiKey := credentials.APIKey
 	connection, profile, err := establish(ctx, profile, credentials)
 	scrubCredentials(&credentials)
 	if err != nil {
@@ -348,6 +377,11 @@ func (m *Manager) Connect(ctx context.Context, id string, credentials Credential
 	if previousConnection != nil {
 		previousConnection.close()
 	}
+	if profile.ConnectionType == ConnectionAgentAPI {
+		if err := m.rememberKeyLocked(id, apiKey); err != nil {
+			return domain.Server{}, err
+		}
+	}
 	return profile, nil
 }
 
@@ -361,6 +395,9 @@ func (m *Manager) Disconnect(id string) error {
 		connection.close()
 	}
 	delete(m.connections, id)
+	// An explicit disconnect is the operator asking SwarmOps to stop holding
+	// this credential, so the sealed copy goes with the live one.
+	m.forgetKeyLocked(id)
 	return nil
 }
 
@@ -384,6 +421,7 @@ func (m *Manager) Remove(id string) error {
 	if connection != nil {
 		connection.close()
 	}
+	m.forgetKeyLocked(id)
 	return nil
 }
 

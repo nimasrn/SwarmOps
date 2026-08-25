@@ -5,7 +5,7 @@ REGISTRY_NS ?= nimasrn
 TAG         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli
-STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs
+STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs swarmops-postgres swarmops-mongo swarmops-redis
 
 .PHONY: help test web-build web-dev local dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \

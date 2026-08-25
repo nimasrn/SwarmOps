@@ -18,6 +18,14 @@ services:
       - --providers.swarm.network=traefik
       - --providers.file.filename=/etc/traefik/dynamic.yml
       - --entrypoints.web.address=:80
+      # Redirect every plain-HTTP request to HTTPS at the entrypoint. Doing it
+      # here rather than with per-stack middleware labels is what lets SwarmOps
+      # render an application stack without giving a browser-originated stack
+      # the ability to define shared Traefik middleware. Traefik serves the
+      # ACME HTTP-01 challenge from its own higher-priority internal router, so
+      # the `http` resolver below still completes with this redirection on.
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --entrypoints.websecure.address=:443
       - --entrypoints.metrics.address=:8082
       - --certificatesresolvers.le.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}

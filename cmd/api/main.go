@@ -45,20 +45,36 @@ func main() {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
-	auditStore, err := audit.Open(cfg.DataDir, cfg.DataEncryptionKey)
+	auditStore, err := audit.Open(cfg.DataDir, cfg.DataEncryptionKey, cfg.AuditMaxEvents)
 	if err != nil {
 		logger.Error("open audit store", "error", err)
 		os.Exit(1)
 	}
-	servers, err := remote.NewManager(cfg.DataDir, cfg.DataEncryptionKey)
+	servers, err := remote.NewManagerWithOptions(cfg.DataDir, cfg.DataEncryptionKey, remote.ManagerOptions{RetainKeys: cfg.RetainMachineKeys})
 	if err != nil {
 		logger.Error("load remote server profiles", "error", err)
 		os.Exit(1)
+	}
+	// Enrolled hosts have no operator-held key to retype, so reconnect them
+	// from the sealed store at startup. A host that stays unreachable is
+	// reported and left disconnected rather than blocking the API.
+	for _, failure := range servers.Resume(ctx) {
+		logger.Warn("resume machine API connection", "error", failure)
 	}
 	startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
 	admission, err := ops.LoadPlatformAdmission(cfg.PlatformManifestFile)
 	if err != nil {
 		logger.Error("load platform admission", "error", err)
+		os.Exit(1)
+	}
+	credentials, err := ops.NewCredentialStore(cfg.DataDir, cfg.DataEncryptionKey)
+	if err != nil {
+		logger.Error("load sealed database credentials", "error", err)
+		os.Exit(1)
+	}
+	applications, err := ops.NewApplicationStore(cfg.DataDir, cfg.DataEncryptionKey)
+	if err != nil {
+		logger.Error("load sealed applications", "error", err)
 		os.Exit(1)
 	}
 	var agentReader ops.AgentReader
@@ -115,7 +131,20 @@ func main() {
 		// filesystem path; remote nodes retain their own reviewed pull credentials.
 		cli := ops.DockerCLI{Runner: connection.Runner}
 		control := ops.NewControlPlane(connection.Docker, cli, auditStore, ops.ControlPlaneOptions{
-			Admission:              admission,
+			Admission:   admission,
+			Apps:        applications,
+			Credentials: credentials,
+			DatabaseSettings: ops.DatabaseSettings{
+				MongoImage:             cfg.MongoImage,
+				MongoPasswordSecret:    cfg.MongoPasswordSecret,
+				MongoStackFile:         cfg.MongoStackFile,
+				PostgresImage:          cfg.PostgresImage,
+				PostgresPasswordSecret: cfg.PostgresPasswordSecret,
+				PostgresStackFile:      cfg.PostgresStackFile,
+				RedisImage:             cfg.RedisImage,
+				RedisPasswordSecret:    cfg.RedisPasswordSecret,
+				RedisStackFile:         cfg.RedisStackFile,
+			},
 			Agent:                  agentReader,
 			AgentService:           cfg.AgentService,
 			AgentStackFile:         cfg.AgentStackFile,
@@ -137,6 +166,9 @@ func main() {
 		}, Control: control}, nil
 	})
 	api, err := apihttp.New(cfg, targets, servers, auditStore, logger)
+	if err == nil {
+		api.SetApplicationDiscovery(applications, admission.Namespace())
+	}
 	if err != nil {
 		logger.Error("create HTTP server", "error", err)
 		os.Exit(1)

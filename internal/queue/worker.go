@@ -9,6 +9,11 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/domain"
 )
 
+const (
+	defaultStoreRetryAttempts = 5
+	defaultStoreRetryDelay    = time.Second
+)
+
 type ExecuteFunc func(context.Context, Record) error
 type TransitionFunc func(domain.Command, string)
 
@@ -18,6 +23,12 @@ type Worker struct {
 	OnTransition     TransitionFunc
 	PollInterval     time.Duration
 	Store            *Store
+	// StoreRetryAttempts bounds the retries for a transient durable-store
+	// failure (for example momentary I/O pressure) before the worker stops.
+	// The store rolls back failed transitions in memory, so a retried claim,
+	// completion, or failure always observes a consistent ledger.
+	StoreRetryAttempts int
+	StoreRetryDelay    time.Duration
 }
 
 func (w Worker) Run(ctx context.Context) error {
@@ -32,8 +43,13 @@ func (w Worker) Run(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return nil
 		}
-		record, found, err := w.Store.ClaimDue()
-		if err != nil {
+		var record Record
+		var found bool
+		if err := w.storeRetry(ctx, "claim due command", func() error {
+			var claimErr error
+			record, found, claimErr = w.Store.ClaimDue()
+			return claimErr
+		}); err != nil {
 			return err
 		}
 		if !found {
@@ -54,7 +70,7 @@ func (w Worker) Run(ctx context.Context) error {
 			}
 		}
 		executionContext, cancel := context.WithTimeout(ctx, timeout)
-		err = w.Execute(executionContext, record)
+		err := w.Execute(executionContext, record)
 		executionErr := executionContext.Err()
 		cancel()
 		// A controller shutdown or execution deadline leaves the remote effect
@@ -67,21 +83,63 @@ func (w Worker) Run(ctx context.Context) error {
 			err = PermanentError(fmt.Errorf("command execution ended before completion"))
 		}
 		if err == nil {
-			command, completeErr := w.Store.Complete(record.Command.ID)
-			if completeErr != nil {
-				return completeErr
-			}
-			if w.OnTransition != nil {
-				w.OnTransition(command, "succeeded")
+			if err := w.storeRetry(ctx, "complete command", func() error {
+				command, completeErr := w.Store.Complete(record.Command.ID)
+				if completeErr != nil {
+					return completeErr
+				}
+				if w.OnTransition != nil {
+					w.OnTransition(command, "succeeded")
+				}
+				return nil
+			}); err != nil {
+				return err
 			}
 			continue
 		}
-		command, event, failErr := w.Store.Fail(record.Command.ID, err)
-		if failErr != nil {
+		var event string
+		var failed domain.Command
+		if err := w.storeRetry(ctx, "record command failure", func() error {
+			var failErr error
+			failed, event, failErr = w.Store.Fail(record.Command.ID, err)
 			return failErr
+		}); err != nil {
+			return err
 		}
 		if w.OnTransition != nil {
-			w.OnTransition(command, event)
+			w.OnTransition(failed, event)
 		}
 	}
+}
+
+// storeRetry runs one durable-store operation with bounded backoff so a
+// transient write failure cannot stop the controller. Context cancellation
+// returns immediately; exhaustion returns the wrapped original error and the
+// caller keeps its existing fail-stop contract.
+func (w Worker) storeRetry(ctx context.Context, operation string, run func() error) error {
+	attempts := w.StoreRetryAttempts
+	if attempts <= 0 {
+		attempts = defaultStoreRetryAttempts
+	}
+	delay := w.StoreRetryDelay
+	if delay <= 0 {
+		delay = defaultStoreRetryDelay
+	}
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err = run(); err == nil {
+			return nil
+		}
+		if attempt == attempts-1 {
+			break
+		}
+		timer := time.NewTimer(delay * time.Duration(1<<attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }

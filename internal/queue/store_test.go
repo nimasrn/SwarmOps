@@ -3,6 +3,7 @@ package queue
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,7 +45,7 @@ func TestSubmitIsEncryptedDurableAndIdempotent(t *testing.T) {
 	if got, want := mustFileMode(t, store.path), os.FileMode(0o600); got != want {
 		t.Fatalf("command ledger mode = %o, want %o", got, want)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey())
+	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestRecoverTurnsInFlightCommandIntoNeedsAttention(t *testing.T) {
 	if _, found, err := store.ClaimDue(); err != nil || !found {
 		t.Fatalf("claim found=%t err=%v", found, err)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey())
+	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ func TestLegacyPlaintextArtifactMigratesToEncryptedState(t *testing.T) {
 	if err := os.WriteFile(store.legacyArtifactPath(command.ID), []byte("legacy build source"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey())
+	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,12 +296,14 @@ func (errReader) Read([]byte) (int, error) { return 0, errors.New("source disapp
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(t.TempDir(), testDataKey())
+	store, err := Open(t.TempDir(), testDataKey(), testHistoryLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return store
 }
+
+const testHistoryLimit = 100
 
 func testDataDir(t *testing.T, store *Store) string {
 	t.Helper()
@@ -333,3 +336,93 @@ func mustFileMode(t *testing.T, path string) os.FileMode {
 }
 
 func stringsReader(value string) io.Reader { return bytes.NewBufferString(value) }
+
+func TestStorePrunesOldestSucceededCommandsOnly(t *testing.T) {
+	t.Parallel()
+	store, err := Open(t.TempDir(), testDataKey(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	succeeded := make([]string, 0, 3)
+	for index := range 3 {
+		input := testInput()
+		input.IdempotencyKey = fmt.Sprintf("terminal-command-%d", index)
+		input.Target = fmt.Sprintf("stack/terminal-%d", index)
+		command, _, err := store.Submit(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := store.ClaimDue(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Complete(command.ID); err != nil {
+			t.Fatal(err)
+		}
+		succeeded = append(succeeded, command.ID)
+	}
+	pending := testInput()
+	pending.IdempotencyKey = "still-queued-command"
+	pending.Target = "stack/pending"
+	queued, _, err := store.Submit(pending)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := store.List(500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]domain.Command{}
+	for _, item := range listed {
+		states[item.ID] = item
+	}
+	if _, ok := states[succeeded[0]]; ok {
+		t.Fatal("oldest succeeded command survived pruning")
+	}
+	for _, id := range succeeded[1:] {
+		state, ok := states[id]
+		if !ok || state.State != domain.CommandSucceeded {
+			t.Fatalf("bounded succeeded command missing: %s", id)
+		}
+	}
+	if state, ok := states[queued.ID]; !ok || state.State != domain.CommandQueued {
+		t.Fatalf("active command was pruned: %#v", state)
+	}
+	reloaded, err := Open(testDataDir(t, store), testDataKey(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relisted, err := reloaded.List(500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(relisted) != 3 {
+		t.Fatalf("persisted ledger size = %d, want 3", len(relisted))
+	}
+}
+
+func TestClaimDueRollsBackWhenTheDurableWriteFails(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := &securestore.Sealer{}
+	working := store.sealer
+	store.sealer = broken
+	if _, _, err := store.ClaimDue(); err == nil {
+		t.Fatal("claim unexpectedly succeeded with a broken sealer")
+	}
+	stored, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != domain.CommandQueued || stored.Attempt != 0 || stored.LastAttemptAt != nil {
+		t.Fatalf("claim did not roll back its in-memory mutation: %#v", stored)
+	}
+	store.sealer = working
+	record, found, err := store.ClaimDue()
+	if err != nil || !found || record.Command.ID != command.ID {
+		t.Fatalf("claim after recovery = %#v, %t, %v", record, found, err)
+	}
+}

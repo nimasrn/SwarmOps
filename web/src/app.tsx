@@ -26,6 +26,7 @@ import {
   Panel,
   RecordLink,
   ResourceMeter,
+  Segmented,
   Select,
   Spinner,
   StatusDot,
@@ -43,7 +44,11 @@ import type {
   AuditEvent,
   Capacity,
   Command,
+  ApplicationSpec,
+  ApplicationStatus,
+  ApprovedWorkload,
   ComposePlan,
+  DatabaseStatus,
   Node,
   ObservabilityStatus,
   Overview,
@@ -57,8 +62,9 @@ import type {
   TraefikStatus,
 } from './types'
 
-type Page = 'audit' | 'builds' | 'commands' | 'fleet' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'servers' | 'services' | 'stacks' | 'traefik'
+type Page = 'applications' | 'audit' | 'builds' | 'commands' | 'databases' | 'fleet' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'servers' | 'services' | 'stacks' | 'traefik'
 type ClusterPage = Exclude<Page, 'audit' | 'commands' | 'fleet' | 'provisioning' | 'servers'>
+type AgentPlatform = 'linux' | 'macos'
 
 interface DashboardData {
   nodes: Node[]
@@ -76,9 +82,11 @@ interface ConnectionError {
 }
 
 const PAGES: Record<Page, string> = {
+  applications: 'Applications',
   audit: 'Audit trail',
   builds: 'Image builds',
   commands: 'Command queue',
+  databases: 'Managed databases',
   fleet: 'Fleet operations',
   nodes: 'Nodes',
   observability: 'Observability',
@@ -88,6 +96,21 @@ const PAGES: Record<Page, string> = {
   services: 'Services',
   stacks: 'Stacks',
   traefik: 'Traefik & TLS',
+}
+
+const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
+const AGENT_PLATFORM_OPTIONS: { label: string; value: AgentPlatform }[] = [
+  { label: 'Linux', value: 'linux' },
+  { label: 'macOS', value: 'macos' },
+]
+
+// One command per platform. The installer generates the agent's TLS material,
+// machine API key, and one-time enrollment secret, then prints the single
+// token pasted into the form beside it.
+function agentInstallCommand(platform: AgentPlatform) {
+  return platform === 'linux'
+    ? `curl -fsSL ${AGENT_INSTALL_URL} | sudo bash -s -- --install-docker --init-swarm`
+    : `curl -fsSL ${AGENT_INSTALL_URL} | bash`
 }
 
 export function App() {
@@ -126,6 +149,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const [showAgentSetup, setShowAgentSetup] = useState(false)
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault()
@@ -140,13 +164,22 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
     }
   }
 
+  if (showAgentSetup) {
+    return <AgentSetupScreen onBack={() => setShowAgentSetup(false)} />
+  }
+
   return (
     <main className="swarmops-auth-page">
       <form onSubmit={submit}>
         <AuthScreen
           action={{ disabled: !username || !password, label: 'Sign in to SwarmOps', loading: pending, onClick: submit }}
           brand={<Brand />}
-          footer={<span>Use the configured operator account.</span>}
+          footer={
+            <Rows gap="tight">
+              <span>Use the configured operator account.</span>
+              <Button onClick={() => setShowAgentSetup(true)} size="sm" type="button" variant="ghost">Install and connect a server</Button>
+            </Rows>
+          }
           subtitle="An audited control plane for remote Docker Swarm servers."
           title="Remote operations, with a boundary."
         >
@@ -173,14 +206,55 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
   )
 }
 
+function AgentSetupScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <main className="swarmops-auth-page">
+      <AuthScreen
+        action={{ label: 'I have the enrollment token — sign in to paste it', onClick: onBack }}
+        back={{ label: 'Back to sign in', onClick: onBack }}
+        brand={<Brand />}
+        subtitle="Run one command on the Docker host, then sign in and paste the enrollment token it prints."
+        title="Connect your first server"
+      >
+        <AgentInstallGuide />
+      </AuthScreen>
+    </main>
+  )
+}
+
+function AgentInstallGuide({ nextStep = 'Sign in and paste the token into SwarmOps' }: { nextStep?: string }) {
+  const [platform, setPlatform] = useState<AgentPlatform>('linux')
+  const platformLabel = platform === 'linux' ? 'Linux' : 'macOS'
+  return (
+    <Rows gap="tight">
+      <Segmented fullWidth label="Target operating system" onChange={setPlatform} options={AGENT_PLATFORM_OPTIONS} value={platform} />
+      <CodeBlock label={`${platformLabel} installation command`} wrap>{agentInstallCommand(platform)}</CodeBlock>
+      <Body size="sm">{platform === 'linux'
+        ? 'This installs Docker Engine if it is missing, forms a single-node Swarm if this host has none, then installs the agent as a systemd service. Drop --install-docker or --init-swarm to leave either step to you.'
+        : 'Docker Desktop must already be running. The agent installs as a per-user LaunchAgent.'}</Body>
+      <Body size="sm">The installer generates the agent’s TLS certificate, machine API key, and a single-use enrollment secret, then prints one enrollment token. Allow only the SwarmOps controller to reach the agent’s port.</Body>
+      <TaskProgress
+        caption="The enrollment token carries the host address, the pinned certificate fingerprint, and a one-time secret — never the machine API key. SwarmOps trades the secret for that key over the pinned connection, and the agent refuses every later use of the same token."
+        steps={[
+          { detail: 'Run the command above on the target machine.', id: 'install', label: 'Install the agent on the Docker host', status: 'active' },
+          { id: 'copy-details', label: 'Copy the enrollment token it prints', status: 'pending' },
+          { id: 'connect', label: nextStep, status: 'pending' },
+        ]}
+        title="Three-step setup"
+      />
+    </Rows>
+  )
+}
+
 function Console({ onLogout, session }: { onLogout: () => void; session: Session }) {
   const [page, setPage] = useHashPage()
   const toast = useToast()
   const { error: serversError, loading: serversLoading, refresh: refreshServers, servers } = useServers(onLogout)
-  const { error: auditError, events: auditEvents, loading: auditLoading } = useAuditEvents(page === 'audit', onLogout)
+  const { error: auditError, events: auditEvents, loading: auditLoading, refresh: refreshAudit } = useAuditEvents(page === 'audit', onLogout)
   const { commands, error: commandsError, loading: commandsLoading, refresh: refreshCommands } = useCommands(page === 'commands', onLogout)
   const [activeServerID, setActiveServerID] = useState('')
   const activeServer = servers.find((server) => server.id === activeServerID && server.connectionState === 'connected' && server.swarmControlAvailable)
+  const managers = servers.filter((server) => server.connectionState === 'connected' && server.swarmControlAvailable)
   const { data, error, refresh, refreshing } = useDashboard(activeServer?.id ?? '', onLogout)
 
   useEffect(() => {
@@ -225,10 +299,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       label: 'Operate',
       items: [
         { icon: 'home' as const, key: 'overview', label: 'Overview', onSelect: () => setPage('overview') },
-        { icon: 'settings' as const, key: 'nodes', label: 'Nodes', onSelect: () => setPage('nodes') },
-        { icon: 'document' as const, key: 'stacks', label: 'Stacks', onSelect: () => setPage('stacks') },
-        { icon: 'sparkle' as const, key: 'services', label: 'Services', onSelect: () => setPage('services') },
-        { icon: 'upload' as const, key: 'builds', label: 'Image builds', onSelect: () => setPage('builds') },
+        { icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setPage('applications') },
+        { icon: 'server' as const, key: 'nodes', label: 'Nodes', onSelect: () => setPage('nodes') },
+        { icon: 'layers' as const, key: 'stacks', label: 'Stacks', onSelect: () => setPage('stacks') },
+        { icon: 'activity' as const, key: 'services', label: 'Services', onSelect: () => setPage('services') },
+        { icon: 'package' as const, key: 'builds', label: 'Image builds', onSelect: () => setPage('builds') },
+        { icon: 'database' as const, key: 'databases', label: 'Databases', onSelect: () => setPage('databases') },
       ],
     },
     {
@@ -238,31 +314,56 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         { icon: 'external' as const, key: 'traefik', label: 'Traefik & TLS', onSelect: () => setPage('traefik') },
         { icon: 'trend-up' as const, key: 'observability', label: 'Observability', onSelect: () => setPage('observability') },
         { icon: 'clock' as const, key: 'commands', label: 'Command queue', onSelect: () => setPage('commands') },
-        { icon: 'clock' as const, key: 'fleet', label: 'Fleet operations', onSelect: () => setPage('fleet') },
-        { icon: 'clock' as const, key: 'audit', label: 'Audit trail', onSelect: () => setPage('audit') },
+        { icon: 'terminal' as const, key: 'fleet', label: 'Fleet operations', onSelect: () => setPage('fleet') },
+        { icon: 'document' as const, key: 'audit', label: 'Audit trail', onSelect: () => setPage('audit') },
       ],
     },
     {
       key: 'bootstrap',
       label: 'Bootstrap',
       items: [
-        { icon: 'settings' as const, key: 'servers', label: 'Servers', onSelect: () => setPage('servers') },
+        { icon: 'server' as const, key: 'servers', label: 'Servers', onSelect: () => setPage('servers') },
         { icon: 'play' as const, key: 'provisioning', label: 'Provisioning', onSelect: () => setPage('provisioning') },
       ],
     },
   ], [setPage])
 
   const health = data?.overview.health ?? 'unknown'
+  const refreshAction = page === 'audit'
+    ? refreshAudit
+    : page === 'commands'
+      ? refreshCommands
+      : page === 'servers' || !activeServer
+        ? refreshServers
+        : refresh
+  const refreshLoading = page === 'audit'
+    ? auditLoading
+    : page === 'commands'
+      ? commandsLoading
+      : page === 'servers' || !activeServer
+        ? serversLoading
+        : refreshing
+  const refreshLabel = page === 'audit'
+    ? 'Refresh audit trail'
+    : page === 'commands'
+      ? 'Refresh command queue'
+      : page === 'servers'
+        ? 'Refresh servers'
+        : activeServer
+          ? 'Refresh cluster snapshot'
+          : 'Refresh server profiles'
+
   return (
     <AdminShell
       brand={<Brand />}
       groups={groups}
-      sidebarFooter={<><strong>{session.user.username}</strong><span>{activeServer ? `${activeServer.name} · machine API` : 'No server selected'}</span><span>{data ? `Snapshot ${formatDateTime(data.overview.generatedAt)}` : 'Waiting for snapshot'}</span></>}
+      sidebarFooter={<><strong>{session.user.username}</strong><span>{activeServer ? `${activeServer.name} · selected manager` : managers.length ? `${managers.length} manager${managers.length === 1 ? '' : 's'} available` : 'No connected manager'}</span><span>{data ? `Snapshot ${formatDateTime(data.overview.generatedAt)}` : activeServer ? 'Refreshing cluster state' : 'Cluster controls are on hold'}</span></>}
       title={PAGES[page]}
       toolbar={
         <>
-          <StatusBadge health={health} />
-          <Button disabled={page === 'commands' ? commandsLoading : !activeServer} iconStart="loading" loading={page === 'commands' ? commandsLoading : refreshing} onClick={() => void (page === 'commands' ? refreshCommands() : refresh())} size="sm" variant="secondary">Refresh</Button>
+          <Button iconStart="server" onClick={() => setPage('servers')} size="sm" variant={activeServer ? 'secondary' : 'ghost'}>{activeServer ? activeServer.name : 'Select manager'}</Button>
+          <StatusBadge health={activeServer ? health : 'unknown'} label={activeServer ? undefined : managers.length ? 'Manager available' : 'Manager required'} />
+          <Button aria-label={refreshLabel} disabled={refreshLoading} iconStart="refresh" loading={refreshLoading} onClick={() => void refreshAction()} size="sm" variant="secondary">Refresh</Button>
           <Button iconStart="sign-out" onClick={() => void signOut()} size="sm" variant="ghost">Sign out</Button>
         </>
       }
@@ -286,7 +387,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
           {commandsLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} onRefresh={refreshCommands} toast={toast} />}
         </>
       ) : !activeServer ? (
-        <ServerRequiredPage page={page} onOpenServers={() => setPage('servers')} />
+        <ServerRequiredPage
+          page={page}
+          servers={servers}
+          onOpenProvisioning={() => setPage('provisioning')}
+          onOpenServers={() => setPage('servers')}
+        />
       ) : (
         <>
           {error ? <Banner title="Cluster snapshot unavailable" tone="danger">{error}</Banner> : null}
@@ -313,19 +419,90 @@ function PageRouter({
     case 'builds': return <BuildsPage toast={toast} />
     case 'traefik': return <TraefikPage status={data.traefik} toast={toast} />
     case 'observability': return <ObservabilityPage status={data.observability} toast={toast} />
+    case 'databases': return <DatabasesPage toast={toast} />
+    case 'applications': return <ApplicationsPage toast={toast} />
     case 'overview': return <OverviewDashboard observability={data.observability} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
   }
 }
 
-function ServerRequiredPage({ onOpenServers, page }: { onOpenServers: () => void; page: ClusterPage }) {
+function ServerRequiredPage({
+  onOpenProvisioning,
+  onOpenServers,
+  page,
+  servers,
+}: {
+  onOpenProvisioning: () => void
+  onOpenServers: () => void
+  page: ClusterPage
+  servers: Server[]
+}) {
+  const connected = servers.filter((server) => server.connectionState === 'connected')
+  const managers = connected.filter((server) => server.swarmControlAvailable)
   return (
     <Page>
-      <EmptyState
-        actions={<Button onClick={onOpenServers} variant="secondary">Open servers</Button>}
-        description={`${PAGES[page]} needs a connected remote Swarm manager. Connect or select one in Servers, then return here.`}
-        icon="server"
-        title="Select a Swarm manager"
+      <DetailHeader
+        status={<StatusBadge health="unknown" label="Manager required" />}
+        subtitle={`${PAGES[page]} stays unavailable until SwarmOps has a connected remote Swarm manager. This is deliberate: every cluster read or change stays scoped to one explicit target.`}
+        title="Connect a Swarm manager"
       />
+      <MetricGrid aria-label="Manager connection readiness" columns={3}>
+        <Metric
+          hint={servers.length ? `${servers.length} saved machine API profile${servers.length === 1 ? '' : 's'}` : 'No machine API profile has been saved yet'}
+          icon="server"
+          label="Saved targets"
+          tone={servers.length ? 'accent' : 'neutral'}
+          value={String(servers.length)}
+        />
+        <Metric
+          hint={connected.length ? `${connected.length} target${connected.length === 1 ? '' : 's'} currently connected` : 'Connect a target from the Servers workspace'}
+          icon="link"
+          label="Live connections"
+          tone={connected.length ? 'success' : 'neutral'}
+          value={String(connected.length)}
+        />
+        <Metric
+          hint={managers.length ? 'Choose a connected manager in Servers to resume this workspace' : 'Docker cluster reads and mutations remain paused'}
+          icon="shield"
+          label="Swarm managers"
+          tone={managers.length ? 'success' : 'warning'}
+          value={String(managers.length)}
+        />
+      </MetricGrid>
+      <Columns>
+        <Panel
+          description="The browser never receives a Docker socket or creates host credentials. It connects only to a pinned machine API that you add and select deliberately."
+          eyebrow="First-run path"
+          title="Bring a manager online"
+        >
+          <TaskProgress
+            caption={managers.length
+              ? 'A remote Swarm manager is ready. Open Servers to make it the selected target for this workspace.'
+              : 'Install the native machine agent on a Docker host, then add its HTTPS endpoint, public certificate fingerprint, and API key in Servers.'}
+            steps={[
+              { id: 'agent', label: 'Install the machine agent on a Docker host', status: servers.length ? 'done' : 'active' },
+              { id: 'connect', label: 'Connect and verify Docker / Swarm readiness', status: managers.length ? 'done' : connected.length ? 'active' : 'pending' },
+              { id: 'select', label: `Select a manager and resume ${PAGES[page]}`, status: managers.length ? 'active' : 'pending' },
+            ]}
+            title="Three safe steps"
+          />
+          <Inline>
+            <Button iconStart="plus" onClick={onOpenServers}>Add or select a server</Button>
+            <Button onClick={onOpenProvisioning} variant="secondary">Open provisioning</Button>
+          </Inline>
+        </Panel>
+        <Panel
+          description="These controls are intentionally available before a manager is selected, so the setup path is not a dead end."
+          eyebrow="Available now"
+          title="Keep the control plane moving"
+        >
+          <List plain>
+            <ListRow href="#servers" leading={<Icon name="server" size="sm" />} subtitle="Add, reconnect, or select a pinned machine API target." title="Servers" />
+            <ListRow href="#provisioning" leading={<Icon name="play" size="sm" />} subtitle="Follow the reviewed Ansible path for fresh hosts and Swarm quorum." title="Provisioning" />
+            <ListRow href="#commands" leading={<Icon name="clock" size="sm" />} subtitle="Review durable command state without exposing remote output." title="Command queue" />
+            <ListRow href="#audit" leading={<Icon name="document" size="sm" />} subtitle="Inspect safe, append-only operator audit records." title="Audit trail" />
+          </List>
+        </Panel>
+      </Columns>
     </Page>
   )
 }
@@ -355,6 +532,9 @@ function ServersPage({
   const [pending, setPending] = useState(false)
   const [port, setPort] = useState('9180')
   const [tlsFingerprint, setTLSFingerprint] = useState('')
+  const [token, setToken] = useState('')
+  const [tokenPending, setTokenPending] = useState(false)
+  const [manual, setManual] = useState(false)
 
   const reset = () => {
     setAPIKey('')
@@ -364,6 +544,8 @@ function ServersPage({
     setName('')
     setPort('9180')
     setTLSFingerprint('')
+    setToken('')
+    setManual(false)
   }
 
   const beginReconnect = (server: Server) => {
@@ -374,6 +556,27 @@ function ServersPage({
     setName(server.name)
     setPort(String(server.port))
     setTLSFingerprint(server.tlsCertificateFingerprint ?? '')
+    setManual(true)
+  }
+
+  // The enrollment path is the whole connection flow: one pasted token, one
+  // request. SwarmOps performs the one-time secret exchange itself, so the
+  // operator never handles the machine API key.
+  const enroll = async (event?: FormEvent) => {
+    event?.preventDefault()
+    setTokenPending(true)
+    setError(null)
+    try {
+      const connected = await api.enrollServer(token.trim(), name.trim())
+      setToken('')
+      await onConnected(connected)
+      reset()
+      toast({ message: `${connected.name} enrolled and connected`, tone: 'success' })
+    } catch (reason) {
+      setError(connectionErrorOf(reason))
+    } finally {
+      setTokenPending(false)
+    }
   }
 
   const submit = async (event?: FormEvent) => {
@@ -452,43 +655,69 @@ function ServersPage({
   const connectionReady = Boolean(apiKey) && Boolean(apiURL) && Boolean(tlsFingerprint)
   return (
     <Page>
-      <DetailHeader subtitle="Install a native machine agent first, then connect it here with its HTTPS URL, port, certificate pin, and API key. SwarmOps never asks for a Docker socket or SSH account." title="Remote servers" />
-      <Banner title="1. Install SwarmOps Agent on the Docker host" tone="info">
-        <Rows gap="tight">
-          <Body size="sm">The host downloads the release binary from GitHub. It runs only <code>swarmops-agent</code> and the local rollback updater, <code>SwarmOps Warden</code>; it does not clone or compile source. The default setup listens on port <code>9180</code>, creates its pinned TLS identity under <code>/etc/swarmops-agent/tls</code>, and generates the API key.</Body>
-          <CodeBlock label="Linux installer" wrap>{`curl --fail --location --remote-name https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-sudo bash install-swarmops-agent.sh`}</CodeBlock>
-          <Body size="sm">The installer prints the public TLS fingerprint, port, and protected API-key file path. Keep the API key private, then use the form below to add and connect the machine.</Body>
-        </Rows>
-      </Banner>
-      <Banner title="Use the machine API certificate pin" tone="info">
-        <Rows gap="tight">
-          <p>The API key authorizes SwarmOps but does not encrypt it. Use the machine agent’s HTTPS listener and enter its public certificate fingerprint in <code>SHA256:&lt;64-hex&gt;</code> form.</p>
-          <CodeBlock label="Fingerprint command" wrap>{"openssl x509 -in <agent-certificate.pem> -outform DER | openssl dgst -sha256 -hex"}</CodeBlock>
-          <Body size="sm">Verify the fingerprint from the target machine’s trusted console before saving it. The API key is held only in this process while connected; it is never stored in the profile or audit trail.</Body>
-        </Rows>
-      </Banner>
+      <DetailHeader subtitle="Run one command on the Docker host, paste the enrollment token it prints, and SwarmOps connects over a pinned machine API — no Docker socket, no SSH session, and no key for you to carry." title="Connect a remote server" />
       <Columns>
-        <Panel eyebrow={editing ? 'Reconnect saved target' : '2. Add the installed machine'} title={editing ? `Reconnect ${editing.name}` : 'Add and connect a server'}>
+        <Panel eyebrow="Step 1 · target machine" title="Install the machine agent">
+          <AgentInstallGuide nextStep="Paste the token in Step 2" />
+        </Panel>
+        <Panel eyebrow="Step 2 · SwarmOps" title="Paste the enrollment token">
+          <Rows as="form" onSubmit={enroll}>
+            <Textarea
+              hint="One line, starting with swarmops1. — it carries the host, port, pinned certificate fingerprint, and a single-use secret."
+              label="Enrollment token"
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="swarmops1.…"
+              required
+              rows={3}
+              value={token}
+            />
+            <Input hint="Optional local label. Defaults to the host in the token." label="Name" onChange={(event) => setName(event.target.value)} value={name} />
+            {error && !manual ? <Banner title={error.message} tone="danger"><Rows gap="tight">{error.detail ? <p>{error.detail}</p> : null}{error.requestID ? <Body size="sm">Request ID: <code>{error.requestID}</code></Body> : null}</Rows></Banner> : null}
+            <Inline>
+              <Button disabled={tokenPending || !token.trim().startsWith('swarmops1.')} loading={tokenPending} type="submit">Enroll and connect server</Button>
+              <Button onClick={() => setManual(true)} type="button" variant="ghost">Enter connection details manually</Button>
+            </Inline>
+          </Rows>
+        </Panel>
+      </Columns>
+      {manual ? (
+      <Columns>
+        <Panel eyebrow={editing ? 'Reconnect saved target' : 'Advanced'} title={editing ? `Reconnect ${editing.name}` : 'Add a server with explicit details'}>
           <Rows as="form" onSubmit={submit}>
             <Input disabled={Boolean(editing)} hint="A local label only; it never affects the remote host." label="Name" onChange={(event) => setName(event.target.value)} required value={name} />
             <Input disabled={Boolean(editing)} hint="HTTPS origin only, for example https://manager.example.com. Enter its port separately." label="Machine API URL" onChange={(event) => setAPIURL(event.target.value)} required type="url" value={apiURL} />
             <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input disabled={Boolean(editing)} hint="Public SHA-256 fingerprint of the API certificate." label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
             <Input autoComplete="off" hint="It is used to connect now and cleared on disconnect or API restart." label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
             {error ? <Banner title={error.message} tone="danger"><Rows gap="tight">{error.detail ? <p>{error.detail}</p> : null}{error.requestID ? <Body size="sm">Request ID: <code>{error.requestID}</code></Body> : null}</Rows></Banner> : null}
-            <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit">{editing ? 'Reconnect server' : 'Add and connect server'}</Button>{editing ? <Button onClick={reset} type="button" variant="ghost">Cancel</Button> : null}</Inline>
+            <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit">{editing ? 'Reconnect server' : 'Add and connect server'}</Button><Button onClick={reset} type="button" variant="ghost">Cancel</Button></Inline>
           </Rows>
         </Panel>
-        <Panel eyebrow="3. Verify the connection" title="What SwarmOps checks">
+        <Panel eyebrow="Verify before saving" title="Use the machine API certificate pin">
+          <Rows gap="tight">
+            <p>The API key authorizes SwarmOps but does not encrypt it. Use the machine agent’s HTTPS listener and enter its public certificate fingerprint in <code>SHA256:&lt;64-hex&gt;</code> form.</p>
+            <CodeBlock label="Fingerprint command" wrap>{"openssl x509 -in <agent-certificate.pem> -outform DER | openssl dgst -sha256 -hex"}</CodeBlock>
+            <Body size="sm">Verify the fingerprint from the target machine’s trusted console before saving it. An enrollment token already carries this fingerprint, so this manual path is only for a host enrolled before, or for reviewed TLS material you issued yourself.</Body>
+          </Rows>
+        </Panel>
+      </Columns>
+      ) : null}
+      <Columns>
+        <Panel eyebrow="Step 3 · connection check" title="What SwarmOps verifies">
           <TaskProgress caption="A successful connection verifies the certificate pin, authenticates the key, and then asks the local agent for Docker/Swarm readiness." steps={[{ id: 'tls', label: 'Match the required TLS certificate fingerprint', status: 'pending' }, { id: 'key', label: 'Authenticate with the supplied machine API key', status: 'pending' }, { id: 'docker', label: 'Probe Docker and Swarm readiness through fixed API operations', status: 'pending' }]} title="Connection sequence" />
-          <Body size="sm">The machine agent must be installed and running first. A connected machine without Docker remains visible, but cluster pages and mutations require a remote Swarm manager.</Body>
+          <Body size="sm">A connected machine without Docker remains visible, but cluster pages and mutations require a remote Swarm manager.</Body>
+        </Panel>
+        <Panel eyebrow="After enrollment" title="Where the machine API key lives">
+          <Rows gap="tight">
+            <p>SwarmOps receives the key during the one-time exchange and seals it in the controller’s encrypted volume so a restarted controller reconnects on its own. It is never returned by an endpoint, shown in this console, or written to the audit trail.</p>
+            <Body size="sm">Disconnecting a server deletes the sealed copy along with the live one. To restore the memory-only posture, set <code>SWARMOPS_RETAIN_MACHINE_KEYS=false</code> and reconnect each host by hand after a restart.</Body>
+          </Rows>
         </Panel>
       </Columns>
       <Panel eyebrow="Saved non-secret profiles" title="Servers">
         <DataTable
           caption="Remote server profiles"
           columns={columns}
-          empty={<EmptyState description="Install the release agent on a Linux or macOS Docker host, then add its HTTPS URL, port, certificate fingerprint, and API key above." icon="server" title="No servers connected" />}
+          empty={<EmptyState description="Start with Step 1 above: run the one-line installer on a Linux or macOS Docker host, then paste the enrollment token it prints." icon="server" title="No servers connected" />}
           rowKey={(server) => server.id}
           rows={servers}
         />
@@ -669,7 +898,14 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
   const [logs, setLogs] = useState('')
   const [logsError, setLogsError] = useState('')
   const [busy, setBusy] = useState('')
+  const [replicas, setReplicas] = useState(String(services[0]?.desiredTasks ?? 0))
+  const [scaleError, setScaleError] = useState('')
   const selected = services.find((service) => service.id === selectedID) ?? services[0]
+
+  useEffect(() => {
+    if (selected) setReplicas(String(selected.desiredTasks))
+    setScaleError('')
+  }, [selected?.desiredTasks, selected?.id])
 
   const readLogs = async (service: Service) => {
     setSelectedID(service.id)
@@ -677,12 +913,19 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
     setLogsError('')
     try { setLogs((await api.serviceLogs(service.id)).logs) } catch (reason) { setLogsError(messageOf(reason)) }
   }
-  const action = async (kind: 'restart' | 'rollback') => {
+  const action = async (kind: 'restart' | 'rollback' | 'scale') => {
     if (!selected) return
+    const replicaCount = Number(replicas)
+    if (kind === 'scale' && (!Number.isInteger(replicaCount) || replicaCount < 0 || replicaCount > 1000)) {
+      setScaleError('Enter a whole replica count from 0 to 1000.')
+      return
+    }
     setBusy(kind)
+    setScaleError('')
     try {
-      const command = await api.serviceAction(selected.id, kind)
-      toast({ message: `${selected.name}: ${kind} queued (${shortID(command.id)})`, tone: 'success' })
+      const command = await api.serviceAction(selected.id, kind, kind === 'scale' ? replicaCount : undefined)
+      const description = kind === 'scale' ? `scale to ${replicaCount}` : kind
+      toast({ message: `${selected.name}: ${description} queued (${shortID(command.id)})`, tone: 'success' })
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setBusy('') }
   }
   const columns: TableColumn<Service>[] = [
@@ -693,6 +936,7 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
     { header: 'Update', key: 'update', render: (service) => service.updateState || '—' },
   ]
   if (!selected) return <EmptyState description="Docker Engine returned no Swarm services." icon="sparkle" title="No services" />
+  const canScale = selected.mode.toLowerCase() === 'replicated'
   return (
     <Page>
       <DetailHeader subtitle="Logs are read directly from Docker service logs. Restarts and rollbacks use fixed audited command shapes, not browser-supplied shell commands." title="Service control" />
@@ -701,6 +945,21 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
         <Panel eyebrow={selected.stack ?? 'No stack label'} title={selected.name}>
           <Facts items={[{ label: 'Image', mono: true, value: selected.image ?? '—' }, { label: 'Desired tasks', value: String(selected.desiredTasks) }, { label: 'Running tasks', value: String(selected.runningTasks) }, { label: 'Last updated', value: formatDateTime(selected.updatedAt) }]} />
           <Inline><Button loading={busy === 'restart'} onClick={() => void action('restart')} variant="secondary">Force restart</Button><Button loading={busy === 'rollback'} onClick={() => void action('rollback')} variant="danger">Rollback</Button><Button onClick={() => void readLogs(selected)} variant="ghost">Read logs</Button></Inline>
+          <Rows gap="tight">
+            <Label as="p">Replica control</Label>
+            {canScale ? (
+              <Columns>
+                <Input hint="Scale is queued as a fixed, audited Docker action." label="Desired replicas" max="1000" min="0" onChange={(event) => setReplicas(event.target.value)} step="1" type="number" value={replicas} />
+                <Rows gap="tight">
+                  <Body size="sm">A scale to zero is allowed and stops this replicated service without deleting it.</Body>
+                  <Button disabled={busy !== ''} loading={busy === 'scale'} onClick={() => void action('scale')} variant="secondary">Set replicas</Button>
+                </Rows>
+              </Columns>
+            ) : (
+              <Body size="sm">This is a {selected.mode} service. Its task count is controlled by its mode, so SwarmOps does not offer a replica change.</Body>
+            )}
+            {scaleError ? <Banner tone="warning">{scaleError}</Banner> : null}
+          </Rows>
         </Panel>
         <Panel eyebrow="Last 200 lines" title="Service logs">
           {logsError ? <Banner tone="danger">{logsError}</Banner> : null}
@@ -754,6 +1013,284 @@ function BuildsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   )
 }
 
+// ApplicationsPage is the whole deploy flow: choose an approved slot, give it
+// an image, tick the databases it needs, and SwarmOps renders and deploys the
+// Compose. The operator writes no Compose, no Traefik label, and no
+// connection string.
+function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
+  const [applications, setApplications] = useState<ApplicationStatus[] | null>(null)
+  const [approved, setApproved] = useState<ApprovedWorkload[]>([])
+  const [databases, setDatabases] = useState<DatabaseStatus[]>([])
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState(false)
+  const [preview, setPreview] = useState('')
+  const [removals, setRemovals] = useState<Record<string, string>>({})
+
+  const [selected, setSelected] = useState('')
+  const [image, setImage] = useState('')
+  const [port, setPort] = useState('8080')
+  const [healthPath, setHealthPath] = useState('/healthz')
+  const [replicas, setReplicas] = useState('1')
+  const [cpus, setCPUs] = useState('0.5')
+  const [memoryMiB, setMemoryMiB] = useState('512')
+  const [attached, setAttached] = useState<string[]>([])
+  const [delivery, setDelivery] = useState<'secret' | 'env'>('secret')
+  const [metrics, setMetrics] = useState(true)
+  const [metricsPath, setMetricsPath] = useState('/metrics')
+  const [backend, setBackend] = useState('')
+
+  const refresh = async () => {
+    const [apps, slots, dbs] = await Promise.all([api.applications(), api.approvedApplications(), api.databases()])
+    setApplications(apps)
+    setApproved(slots)
+    setDatabases(dbs)
+    if (!selected && slots.length > 0) setSelected(slots[0].name)
+  }
+  useEffect(() => { void refresh().catch((reason) => setError(messageOf(reason))) }, [])
+
+  const slot = approved.find((workload) => workload.name === selected)
+  const runningDatabases = databases.filter((database) => database.installed)
+
+  const specOf = (): ApplicationSpec => ({
+    backend: backend || undefined,
+    cpus: Number(cpus),
+    databaseDelivery: delivery,
+    databases: attached,
+    domain: slot?.domain,
+    healthPath,
+    image: image.trim(),
+    memoryMiB: Number(memoryMiB),
+    metrics,
+    metricsPath,
+    name: selected,
+    port: Number(port),
+    replicas: Number(replicas),
+    resolver: slot?.resolver,
+  })
+
+  const plan = async () => {
+    setPending(true)
+    setError('')
+    try {
+      const result = await api.planApplication(specOf())
+      setPreview(result.compose)
+    } catch (reason) { setError(messageOf(reason)) } finally { setPending(false) }
+  }
+
+  const deploy = async () => {
+    setPending(true)
+    setError('')
+    try {
+      const command = await api.deployApplication(specOf())
+      toast({ message: `${selected} deployment queued (${shortID(command.id)})`, tone: 'success' })
+      await refresh()
+    } catch (reason) { setError(messageOf(reason)) } finally { setPending(false) }
+  }
+
+  const remove = async (status: ApplicationStatus) => {
+    setPending(true)
+    try {
+      const command = await api.removeApplication(status.spec.name, removals[status.spec.name] ?? '')
+      toast({ message: `${status.spec.name} removal queued (${shortID(command.id)})`, tone: 'success' })
+      setRemovals((current) => ({ ...current, [status.spec.name]: '' }))
+      await refresh()
+    } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending(false) }
+  }
+
+  const toggleDatabase = (engine: string, checked: boolean) => {
+    setAttached((current) => checked ? [...current.filter((value) => value !== engine), engine] : current.filter((value) => value !== engine))
+  }
+
+  if (!applications) return <LoadingScreen label="Reading applications" />
+  const columns: TableColumn<ApplicationStatus>[] = [
+    { header: 'Application', key: 'name', render: (status) => <RecordLink meta={status.stack} title={status.spec.name} /> },
+    { header: 'Address', key: 'url', render: (status) => status.url ? <a href={status.url} rel="noreferrer" target="_blank">{status.url}</a> : 'Internal only' },
+    { header: 'Image', key: 'image', render: (status) => <Mono>{status.spec.image}</Mono> },
+    { header: 'Databases', key: 'databases', render: (status) => (status.spec.databases ?? []).join(', ') || '—' },
+    { header: 'Tasks', key: 'tasks', render: (status) => <StatusBadge health={status.runningTasks > 0 ? 'healthy' : status.deployed ? 'degraded' : 'unknown'} label={status.deployed ? `${status.runningTasks} running` : 'Not deployed'} /> },
+    {
+      header: 'Action',
+      key: 'action',
+      render: (status) => (
+        <Inline gap="tight">
+          <Input
+            aria-label={`Removal confirmation for ${status.spec.name}`}
+            onChange={(event) => setRemovals((current) => ({ ...current, [status.spec.name]: event.target.value }))}
+            placeholder={`REMOVE_APPLICATION_${status.spec.name.toUpperCase().replace(/-/g, '_')}`}
+            value={removals[status.spec.name] ?? ''}
+          />
+          <Button disabled={pending || (removals[status.spec.name] ?? '') !== `REMOVE_APPLICATION_${status.spec.name.toUpperCase().replace(/-/g, '_')}`} onClick={() => void remove(status)} size="sm" variant="ghost">Remove</Button>
+        </Inline>
+      ),
+    },
+  ]
+
+  return (
+    <Page>
+      <DetailHeader subtitle="Pick an approved application slot, give it a pushed image, and choose what it connects to. SwarmOps renders the Compose, the Traefik route, the health probe, and the database wiring, then puts its own output through the same policy as hand-written Compose." title="Applications" />
+      {approved.length === 0 ? <Banner tone="warning" title="No application slots are approved">Add a workload with <Mono>profile: application</Mono>, a domain, a resolver, and a resource budget to the reviewed platform manifest, then reconnect.</Banner> : null}
+      <Columns>
+        <Panel eyebrow="Deploy" title="Application">
+          <Rows>
+            <Select
+              label="Approved slot"
+              onChange={(event) => setSelected(event.target.value)}
+              options={approved.map((workload) => ({ label: workload.domain ? `${workload.name} — ${workload.domain}` : workload.name, value: workload.name }))}
+              value={selected}
+            />
+            {slot ? <Facts items={[
+              { label: 'Domain', value: slot.domain || 'Internal only' },
+              { label: 'Certificate resolver', value: slot.resolver || '—' },
+              { label: 'Budget', value: `${slot.cpuCores} vCPU · ${slot.memoryMiB} MiB` },
+            ]} /> : null}
+            <Input hint="An already-pushed, immutable image tag. SwarmOps deploys images; it does not build here." label="Image" onChange={(event) => setImage(event.target.value)} placeholder="ghcr.io/org/app:2026.08.25" value={image} />
+            <Columns>
+              <Input label="Container port" min="1" onChange={(event) => setPort(event.target.value)} type="number" value={port} />
+              <Input hint="Probed inside the container; the image needs a shell with wget or curl." label="Health path" onChange={(event) => setHealthPath(event.target.value)} value={healthPath} />
+            </Columns>
+            <Columns>
+              <Input label="Replicas" min="1" onChange={(event) => setReplicas(event.target.value)} type="number" value={replicas} />
+              <Input label="vCPU" min="0.1" onChange={(event) => setCPUs(event.target.value)} step="0.1" type="number" value={cpus} />
+              <Input label="Memory (MiB)" min="64" onChange={(event) => setMemoryMiB(event.target.value)} type="number" value={memoryMiB} />
+            </Columns>
+          </Rows>
+        </Panel>
+        <Panel eyebrow="Connections" title="What it talks to">
+          <Rows>
+            {runningDatabases.length === 0
+              ? <Body size="sm">No managed database is running. Deploy one under Databases to attach it here.</Body>
+              : runningDatabases.map((database) => (
+                <Switch
+                  checked={attached.includes(database.engine)}
+                  description={`Injects the generated connection URI for ${database.host}:${database.port}.`}
+                  key={database.engine}
+                  onChange={(event) => toggleDatabase(database.engine, event.target.checked)}
+                >
+                  Attach {database.displayName}
+                </Switch>
+              ))}
+            {attached.length > 0 ? (
+              <Segmented
+                fullWidth
+                label="Deliver the connection URI as"
+                onChange={(value) => setDelivery(value)}
+                options={[
+                  { label: 'Mounted secret file', value: 'secret' as const },
+                  { label: 'Environment variable', value: 'env' as const },
+                ]}
+                value={delivery}
+              />
+            ) : null}
+            {attached.length > 0 && delivery === 'env' ? <Banner tone="warning" title="The credential becomes readable">An environment variable is visible to anyone who can run <Mono>docker service inspect</Mono> on the cluster. The mounted file is not.</Banner> : null}
+            <Select
+              hint="A frontend receives its backend's in-cluster and public URLs."
+              label="Backend application"
+              onChange={(event) => setBackend(event.target.value)}
+              options={[{ label: 'None', value: '' }, ...applications.filter((status) => status.spec.name !== selected).map((status) => ({ label: status.spec.name, value: status.spec.name }))]}
+              value={backend}
+            />
+            <Switch checked={metrics} description="Prometheus discovers the application and starts scraping it without a configuration change." onChange={(event) => setMetrics(event.target.checked)}>Collect metrics</Switch>
+            {metrics ? <Input label="Metrics path" onChange={(event) => setMetricsPath(event.target.value)} value={metricsPath} /> : null}
+          </Rows>
+        </Panel>
+      </Columns>
+      {error ? <Banner tone="danger" title="This application cannot be deployed">{error}</Banner> : null}
+      <Inline>
+        <Button disabled={pending || !selected || !image} loading={pending} onClick={() => void plan()} variant="secondary">Preview the rendered Compose</Button>
+        <Button disabled={pending || !selected || !image} loading={pending} onClick={() => void deploy()}>Deploy application</Button>
+      </Inline>
+      {preview ? <Panel eyebrow="Exactly what will be deployed" title="Rendered Compose"><CodeBlock wrap>{preview}</CodeBlock></Panel> : null}
+      <Panel eyebrow="Deployed by SwarmOps" title="Applications">
+        <DataTable
+          caption="Rendered applications"
+          columns={columns}
+          empty={<EmptyState description="Choose an approved slot above, give it a pushed image, and deploy it." icon="layers" title="No applications yet" />}
+          rowKey={(status) => status.spec.name}
+          rows={applications}
+        />
+      </Panel>
+    </Page>
+  )
+}
+
+// DatabasesPage operates the three reviewed managed engines. The console
+// chooses only whether one runs: the Compose content is a checked-in asset and
+// the generated password is a Swarm secret the browser never sees.
+function DatabasesPage({ toast }: { toast: ReturnType<typeof useToast> }) {
+  const [databases, setDatabases] = useState<DatabaseStatus[] | null>(null)
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState('')
+  const [confirmations, setConfirmations] = useState<Record<string, string>>({})
+
+  const refresh = () => api.databases().then(setDatabases).catch((reason) => setError(messageOf(reason)))
+  useEffect(() => { void refresh() }, [])
+
+  const set = async (database: DatabaseStatus, enabled: boolean) => {
+    setPending(database.engine)
+    try {
+      const command = await api.setDatabase(database.engine, enabled, enabled ? '' : confirmations[database.engine] ?? '')
+      toast({ message: `${database.displayName} ${enabled ? 'deployment' : 'removal'} queued (${shortID(command.id)})`, tone: 'success' })
+      setConfirmations((current) => ({ ...current, [database.engine]: '' }))
+      await refresh()
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    } finally {
+      setPending('')
+    }
+  }
+
+  if (error) return <Banner tone="danger" title="Managed databases are unavailable">{error}</Banner>
+  if (!databases) return <LoadingScreen label="Reading managed databases" />
+  return (
+    <Page>
+      <DetailHeader subtitle="Three reviewed database stacks ship with SwarmOps. Their Compose definitions are checked-in assets, their passwords are generated Swarm secrets, and each is reachable only on the internal swarmops overlay." title="Managed databases" />
+      <Columns>
+        {databases.map((database) => {
+          const removal = `REMOVE_DATABASE_${database.engine.toUpperCase()}`
+          return (
+            <Panel eyebrow={database.installed ? `${database.runningTasks} running task${database.runningTasks === 1 ? '' : 's'}` : 'Not deployed'} key={database.engine} title={database.displayName}>
+              <Rows>
+                <StatusBadge health={database.installed ? (database.runningTasks > 0 ? 'healthy' : 'degraded') : 'unknown'} label={database.installed ? (database.runningTasks > 0 ? 'Running' : 'No running task') : 'Not deployed'} />
+                <Facts items={[
+                  { label: 'Image', mono: true, value: database.image },
+                  { label: 'In-cluster host', mono: true, value: `${database.host}:${database.port}` },
+                  ...(database.username ? [{ label: 'User', mono: true, value: database.username }] : []),
+                  ...(database.database ? [{ label: 'Database', mono: true, value: database.database }] : []),
+                  { label: 'Volume', mono: true, value: database.volume },
+                ]} />
+                {database.installed ? (
+                  <Rows gap="tight">
+                    <Input
+                      hint="Removing the stack stops the only process serving this data. The named volume is left in place."
+                      label="Removal confirmation"
+                      onChange={(event) => setConfirmations((current) => ({ ...current, [database.engine]: event.target.value }))}
+                      placeholder={removal}
+                      value={confirmations[database.engine] ?? ''}
+                    />
+                    <Inline>
+                      <Button disabled={pending === database.engine || (confirmations[database.engine] ?? '') !== removal} loading={pending === database.engine} onClick={() => void set(database, false)} variant="ghost">Remove {database.displayName}</Button>
+                      <Button disabled={Boolean(pending)} loading={pending === database.engine} onClick={() => void set(database, true)} variant="secondary">Redeploy</Button>
+                    </Inline>
+                  </Rows>
+                ) : (
+                  <Button disabled={Boolean(pending)} loading={pending === database.engine} onClick={() => void set(database, true)}>Deploy {database.displayName}</Button>
+                )}
+              </Rows>
+            </Panel>
+          )
+        })}
+      </Columns>
+      <Panel eyebrow="How your services connect" title="Credentials and placement">
+        <Rows as="ul" gap="tight" className="nim-body nim-body--sm">
+          <li>The password is generated on the manager and stored as a Swarm secret. SwarmOps never returns it to this console; mount that secret into your own service to read it.</li>
+          <li>Each engine is pinned to a node labelled <Mono>nim.stateful=true</Mono> and attached only to the internal <Mono>swarmops</Mono> overlay. Publishing a port to the host or the edge stays a separate, explicit decision.</li>
+          <li>Redeploying applies the current checked-in asset and pinned image. It never rotates an existing password: Swarm secrets are immutable and a running database depends on the value it was created with.</li>
+        </Rows>
+      </Panel>
+    </Page>
+  )
+}
+
 function TraefikPage({ status, toast }: { status: TraefikStatus; toast: ReturnType<typeof useToast> }) {
   const running = status.service?.health === 'healthy'
   const [confirmation, setConfirmation] = useState('')
@@ -789,6 +1326,7 @@ function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toa
   const [confirmation, setConfirmation] = useState('')
   const [coreConfirmation, setCoreConfirmation] = useState('')
   const [agentConfirmation, setAgentConfirmation] = useState('')
+  const [logRemovalRequested, setLogRemovalRequested] = useState(false)
   const setCore = async (enabled: boolean) => {
     setPending(true)
     try {
@@ -803,6 +1341,7 @@ function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toa
       const command = await api.logsCollection(enabled, enabled ? '' : confirmation)
       toast({ message: `${enabled ? 'Log collection deployment' : 'Log collection removal'} queued (${shortID(command.id)})`, tone: 'success' })
       setConfirmation('')
+      if (!enabled) setLogRemovalRequested(false)
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending(false) }
   }
   const setAgent = async (enabled: boolean) => {
@@ -831,8 +1370,15 @@ function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toa
           {status.coreInstalled ? <><Input hint="Type the exact confirmation before removing shared monitoring." label="Remove-core confirmation" onChange={(event) => setCoreConfirmation(event.target.value)} value={coreConfirmation} /><Button disabled={pending || coreConfirmation !== 'REMOVE_OBSERVABILITY_CORE'} loading={pending} onClick={() => void setCore(false)} variant="danger">Remove core monitoring</Button></> : <Button disabled={pending} loading={pending} onClick={() => void setCore(true)}>Deploy core monitoring</Button>}
         </Panel>
         <Panel eyebrow="Explicit cluster-wide collection" title="Docker service logs">
-          <Switch checked={status.logsEnabled} disabled={pending} description="Runs Alloy globally to collect Docker JSON logs into Loki. Disabling removes that global stack; existing retained logs follow Loki retention." onChange={(event) => { if (event.target.checked) void setLogs(true) }}>Enable log collection</Switch>
-          {status.logsEnabled ? <><Input hint="Type the exact confirmation before removing the global collector." label="Disable confirmation" onChange={(event) => setConfirmation(event.target.value)} value={confirmation} /><Button disabled={pending || confirmation !== 'DISABLE_LOG_COLLECTION'} loading={pending} onClick={() => void setLogs(false)} variant="danger">Disable collection</Button></> : <Button disabled={pending} loading={pending} onClick={() => void setLogs(true)}>Enable collection</Button>}
+          <Switch checked={status.logsEnabled} disabled={pending} description={status.logsEnabled ? 'Alloy is collecting Docker JSON logs globally. Turning the switch off opens the confirmation step; the stack is not removed until you confirm it.' : 'Runs Alloy globally to collect Docker JSON logs into Loki. Enabling queues the reviewed global stack.'} onChange={(event) => { if (event.target.checked) void setLogs(true); else setLogRemovalRequested(true) }}>Enable log collection</Switch>
+          {status.logsEnabled ? (
+            <Rows gap="tight">
+              {!logRemovalRequested ? <Button disabled={pending} onClick={() => setLogRemovalRequested(true)} variant="danger">Begin collection removal</Button> : null}
+              {logRemovalRequested ? <Banner title="Confirm global log collector removal" tone="warning">This removes the reviewed global log-collection stack. Existing retained logs follow Loki retention; it does not delete them from the browser.</Banner> : null}
+              {logRemovalRequested ? <Input hint="Type the exact confirmation before SwarmOps queues the global stack removal." label="Disable confirmation" onChange={(event) => setConfirmation(event.target.value)} value={confirmation} /> : null}
+              {logRemovalRequested ? <Inline><Button disabled={pending || confirmation !== 'DISABLE_LOG_COLLECTION'} loading={pending} onClick={() => void setLogs(false)} variant="danger">Disable collection</Button><Button disabled={pending} onClick={() => { setConfirmation(''); setLogRemovalRequested(false) }} variant="ghost">Keep collection enabled</Button></Inline> : null}
+            </Rows>
+          ) : <Button disabled={pending} loading={pending} onClick={() => void setLogs(true)}>Enable collection</Button>}
         </Panel>
         <Panel eyebrow="Optional host probe" title="Node inventory agent">
           <Body size="sm">The optional global stack installs a read-only SwarmOps agent plus node-exporter. Together they expose host CPU, memory, disk, Docker metadata, and durable fleet-job status only on the private overlay. The SwarmOps agent has a read-only Docker socket and host-root mount, so installation and removal both require an exact confirmation.</Body>
@@ -1013,19 +1559,21 @@ function useServers(onExpired: () => void) {
 function useAuditEvents(enabled: boolean, onExpired: () => void) {
   const [error, setError] = useState('')
   const [events, setEvents] = useState<AuditEvent[] | null>(null)
+  const [loading, setLoading] = useState(false)
   const refresh = useCallback(async () => {
+    setLoading(true)
     setError('')
     try {
       setEvents(await api.auditEvents())
     } catch (reason) {
       if (reason instanceof APIError && reason.status === 401) onExpired()
       else setError(messageOf(reason))
-    }
+    } finally { setLoading(false) }
   }, [onExpired])
   useEffect(() => {
     if (enabled) void refresh()
   }, [enabled, refresh])
-  return { error, events: events ?? [], loading: enabled && events === null && !error }
+  return { error, events: events ?? [], loading: enabled && (loading || events === null && !error), refresh }
 }
 
 function useCommands(enabled: boolean, onExpired: () => void) {

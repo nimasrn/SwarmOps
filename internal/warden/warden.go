@@ -471,7 +471,10 @@ func requiredBundleFiles(component string) []string {
 			"swarmops-warden",
 			"assets/agent.yml",
 			"assets/logs.yml",
+			"assets/mongo.yml",
 			"assets/observability.yml",
+			"assets/postgres.yml",
+			"assets/redis.yml",
 			"assets/traefik.yml",
 		}
 	}

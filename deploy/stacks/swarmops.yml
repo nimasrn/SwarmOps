@@ -1,5 +1,5 @@
 # SwarmOps replaces Portainer as the audited, Git-aligned Swarm control plane.
-# Its API connects to user-selected remote Docker servers through pinned SSH;
+# Its API connects to user-selected remote Docker servers through pinned TLS;
 # it does not mount or expose the Docker socket of the host running the API.
 # The optional inventory agent is a separate stack. This core API can deploy
 # it only through a reviewed asset and never exposes a Docker socket itself.
@@ -105,6 +105,15 @@ services:
       - source: swarmops_traefik_stack
         target: /opt/swarmops/traefik.yml
         mode: 0444
+      - source: swarmops_postgres_stack
+        target: /opt/swarmops/postgres.yml
+        mode: 0444
+      - source: swarmops_mongo_stack
+        target: /opt/swarmops/mongo.yml
+        mode: 0444
+      - source: swarmops_redis_stack
+        target: /opt/swarmops/redis.yml
+        mode: 0444
     secrets:
       - source: swarmops_admin_password_hash
         target: swarmops_admin_password_hash
@@ -169,6 +178,18 @@ services:
         - traefik.http.middlewares.swarmops-login-rate.ratelimit.average=12
         - traefik.http.middlewares.swarmops-login-rate.ratelimit.burst=24
         - traefik.http.services.swarmops.loadbalancer.server.port=8084
+        # Prometheus scrapes /metrics and the /metrics/targets discovery
+        # document over the internal swarmops overlay; the edge must never
+        # serve either to the public hostname.
+        - traefik.http.routers.swarmops-metrics.rule=Host(`${SWARMOPS_HOST:-swarmops.nim.zone}`) && PathPrefix(`/metrics`)
+        - traefik.http.routers.swarmops-metrics.entrypoints=websecure
+        - traefik.http.routers.swarmops-metrics.tls.certresolver=le
+        - traefik.http.routers.swarmops-metrics.priority=200
+        - traefik.http.routers.swarmops-metrics.service=noop@internal
+        - traefik.http.routers.swarmops-metrics-plain.rule=Host(`${SWARMOPS_HOST:-swarmops.nim.zone}`) && PathPrefix(`/metrics`)
+        - traefik.http.routers.swarmops-metrics-plain.entrypoints=web
+        - traefik.http.routers.swarmops-metrics-plain.priority=200
+        - traefik.http.routers.swarmops-metrics-plain.service=noop@internal
         - traefik.http.routers.swarmops-http.rule=Host(`${SWARMOPS_HOST:-swarmops.nim.zone}`)
         - traefik.http.routers.swarmops-http.entrypoints=web
         - traefik.http.routers.swarmops-http.service=noop@internal
@@ -183,6 +204,15 @@ networks:
   swarmops:
     name: swarmops
     driver: overlay
+    internal: true
+  # The data plane for managed databases and the applications SwarmOps renders.
+  # It is deliberately separate from the control-plane `swarmops` network and
+  # internal, so database traffic never leaves the cluster and an application
+  # cannot reach the controller through it. Applications join it by name.
+  swarmops-data:
+    name: swarmops-data
+    driver: overlay
+    attachable: true
     internal: true
 
 volumes:
@@ -199,6 +229,18 @@ configs:
   swarmops_logs_stack:
     file: ./swarmops-logs.yml
     name: ${SWARMOPS_LOGS_STACK_CONFIG_NAME:-swarmops_logs_stack_v1}
+  # Managed database definitions are reviewed, checked-in assets exactly like
+  # the observability and Traefik stacks. The console selects only whether one
+  # runs; it never authors this Compose.
+  swarmops_postgres_stack:
+    file: ./swarmops-postgres.yml
+    name: ${SWARMOPS_POSTGRES_STACK_CONFIG_NAME:-swarmops_postgres_stack_v1}
+  swarmops_mongo_stack:
+    file: ./swarmops-mongo.yml
+    name: ${SWARMOPS_MONGO_STACK_CONFIG_NAME:-swarmops_mongo_stack_v1}
+  swarmops_redis_stack:
+    file: ./swarmops-redis.yml
+    name: ${SWARMOPS_REDIS_STACK_CONFIG_NAME:-swarmops_redis_stack_v1}
   # A real environment creates this immutable non-secret config after running
   # swarmops-preflight. Its namespace and capacity claims gate custom browser
   # deployments; the sample manifest is intentionally not mounted here.

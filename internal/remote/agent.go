@@ -265,21 +265,21 @@ func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (
 	if err != nil {
 		return "", fmt.Errorf("encode machine command: %w", err)
 	}
-	request, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/commands", bytes.NewReader(body))
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/commands", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
-	defer request.Body.Close()
-	if request.StatusCode == http.StatusUnauthorized {
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
 		return "", ErrAgentAPIUnauthorized
 	}
-	if request.StatusCode != http.StatusOK {
+	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("machine API command failed")
 	}
 	var output struct {
 		Output string `json:"output"`
 	}
-	if err := json.NewDecoder(io.LimitReader(request.Body, 256<<10)).Decode(&output); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&output); err != nil {
 		return "", fmt.Errorf("decode machine command response: %w", err)
 	}
 	return output.Output, nil

@@ -26,6 +26,11 @@ type Config struct {
 	BuildMaxCPUs         float64
 	BuildMaxMemoryMiB    int64
 	Docker               *dockerapi.Client
+	// EnrollmentSecret is the installer's one-time secret. When present the
+	// agent serves a single enrollment exchange that hands the controller the
+	// machine API key; EnrollmentSecretFile is removed once it is spent.
+	EnrollmentSecret     []byte
+	EnrollmentSecretFile string
 	// HostRoot is an optional read-only mount of the node root. The agent uses
 	// it solely for filesystem capacity; it never exposes arbitrary files.
 	HostRoot             string

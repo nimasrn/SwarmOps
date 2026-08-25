@@ -59,10 +59,14 @@ build_bundle() {
     install -d -m 0755 "$stage_dir/assets"
     install -m 0444 deploy/stacks/swarmops-agent.yml "$stage_dir/assets/agent.yml"
     install -m 0444 deploy/stacks/swarmops-logs.yml "$stage_dir/assets/logs.yml"
+    install -m 0444 deploy/stacks/swarmops-mongo.yml "$stage_dir/assets/mongo.yml"
     install -m 0444 deploy/stacks/swarmops-observability.yml "$stage_dir/assets/observability.yml"
+    install -m 0444 deploy/stacks/swarmops-postgres.yml "$stage_dir/assets/postgres.yml"
+    install -m 0444 deploy/stacks/swarmops-redis.yml "$stage_dir/assets/redis.yml"
     install -m 0444 deploy/stacks/traefik.yml "$stage_dir/assets/traefik.yml"
     tar -C "$stage_dir" -czf "$output_dir/$asset_name" "$executable" swarmops-warden \
-      assets/agent.yml assets/logs.yml assets/observability.yml assets/traefik.yml
+      assets/agent.yml assets/logs.yml assets/mongo.yml assets/observability.yml \
+      assets/postgres.yml assets/redis.yml assets/traefik.yml
   else
     tar -C "$stage_dir" -czf "$output_dir/$asset_name" "$executable" swarmops-warden
   fi

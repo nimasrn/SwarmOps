@@ -5,6 +5,7 @@ package build
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,7 +74,7 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 	if err != nil {
 		return domain.BuildResult{}, err
 	}
-	if strings.Contains(log, `"error"`) || strings.Contains(log, `"errorDetail"`) {
+	if buildLogReportsError(log) {
 		return domain.BuildResult{}, fmt.Errorf("Docker reported a build error")
 	}
 	return domain.BuildResult{Image: request.Image, Log: log, Pushed: request.Push, RequestID: requestID}, nil
@@ -121,4 +122,29 @@ func allowedPrefix(image string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+// buildLogReportsError decodes the Docker Engine build stream, whose entries
+// are JSON objects per line, and reports whether an error entry appeared.
+// Decoding real JSON keys is stricter than a substring scan: a build step that
+// merely echoes the text `"error"` into its output no longer looks like a
+// failure. Output that contains no parseable JSON at all falls back to the
+// previous heuristic for non-standard engines.
+func buildLogReportsError(log string) bool {
+	decoder := json.NewDecoder(strings.NewReader(log))
+	decoded := false
+	for {
+		var entry map[string]json.RawMessage
+		if err := decoder.Decode(&entry); err != nil {
+			break
+		}
+		decoded = true
+		if _, ok := entry["error"]; ok {
+			return true
+		}
+		if _, ok := entry["errorDetail"]; ok {
+			return true
+		}
+	}
+	return !decoded && strings.Contains(log, `"error"`)
 }

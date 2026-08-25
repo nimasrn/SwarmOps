@@ -53,3 +53,37 @@ func TestRunRejectsUnboundedImageBeforeDocker(t *testing.T) {
 		t.Fatal("latest image was accepted")
 	}
 }
+
+func TestBuildLogReportsOnlyRealErrorEntries(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		log  string
+		want bool
+	}{
+		{
+			name: "error entry",
+			log:  "{\"stream\":\"Step 1/2\"}\n{\"errorDetail\":{\"message\":\"boom\"},\"error\":\"boom\"}\n",
+			want: true,
+		},
+		{
+			name: "plain error entry",
+			log:  "{\"stream\":\"pull ok\"}\n{\"error\":\"manifest unknown\"}\n",
+			want: true,
+		},
+		{
+			name: "successful stream that echoes the word error",
+			log:  "{\"stream\":\"echo quoted-error-string\"}\n{\"stream\":\"Successfully built abc\\n\"}\n",
+			want: false,
+		},
+		{
+			name: "non-JSON fallback still detects legacy marker",
+			log:  "some engine wrote \"error\" text",
+			want: true,
+		},
+	} {
+		if got := buildLogReportsError(tc.log); got != tc.want {
+			t.Errorf("%s: buildLogReportsError = %t, want %t", tc.name, got, tc.want)
+		}
+	}
+}

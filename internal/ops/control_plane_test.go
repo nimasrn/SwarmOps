@@ -43,7 +43,7 @@ func TestApplySnapshotKeepsLoadSeparateFromCPUCapacity(t *testing.T) {
 func TestReconcileTraefikUsesOnlyConfiguredAsset(t *testing.T) {
 	t.Parallel()
 	runner := &recordingRunner{}
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32))
+	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ configs:
 
 func TestLogsCollectionRequiresConfiguredAsset(t *testing.T) {
 	t.Parallel()
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32))
+	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,8 +22,11 @@ type ControlPlane struct {
 	AgentService           string
 	AgentStackFile         string
 	Admission              *PlatformAdmission
+	Apps                   *ApplicationStore
 	Audit                  *audit.Store
 	CLI                    DockerCLI
+	Credentials            *CredentialStore
+	DatabaseSettings       DatabaseSettings
 	Docker                 *dockerapi.Client
 	LogsStackFile          string
 	Mutations              bool
@@ -40,6 +43,9 @@ type ControlPlaneOptions struct {
 	AgentService           string
 	AgentStackFile         string
 	Admission              *PlatformAdmission
+	Apps                   *ApplicationStore
+	Credentials            *CredentialStore
+	DatabaseSettings       DatabaseSettings
 	DataDir                string
 	LogsStackFile          string
 	Mutations              bool
@@ -55,8 +61,11 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		AgentService:           options.AgentService,
 		AgentStackFile:         options.AgentStackFile,
 		Admission:              options.Admission,
+		Apps:                   options.Apps,
 		Audit:                  auditStore,
 		CLI:                    cli,
+		Credentials:            options.Credentials,
+		DatabaseSettings:       options.DatabaseSettings,
 		Docker:                 docker,
 		LogsStackFile:          options.LogsStackFile,
 		Mutations:              options.Mutations,

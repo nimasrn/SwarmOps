@@ -2,10 +2,12 @@ package queue
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/securestore"
 )
 
 func TestWorkerMarksTimedOutExecutionForAttentionRatherThanReplay(t *testing.T) {
@@ -56,5 +58,46 @@ func TestWorkerMarksTimedOutExecutionForAttentionRatherThanReplay(t *testing.T) 
 		case <-deadline:
 			t.Fatal("worker did not report a terminal timeout transition")
 		}
+	}
+}
+
+func TestWorkerFailsStoppedAfterExhaustingStoreRetries(t *testing.T) {
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A durable-store outage must not be silently ignored, and it must not
+	// leave a phantom claimed command behind when every retry is exhausted.
+	store.sealer = &securestore.Sealer{}
+	runErr := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		runErr <- (Worker{
+			PollInterval:       time.Millisecond,
+			Store:              store,
+			StoreRetryAttempts: 3,
+			StoreRetryDelay:    time.Millisecond,
+			Execute: func(context.Context, Record) error {
+				t.Error("executor ran although the claim never succeeded")
+				return nil
+			},
+		}).Run(ctx)
+	}()
+	select {
+	case err := <-runErr:
+		if err == nil || !strings.Contains(err.Error(), "claim due command") {
+			t.Fatalf("worker exit error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker did not stop after exhausting store retries")
+	}
+	stored, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != domain.CommandQueued || stored.Attempt != 0 {
+		t.Fatalf("command after failed claims = %#v", stored)
 	}
 }

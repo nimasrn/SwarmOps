@@ -5,7 +5,6 @@ umask 077
 # Bootstrap one Docker-free SwarmOps controller host. The controller's API and
 # embedded GUI run locally on this machine; it reaches cluster machines only
 # through the pinned machine API selected by an authenticated operator.
-
 config_dir="/etc/swarmops"
 runtime_dir="/usr/local/lib/swarmops"
 release_dir="$runtime_dir/releases"
@@ -141,19 +140,22 @@ checksum_for_file() {
 
 verify_core_bundle_layout() {
   local archive_path="$1" entry
-  local core_count=0 warden_count=0 agent_count=0 logs_count=0 observability_count=0 traefik_count=0
+  local core_count=0 warden_count=0 agent_count=0 logs_count=0 mongo_count=0 observability_count=0 postgres_count=0 redis_count=0 traefik_count=0
   while IFS= read -r entry; do
     case "$entry" in
       swarmops-core) core_count=$((core_count + 1)) ;;
       swarmops-warden) warden_count=$((warden_count + 1)) ;;
       assets/agent.yml) agent_count=$((agent_count + 1)) ;;
       assets/logs.yml) logs_count=$((logs_count + 1)) ;;
+      assets/mongo.yml) mongo_count=$((mongo_count + 1)) ;;
       assets/observability.yml) observability_count=$((observability_count + 1)) ;;
+      assets/postgres.yml) postgres_count=$((postgres_count + 1)) ;;
+      assets/redis.yml) redis_count=$((redis_count + 1)) ;;
       assets/traefik.yml) traefik_count=$((traefik_count + 1)) ;;
       *) fail "release archive contains unsupported entry: $entry" ;;
     esac
   done < <(tar -tzf "$archive_path")
-  ((core_count == 1 && warden_count == 1 && agent_count == 1 && logs_count == 1 && observability_count == 1 && traefik_count == 1)) || fail 'release archive must contain one core, one Warden, and all reviewed stack assets'
+  ((core_count == 1 && warden_count == 1 && agent_count == 1 && logs_count == 1 && mongo_count == 1 && observability_count == 1 && postgres_count == 1 && redis_count == 1 && traefik_count == 1)) || fail 'release archive must contain one core, one Warden, and all reviewed stack assets'
 }
 
 validate_core_release() {
@@ -163,7 +165,10 @@ validate_core_release() {
     "$release_path/swarmops-warden" \
     "$release_path/assets/agent.yml" \
     "$release_path/assets/logs.yml" \
+    "$release_path/assets/mongo.yml" \
     "$release_path/assets/observability.yml" \
+    "$release_path/assets/postgres.yml" \
+    "$release_path/assets/redis.yml" \
     "$release_path/assets/traefik.yml"; do
     [[ -f "$target_path" && ! -L "$target_path" ]] || fail "release is missing a regular file: $target_path"
   done
@@ -186,7 +191,7 @@ download_core_release() {
   temporary_release="$(mktemp -d "$release_dir/.stage-${release_version}.XXXXXX")"
   tar -xzf "$download_dir/$asset_name" -C "$temporary_release" || fail 'extract release bundle'
   chmod 0755 "$temporary_release" "$temporary_release/assets" "$temporary_release/swarmops-core" "$temporary_release/swarmops-warden"
-  chmod 0444 "$temporary_release/assets/agent.yml" "$temporary_release/assets/logs.yml" "$temporary_release/assets/observability.yml" "$temporary_release/assets/traefik.yml"
+  chmod 0444 "$temporary_release/assets/agent.yml" "$temporary_release/assets/logs.yml" "$temporary_release/assets/mongo.yml" "$temporary_release/assets/observability.yml" "$temporary_release/assets/postgres.yml" "$temporary_release/assets/redis.yml" "$temporary_release/assets/traefik.yml"
   validate_core_release "$temporary_release"
   rm -rf "$download_dir"
   download_dir=''

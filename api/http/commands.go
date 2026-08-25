@@ -20,16 +20,19 @@ import (
 )
 
 const (
-	commandNodeAvailability = "node.availability"
-	commandStackDeploy      = "stack.deploy"
-	commandServiceRestart   = "service.restart"
-	commandServiceRollback  = "service.rollback"
-	commandServiceScale     = "service.scale"
-	commandImageBuild       = "image.build"
-	commandTraefikReconcile = "traefik.reconcile"
-	commandNodeAgent        = "observability.node-agent"
-	commandLogs             = "observability.logs"
-	commandObservability    = "observability.core"
+	commandNodeAvailability  = "node.availability"
+	commandStackDeploy       = "stack.deploy"
+	commandServiceRestart    = "service.restart"
+	commandServiceRollback   = "service.rollback"
+	commandServiceScale      = "service.scale"
+	commandImageBuild        = "image.build"
+	commandTraefikReconcile  = "traefik.reconcile"
+	commandNodeAgent         = "observability.node-agent"
+	commandLogs              = "observability.logs"
+	commandObservability     = "observability.core"
+	commandDatabase          = "database.set"
+	commandApplicationDeploy = "application.deploy"
+	commandApplicationRemove = "application.remove"
 
 	maxAutomaticAttempts = 8
 )
@@ -58,6 +61,21 @@ type buildCommand struct {
 type confirmationCommand struct {
 	Confirmation string `json:"confirmation"`
 	Enabled      bool   `json:"enabled"`
+}
+
+type databaseCommand struct {
+	Confirmation string `json:"confirmation"`
+	Enabled      bool   `json:"enabled"`
+	Engine       string `json:"engine"`
+}
+
+type applicationDeployCommand struct {
+	Spec ops.ApplicationSpec `json:"spec"`
+}
+
+type applicationRemoveCommand struct {
+	Confirmation string `json:"confirmation"`
+	Name         string `json:"name"`
 }
 
 type traefikCommand struct {
@@ -237,6 +255,44 @@ func (s *Server) submitCoreObservability(response http.ResponseWriter, request *
 	s.submitCommand(response, request, claims, commandObservability, "stack/swarmops-observability", input, true)
 }
 
+func (s *Server) submitDatabase(response http.ResponseWriter, request *http.Request, claims auth.Claims, input databaseCommand) {
+	definition, err := ops.DatabaseDefinitionFor(input.Engine)
+	if err != nil {
+		writeError(response, http.StatusNotFound, "Unknown managed database")
+		return
+	}
+	if !input.Enabled && input.Confirmation != ops.DatabaseRemovalConfirmation(definition.Engine) {
+		writeError(response, http.StatusUnprocessableEntity, "removal requires confirmation "+ops.DatabaseRemovalConfirmation(definition.Engine))
+		return
+	}
+	input.Engine = definition.Engine
+	s.submitCommand(response, request, claims, commandDatabase, "stack/"+definition.Stack, input, true)
+}
+
+// submitApplicationDeploy validates and renders once before queueing, so a
+// spec that cannot become an admissible stack is refused with a useful message
+// instead of becoming a command that will need operator attention later.
+func (s *Server) submitApplicationDeploy(response http.ResponseWriter, request *http.Request, claims auth.Claims, spec ops.ApplicationSpec) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	spec = spec.Normalize()
+	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	s.submitCommand(response, request, claims, commandApplicationDeploy, "application/"+spec.Name, applicationDeployCommand{Spec: spec}, true)
+}
+
+func (s *Server) submitApplicationRemove(response http.ResponseWriter, request *http.Request, claims auth.Claims, name, confirmation string) {
+	if confirmation != ops.ApplicationRemovalConfirmation(name) {
+		writeError(response, http.StatusUnprocessableEntity, "removal requires confirmation "+ops.ApplicationRemovalConfirmation(name))
+		return
+	}
+	s.submitCommand(response, request, claims, commandApplicationRemove, "application/"+name, applicationRemoveCommand{Confirmation: confirmation, Name: name}, false)
+}
+
 func (s *Server) submitCommand(response http.ResponseWriter, request *http.Request, claims auth.Claims, action, target string, payload any, autoRetry bool) {
 	serverID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
 	if !ok {
@@ -375,6 +431,24 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(err)
 		}
 		return classifyCommandError(target.Control.CoreObservability(ctx, record.Command.Actor, record.Command.RequestID, input.Enabled, input.Confirmation))
+	case commandDatabase:
+		var input databaseCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.SetDatabase(ctx, record.Command.Actor, record.Command.RequestID, input.Engine, input.Enabled, input.Confirmation))
+	case commandApplicationDeploy:
+		var input applicationDeployCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec))
+	case commandApplicationRemove:
+		var input applicationRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
 	default:
 		return queue.PermanentError(fmt.Errorf("unsupported queued command"))
 	}
@@ -429,9 +503,16 @@ func decodeCommandPayload(raw json.RawMessage, target any) error {
 	return nil
 }
 
+// classifyCommandError decides whether a failed execution may be retried.
+// An explicitly permanent outcome always wins; the marker scan only classifies
+// errors that the ops layer did not already type, and its markers are all
+// locally generated policy phrases rather than remote error text.
 func classifyCommandError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if queue.IsPermanent(err) {
+		return err
 	}
 	text := strings.ToLower(err.Error())
 	for _, marker := range []string{

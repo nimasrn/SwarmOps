@@ -28,13 +28,21 @@ type auditFile struct {
 type Store struct {
 	events     []domain.AuditEvent
 	legacyPath string
+	maxEvents  int
 	mu         sync.Mutex
 	now        func() time.Time
 	path       string
 	store      *securestore.Sealer
 }
 
-func Open(dataDir string, dataEncryptionKey []byte) (*Store, error) {
+// Open loads the encrypted audit history and keeps at most maxEvents records.
+// The bound stops unauthenticated login-failure spam and ordinary operation
+// volume from growing controller memory and the sealed rewrite cost forever;
+// the most recent evidence is always retained.
+func Open(dataDir string, dataEncryptionKey []byte, maxEvents int) (*Store, error) {
+	if maxEvents < 1 {
+		return nil, fmt.Errorf("audit retention must be positive")
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create audit directory: %w", err)
 	}
@@ -44,6 +52,7 @@ func Open(dataDir string, dataEncryptionKey []byte) (*Store, error) {
 	}
 	store := &Store{
 		legacyPath: filepath.Join(dataDir, "audit.ndjson"),
+		maxEvents:  maxEvents,
 		now:        time.Now,
 		path:       filepath.Join(dataDir, "audit.sealed"),
 		store:      sealer,
@@ -91,6 +100,7 @@ func (s *Store) loadLegacyEvents() error {
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read legacy audit log: %w", err)
 	}
+	s.trimLocked()
 	if err := s.saveLocked(); err != nil {
 		return fmt.Errorf("seal legacy audit log: %w", err)
 	}
@@ -112,6 +122,7 @@ func (s *Store) loadEvents(data []byte) error {
 	for _, event := range saved.Events {
 		s.events = append(s.events, cloneEvent(event))
 	}
+	s.trimLocked()
 	return nil
 }
 
@@ -133,11 +144,25 @@ func (s *Store) Record(event domain.AuditEvent) (domain.AuditEvent, error) {
 	}
 	event = cloneEvent(event)
 	s.events = append(s.events, event)
+	s.trimLocked()
 	if err := s.saveLocked(); err != nil {
 		s.events = s.events[:len(s.events)-1]
 		return domain.AuditEvent{}, err
 	}
 	return cloneEvent(event), nil
+}
+
+// trimLocked retains only the newest maxEvents records. It runs after load
+// and every append so both memory and the sealed rewrite stay bounded even
+// when unauthenticated login failures attempt to flood the ledger.
+func (s *Store) trimLocked() {
+	excess := len(s.events) - s.maxEvents
+	if excess <= 0 {
+		return
+	}
+	retained := make([]domain.AuditEvent, len(s.events)-excess)
+	copy(retained, s.events[excess:])
+	s.events = retained
 }
 
 // Writable verifies that the encrypted audit destination can create a

@@ -48,6 +48,8 @@ func main() {
 		BuildMaxCPUs:         runtime.buildMaxCPUs,
 		BuildMaxMemoryMiB:    runtime.buildMaxMemoryMiB,
 		Docker:               docker,
+		EnrollmentSecret:     runtime.enrollmentSecret,
+		EnrollmentSecretFile: runtime.enrollmentSecretFile,
 		HostOS:               env("SWARMOPS_HOST_OS", "/host/etc/os-release"),
 		HostProc:             env("SWARMOPS_HOST_PROC", "/host/proc"),
 		HostRoot:             env("SWARMOPS_HOST_ROOT", "/host"),
@@ -107,6 +109,8 @@ type runtimeConfig struct {
 	buildMaxCPUs         float64
 	buildMaxMemoryMiB    int64
 	dockerSocket         string
+	enrollmentSecret     []byte
+	enrollmentSecretFile string
 	listenAddr           string
 	remoteControlEnabled bool
 	tlsCertFile          string
@@ -119,6 +123,18 @@ func loadRuntime() (runtimeConfig, error) {
 	if err != nil {
 		return runtimeConfig{}, err
 	}
+	enrollmentSecretFile := strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_ENROLLMENT_FILE"))
+	var enrollmentSecret []byte
+	if enrollmentSecretFile != "" {
+		// A spent enrollment file is deleted by the agent, so a missing file
+		// simply means this host has already been enrolled.
+		if _, statErr := os.Lstat(filepath.Clean(enrollmentSecretFile)); statErr == nil {
+			enrollmentSecret, err = secretFile(enrollmentSecretFile)
+			if err != nil {
+				return runtimeConfig{}, err
+			}
+		}
+	}
 	config := runtimeConfig{
 		allowedImagePrefixes: splitCSV(env("SWARMOPS_AGENT_IMAGE_PREFIXES", "ghcr.io/nimasrn/")),
 		buildEnabled:         boolEnv("SWARMOPS_AGENT_BUILD_ENABLED", false),
@@ -126,6 +142,8 @@ func loadRuntime() (runtimeConfig, error) {
 		buildMaxCPUs:         floatEnv("SWARMOPS_AGENT_BUILD_MAX_CPUS", 2),
 		buildMaxMemoryMiB:    int64Env("SWARMOPS_AGENT_BUILD_MAX_MEMORY_MIB", 2048),
 		dockerSocket:         env("SWARMOPS_DOCKER_SOCKET", "/var/run/docker.sock"),
+		enrollmentSecret:     enrollmentSecret,
+		enrollmentSecretFile: enrollmentSecretFile,
 		listenAddr:           env("SWARMOPS_AGENT_LISTEN_ADDR", ":9180"),
 		remoteControlEnabled: boolEnv("SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED", false),
 		tlsCertFile:          strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_TLS_CERT_FILE")),

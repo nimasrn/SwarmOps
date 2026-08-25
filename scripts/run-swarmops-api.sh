@@ -171,7 +171,10 @@ ensure_directory "$binary_dir"
 
 stage_asset "$repo_root/deploy/stacks/swarmops-agent.yml" "$asset_dir/agent.yml"
 stage_asset "$repo_root/deploy/stacks/swarmops-logs.yml" "$asset_dir/logs.yml"
+stage_asset "$repo_root/deploy/stacks/swarmops-mongo.yml" "$asset_dir/mongo.yml"
 stage_asset "$repo_root/deploy/stacks/swarmops-observability.yml" "$asset_dir/observability.yml"
+stage_asset "$repo_root/deploy/stacks/swarmops-postgres.yml" "$asset_dir/postgres.yml"
+stage_asset "$repo_root/deploy/stacks/swarmops-redis.yml" "$asset_dir/redis.yml"
 stage_asset "$repo_root/deploy/stacks/traefik.yml" "$asset_dir/traefik.yml"
 
 ensure_dependencies "$app_dir/web"

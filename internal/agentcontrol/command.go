@@ -21,11 +21,22 @@ const (
 	OperationStackConfig      = "stack_config"
 	OperationStackDeploy      = "stack_deploy"
 	OperationStackRemove      = "stack_remove"
+	OperationSecretCreate     = "secret_create"
+	OperationSecretList       = "secret_list"
 )
+
+// MaxSecretBytes bounds the generated credential a managed stateful stack
+// needs. It is deliberately small: this operation exists to create SwarmOps'
+// own generated passwords, not to ship arbitrary operator material.
+const MaxSecretBytes = 512
 
 var (
 	referencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 	stackNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
+	// Only SwarmOps' own generated credentials may be created through this
+	// vocabulary, so the name is confined to the swarmops_ prefix.
+	managedSecretPattern = regexp.MustCompile(`^swarmops_[a-z0-9][a-z0-9_]{0,54}$`)
+	secretValuePattern   = regexp.MustCompile(`^[A-Za-z0-9+/=_.:@?&-]{16,512}$`)
 )
 
 // Request is intentionally structured rather than an argv pass-through. The
@@ -37,6 +48,7 @@ type Request struct {
 	Operation           string `json:"operation"`
 	Replicas            uint64 `json:"replicas,omitempty"`
 	ResolveImageChanged bool   `json:"resolveImageChanged,omitempty"`
+	Secret              string `json:"secret,omitempty"`
 	ServiceID           string `json:"serviceId,omitempty"`
 	Tail                uint64 `json:"tail,omitempty"`
 	WithRegistryAuth    bool   `json:"withRegistryAuth,omitempty"`
@@ -64,6 +76,8 @@ func FromDockerCLI(name string, args []string, input []byte) (Request, error) {
 		return serviceRequest(args, input)
 	case "stack":
 		return stackRequest(args, input)
+	case "secret":
+		return secretRequest(args, input)
 	}
 	return Request{}, fmt.Errorf("unsupported agent Docker operation")
 }
@@ -96,6 +110,19 @@ func serviceRequest(args []string, input []byte) (Request, error) {
 	default:
 		return Request{}, fmt.Errorf("unsupported agent service operation")
 	}
+}
+
+// secretRequest covers only the two shapes SwarmOps produces when it ensures a
+// managed stateful stack has its generated password: list the existing secret
+// names, and create one missing secret from stdin.
+func secretRequest(args []string, input []byte) (Request, error) {
+	if len(args) == 4 && args[1] == "create" && args[3] == "-" {
+		return Request{Name: args[2], Operation: OperationSecretCreate, Secret: string(input)}, nil
+	}
+	if len(args) == 4 && args[1] == "ls" && args[2] == "--format" && args[3] == "{{.Name}}" && len(input) == 0 {
+		return Request{Operation: OperationSecretList}, nil
+	}
+	return Request{}, fmt.Errorf("unsupported agent secret operation")
 }
 
 func stackRequest(args []string, input []byte) (Request, error) {
@@ -190,8 +217,15 @@ func DockerArgs(request Request) ([]string, []byte, error) {
 		}
 		args = append(args, "--compose-file", "-", request.Name)
 		return args, compose, nil
+	case OperationSecretCreate:
+		if !managedSecretPattern.MatchString(request.Name) || !secretValuePattern.MatchString(request.Secret) {
+			return nil, nil, fmt.Errorf("invalid managed secret operation")
+		}
+		return []string{"secret", "create", request.Name, "-"}, []byte(request.Secret), nil
+	case OperationSecretList:
+		return []string{"secret", "ls", "--format", "{{.Name}}"}, nil, nil
 	case OperationStackRemove:
-		if !oneOf(request.Name, "swarmops-agent", "swarmops-logs", "swarmops-observability") {
+		if !oneOf(request.Name, "swarmops-agent", "swarmops-logs", "swarmops-observability", "swarmops-postgres", "swarmops-mongo", "swarmops-redis") {
 			return nil, nil, fmt.Errorf("unsupported stack removal")
 		}
 		return []string{"stack", "rm", request.Name}, nil, nil

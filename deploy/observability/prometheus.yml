@@ -22,6 +22,16 @@ scrape_configs:
         type: A
         port: 8084
 
+  # Applications SwarmOps renders are discovered rather than configured. The
+  # controller serves the target list on the internal swarmops overlay, so a
+  # newly deployed application starts being scraped without regenerating this
+  # file and without giving Prometheus the Docker socket. __metrics_path__ and
+  # the application labels come from the discovery response.
+  - job_name: swarmops-applications
+    http_sd_configs:
+      - url: http://swarmops_api:8084/metrics/targets
+        refresh_interval: 30s
+
   - job_name: swarmops-node-agent
     dns_sd_configs:
       - names: [tasks.swarmops-agent_agent]
