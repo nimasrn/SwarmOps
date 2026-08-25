@@ -18,6 +18,7 @@ install_dependencies=false
 advertise_host=''
 install_docker=false
 init_swarm=false
+validate_only=false
 os_name="$(uname -s)"
 
 usage() {
@@ -44,6 +45,7 @@ usage() {
     '--install-docker                   Install Docker Engine on Debian/Ubuntu when absent.' \
     '--init-swarm                       Form a single-node Swarm when the host is not in one.' \
     '--install-dependencies             Install curl, CA certificates, and OpenSSL where supported.' \
+    '--validate-only                    Validate options without changing this host.' \
     '                                   The listener must include loopback or all interfaces so Warden can health-check it locally.' \
     '-h, --help                         Show this help.'
 }
@@ -197,7 +199,7 @@ select_tls_material() {
 
 install_managed_tls_material() {
   local temporary_key temporary_certificate temporary_config
-  [[ "$managed_tls_material" == true ]] || return
+  [[ "$managed_tls_material" == true ]] || return 0
 
   install -d -m 0700 "$tls_dir"
   if [[ -L "$tls_cert_file" || -L "$tls_key_file" ]]; then
@@ -208,7 +210,7 @@ install_managed_tls_material() {
       require_regular_file 'SwarmOps-managed TLS certificate' "$tls_cert_file"
       require_protected_file 'SwarmOps-managed TLS private key' "$tls_key_file"
       openssl x509 -in "$tls_cert_file" -noout -checkend 0 >/dev/null || fail 'existing SwarmOps-managed TLS certificate is invalid or expired'
-      return
+      return 0
     fi
     fail 'SwarmOps-managed TLS material is incomplete; remove both files only after disconnecting this machine from SwarmOps'
   fi
@@ -271,7 +273,7 @@ release_platform() {
 }
 
 resolve_release_version() {
-  [[ "$release_version" == latest ]] || return
+  [[ "$release_version" == latest ]] || return 0
   local resolved_url
   resolved_url="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output /dev/null --write-out '%{url_effective}' "https://github.com/$github_repository/releases/latest")" || fail 'resolve latest GitHub release'
   case "$resolved_url" in
@@ -336,7 +338,7 @@ install_release() {
   destination="$release_dir/$release_version"
   if [[ -e "$destination" ]]; then
     validate_installed_release "$destination"
-    return
+    return 0
   fi
   download_release_bundle
   if ! mv "$temporary_release" "$destination"; then
@@ -359,7 +361,7 @@ install_api_key() {
   if [[ -n "$api_key_file" ]]; then
     require_api_key_file "$api_key_file"
     install -m 0600 "$api_key_file" "$api_key_destination"
-    return
+    return 0
   fi
   temporary_key="$(mktemp "$config_dir/.api-key.XXXXXX")"
   if ! openssl rand -base64 32 >"$temporary_key"; then
@@ -541,7 +543,7 @@ check_local_health() {
   health_url="$(local_health_url)"
   while ((attempts < 15)); do
     if curl --fail --silent --show-error --insecure --connect-timeout 2 --max-time 4 "$health_url" >/dev/null; then
-      return
+      return 0
     fi
     attempts=$((attempts + 1))
     sleep 1
@@ -574,7 +576,7 @@ detect_advertise_host() {
 # used: the repository key is verified and pinned here.
 install_docker_engine() {
   if command -v docker >/dev/null 2>&1; then
-    return
+    return 0
   fi
   [[ "$os_name" == Linux ]] || fail '--install-docker supports Debian and Ubuntu Linux only; install Docker Desktop manually on macOS'
   [[ -f /etc/os-release ]] || fail '--install-docker requires /etc/os-release'
@@ -604,7 +606,7 @@ initialize_swarm() {
   local state
   state="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || true)"
   if [[ "$state" == 'active' ]]; then
-    return
+    return 0
   fi
   [[ "$state" == 'inactive' ]] || fail "this host is in Swarm state '$state'; resolve it before --init-swarm"
   docker swarm init --advertise-addr "$advertise_host" >/dev/null || fail 'docker swarm init failed'
@@ -654,6 +656,7 @@ while [[ "$#" -gt 0 ]]; do
     --install-docker) install_docker=true; shift ;;
     --init-swarm) init_swarm=true; shift ;;
     --install-dependencies) install_dependencies=true; shift ;;
+    --validate-only) validate_only=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -686,6 +689,18 @@ fi
 require_safe_value '--advertise-host' "$advertise_host"
 [[ "$advertise_host" != *[/:]* || "$advertise_host" == *:*:* ]] || fail '--advertise-host must be a hostname or IP address without a port'
 
+release_platform
+resolve_release_version
+if [[ "$validate_only" == true ]]; then
+  printf '%s\n' \
+    'SwarmOps machine-agent installer configuration is valid.' \
+    "Release: $release_version" \
+    "Listener: $listen_addr" \
+    "Advertise host: $advertise_host" \
+    'No host changes were made.'
+  exit 0
+fi
+
 if [[ "$install_dependencies" == true ]]; then
   install_host_dependencies
 fi
@@ -717,8 +732,6 @@ install -d -m 0755 "$runtime_dir" "$release_dir"
 install_api_key
 install_enrollment_secret
 install_managed_tls_material
-release_platform
-resolve_release_version
 install_release
 set_current_release
 write_environment_file

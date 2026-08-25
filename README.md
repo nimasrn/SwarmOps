@@ -289,6 +289,16 @@ sudo bash install-swarmops-agent.sh
 bash install-swarmops-agent.sh
 ```
 
+To validate a fixed release and your listener/advertise settings without
+changing the host, add `--validate-only`, for example:
+
+```bash
+sudo bash install-swarmops-agent.sh \
+  --release v0.4.2 \
+  --advertise-host <server-ip> \
+  --validate-only
+```
+
 The installer downloads a checksum-verified GitHub Release bundle containing
 `swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
 systemd service on Linux or a per-user LaunchAgent on macOS. It requires curl,

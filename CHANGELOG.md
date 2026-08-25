@@ -5,6 +5,15 @@ the native installers resolve the latest published GitHub Release by default.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-25
+
+### Fixed
+
+- Fixed explicit `--release <tag>` installs exiting silently before the native
+  agent, service, and enrollment-token summary were installed. The installer
+  now returns success for an already-selected release and offers
+  `--validate-only` for no-side-effect option checks.
+
 ## [0.4.1] - 2026-08-25
 
 ### Fixed
@@ -63,7 +72,8 @@ the native installers resolve the latest published GitHub Release by default.
 
 - Released the standalone public repository and native installation path.
 
-[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/nimasrn/SwarmOps/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/nimasrn/SwarmOps/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/nimasrn/SwarmOps/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/nimasrn/SwarmOps/compare/v0.3.2...v0.3.3
