@@ -5,14 +5,16 @@ Read [README.md](README.md) before changing this application. Root
 
 - Treat the API and machine agent as high-trust surfaces: the controller reaches
   a selected Docker Engine only through a pinned TLS machine API with a
-  memory-only API key. The global overlay agent remains read-only. Never add an
-  arbitrary command, arbitrary file-read, shell, or socket-proxy endpoint to
-  either process.
+  machine API key that is either memory-only or AES-256-GCM sealed when
+  enrollment retention is enabled. The key is never returned or audited. The
+  global overlay agent remains read-only. Never add an arbitrary command,
+  arbitrary file-read, shell, or socket-proxy endpoint to either process.
 - Browser mutations must be fixed-shape operations, CSRF-protected, audited,
   bounded by context/output/resource limits, and disabled by default.
 - Never put a password, private key/passphrase, session key, registry config,
   cloud token, Compose content, build context, or service-log content into an
-  audit record or log. Persist only non-secret remote-server profile metadata.
+  audit record or log. Persist secrets only in the explicitly encrypted machine
+  key, database-credential, command, or application stores.
 - The React console consumes `nim`'s **console layer** and holds no UI
   components of its own. `web/src/styles.css` is app chrome only — the mark,
   the wordmark, and the two full-viewport screens that exist before the shell

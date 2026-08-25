@@ -6,15 +6,14 @@
 SwarmOps is a remote Docker Swarm control plane. It is the replacement path
 for Portainer: an auditable Go API plus React console, an Ansible bootstrap
 entrypoint, and shared Grafana/Prometheus/Alertmanager/Jaeger observability
-manifests. In
-the deployed platform, the API is a singleton on the designated control
-manager: its persisted cluster profiles, audit history, encrypted command
-ledger, checked-in deployment assets, and production console all live there.
-An operator can run only the
-Vite UI locally and proxy it to that API; no local SwarmOps API, Docker daemon,
-Docker socket, or local Swarm is needed. Operators install the native machine
-agent on a Linux or macOS Docker host, then add its pinned HTTPS API URL, port,
-certificate fingerprint, and API key in the console.
+manifests. In the deployed platform, the API is a singleton on the designated
+control manager: its persisted cluster profiles, audit history, encrypted
+command ledger, checked-in deployment assets, and production console all live
+there. An operator can run only the Vite UI locally and proxy it to that API;
+no local SwarmOps API, Docker daemon, Docker socket, or local Swarm is needed.
+Operators install the native machine agent on a Linux or macOS host, then paste
+the installer’s single-use enrollment token into the console. The token carries
+the address and TLS pin, never the long-lived machine API key.
 
 It does **not** make Docker’s root-equivalent socket harmless. The product
 reduces its exposure to a small, reviewed API rather than forwarding arbitrary
@@ -23,19 +22,21 @@ Docker commands from a browser.
 ## Source-release scope
 
 This repository is self-contained for SwarmOps controller and machine-agent
-development, container builds, and the direct controller and machine-agent
-installers. The wider `nim` platform manifests and operator automation remain
-in [nimasrn/nim](https://github.com/nimasrn/nim). When an operational procedure
+development, container builds, native installers, managed-database stack
+assets, and example application/admission specifications. Wider `nim` platform
+manifests and operator automation remain in
+[nimasrn/nim](https://github.com/nimasrn/nim). When an operational procedure
 below uses an `apps/swarmops` path, run it from that monorepo checkout.
 
 Published native installations and their rollback behavior are documented in
-[Native release installation and updates](docs/Native-Release-Updates.md).
+[Native release installation and updates](docs/Native-Release-Updates.md). See
+the [changelog](CHANGELOG.md) for release contents.
 
 ## What it operates
 
 | Area | Capability | Boundary |
 | --- | --- | --- |
-| Servers | Add a Linux or macOS Docker host through its native machine API URL, port, API key, and pinned TLS certificate | The key stays only in controller process memory and is cleared on disconnect/restart; only non-secret profile metadata is stored. A Swarm manager is required before cluster pages or mutations are enabled. |
+| Servers | Run one installer and paste its single-use enrollment token; advanced manual URL, port, fingerprint, and API-key fields remain available | Core exchanges the token over pinned TLS and, by default, retains the key only as AES-256-GCM-sealed state for restart recovery. Disconnect removes both live and sealed copies. A Swarm manager is required before cluster pages or mutations are enabled. |
 | Nodes | Docker role/state/availability, labels, task placement, and engine-declared CPU/memory capacity from the selected machine agent | A target must be a remote Swarm manager for cluster operations; optional global host probes are not required for connection. |
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
 | Services | Read a bounded service-log tail; restart, rollback, or scale with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. |
@@ -43,6 +44,8 @@ Published native installations and their rollback behavior are documented in
 | Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmopsctl build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
 | Edge / TLS | Discover and reconcile the checked-in Traefik stack; protected dashboard, internal Prometheus metrics, and ACME DNS challenge | DNS/provider tokens and dashboard credentials remain external Swarm secrets; the browser never supplies routes or credentials. |
 | Observability | One Grafana + Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection | Core, host-probe, and log-collector removal require exact typed confirmations. |
+| Databases | Enable reviewed single-node PostgreSQL, MongoDB, or Redis stacks with generated credentials on the internal data overlay | Credentials are created as Swarm secrets and sealed by Core, never returned to the browser. Removal requires an engine-specific typed phrase and leaves the named volume and Swarm secrets for deliberate recovery or cleanup. |
+| Applications | Select a manifest-approved slot, immutable image, domain, health/metrics path, backend, and managed databases; preview or deploy the rendered Compose | Core admits its rendered output through the same closed Compose policy and fresh live-capacity check. Database URIs use stack-scoped secrets by default; `/metrics/targets` exposes only safe Prometheus discovery metadata. |
 | Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Docker installation and Swarm formation remain reviewed Ansible operator actions; the machine API may be installed first, but Docker/Swarm operations wait for Docker to become available. |
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
 | Fleet jobs | Queue an allow-listed Ansible operation on every selected inventory host and read durable status | A node-owned transient systemd job survives an accepted SSH control-channel loss; the remote model uses the trusted-workstation SSH inventory status path and never exposes command output in the browser. |
@@ -55,7 +58,7 @@ hosted browser ── HTTPS ─────────────────�
 local Vite UI ── relative /api proxy ──────────────┼──> SwarmOps API on the control manager
                                                     │          (no Docker socket)
                                                     │
-                                  pinned TLS machine API (URL, port, key)
+                         one-paste enrollment → pinned TLS machine API
                                                     │
                                       Linux/macOS Docker host / Swarm manager
                                                     │
@@ -66,9 +69,9 @@ trusted workstation ─ swarmopsctl tar stream ─> API build endpoint ─> encr
 
 - `cmd/api` serves the React build and authenticated API on port `8084`. The
   deployed singleton is constrained to a manager with `nim.control=true`; its
-  named volume holds AES-256-GCM-sealed server profiles, audit history, command
-  metadata/payload, and pending build contexts. It starts without a Docker
-  daemon or socket.
+  named volume holds AES-256-GCM-sealed server profiles, retained machine keys,
+  database/application state, audit history, command metadata/payload, and
+  pending build contexts. It starts without a Docker daemon or socket.
 - `cmd/swarmopsctl` runs on the operator workstation for a real local build
   path. It prompts for a password securely or reads it once from stdin.
 - `internal/remote` owns the pinned machine-API transport. It exposes a
@@ -255,9 +258,13 @@ disabled. Server profiles, audit history, and command metadata/payload are
 sealed with AES-256-GCM under `/var/lib/swarmops`; pending build contexts are
 owner-only spool files retained only while a queued or needs-attention build
 needs its source and deleted after a successful build. The separate key remains
-in a protected file under `/etc/swarmops`. Machine API keys are never stored in
-controller state. The encryption protects copied state or backups without the
-key; it cannot protect a controller host already compromised as root.
+in a protected file under `/etc/swarmops`. Enrollment-based installations seal
+machine API keys in controller state so hosts can reconnect after a restart;
+the keys are never returned by an endpoint or written to audit records. Set
+`SWARMOPS_RETAIN_MACHINE_KEYS=false` before enrollment to keep keys memory-only
+and accept manual reconnects after every restart. Encryption protects copied
+state or backups without the key; it cannot protect a controller host already
+compromised as root.
 
 The allowlist is enforced by the API, not by the random port. Also add an outer
 firewall or security-group rule that exposes the printed port only to the same
@@ -295,11 +302,14 @@ Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
 `--tls-cert-file` and `--tls-key-file` flags only when an operator deliberately
 uses a different managed certificate. Pass `--install-dependencies` only when
 its documented Debian/Ubuntu or Homebrew package installation is appropriate.
-It does not install Docker, change the firewall, create a Swarm, or print the
-generated API key.
+By default it does not install Docker, change the firewall, or create a Swarm.
+On Debian/Ubuntu, `--install-docker` uses Docker’s signed APT repository and
+`--init-swarm` forms a single-node Swarm using the detected or explicitly
+supplied `--advertise-host`. Joining an existing cluster remains an explicit
+operator action. The installer never prints the generated API key.
 
-It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_TLS_CERT_FILE`,
-`SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
+It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_ENROLLMENT_FILE`,
+`SWARMOPS_AGENT_TLS_CERT_FILE`, `SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
 `SWARMOPS_DOCKER_SOCKET`, and `SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true`
 into its protected service environment. Keep the token/key file owner-only;
 the agent refuses a symlink or group/world-readable token or TLS key.
@@ -317,12 +327,13 @@ known-good releases. Start `swarmops-agent-warden.service` manually for an
 immediate Linux check; see the native-release document for the controller and
 macOS equivalents.
 
-The installer prints the machine API port and a public TLS certificate
-fingerprint in `SHA256:<64-hex>` form, and gives the protected key-file path.
-Copy the key through an approved secure channel. Then open **Servers** and add
-the HTTPS origin without a port, the port, the fingerprint, and that key. The
-controller pins the exact leaf certificate and retains the key only until the
-server disconnects or the controller restarts.
+The installer prints one `swarmops1.…` enrollment token containing the detected
+host, machine API port, public TLS certificate fingerprint, and a one-time
+secret. Open **Servers**, paste that token, and optionally give the host a
+display name. Core pins the exact leaf certificate, exchanges the one-time
+secret for the API key, and the agent burns the token after that successful
+exchange. The manual connection fields remain an advanced fallback for an
+already-installed agent or deliberately managed TLS material.
 
 Profiles saved before this transport change are marked **Legacy SSH** in the
 Servers table. They remain readable only for migration; remove each one and
@@ -678,9 +689,11 @@ output.
 
 Server profiles persist only display name, machine API origin/port,
 authentication method, and pinned TLS certificate fingerprint in sealed state
-beside the audit data. API keys are never written there, placed in a Swarm
-secret, or included in audit records. They are retained only by the live
-controller process so a restart requires an explicit reconnect.
+beside the audit data. Enrollment-based installations also retain the machine
+API key in a separate AES-256-GCM-sealed file so Core can reconnect after a
+restart. API keys are never returned, placed in a Swarm secret, or included in
+audit records; explicit disconnect removes the retained copy. Set
+`SWARMOPS_RETAIN_MACHINE_KEYS=false` for a memory-only posture.
 
 The Servers panel reports safe, actionable connection diagnostics for TLS-pin
 mismatches, rejected API keys, machine-API reachability, disabled control, and
@@ -696,15 +709,19 @@ explicit verified profile update.
 ## Important limitations
 
 - The control plane is intentionally a single replica on the designated
-  control manager because its audit/command volume and in-memory machine API
-  connections are local to that task. A separate shared state and credential
-  design is required before it can become HA.
+  control manager because its encrypted state and live machine API connections
+  are local to that task. A separate replicated state and credential design is
+  required before it can become HA.
 - A remote host must run the native machine agent before it can be added. It
   can connect before Docker starts, but Docker and cluster operations remain
   unavailable until the engine is ready. Cluster operations require a selected
-  remote Swarm manager; use the reviewed Ansible provisioning workflow to
-  prepare a fresh Debian/Ubuntu host. SwarmOps does not install Docker or form
-  a Swarm from the browser.
+  remote Swarm manager; use the reviewed Ansible workflow or the Linux
+  installer’s explicit `--install-docker --init-swarm` options to prepare a
+  fresh Debian/Ubuntu host. SwarmOps does not install Docker or form a Swarm
+  from the browser.
+- The managed database stacks are intentionally one replica with local named
+  volumes on a `nim.stateful=true` node. They require an external backup and
+  tested restore plan and do not claim database high availability.
 - Jaeger’s checked-in Badger store is durable only on its labelled stateful
   node. Use documented OpenSearch config and a tested backup/restore plan when
   trace HA/retention requires it.

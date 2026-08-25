@@ -3,8 +3,9 @@
 SwarmOps native installations use exactly two executables on a host:
 
 - `swarmops-core` is the Docker-free control-plane API, embedded console, and
-  reviewed deployment-assets process. Its encrypted state remains outside a
-  release at `/var/lib/swarmops`.
+  reviewed deployment-assets process. Core bundles include the agent, logging,
+  observability, Traefik, PostgreSQL, MongoDB, and Redis stack assets. Encrypted
+  state remains outside a release at `/var/lib/swarmops`.
 - `swarmops-agent` is the constrained host-side machine API. It remains
   separate from Core so the controller never receives a Docker socket, and it
   stays healthy when Docker is not yet running.
@@ -50,7 +51,9 @@ and data-encryption keys, and a restricted `swarmops-control-plane.service`.
 Its listener uses a wildcard bind so Warden can query its own loopback
 `/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
 operator CIDRs supplied at installation. It does not receive a Docker socket or
-Docker-group membership.
+Docker-group membership. Enrollment-based installations keep machine API keys
+only in AES-256-GCM-sealed Core state so agents reconnect after a restart; set
+`SWARMOPS_RETAIN_MACHINE_KEYS=false` for memory-only keys and manual reconnects.
 
 ## Install Agent on a host
 
@@ -73,13 +76,20 @@ are `/etc/swarmops-agent/tls/agent.crt` and
 `$HOME/.config/swarmops-agent/tls/agent.crt` and
 `$HOME/.config/swarmops-agent/tls/agent.key` on macOS. The controller pins the
 exact leaf certificate, so no external CA or operator-supplied certificate is
-required. The installer prints the TLS fingerprint, port, certificate path,
-and protected API-key file path—never the API key. In the Core console, add a
-server with the HTTPS origin (without its port), port, fingerprint, and API key
-through an approved secure channel. The listener must remain reachable only
-from the controller through an explicit firewall rule. Advanced operators may
-provide a certificate only with the paired `--tls-cert-file` and
-`--tls-key-file` flags.
+required. The installer prints the TLS fingerprint and one `swarmops1.…`
+enrollment token—never the API key. Paste that token into **Servers → Add
+server**. Core exchanges its one-time secret for the key over the pinned TLS
+connection, and the agent burns the token after the successful exchange. The
+listener must remain reachable only from the controller through an explicit
+firewall rule. Advanced operators may provide a certificate only with the
+paired `--tls-cert-file` and `--tls-key-file` flags, or use the console’s manual
+connection fields for an existing installation.
+
+The default installation does not change Docker or Swarm. On Debian/Ubuntu,
+`--install-docker` installs Docker Engine from Docker’s signed APT repository,
+and `--init-swarm` forms a single-node Swarm using the detected or explicitly
+supplied `--advertise-host`. Joining an existing cluster remains a separate,
+reviewed operator action.
 
 The agent service starts without a Docker CLI or live Docker socket. It reports
 the host as connected but Docker-unavailable until Docker starts; Core blocks

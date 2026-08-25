@@ -10,8 +10,9 @@ local source ── make build/push ──> GHCR or private registry
                       deploy/stacks/<stack>.yml + Swarm secrets
 ```
 
-This source release carries the SwarmOps, Traefik, and observability templates
-needed to render and inspect the control plane. Use the
+This source release carries the SwarmOps, Traefik, observability, and reviewed
+managed PostgreSQL/MongoDB/Redis templates needed to render and inspect the
+control plane. Use the
 [nim monorepo](https://github.com/nimasrn/nim) for a complete platform rollout:
 it owns the reviewed manifests for unrelated applications and the corresponding
 operator automation. Publishing this release does not build images, change
@@ -58,15 +59,14 @@ direct-TLS bootstrap binds a configured local IP on one random high port and
 requires an operator CIDR allowlist; it is not run at the same time as the
 manager-bound singleton against a separate data directory.
 
-The product application manifests do **not** bundle MongoDB, Redis, Postgres,
-ClamAV, or object storage. Separate reviewed MongoDB and PostgreSQL platform
-stacks exist, but the 8 GB reference cluster is still not a safe default for
-them. Use managed/existing data services or add capacity and an approved backup
-plan before moving stateful data into the swarm. SwarmOps' platform admission
-manifest rejects the Mongo three-node, Postgres two-node, Redis Sentinel
-three-node, Jitsi, or shared-observability profiles unless their distinct labels
-and current capacity are present; it does not pretend the reference topology
-can host them.
+SwarmOps includes reviewed, single-replica MongoDB, PostgreSQL, and Redis stacks
+for deliberate managed-database use. They use local named volumes on a
+`nim.stateful=true` node and do not claim high availability. The 8 GB reference
+cluster is not a safe default for running all of them: use existing services or
+add capacity, placement, backups, and a tested restore plan before moving
+stateful data into the swarm. The wider platform manifest still rejects
+multi-node Mongo, PostgreSQL, Redis Sentinel, Jitsi, or shared-observability
+profiles unless their distinct labels and current capacity are present.
 
 ## Network and firewall prerequisites
 
@@ -129,7 +129,7 @@ The production SwarmOps API runs on the designated control manager. An operator
 can use its hosted console or run only the Vite UI locally with:
 
 ```bash
-SWARMOPS_API_URL=https://swarmops.example.com make -C apps/swarmops web-dev
+SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 ```
 
 The local server proxies browser API requests to the manager; it has no
@@ -147,18 +147,17 @@ bash install-swarmops-agent.sh
 
 The installer downloads checksum-verified `swarmops-agent` and
 `swarmops-warden` binaries, configures TLS 1.3, and generates its pinned
-P-256 TLS identity plus a protected API-key file. The Linux identity is stored
-at `/etc/swarmops-agent/tls/agent.crt` and
+P-256 TLS identity plus protected API-key and one-time-enrollment files. The
+Linux identity is stored at `/etc/swarmops-agent/tls/agent.crt` and
 `/etc/swarmops-agent/tls/agent.key`; macOS uses
 `$HOME/.config/swarmops-agent/tls/`. It prints the public certificate
-fingerprint and protected file paths, but never prints the key. Warden checks
-releases locally every 12 hours, rolls back an unhealthy candidate, and keeps
-three known-good versions. In **Servers**, add the machine's HTTPS origin
-without a port, its port, the printed `SHA256:<64-hex>` certificate fingerprint,
-and the API key through an approved secure channel. The key is held only in
-controller memory while connected and is cleared on disconnect or restart; the
-saved profile contains only the display name, API origin/port, authentication
-method, and certificate fingerprint.
+fingerprint and a single `swarmops1.…` enrollment token, but never prints the
+key. Warden checks releases locally every 12 hours, rolls back an unhealthy
+candidate, and keeps three known-good versions. Paste the token into
+**Servers → Add server**. Core exchanges its one-time secret over pinned TLS,
+then stores the API key only as AES-256-GCM-sealed state so the machine can
+reconnect after a restart. Explicit disconnect removes the live and sealed key;
+`SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual, memory-only posture.
 
 Swarm service, node, stack, and build operations require Docker and a remote
 Swarm manager. A connected Docker host that is not a manager remains visible
@@ -193,9 +192,10 @@ Server profiles, audit history, command metadata/payload, and pending build
 contexts are AES-256-GCM sealed in `/var/lib/swarmops`. The unrelated
 data-encryption key lives under
 `/etc/swarmops`, so it must be backed up separately and protected like a
-secret. Machine API keys are never persisted by the controller. Do not run this
-controller at the same time as the manager-bound SwarmOps service: choose one
-authoritative API and data directory. Keep any reviewed, non-secret
+secret. Enrollment-based controllers persist machine API keys only in a
+separate AES-256-GCM-sealed file; keys are never returned or audited. Do not run
+this controller at the same time as the manager-bound SwarmOps service: choose
+one authoritative API and data directory. Keep any reviewed, non-secret
 platform-admission manifest on that host too and set
 `SWARMOPS_PLATFORM_MANIFEST_FILE` to it when browser deployments are enabled;
 the repository sample is not a production manifest.
@@ -203,7 +203,7 @@ the repository sample is not a production manifest.
 For CLI calls to the authenticated API, pass that visible server profile ID:
 
 ```bash
-go run ./apps/swarmops/cmd/swarmopsctl preflight \
+go run ./cmd/swarmopsctl preflight \
   --manifest deploy/swarmops/platform.example.yml \
   --url https://swarmops.example.com --username operator --server-id <server-id>
 ```

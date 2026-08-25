@@ -20,8 +20,9 @@ const enrollmentTimeout = 15 * time.Second
 // Enroll turns one pasted enrollment token into a connected server profile.
 // The token's one-time secret is exchanged over the pinned TLS connection for
 // the long-lived machine API key, which then follows the ordinary Add path and
-// stays only in controller memory. The operator never handles the API key and
-// the secret cannot be replayed: the agent burns it on first use.
+// is sealed by enrollment-based controllers for restart recovery. The operator
+// never handles the API key and the secret cannot be replayed: the agent burns
+// it on first use.
 func (m *Manager) Enroll(ctx context.Context, token, name string) (domain.Server, error) {
 	parsed, err := enroll.Decode(token)
 	if err != nil {
