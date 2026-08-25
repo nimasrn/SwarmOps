@@ -45,6 +45,7 @@ jobs:
         run: |
           go test ./...
           go vet ./...
+          bash scripts/test-install-swarmops-agent.sh
           make docs-check
           make stack-check-all TAG="${{ steps.release.outputs.tag }}"
 
@@ -58,6 +59,7 @@ jobs:
       - name: Build native release bundles
         run: |
           bash scripts/build-release-bundles.sh "${{ steps.release.outputs.tag }}" "$GITHUB_WORKSPACE/dist"
+          bash scripts/test-install-swarmops-agent.sh "$GITHUB_WORKSPACE/dist/install-swarmops-agent.sh"
 
       - name: Publish immutable GitHub release
         env:

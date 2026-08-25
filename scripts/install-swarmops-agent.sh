@@ -58,7 +58,9 @@ require_command() {
 }
 
 value_is_safe() {
-  [[ "$1" =~ ^[A-Za-z0-9_./:\[\]-]+$ ]]
+  # In a POSIX ERE character class, `]` must come first and `-` last to be
+  # literals. Backslash-escaping both makes Bash reject every value.
+  [[ "$1" =~ ^[][A-Za-z0-9_./:-]+$ ]]
 }
 
 require_safe_value() {

@@ -5,6 +5,15 @@ the native installers resolve the latest published GitHub Release by default.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-25
+
+### Fixed
+
+- Corrected the native machine-agent installer's safe-value validator so its
+  default `0.0.0.0:9180` listener, loopback listeners, IPv6 listeners, and
+  protected filesystem paths pass validation while unsafe shell characters
+  remain rejected.
+
 ## [0.4.0] - 2026-08-25
 
 ### Added
@@ -54,7 +63,8 @@ the native installers resolve the latest published GitHub Release by default.
 
 - Released the standalone public repository and native installation path.
 
-[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/nimasrn/SwarmOps/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/nimasrn/SwarmOps/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/nimasrn/SwarmOps/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/nimasrn/SwarmOps/compare/v0.3.1...v0.3.2
