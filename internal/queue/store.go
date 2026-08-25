@@ -27,11 +27,19 @@ import (
 const (
 	maxPayloadBytes  = 1 << 20
 	maxAttemptsLimit = 8
-	storeVersion     = 1
+	maxLogEntries    = 256
+	maxLogMessage    = 4 << 10
+	maxLogBytes      = 256 << 10
+	storeVersion     = 2
 	stateKey         = "command-queue"
 )
 
-var commandIDPattern = regexp.MustCompile(`^cmd-[a-f0-9]{32}$`)
+var (
+	commandIDPattern        = regexp.MustCompile(`^cmd-[a-f0-9]{32}$`)
+	logAssignmentPattern    = regexp.MustCompile(`(?i)\b(password|passwd|token|secret|api[_-]?key|authorization)\b(\s*[:=]\s*)([^\s,;]+)`)
+	logBearerPattern        = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;]+`)
+	logURLCredentialPattern = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:@/]+:)[^\s@/]+@`)
+)
 
 // ErrIdempotencyConflict means an operator reused a key for a different
 // command. Returning the original command in that case could direct an
@@ -86,11 +94,21 @@ type Record struct {
 	Payload  json.RawMessage
 }
 
+// LogInput is deliberately a small, structured event. Callers never pass
+// raw request payloads, credentials, Compose, build output, or service logs.
+type LogInput struct {
+	Attempt uint
+	Level   string
+	Message string
+	Source  string
+}
+
 type storedRecord struct {
-	Artifact       bool            `json:"artifact,omitempty"`
-	Command        domain.Command  `json:"command"`
-	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
-	Payload        json.RawMessage `json:"payload,omitempty"`
+	Artifact       bool                     `json:"artifact,omitempty"`
+	Command        domain.Command           `json:"command"`
+	IdempotencyKey string                   `json:"idempotencyKey,omitempty"`
+	Logs           []domain.CommandLogEntry `json:"logs,omitempty"`
+	Payload        json.RawMessage          `json:"payload,omitempty"`
 }
 
 type storeFile struct {
@@ -144,7 +162,7 @@ func Open(dataDir string, dataEncryptionKey []byte, historyLimit int) (*Store, e
 		if err := json.Unmarshal(data, &persisted); err != nil {
 			return nil, fmt.Errorf("decode command store: %w", err)
 		}
-		if persisted.Version != storeVersion {
+		if persisted.Version != 1 && persisted.Version != storeVersion {
 			return nil, fmt.Errorf("unsupported command store version")
 		}
 		for _, record := range persisted.Commands {
@@ -316,6 +334,72 @@ func (s *Store) Get(id string) (domain.Command, error) {
 		return domain.Command{}, fmt.Errorf("command not found")
 	}
 	return cloneCommand(s.records[index].Command), nil
+}
+
+// AppendLog durably records a bounded, redacted execution event before the
+// caller proceeds. A completed or ambiguous operation must never be reported
+// successful without its command evidence being safely written first.
+func (s *Store) AppendLog(id string, input LogInput) (domain.CommandLogEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return domain.CommandLogEntry{}, fmt.Errorf("command not found")
+	}
+	record := &s.records[index]
+	if record.Command.State != domain.CommandRunning {
+		return domain.CommandLogEntry{}, fmt.Errorf("command is not running")
+	}
+	entry, err := newLogEntry(record.Command, input, s.now().UTC())
+	if err != nil {
+		return domain.CommandLogEntry{}, err
+	}
+	if len(record.Logs) >= maxLogEntries || commandLogBytes(record.Logs)+len(entry.Message) > maxLogBytes {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log limit exceeded")
+	}
+	previousLogs := record.Logs
+	previousCount := record.Command.LogCount
+	previousLastLogAt := record.Command.LastLogAt
+	previousUpdatedAt := record.Command.UpdatedAt
+	record.Logs = append(record.Logs, entry)
+	record.Command.LogCount = uint(len(record.Logs))
+	record.Command.LastLogAt = timePointer(entry.OccurredAt)
+	record.Command.UpdatedAt = entry.OccurredAt
+	if err := s.saveLocked(); err != nil {
+		record.Logs = previousLogs
+		record.Command.LogCount = previousCount
+		record.Command.LastLogAt = previousLastLogAt
+		record.Command.UpdatedAt = previousUpdatedAt
+		return domain.CommandLogEntry{}, err
+	}
+	return cloneLogEntry(entry), nil
+}
+
+// Logs returns the latest encrypted operational evidence for one command. It
+// intentionally exposes no queued payload, artifact, service output, or audit
+// material.
+func (s *Store) Logs(id string, limit int) ([]domain.CommandLogEntry, error) {
+	if limit < 1 {
+		return []domain.CommandLogEntry{}, nil
+	}
+	if limit > maxLogEntries {
+		limit = maxLogEntries
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return nil, fmt.Errorf("command not found")
+	}
+	logs := s.records[index].Logs
+	if len(logs) > limit {
+		logs = logs[len(logs)-limit:]
+	}
+	result := make([]domain.CommandLogEntry, len(logs))
+	for index := range logs {
+		result[index] = cloneLogEntry(logs[index])
+	}
+	return result, nil
 }
 
 // RetryNow starts a new bounded attempt cycle only after an operator has
@@ -786,6 +870,23 @@ func validateStored(record storedRecord) error {
 	if len(record.Payload) > maxPayloadBytes || len(record.Payload) > 0 && !json.Valid(record.Payload) {
 		return fmt.Errorf("command has invalid payload")
 	}
+	if len(record.Logs) > maxLogEntries || record.Command.LogCount != uint(len(record.Logs)) {
+		return fmt.Errorf("command has invalid logs")
+	}
+	if len(record.Logs) == 0 && record.Command.LastLogAt != nil {
+		return fmt.Errorf("command has invalid log timestamp")
+	}
+	if len(record.Logs) > 0 && record.Command.LastLogAt == nil {
+		return fmt.Errorf("command has missing log timestamp")
+	}
+	if commandLogBytes(record.Logs) > maxLogBytes {
+		return fmt.Errorf("command logs exceed limit")
+	}
+	for _, entry := range record.Logs {
+		if err := validateLogEntry(entry); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -799,11 +900,91 @@ func cloneCommand(command domain.Command) domain.Command {
 		value := *command.LastAttemptAt
 		result.LastAttemptAt = &value
 	}
+	if command.LastLogAt != nil {
+		value := *command.LastLogAt
+		result.LastLogAt = &value
+	}
 	if command.NextAttemptAt != nil {
 		value := *command.NextAttemptAt
 		result.NextAttemptAt = &value
 	}
 	return result
+}
+
+func newLogEntry(command domain.Command, input LogInput, occurredAt time.Time) (domain.CommandLogEntry, error) {
+	message := sanitizeLogMessage(input.Message)
+	if message == "" {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log message is required")
+	}
+	if len(message) > maxLogMessage {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log message exceeds limit")
+	}
+	level := strings.ToLower(strings.TrimSpace(input.Level))
+	if level == "" {
+		level = "info"
+	}
+	if level != "info" && level != "warning" && level != "error" {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log level is invalid")
+	}
+	source := strings.ToLower(strings.TrimSpace(input.Source))
+	if source != "controller" && source != "machine" {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log source is invalid")
+	}
+	attempt := input.Attempt
+	if attempt == 0 {
+		attempt = command.Attempt
+	}
+	if attempt == 0 || attempt != command.Attempt {
+		return domain.CommandLogEntry{}, fmt.Errorf("command log attempt is invalid")
+	}
+	return domain.CommandLogEntry{Attempt: attempt, Level: level, Message: message, OccurredAt: occurredAt, Source: source}, nil
+}
+
+func validateLogEntry(entry domain.CommandLogEntry) error {
+	if entry.OccurredAt.IsZero() || entry.Attempt == 0 || len(entry.Message) == 0 || len(entry.Message) > maxLogMessage {
+		return fmt.Errorf("command has invalid log entry")
+	}
+	if entry.Level != "info" && entry.Level != "warning" && entry.Level != "error" {
+		return fmt.Errorf("command has invalid log entry")
+	}
+	if entry.Source != "controller" && entry.Source != "machine" {
+		return fmt.Errorf("command has invalid log entry")
+	}
+	return nil
+}
+
+func commandLogBytes(entries []domain.CommandLogEntry) int {
+	total := 0
+	for _, entry := range entries {
+		total += len(entry.Message)
+	}
+	return total
+}
+
+func sanitizeLogMessage(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var result strings.Builder
+	result.Grow(len(value))
+	for _, character := range value {
+		if character == '\n' || character == '\t' || character >= 0x20 {
+			result.WriteRune(character)
+		}
+	}
+	redacted := logAssignmentPattern.ReplaceAllString(result.String(), "$1$2[REDACTED]")
+	redacted = logBearerPattern.ReplaceAllString(redacted, "Bearer [REDACTED]")
+	return logURLCredentialPattern.ReplaceAllString(redacted, "$1[REDACTED]@")
+}
+
+func cloneLogEntry(entry domain.CommandLogEntry) domain.CommandLogEntry { return entry }
+
+func timePointer(value time.Time) *time.Time {
+	copy := value
+	return &copy
 }
 
 func newID() (string, error) {

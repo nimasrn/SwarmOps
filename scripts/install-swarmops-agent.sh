@@ -16,8 +16,6 @@ api_key_file=''
 docker_socket=''
 install_dependencies=false
 advertise_host=''
-install_docker=false
-init_swarm=false
 validate_only=false
 os_name="$(uname -s)"
 
@@ -42,8 +40,6 @@ usage() {
     '--release <tag|latest>             GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>   Release repository (default: nimasrn/SwarmOps).' \
     '--advertise-host <hostname|IP>     Address the controller should dial; auto-detected by default.' \
-    '--install-docker                   Install Docker Engine on Debian/Ubuntu when absent.' \
-    '--init-swarm                       Form a single-node Swarm when the host is not in one.' \
     '--install-dependencies             Install curl, CA certificates, and OpenSSL where supported.' \
     '--validate-only                    Validate options without changing this host.' \
     '                                   The listener must include loopback or all interfaces so Warden can health-check it locally.' \
@@ -53,6 +49,10 @@ usage() {
 fail() {
   printf 'SwarmOps machine-agent install: %s\n' "$*" >&2
   exit 1
+}
+
+info() {
+  printf 'SwarmOps machine-agent install: %s\n' "$*"
 }
 
 require_command() {
@@ -318,6 +318,7 @@ download_release_bundle() {
   checksums_url="https://github.com/$github_repository/releases/download/$release_version/checksums.txt"
   bundle_url="https://github.com/$github_repository/releases/download/$release_version/$asset_name"
   download_dir="$(mktemp -d "$release_dir/.download.XXXXXX")"
+  info "Downloading checksum-verified native release $release_version ($release_os/$release_arch)."
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/checksums.txt" "$checksums_url" || fail 'download release checksums'
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/$asset_name" "$bundle_url" || fail 'download release bundle'
   expected_checksum="$(awk -v asset="$asset_name" '$2 == asset || $2 == "*" asset {print $1; exit}' "$download_dir/checksums.txt")"
@@ -338,6 +339,7 @@ install_release() {
   destination="$release_dir/$release_version"
   if [[ -e "$destination" ]]; then
     validate_installed_release "$destination"
+    info "Using the already verified native release $release_version."
     return 0
   fi
   download_release_bundle
@@ -388,12 +390,16 @@ write_environment_file() {
     printf '%s\n' \
       "SWARMOPS_AGENT_TOKEN_FILE=$api_key_destination" \
       "SWARMOPS_AGENT_ENROLLMENT_FILE=$enrollment_destination" \
+      "SWARMOPS_AGENT_MANAGED_STATE_FILE=$config_dir/managed" \
+      "SWARMOPS_AGENT_MOBILITY_TRANSFER_DIR=$config_dir/transfers" \
       "SWARMOPS_AGENT_TLS_CERT_FILE=$tls_cert_file" \
       "SWARMOPS_AGENT_TLS_KEY_FILE=$tls_key_file" \
       "SWARMOPS_AGENT_LISTEN_ADDR=$listen_addr" \
       "SWARMOPS_DOCKER_SOCKET=$docker_socket" \
       "PATH=$agent_path" \
       'SWARMOPS_HOST_ROOT=/' \
+      'SWARMOPS_AGENT_BOOTSTRAP_ENABLED=true' \
+      'SWARMOPS_AGENT_MOBILITY_ENABLED=true' \
       'SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true' \
       'SWARMOPS_AGENT_BUILD_ENABLED=false'
     if [[ "$os_name" == Linux ]]; then
@@ -440,7 +446,8 @@ write_linux_services() {
       'ProtectSystem=full' 'ProtectHome=yes' 'ProtectKernelTunables=yes' 'ProtectKernelModules=yes' 'ProtectKernelLogs=yes' \
       'ProtectControlGroups=yes' 'ProtectClock=yes' 'ProtectHostname=yes' 'LockPersonality=yes' 'RestrictNamespaces=yes' \
       'RestrictRealtime=yes' 'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' 'SystemCallArchitectures=native' \
-      'CapabilityBoundingSet=' 'AmbientCapabilities=' 'UMask=0077' '' '[Install]' 'WantedBy=multi-user.target'
+      "ReadWritePaths=$config_dir /etc/apt /var/lib/apt /var/cache/apt /var/cache/debconf /var/lib/dpkg /var/lib/ucf /var/log/apt /var/log/dpkg /etc/apt/keyrings /etc/apt/sources.list.d /usr /lib /lib64 /bin /sbin /var/lib/docker /var/lib/containerd /etc/docker /etc/containerd /run/docker.sock" \
+      'CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_SETGID CAP_SETUID' 'AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_SETGID CAP_SETUID' 'UMask=0077' '' '[Install]' 'WantedBy=multi-user.target'
   } >"$temporary_agent"
   install -m 0644 "$temporary_agent" "$service_file"
   rm -f "$temporary_agent"
@@ -571,47 +578,6 @@ detect_advertise_host() {
   printf '%s\n' "$candidate"
 }
 
-# install_docker_engine installs Docker Engine from Docker's own signed apt
-# repository. Convenience scripts piped from the network are deliberately not
-# used: the repository key is verified and pinned here.
-install_docker_engine() {
-  if command -v docker >/dev/null 2>&1; then
-    return 0
-  fi
-  [[ "$os_name" == Linux ]] || fail '--install-docker supports Debian and Ubuntu Linux only; install Docker Desktop manually on macOS'
-  [[ -f /etc/os-release ]] || fail '--install-docker requires /etc/os-release'
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  case "$ID" in
-    debian|ubuntu) ;;
-    *) fail '--install-docker supports Debian and Ubuntu Linux only' ;;
-  esac
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install --yes --no-install-recommends ca-certificates curl gnupg
-  install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc || fail 'download the Docker repository key'
-  chmod 0644 /etc/apt/keyrings/docker.asc
-  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
-    "$(dpkg --print-architecture)" "$ID" "$VERSION_CODENAME" >/etc/apt/sources.list.d/docker.list
-  apt-get update
-  apt-get install --yes --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  systemctl enable --now docker
-  command -v docker >/dev/null 2>&1 || fail 'Docker Engine installation did not produce a docker command'
-}
-
-# initialize_swarm forms a single-node Swarm only when this host is not already
-# in one. Joining an existing cluster stays an explicit operator action.
-initialize_swarm() {
-  local state
-  state="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || true)"
-  if [[ "$state" == 'active' ]]; then
-    return 0
-  fi
-  [[ "$state" == 'inactive' ]] || fail "this host is in Swarm state '$state'; resolve it before --init-swarm"
-  docker swarm init --advertise-addr "$advertise_host" >/dev/null || fail 'docker swarm init failed'
-}
-
 # install_enrollment_secret writes the one-time secret the agent trades for the
 # machine API key. The agent deletes this file the first time it is used.
 install_enrollment_secret() {
@@ -653,8 +619,7 @@ while [[ "$#" -gt 0 ]]; do
     --release) [[ "$#" -ge 2 ]] || fail '--release requires a value'; release_version="$2"; shift 2 ;;
     --github-repository) [[ "$#" -ge 2 ]] || fail '--github-repository requires a value'; github_repository="$2"; shift 2 ;;
     --advertise-host) [[ "$#" -ge 2 ]] || fail '--advertise-host requires a value'; advertise_host="$2"; shift 2 ;;
-    --install-docker) install_docker=true; shift ;;
-    --init-swarm) init_swarm=true; shift ;;
+    --install-docker|--init-swarm) fail 'Docker and Swarm setup starts only after this agent is enrolled and managed in SwarmOps' ;;
     --install-dependencies) install_dependencies=true; shift ;;
     --validate-only) validate_only=true; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -714,14 +679,6 @@ else
   require_command launchctl
 fi
 
-if [[ "$install_docker" == true ]]; then
-  install_docker_engine
-fi
-if [[ "$init_swarm" == true ]]; then
-  require_command docker
-  initialize_swarm
-fi
-
 for install_path in "$config_dir" "$tls_dir" "$runtime_dir" "$release_dir" "$service_file" "$warden_service_file"; do
   require_safe_value 'installation path' "$install_path"
 done
@@ -736,6 +693,7 @@ install_release
 set_current_release
 write_environment_file
 write_warden_environment_file
+info 'Starting the pinned machine API and local release updater.'
 case "$os_name" in
   Linux) write_linux_services ;;
   Darwin) write_macos_services ;;
@@ -744,7 +702,7 @@ check_local_health
 
 fingerprint="$(certificate_fingerprint)"
 printf '%s\n' \
-  'Installed the SwarmOps machine agent and SwarmOps Warden.' \
+  'SwarmOps machine agent installation is complete.' \
   "Release: $release_version" \
   "Machine API port: $port" \
   "TLS certificate file: $tls_cert_file" \
@@ -760,4 +718,7 @@ printf '%s\n' \
   'fingerprint, and a one-time secret that the console trades for the machine API' \
   'key over the pinned connection. The API key itself is never printed and never' \
   'leaves this host by any other path. Allow only the SwarmOps controller to reach' \
-  "TCP port $port."
+  "TCP port $port." \
+  '' \
+  'After enrollment, use Servers to approve only the fixed Docker setup and' \
+  'Swarm initialization or join actions that this control plane manages.'

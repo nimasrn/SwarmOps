@@ -5,6 +5,34 @@ the native installers resolve the latest published GitHub Release by default.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-25
+
+### Added
+
+- Controller-managed host setup after one-time enrollment: reviewed Docker
+  installation on Debian/Ubuntu, Swarm initialization, and secure joining to
+  the selected manager without exposing a join token to the browser, queue,
+  audit ledger, or command logs.
+- Encrypted durable command logs with bounded redaction and a per-command Logs
+  panel. Fixed-operation evidence is retained beside the command while service
+  logs, build output, source archives, payloads, and secrets remain excluded.
+- Guarded stateful data mobility for the SwarmOps control plane, MongoDB,
+  PostgreSQL, Redis, and reviewed monitoring stores. Each handover uses fixed
+  service/volume catalog entries, quiesced checksum-verified transfer, target
+  health burn-in, retained source data, and an explicit administrator-only
+  source-retirement action. Cleanup rechecks the replacement's exact target;
+  a failed pre-cleanup handover has an audited typed-confirmation closure that
+  retains source data and makes no Docker change.
+
+### Changed
+
+- The one-command agent installer prints progress and an explicit completion
+  summary with the enrollment token. It now rejects legacy Docker/Swarm setup
+  flags; installer execution never modifies Docker or Swarm membership.
+- The console documents the distinction between movable local-volume state and
+  real database or control-plane replication, so a handover is not presented
+  as high availability.
+
 ## [0.4.2] - 2026-08-25
 
 ### Fixed
@@ -72,7 +100,8 @@ the native installers resolve the latest published GitHub Release by default.
 
 - Released the standalone public repository and native installation path.
 
-[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/nimasrn/SwarmOps/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/nimasrn/SwarmOps/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/nimasrn/SwarmOps/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/nimasrn/SwarmOps/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/nimasrn/SwarmOps/compare/v0.3.3...v0.4.0

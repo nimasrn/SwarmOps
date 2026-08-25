@@ -4,10 +4,14 @@ import type {
   ApprovedWorkload,
   AuditEvent,
   Command,
+  CommandLogEntry,
   ComposePlan,
   DatabaseStatus,
   FleetRun,
   Node,
+  ManagedBootstrapRequest,
+	MobilityMigration,
+	MobilityStatus,
   ObservabilityStatus,
   Overview,
   Service,
@@ -78,6 +82,20 @@ export class SwarmOpsAPI {
     })
   }
 
+  bootstrapServer(id: string, input: ManagedBootstrapRequest) {
+    return this.commandRequest<Command>(`/api/v1/servers/${encodeURIComponent(id)}/bootstrap`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
+  joinServerSwarm(id: string) {
+    return this.commandRequest<Command>(`/api/v1/servers/${encodeURIComponent(id)}/join-swarm`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+  }
+
   disconnectServer(id: string) {
     return this.request<void>(`/api/v1/servers/${encodeURIComponent(id)}/disconnect`, { method: 'POST' })
   }
@@ -96,10 +114,20 @@ export class SwarmOpsAPI {
   auditEvents() { return this.request<AuditEvent[]>('/api/v1/audit-events?limit=100') }
   commands() { return this.request<Command[]>('/api/v1/commands?limit=100') }
   command(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}`) }
+  async commandLogs(id: string): Promise<CommandLogEntry[]> {
+    // A pre-v0.5 controller can return no retained log array for historical
+    // commands. Keep the new command-evidence panel usable while a control
+    // plane is being upgraded instead of letting an absent optional field
+    // crash the queue view.
+    const result = await this.request<CommandLogEntry[] | { logs?: CommandLogEntry[] } | null>(`/api/v1/commands/${encodeURIComponent(id)}/logs?limit=200`)
+    if (Array.isArray(result)) return result
+    return Array.isArray(result?.logs) ? result.logs : []
+  }
   retryCommand(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}/retry`, { method: 'POST' }) }
   traefik() { return this.request<TraefikStatus>('/api/v1/traefik/status') }
   observability() { return this.request<ObservabilityStatus>('/api/v1/observability/status') }
   databases() { return this.request<DatabaseStatus[]>('/api/v1/databases') }
+  mobility() { return this.request<MobilityStatus>('/api/v1/mobility') }
   applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
   approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
 
@@ -128,6 +156,24 @@ export class SwarmOpsAPI {
     return this.commandRequest<Command>(`/api/v1/databases/${encodeURIComponent(engine)}`, {
       method: 'POST',
       body: JSON.stringify({ enabled, confirmation }),
+    })
+  }
+
+  moveResource(resource: string, targetServerId: string) {
+    return this.commandRequest<Command>(`/api/v1/mobility/${encodeURIComponent(resource)}`, {
+      method: 'POST',
+      body: JSON.stringify({ targetServerId }),
+    })
+  }
+
+  retireMigration(id: string) {
+    return this.commandRequest<Command>(`/api/v1/mobility/${encodeURIComponent(id)}/retire`, { method: 'POST' })
+  }
+
+  abandonMigration(id: string, confirmation: string) {
+    return this.request<MobilityMigration>(`/api/v1/mobility/${encodeURIComponent(id)}/abandon`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmation }),
     })
   }
 

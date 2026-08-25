@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,30 @@ func TestWorkerMarksTimedOutExecutionForAttentionRatherThanReplay(t *testing.T) 
 		case <-deadline:
 			t.Fatal("worker did not report a terminal timeout transition")
 		}
+	}
+}
+
+func TestWorkerLeavesDurableRecordUntouchedForExplicitExecutorHandoff(t *testing.T) {
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = (Worker{
+		Store: store,
+		Execute: func(context.Context, Record) error {
+			return ErrExecutorHandoff
+		},
+	}).Run(context.Background())
+	if !errors.Is(err, ErrExecutorHandoff) {
+		t.Fatalf("worker error = %v", err)
+	}
+	stored, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != domain.CommandRunning || stored.Attempt != 1 {
+		t.Fatalf("handoff changed the source command record: %#v", stored)
 	}
 }
 

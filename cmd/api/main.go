@@ -180,7 +180,13 @@ func main() {
 		Store:            api.CommandStore(),
 	}
 	go func() {
-		if err := worker.Run(ctx); err != nil && ctx.Err() == nil {
+		if err := worker.Run(ctx); errors.Is(err, queue.ErrExecutorHandoff) && ctx.Err() == nil {
+			// The source controller deliberately leaves its running command in
+			// the transferred sealed ledger. Stopping here prevents any source
+			// write after the target has received that archive.
+			logger.Info("controller handover activated; stopping source process")
+			stop()
+		} else if err != nil && ctx.Err() == nil {
 			// Continuing to accept mutations after the durable executor has
 			// stopped would violate the command queue contract. Cancelling the
 			// process context lets the normal graceful shutdown close the API.

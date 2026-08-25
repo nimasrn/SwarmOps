@@ -47,6 +47,7 @@ type NodeAgent struct {
 type Server struct {
 	APIURL                    string    `json:"apiUrl,omitempty"`
 	Authentication            string    `json:"authentication"`
+	BootstrapAvailable        bool      `json:"bootstrapAvailable"`
 	ConnectionState           string    `json:"connectionState"`
 	ConnectionType            string    `json:"connectionType,omitempty"`
 	DockerAvailable           bool      `json:"dockerAvailable"`
@@ -55,6 +56,8 @@ type Server struct {
 	HostKeyFingerprint        string    `json:"hostKeyFingerprint"`
 	ID                        string    `json:"id"`
 	LastConnectedAt           time.Time `json:"lastConnectedAt,omitempty"`
+	Managed                   bool      `json:"managed"`
+	MobilityAvailable         bool      `json:"mobilityAvailable"`
 	Name                      string    `json:"name"`
 	Port                      uint16    `json:"port"`
 	SwarmControlAvailable     bool      `json:"swarmControlAvailable"`
@@ -195,6 +198,8 @@ type Command struct {
 	ID            string       `json:"id"`
 	LastAttemptAt *time.Time   `json:"lastAttemptAt,omitempty"`
 	LastError     string       `json:"lastError,omitempty"`
+	LastLogAt     *time.Time   `json:"lastLogAt,omitempty"`
+	LogCount      uint         `json:"logCount"`
 	MaxAttempts   uint         `json:"maxAttempts"`
 	NextAttemptAt *time.Time   `json:"nextAttemptAt,omitempty"`
 	RequestID     string       `json:"requestId,omitempty"`
@@ -202,6 +207,18 @@ type Command struct {
 	State         CommandState `json:"state"`
 	Target        string       `json:"target"`
 	UpdatedAt     time.Time    `json:"updatedAt"`
+}
+
+// CommandLogEntry is a bounded, redacted operational event emitted while a
+// queued mutation is running. It is retained only in the encrypted command
+// store, never in the audit trail. Raw service and build output intentionally
+// remain outside this contract because either may contain operator data.
+type CommandLogEntry struct {
+	Attempt    uint      `json:"attempt"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Level      string    `json:"level"`
+	Message    string    `json:"message"`
+	Source     string    `json:"source"`
 }
 
 // FleetRun reports durable, reviewed Ansible operations. It contains status

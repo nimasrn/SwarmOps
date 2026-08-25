@@ -21,6 +21,8 @@ import (
 
 type Config struct {
 	AllowedImagePrefixes []string
+	BootstrapEnabled     bool
+	Bootstrapper         Bootstrapper
 	BuildEnabled         bool
 	BuildMaxBytes        int64
 	BuildMaxCPUs         float64
@@ -31,6 +33,18 @@ type Config struct {
 	// machine API key; EnrollmentSecretFile is removed once it is spent.
 	EnrollmentSecret     []byte
 	EnrollmentSecretFile string
+	// ManagedStateFile is written only after a successful one-time enrollment
+	// exchange. It gates privileged fixed host bootstrap actions.
+	ManagedStateFile string
+	// MobilityEnabled enables the reviewed local-volume handover endpoints only
+	// after this agent's one-time enrollment has marked it managed. It is false
+	// by default so a standalone installer never gains data-transfer authority.
+	MobilityEnabled bool
+	// MobilityTransferDir holds short-lived, validated archive staging files.
+	// It is never selected by a request and is removed after each transfer.
+	MobilityTransferDir      string
+	MobilityTransferMaxBytes int64
+	VolumeTransfer           VolumeTransfer
 	// HostRoot is an optional read-only mount of the node root. The agent uses
 	// it solely for filesystem capacity; it never exposes arbitrary files.
 	HostRoot             string

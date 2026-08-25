@@ -58,6 +58,69 @@ func TestSubmitIsEncryptedDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestCommandLogsAreEncryptedDurableAndRedacted(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim command: found=%t err=%v", found, err)
+	}
+	entry, err := store.AppendLog(command.ID, LogInput{
+		Level:   "info",
+		Message: "Docker completed with API_KEY=private-command-value",
+		Source:  "machine",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Message != "Docker completed with API_KEY=[REDACTED]" || entry.Attempt != 1 {
+		t.Fatalf("log entry = %#v", entry)
+	}
+	visible, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visible.LogCount != 1 || visible.LastLogAt == nil {
+		t.Fatalf("command log summary = %#v", visible)
+	}
+	ciphertext, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(ciphertext, []byte("private-command-value")) || bytes.Contains(ciphertext, []byte("Docker completed")) {
+		t.Fatal("command logs were not encrypted")
+	}
+	if _, err := store.Complete(command.ID); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs, err := reloaded.Logs(command.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].Message != entry.Message {
+		t.Fatalf("reloaded logs = %#v", logs)
+	}
+}
+
+func TestCommandLogsRequireARunningCommand(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendLog(command.ID, LogInput{Level: "info", Message: "not yet", Source: "controller"}); err == nil {
+		t.Fatal("queued command accepted a log entry")
+	}
+}
+
 func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)

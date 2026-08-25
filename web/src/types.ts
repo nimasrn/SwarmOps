@@ -18,6 +18,7 @@ export interface NodeAgent {
 export interface Server {
   apiUrl?: string
   authentication: 'api_key' | 'password' | 'private_key'
+  bootstrapAvailable: boolean
   connectionState: 'connected' | 'disconnected'
   connectionType?: 'agent_api' | 'ssh'
   dockerAvailable: boolean
@@ -26,12 +27,21 @@ export interface Server {
   hostKeyFingerprint: string
   id: string
   lastConnectedAt?: string
+  managed: boolean
+  mobilityAvailable: boolean
   name: string
   port: number
   swarmControlAvailable: boolean
   swarmState?: string
   tlsCertificateFingerprint?: string
   username: string
+}
+
+export type ManagedBootstrapAction = 'docker_install' | 'swarm_init'
+
+export interface ManagedBootstrapRequest {
+  action: ManagedBootstrapAction
+  advertiseAddr?: string
 }
 
 export interface ServerCredentials {
@@ -149,6 +159,8 @@ export interface Command {
   id: string
   lastAttemptAt?: string
   lastError?: string
+  lastLogAt?: string
+  logCount: number
   maxAttempts: number
   nextAttemptAt?: string
   requestId?: string
@@ -156,6 +168,14 @@ export interface Command {
   state: CommandState
   target: string
   updatedAt: string
+}
+
+export interface CommandLogEntry {
+  attempt: number
+  level: 'info' | 'warning' | 'error'
+  message: string
+  occurredAt: string
+  source: 'controller' | 'machine'
 }
 
 export interface FleetRun {
@@ -248,4 +268,43 @@ export interface ObservabilityStatus {
   coreInstalled: boolean
   logsEnabled: boolean
   logsHealthy: boolean
+}
+
+export interface MobilityComponent {
+  bytes?: number
+  displayName: string
+  healthySince?: string
+  service: string
+  sourceNodeId?: string
+  state: string
+  volume: string
+}
+
+export interface MobilityResource {
+  components: Array<{ displayName: string; service: string; volume: string }>
+  displayName: string
+  requireManager: boolean
+  requiredNodeLabel: string
+  resource: string
+}
+
+export interface MobilityMigration {
+  cleanupEligibleAt?: string
+  components: MobilityComponent[]
+  createdAt: string
+  displayName: string
+  failure?: string
+  id: string
+  resource: string
+  sourceCleanupStarted?: boolean
+  sourceServerIds?: string[]
+  state: string
+  targetNodeId: string
+  targetServerId: string
+  updatedAt: string
+}
+
+export interface MobilityStatus {
+  migrations: MobilityMigration[]
+  resources: MobilityResource[]
 }

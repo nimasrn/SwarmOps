@@ -12,11 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
+	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
+	"github.com/nimasrn/SwarmOps/internal/remote"
 )
 
 const (
@@ -33,6 +36,8 @@ const (
 	commandDatabase          = "database.set"
 	commandApplicationDeploy = "application.deploy"
 	commandApplicationRemove = "application.remove"
+	commandHostBootstrap     = "server.bootstrap"
+	commandHostSwarmJoin     = "server.swarm-join"
 
 	maxAutomaticAttempts = 8
 )
@@ -82,6 +87,23 @@ type traefikCommand struct {
 	Confirmation string `json:"confirmation"`
 }
 
+type hostBootstrapCommand struct {
+	Action        string `json:"action"`
+	AdvertiseAddr string `json:"advertiseAddr,omitempty"`
+}
+
+func (c hostBootstrapCommand) request() agentcontrol.BootstrapRequest {
+	return agentcontrol.BootstrapRequest{Action: c.Action, AdvertiseAddr: c.AdvertiseAddr}
+}
+
+// hostSwarmJoinCommand contains only stable server identifiers. The manager
+// join token is fetched at execution time and stays out of the sealed command
+// payload, browser request, audit event, and command-log evidence.
+type hostSwarmJoinCommand struct {
+	DestinationServerID string `json:"destinationServerId"`
+	ManagerServerID     string `json:"managerServerId"`
+}
+
 func (s *Server) commandsList(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
 	if limit == 0 {
@@ -106,6 +128,23 @@ func (s *Server) commandGet(response http.ResponseWriter, request *http.Request,
 		return
 	}
 	writeJSON(response, http.StatusOK, command)
+}
+
+func (s *Server) commandLogs(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
+	if limit == 0 {
+		limit = 200
+	}
+	logs, err := s.commands.Logs(request.PathValue("id"), limit)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(response, http.StatusNotFound, "Command was not found")
+			return
+		}
+		s.commandStoreError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, logs)
 }
 
 func (s *Server) commandRetry(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
@@ -269,6 +308,136 @@ func (s *Server) submitDatabase(response http.ResponseWriter, request *http.Requ
 	s.submitCommand(response, request, claims, commandDatabase, "stack/"+definition.Stack, input, true)
 }
 
+func (s *Server) submitHostBootstrap(response http.ResponseWriter, request *http.Request, claims auth.Claims, serverID string, input agentcontrol.BootstrapRequest) {
+	if input.Action == agentcontrol.BootstrapSwarmJoin {
+		writeError(response, http.StatusUnprocessableEntity, "Join the selected Swarm through the dedicated managed action")
+		return
+	}
+	if err := agentcontrol.ValidateBootstrapRequest(input); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "Invalid managed bootstrap action")
+		return
+	}
+	if _, err := s.servers.Resolve(serverID); err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if err := s.commands.Writable(); err != nil {
+		s.commandStoreError(response, request, err)
+		return
+	}
+	if err := s.audit.Writable(); err != nil {
+		s.commandStoreError(response, request, err)
+		return
+	}
+	payload, err := json.Marshal(hostBootstrapCommand{Action: input.Action, AdvertiseAddr: input.AdvertiseAddr})
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Command could not be queued")
+		return
+	}
+	command, created, err := s.commands.Submit(queue.SubmitInput{
+		Action:         commandHostBootstrap,
+		Actor:          claims.Username,
+		AutoRetry:      false,
+		IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		MaxAttempts:    1,
+		Payload:        payload,
+		RequestID:      requestID(request),
+		ServerID:       serverID,
+		Target:         "server/" + serverID,
+	})
+	if errors.Is(err, queue.ErrIdempotencyConflict) {
+		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
+		return
+	}
+	if err != nil {
+		s.commandStoreError(response, request, err)
+		return
+	}
+	if created {
+		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
+	}
+	writeJSON(response, http.StatusAccepted, command)
+}
+
+// submitManagedSwarmJoin queues a fixed join after ensuring both endpoints
+// are already enrolled and connected. The selected active manager supplies a
+// transient token only when the worker executes; the browser never receives
+// it and no durable command payload contains it.
+func (s *Server) submitManagedSwarmJoin(response http.ResponseWriter, request *http.Request, claims auth.Claims, destinationServerID string) {
+	managerServerID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
+	if !ok {
+		return
+	}
+	destinationServerID = strings.TrimSpace(destinationServerID)
+	if destinationServerID == "" || destinationServerID == managerServerID {
+		writeError(response, http.StatusUnprocessableEntity, "Select a different enrolled server to join this Swarm")
+		return
+	}
+	target, err := s.targets.Resolve(managerServerID)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if target.Control == nil || target.Control.Docker == nil {
+		writeError(response, http.StatusConflict, "Select a connected Swarm manager before joining another server")
+		return
+	}
+	manager, err := s.servers.Resolve(managerServerID)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if !manager.Profile.Managed || !manager.Profile.SwarmControlAvailable || manager.Docker == nil {
+		writeError(response, http.StatusConflict, "The selected server is not a managed active Swarm manager")
+		return
+	}
+	if _, ok := manager.Runner.(remote.SwarmJoinTokenProvider); !ok {
+		writeError(response, http.StatusConflict, "The selected manager cannot provide a managed join credential")
+		return
+	}
+	destination, err := s.servers.Resolve(destinationServerID)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if !destination.Profile.Managed || !destination.Profile.BootstrapAvailable || !destination.Profile.DockerAvailable {
+		writeError(response, http.StatusConflict, "The destination must be an enrolled managed server with Docker ready")
+		return
+	}
+	if _, ok := destination.Runner.(remote.HostBootstrapper); !ok {
+		writeError(response, http.StatusConflict, "The destination does not support managed Swarm setup")
+		return
+	}
+	payload, err := json.Marshal(hostSwarmJoinCommand{DestinationServerID: destinationServerID, ManagerServerID: managerServerID})
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Managed Swarm join could not be queued")
+		return
+	}
+	command, created, err := s.commands.Submit(queue.SubmitInput{
+		Action:         commandHostSwarmJoin,
+		Actor:          claims.Username,
+		AutoRetry:      false,
+		IdempotencyKey: idempotencyKey,
+		MaxAttempts:    1,
+		Payload:        payload,
+		RequestID:      requestID(request),
+		ServerID:       managerServerID,
+		Target:         "server/" + destinationServerID + "/join-swarm",
+	})
+	if errors.Is(err, queue.ErrIdempotencyConflict) {
+		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
+		return
+	}
+	if err != nil {
+		s.commandStoreError(response, request, err)
+		return
+	}
+	if created {
+		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
+	}
+	writeJSON(response, http.StatusAccepted, command)
+}
+
 // submitApplicationDeploy validates and renders once before queueing, so a
 // spec that cannot become an admissible stack is refused with a useful message
 // instead of becoming a command that will need operator attention later.
@@ -366,15 +535,201 @@ func (s *Server) commandSubmissionContext(response http.ResponseWriter, request 
 
 // ExecuteCommand is called only by the singleton worker. Payload decoding and
 // target resolution occur after durable claiming, so an API restart cannot
-// lose a command that was acknowledged to the browser.
+// lose a command that was acknowledged to the browser. Command events are
+// persisted in the encrypted command store, never in the audit trail.
 func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error {
+	if err := s.appendCommandLog(record.Command, "controller", "info", "Command claimed by the singleton controller."); err != nil {
+		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
+	}
+	if record.Command.Action == commandHostBootstrap {
+		return s.finishCommandExecution(record.Command, s.executeHostBootstrap(ctx, record))
+	}
+	if record.Command.Action == commandHostSwarmJoin {
+		return s.finishCommandExecution(record.Command, s.executeManagedSwarmJoin(ctx, record))
+	}
+	if record.Command.Action == commandMobilityMove {
+		err := s.executeMobilityMove(ctx, record)
+		if errors.Is(err, queue.ErrExecutorHandoff) {
+			return err
+		}
+		return s.finishCommandExecution(record.Command, err)
+	}
+	if record.Command.Action == commandMobilityRetire {
+		return s.finishCommandExecution(record.Command, s.executeMobilityRetire(ctx, record))
+	}
 	target, err := s.targets.Resolve(record.Command.ServerID)
 	if err != nil {
+		_ = s.appendCommandLog(record.Command, "controller", "error", "The selected server could not be resolved. No mutation was started.")
 		return err
 	}
 	if target.Control == nil {
+		_ = s.appendCommandLog(record.Command, "controller", "error", "The selected server has no compatible control-plane capability.")
 		return queue.PermanentError(fmt.Errorf("selected server has no control plane"))
 	}
+	var logErr error
+	target.Control.SetCommandOutput(func(output string) {
+		if logErr != nil {
+			return
+		}
+		logErr = s.appendCommandLog(record.Command, "machine", "info", output)
+	})
+	if err := s.appendCommandLog(record.Command, "controller", "info", "Connected target resolved; starting the fixed reviewed operation."); err != nil {
+		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
+	}
+	err = s.executeCommand(ctx, record, target)
+	if logErr != nil {
+		// The remote effect may have completed, but the evidence could not be
+		// retained. Treat it as uncertain rather than reporting success.
+		return queue.PermanentError(fmt.Errorf("persist machine command output: %w", logErr))
+	}
+	return s.finishCommandExecution(record.Command, err)
+}
+
+func (s *Server) executeHostBootstrap(ctx context.Context, record queue.Record) error {
+	var input hostBootstrapCommand
+	if err := decodeCommandPayload(record.Payload, &input); err != nil {
+		return queue.PermanentError(err)
+	}
+	connection, err := s.servers.Resolve(record.Command.ServerID)
+	if err != nil {
+		return err
+	}
+	bootstrapper, ok := connection.Runner.(remote.HostBootstrapper)
+	if !ok {
+		return queue.PermanentError(fmt.Errorf("selected server does not support managed bootstrap"))
+	}
+	if err := s.appendCommandLog(record.Command, "controller", "info", "Managed host bootstrap was authorised after enrollment; starting the fixed action."); err != nil {
+		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
+	}
+	output, err := bootstrapper.Bootstrap(ctx, input.request())
+	if output != "" {
+		if logErr := s.appendCommandLog(record.Command, "machine", "info", output); logErr != nil {
+			return queue.PermanentError(fmt.Errorf("persist machine bootstrap output: %w", logErr))
+		}
+	}
+	if err == nil {
+		if refreshErr := s.refreshManagedServerStatus(ctx, record.Command, record.Command.ServerID); refreshErr != nil {
+			return refreshErr
+		}
+	}
+	return classifyCommandError(err)
+}
+
+func (s *Server) executeManagedSwarmJoin(ctx context.Context, record queue.Record) error {
+	var input hostSwarmJoinCommand
+	if err := decodeCommandPayload(record.Payload, &input); err != nil {
+		return queue.PermanentError(err)
+	}
+	if strings.TrimSpace(input.ManagerServerID) == "" || input.ManagerServerID != record.Command.ServerID || strings.TrimSpace(input.DestinationServerID) == "" || input.DestinationServerID == input.ManagerServerID {
+		return queue.PermanentError(fmt.Errorf("managed Swarm join payload is invalid"))
+	}
+	manager, err := s.servers.Resolve(input.ManagerServerID)
+	if err != nil {
+		return err
+	}
+	if !manager.Profile.Managed || manager.Docker == nil {
+		return queue.PermanentError(fmt.Errorf("selected manager is not an enrolled active Swarm manager"))
+	}
+	provider, ok := manager.Runner.(remote.SwarmJoinTokenProvider)
+	if !ok {
+		return queue.PermanentError(fmt.Errorf("selected manager does not support managed Swarm join"))
+	}
+	managerAddress, err := managedSwarmManagerAddress(ctx, manager.Docker)
+	if err != nil {
+		return classifyCommandError(err)
+	}
+	destination, err := s.servers.Resolve(input.DestinationServerID)
+	if err != nil {
+		return err
+	}
+	if !destination.Profile.Managed || !destination.Profile.BootstrapAvailable || !destination.Profile.DockerAvailable {
+		return queue.PermanentError(fmt.Errorf("destination is not ready for managed Swarm join"))
+	}
+	bootstrapper, ok := destination.Runner.(remote.HostBootstrapper)
+	if !ok {
+		return queue.PermanentError(fmt.Errorf("destination does not support managed Swarm setup"))
+	}
+	if err := s.appendCommandLog(record.Command, "controller", "info", "The selected manager is issuing a short-lived join credential directly to the enrolled destination agent."); err != nil {
+		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
+	}
+	token, err := provider.ManagerJoinToken(ctx)
+	if err != nil {
+		return classifyCommandError(err)
+	}
+	defer func() { token = "" }()
+	output, err := bootstrapper.Bootstrap(ctx, agentcontrol.BootstrapRequest{Action: agentcontrol.BootstrapSwarmJoin, JoinToken: token, ManagerAddr: managerAddress})
+	if output != "" {
+		if logErr := s.appendCommandLog(record.Command, "machine", "info", output); logErr != nil {
+			return queue.PermanentError(fmt.Errorf("persist managed Swarm join output: %w", logErr))
+		}
+	}
+	if err == nil {
+		if refreshErr := s.refreshManagedServerStatus(ctx, record.Command, input.DestinationServerID); refreshErr != nil {
+			return refreshErr
+		}
+	}
+	return classifyCommandError(err)
+}
+
+// refreshManagedServerStatus updates the persisted card after a fixed host
+// action. A status refresh failure does not change the completed host action;
+// the encrypted command evidence instead tells the operator to use the normal
+// Servers refresh if the agent has not yet observed Docker or Swarm readiness.
+func (s *Server) refreshManagedServerStatus(ctx context.Context, command domain.Command, serverID string) error {
+	if _, err := s.servers.Refresh(ctx, serverID); err != nil {
+		if logErr := s.appendCommandLog(command, "controller", "warning", "The host action completed, but its current Docker or Swarm status could not be refreshed. Use Servers refresh after the host is ready."); logErr != nil {
+			return queue.PermanentError(fmt.Errorf("persist host refresh warning: %w", logErr))
+		}
+		return nil
+	}
+	if err := s.appendCommandLog(command, "controller", "info", "The managed server status was refreshed after the fixed host action."); err != nil {
+		return queue.PermanentError(fmt.Errorf("persist host refresh evidence: %w", err))
+	}
+	return nil
+}
+
+func managedSwarmManagerAddress(ctx context.Context, docker *dockerapi.Client) (string, error) {
+	if docker == nil {
+		return "", fmt.Errorf("selected manager Docker Engine is unavailable")
+	}
+	info, err := docker.Info(ctx)
+	if err != nil {
+		return "", fmt.Errorf("read selected manager Swarm identity: %w", err)
+	}
+	if !info.Swarm.ControlAvailable || !strings.EqualFold(info.Swarm.LocalNodeState, "active") || strings.TrimSpace(info.Swarm.NodeID) == "" {
+		return "", fmt.Errorf("selected server is not an active Swarm manager")
+	}
+	nodes, err := docker.ListNodes(ctx)
+	if err != nil {
+		return "", fmt.Errorf("read selected manager node: %w", err)
+	}
+	for _, node := range nodes {
+		if node.ID != info.Swarm.NodeID || node.ManagerStatus == nil || strings.TrimSpace(node.ManagerStatus.Addr) == "" {
+			continue
+		}
+		candidate := strings.TrimSpace(node.ManagerStatus.Addr)
+		if err := agentcontrol.ValidateBootstrapRequest(agentcontrol.BootstrapRequest{Action: agentcontrol.BootstrapSwarmJoin, JoinToken: "SWMTKN-1-abcdefgh-abcdefghijklmnop", ManagerAddr: candidate}); err != nil {
+			return "", fmt.Errorf("selected manager has an invalid Swarm advertise address")
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("selected manager has no reachable Swarm manager address")
+}
+
+func (s *Server) finishCommandExecution(command domain.Command, err error) error {
+	if err != nil {
+		if logErr := s.appendCommandLog(command, "controller", "error", "The operation did not complete. SwarmOps preserved this command for operator review."); logErr != nil {
+			return queue.PermanentError(fmt.Errorf("persist command log: %w", logErr))
+		}
+		return err
+	}
+	if logErr := s.appendCommandLog(command, "controller", "info", "The reviewed operation returned successfully."); logErr != nil {
+		return queue.PermanentError(fmt.Errorf("persist command log: %w", logErr))
+	}
+	return nil
+}
+
+func (s *Server) executeCommand(ctx context.Context, record queue.Record, target Target) error {
 	switch record.Command.Action {
 	case commandNodeAvailability:
 		var input nodeAvailabilityCommand
@@ -405,6 +760,9 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(fmt.Errorf("build source input is unavailable"))
 		}
 		defer artifact.Close()
+		if err := s.appendCommandLog(record.Command, "controller", "info", "Build input is streaming to the selected Docker API; raw build output is intentionally not retained."); err != nil {
+			return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
+		}
 		_, err = target.Build.Run(ctx, input.Request, artifact, record.Command.RequestID)
 		return classifyCommandError(err)
 	case commandTraefikReconcile:
@@ -454,12 +812,25 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 	}
 }
 
+func (s *Server) appendCommandLog(command domain.Command, source, level, message string) error {
+	_, err := s.commands.AppendLog(command.ID, queue.LogInput{
+		Attempt: command.Attempt,
+		Level:   level,
+		Message: message,
+		Source:  source,
+	})
+	return err
+}
+
 // CommandExecutionTimeout keeps source builds bounded while giving the
 // Docker API its documented 30-minute build window. All other fixed-shape
 // cluster mutations retain the worker's short default timeout.
 func (s *Server) CommandExecutionTimeout(command domain.Command) time.Duration {
 	if command.Action == commandImageBuild {
 		return 35 * time.Minute
+	}
+	if command.Action == commandMobilityMove || command.Action == commandMobilityRetire {
+		return 4 * time.Hour
 	}
 	return 10 * time.Minute
 }

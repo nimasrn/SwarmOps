@@ -42,12 +42,15 @@ multi-node high availability for stateful services.
 | `manager-03` | 2 CPU / 2 GB RAM | none initially | third manager, stateless work, quorum |
 
 Traefik is deliberately one replica and pinned to `manager-01` because its
-local ACME volume is not shared storage. SwarmOps is also a single replica on
+local ACME volume is not shared storage. SwarmOps is also one active replica on
 that manager (`node.role == manager` and `nim.control=true`): its local
 `swarmops_data` volume is the authoritative home for AES-256-GCM-sealed server
 profiles, audit history, command metadata/payload, and pending build contexts,
 while its API image and mounted configs provide the production console and
-reviewed deployment assets. It has no Docker socket.
+reviewed deployment assets. It has no Docker socket. The reviewed mobility
+workflow can cold-handover that volume and API service to another eligible
+manager after checksum verification and sustained replacement health, but it
+does not make the control plane active-active or replicated.
 Operators can run Vite locally as an interface only and proxy it to this API;
 they do not run a second local control plane. That makes recovery
 straightforward, but a shared ACME store and shared, audited application state
@@ -61,12 +64,21 @@ manager-bound singleton against a separate data directory.
 
 SwarmOps includes reviewed, single-replica MongoDB, PostgreSQL, and Redis stacks
 for deliberate managed-database use. They use local named volumes on a
-`nim.stateful=true` node and do not claim high availability. The 8 GB reference
-cluster is not a safe default for running all of them: use existing services or
-add capacity, placement, backups, and a tested restore plan before moving
-stateful data into the swarm. The wider platform manifest still rejects
-multi-node Mongo, PostgreSQL, Redis Sentinel, Jitsi, or shared-observability
-profiles unless their distinct labels and current capacity are present.
+`nim.stateful=true` node and do not claim high availability. The guarded
+mobility workflow can quiesce, checksum-copy, start, burn in, and then await an
+explicit source-retirement decision for these volumes and the monitoring
+stores. It is not database replication, automatic cleanup, or a substitute for
+backups and restore drills. The 8 GB reference cluster is not a safe default
+for running all of them: use existing services or add capacity, placement,
+backups, and a tested restore plan before moving stateful data into the swarm.
+Immediately before source cleanup, SwarmOps checks the replacement is still
+healthy on the recorded destination. A failed pre-cleanup handover can be
+closed only with the console's typed confirmation, which retains source data
+and makes no Docker change; a record whose cleanup may have started remains
+open for manual recovery.
+The wider platform manifest still rejects multi-node Mongo, PostgreSQL, Redis
+Sentinel, Jitsi, or shared-observability profiles unless their distinct labels
+and current capacity are present.
 
 ## Network and firewall prerequisites
 
@@ -137,12 +149,10 @@ SwarmOps data directory, Docker dependency, or local API process. Install the
 machine agent on each Linux or macOS Docker host from a GitHub Release:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
 # Linux:
-sudo bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
 # macOS:
-bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 The installer downloads checksum-verified `swarmops-agent` and
@@ -158,6 +168,11 @@ candidate, and keeps three known-good versions. Paste the token into
 then stores the API key only as AES-256-GCM-sealed state so the machine can
 reconnect after a restart. Explicit disconnect removes the live and sealed key;
 `SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual, memory-only posture.
+
+The installer does not install Docker or form/join a Swarm. Once the token is
+enrolled, **Servers** offers only fixed controller-managed setup actions:
+install Docker on Debian/Ubuntu, initialize a new Swarm, or join the selected
+Swarm. The join credential is not shown or persisted in the browser.
 
 Swarm service, node, stack, and build operations require Docker and a remote
 Swarm manager. A connected Docker host that is not a manager remains visible

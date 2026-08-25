@@ -59,6 +59,9 @@ type Service struct {
 			ContainerSpec struct {
 				Image string `json:"Image"`
 			} `json:"ContainerSpec"`
+			Placement struct {
+				Constraints []string `json:"Constraints"`
+			} `json:"Placement"`
 		} `json:"TaskTemplate"`
 	} `json:"Spec"`
 	UpdateStatus *struct {
@@ -116,4 +119,21 @@ type Version struct {
 	APIVersion    string `json:"ApiVersion"`
 	MinAPIVersion string `json:"MinAPIVersion"`
 	Version       string `json:"Version"`
+}
+
+// Volume contains only the Docker volume facts required for the machine
+// agent's reviewed migration path. It is never returned to a browser.
+type Volume struct {
+	Driver     string `json:"Driver"`
+	Mountpoint string `json:"Mountpoint"`
+	Name       string `json:"Name"`
+}
+
+// ContainerHealth is the reduced, non-sensitive subset of an inspect result
+// needed to keep a migrated local-volume service under observation. It omits
+// environment, mounts, labels, network addresses, and all log content.
+type ContainerHealth struct {
+	Health  string `json:"health,omitempty"`
+	Running bool   `json:"running"`
+	Status  string `json:"status,omitempty"`
 }

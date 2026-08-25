@@ -77,8 +77,10 @@ expect_failure '--listen-addr may contain only letters, numbers, _, ., /, :, [, 
   --listen-addr '0.0.0.0:9180;id' --release v0.4.1
 
 expect_success $'SwarmOps machine-agent installer configuration is valid.\nRelease: v0.4.1\nListener: 0.0.0.0:9180\nAdvertise host: 127.0.0.1\nNo host changes were made.' \
-  --validate-only --release v0.4.1 --advertise-host 127.0.0.1 --install-docker --init-swarm
+  --validate-only --release v0.4.1 --advertise-host 127.0.0.1
 expect_linux_success $'SwarmOps machine-agent installer configuration is valid.\nRelease: v0.4.1\nListener: 0.0.0.0:9180\nAdvertise host: 127.0.0.1\nNo host changes were made.' \
-  --validate-only --release v0.4.1 --advertise-host 127.0.0.1 --install-docker --init-swarm
+  --validate-only --release v0.4.1 --advertise-host 127.0.0.1
+expect_failure 'Docker and Swarm setup starts only after this agent is enrolled and managed in SwarmOps' \
+  --validate-only --install-docker
 
 printf 'SwarmOps machine-agent installer validation tests passed.\n'

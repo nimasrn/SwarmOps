@@ -15,6 +15,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/mobility"
 )
 
 type ControlPlane struct {
@@ -76,6 +77,17 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		TrustedStackSettings:   options.TrustedStackSettings,
 		now:                    time.Now,
 	}
+}
+
+// SetCommandOutput directs bounded, non-audit Docker operation output to the
+// active durable command record. A target is constructed per queued execution,
+// so this hook never crosses commands or controller requests.
+func (c *ControlPlane) SetCommandOutput(output func(string)) {
+	if c == nil {
+		return
+	}
+	c.CLI.Output = output
+	c.StackDeployer.CLI.Output = output
 }
 
 // ReconcileTraefik deploys only the checked-in Traefik stack asset. It does
@@ -244,6 +256,87 @@ func (c *ControlPlane) Services(ctx context.Context) ([]domain.Service, error) {
 	}
 	sort.Slice(services, func(left, right int) bool { return services[left].Name < services[right].Name })
 	return services, nil
+}
+
+// MoveManagedService applies an exact node-id placement constraint to one
+// reviewed durable SwarmOps service. It never accepts an arbitrary service or
+// constraint from the browser. The caller must have quiesced and copied the
+// component's local volume before invoking it.
+func (c *ControlPlane) MoveManagedService(ctx context.Context, service, targetNodeID string) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if _, found := mobility.ComponentForService(service); !found {
+		return fmt.Errorf("unsupported managed service relocation")
+	}
+	if strings.TrimSpace(targetNodeID) == "" || strings.ContainsAny(targetNodeID, " \t\r\n\x00") {
+		return fmt.Errorf("invalid managed service target")
+	}
+	services, err := c.Docker.ListServices(ctx)
+	if err != nil {
+		return fmt.Errorf("read managed service: %w", err)
+	}
+	var current *dockerapi.Service
+	for index := range services {
+		if services[index].Spec.Name == service {
+			current = &services[index]
+			break
+		}
+	}
+	if current == nil {
+		return fmt.Errorf("managed service is not installed")
+	}
+	prior, err := managedServiceNodeConstraint(current.Spec.TaskTemplate.Placement.Constraints)
+	if err != nil {
+		return err
+	}
+	if prior == targetNodeID {
+		return nil
+	}
+	args := []string{"service", "update", "--detach=false"}
+	if prior != "" {
+		args = append(args, "--constraint-rm", "node.id=="+prior)
+	}
+	args = append(args, "--constraint-add", "node.id=="+targetNodeID, service)
+	if _, err := c.CLI.Run(ctx, args...); err != nil {
+		return fmt.Errorf("move managed service: %w", err)
+	}
+	return nil
+}
+
+// ScaleManagedService limits quiescing and restart to the durable services in
+// the mobility catalog. It avoids routing a browser-selected service through
+// the generic service-scale command during a volume handover.
+func (c *ControlPlane) ScaleManagedService(ctx context.Context, service string, replicas uint64) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if _, found := mobility.ComponentForService(service); !found || replicas > 1 {
+		return fmt.Errorf("unsupported managed service scale")
+	}
+	if _, err := c.CLI.Run(ctx, "service", "scale", fmt.Sprintf("%s=%d", service, replicas)); err != nil {
+		return fmt.Errorf("scale managed service: %w", err)
+	}
+	return nil
+}
+
+func managedServiceNodeConstraint(constraints []string) (string, error) {
+	var nodeID string
+	for _, constraint := range constraints {
+		compact := strings.ReplaceAll(strings.TrimSpace(constraint), " ", "")
+		value, found := strings.CutPrefix(compact, "node.id==")
+		if !found {
+			continue
+		}
+		if value == "" || strings.ContainsAny(value, "\t\r\n\x00") {
+			return "", fmt.Errorf("managed service has an invalid node placement constraint")
+		}
+		if nodeID != "" && nodeID != value {
+			return "", fmt.Errorf("managed service has conflicting node placement constraints")
+		}
+		nodeID = value
+	}
+	return nodeID, nil
 }
 
 func (c *ControlPlane) Stacks(ctx context.Context) ([]domain.Stack, error) {

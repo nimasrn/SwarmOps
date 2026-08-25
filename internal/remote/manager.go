@@ -385,6 +385,59 @@ func (m *Manager) Connect(ctx context.Context, id string, credentials Credential
 	return profile, nil
 }
 
+// Refresh re-probes an already connected machine agent using only the API key
+// held inside its current pinned transport. It is used after a reviewed host
+// setup action so the console can move from Docker installation to Swarm setup
+// without asking an operator to paste, reveal, or retain a second credential.
+// It never works for legacy SSH profiles and never returns the key.
+func (m *Manager) Refresh(ctx context.Context, id string) (domain.Server, error) {
+	id = strings.TrimSpace(id)
+	m.mu.RLock()
+	profile, found := m.profiles[id]
+	current := m.connections[id]
+	if !found || current == nil || profile.ConnectionType != ConnectionAgentAPI {
+		m.mu.RUnlock()
+		return domain.Server{}, fmt.Errorf("connected machine agent is required")
+	}
+	runner, ok := current.Runner.(*AgentRunner)
+	if !ok || runner.client == nil || len(runner.client.key) < 16 {
+		m.mu.RUnlock()
+		return domain.Server{}, fmt.Errorf("machine agent refresh is unavailable")
+	}
+	key := append([]byte(nil), runner.client.key...)
+	m.mu.RUnlock()
+
+	credentials := Credentials{APIKey: string(key), Authentication: AuthenticationAPIKey}
+	connection, refreshed, err := establishAgentAPI(ctx, profile, credentials)
+	scrubCredentials(&credentials)
+	for index := range key {
+		key[index] = 0
+	}
+	if err != nil {
+		return domain.Server{}, err
+	}
+
+	m.mu.Lock()
+	if m.connections[id] != current {
+		m.mu.Unlock()
+		connection.close()
+		return domain.Server{}, fmt.Errorf("server connection changed while refreshing")
+	}
+	previousProfile := m.profiles[id]
+	m.profiles[id] = refreshed
+	m.connections[id] = connection
+	if err := m.saveLocked(); err != nil {
+		m.profiles[id] = previousProfile
+		m.connections[id] = current
+		m.mu.Unlock()
+		connection.close()
+		return domain.Server{}, err
+	}
+	m.mu.Unlock()
+	current.close()
+	return refreshed, nil
+}
+
 func (m *Manager) Disconnect(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -439,6 +492,58 @@ func (m *Manager) Resolve(id string) (*Connection, error) {
 		return nil, fmt.Errorf("server is not connected; reconnect with its machine API key")
 	}
 	return connection, nil
+}
+
+// NodeIdentity resolves a connected agent profile to its local Swarm node.
+// It is used only by the fixed mobility workflow; callers receive no Docker
+// socket, raw inspection result, or credential material.
+func (m *Manager) NodeIdentity(ctx context.Context, id string) (nodeID, clusterID string, err error) {
+	connection, err := m.Resolve(id)
+	if err != nil {
+		return "", "", err
+	}
+	if connection.Docker == nil {
+		return "", "", fmt.Errorf("server Docker Engine is unavailable")
+	}
+	info, err := connection.Docker.Info(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("read server Swarm identity: %w", err)
+	}
+	if strings.TrimSpace(info.Swarm.NodeID) == "" || strings.TrimSpace(info.Swarm.Cluster.ID) == "" {
+		return "", "", fmt.Errorf("server is not an active Swarm node")
+	}
+	return info.Swarm.NodeID, info.Swarm.Cluster.ID, nil
+}
+
+// ResolveNode finds a connected enrolled agent on an exact Swarm node. A
+// stateful transfer cannot fall back to SSH because the archive endpoint is a
+// deliberately constrained machine-agent capability.
+func (m *Manager) ResolveNode(ctx context.Context, nodeID string) (*Connection, domain.Server, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return nil, domain.Server{}, fmt.Errorf("Swarm node identifier is required")
+	}
+	m.mu.RLock()
+	connections := make(map[string]*Connection, len(m.connections))
+	profiles := make(map[string]domain.Server, len(m.profiles))
+	for id, connection := range m.connections {
+		connections[id] = connection
+	}
+	for id, profile := range m.profiles {
+		profiles[id] = profile
+	}
+	m.mu.RUnlock()
+	for id, connection := range connections {
+		if connection == nil || connection.Docker == nil || connection.Profile.ConnectionType != ConnectionAgentAPI || !connection.Profile.MobilityAvailable {
+			continue
+		}
+		info, err := connection.Docker.Info(ctx)
+		if err != nil || info.Swarm.NodeID != nodeID {
+			continue
+		}
+		return connection, profiles[id], nil
+	}
+	return nil, domain.Server{}, fmt.Errorf("no connected enrolled agent is available on the source Swarm node")
 }
 
 func (m *Manager) saveLocked() error {

@@ -18,11 +18,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/mobility"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
@@ -54,6 +56,7 @@ type Server struct {
 	commands     *queue.Store
 	loginLimiter *auth.LoginLimiter
 	logger       *slog.Logger
+	mobility     *mobility.Store
 	requestTotal atomic.Uint64
 	servers      *remote.Manager
 	apps         *ops.ApplicationStore
@@ -76,6 +79,9 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if cfg.CommandHistoryLimit < 1 {
 		cfg.CommandHistoryLimit = config.DefaultCommandHistoryLimit
 	}
+	if cfg.MobilityHealthyFor <= 0 {
+		cfg.MobilityHealthyFor = 10 * time.Minute
+	}
 	authService, err := auth.New(cfg.AdminUsername, cfg.AdminPasswordHash, cfg.SessionKey, cfg.SessionTTL)
 	if err != nil {
 		return nil, err
@@ -84,7 +90,11 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	return &Server{audit: auditStore, auth: authService, commands: commandStore, config: cfg, loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
+	mobilityStore, err := mobility.Open(cfg.DataDir, cfg.DataEncryptionKey)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{audit: auditStore, auth: authService, commands: commandStore, config: cfg, loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, mobility: mobilityStore, servers: servers, targets: targets}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -104,6 +114,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/servers", s.withAuth(true, s.serverAdd))
 	mux.HandleFunc("POST /api/v1/servers/enroll", s.withAuth(true, s.serverEnroll))
 	mux.HandleFunc("POST /api/v1/servers/{id}/connect", s.withAuth(true, s.serverConnect))
+	mux.HandleFunc("POST /api/v1/servers/{id}/bootstrap", s.withAuth(true, s.serverBootstrap))
+	mux.HandleFunc("POST /api/v1/servers/{id}/join-swarm", s.withAuth(true, s.serverJoinSwarm))
 	mux.HandleFunc("POST /api/v1/servers/{id}/disconnect", s.withAuth(true, s.serverDisconnect))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withAuth(true, s.serverRemove))
 	mux.HandleFunc("GET /api/v1/overview", s.withAuth(false, s.overview))
@@ -132,8 +144,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withAuth(true, s.applicationRemove))
 	mux.HandleFunc("GET /api/v1/databases", s.withAuth(false, s.databases))
 	mux.HandleFunc("POST /api/v1/databases/{engine}", s.withAuth(true, s.databaseSet))
+	mux.HandleFunc("GET /api/v1/mobility", s.withAuth(false, s.mobilityStatus))
+	mux.HandleFunc("POST /api/v1/mobility/{resource}", s.withAuth(true, s.mobilityMove))
+	mux.HandleFunc("POST /api/v1/mobility/{id}/retire", s.withAuth(true, s.mobilityRetire))
+	mux.HandleFunc("POST /api/v1/mobility/{id}/abandon", s.withAuth(true, s.mobilityAbandon))
 	mux.HandleFunc("GET /api/v1/audit-events", s.withAuth(false, s.auditEvents))
 	mux.HandleFunc("GET /api/v1/commands", s.withAuth(false, s.commandsList))
+	mux.HandleFunc("GET /api/v1/commands/{id}/logs", s.withAuth(false, s.commandLogs))
 	mux.HandleFunc("GET /api/v1/commands/{id}", s.withAuth(false, s.commandGet))
 	mux.HandleFunc("POST /api/v1/commands/{id}/retry", s.withAuth(true, s.commandRetry))
 	mux.Handle("/", web.Handler())
@@ -141,6 +158,10 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) health(response http.ResponseWriter, _ *http.Request) {
+	if err := s.observeControlPlaneHandover(); err != nil {
+		writeError(response, http.StatusServiceUnavailable, "SwarmOps handover state is unavailable")
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -314,6 +335,25 @@ func (s *Server) serverConnect(response http.ResponseWriter, request *http.Reque
 	}
 	s.record(claims.Username, requestID(request), "server.reconnect", "server/"+server.ID, nil, nil)
 	writeJSON(response, http.StatusOK, server)
+}
+
+func (s *Server) serverBootstrap(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input agentcontrol.BootstrapRequest
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitHostBootstrap(response, request, claims, request.PathValue("id"), input)
+}
+
+func (s *Server) serverJoinSwarm(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	// Accept exactly an empty JSON object. A browser must not supply a Docker
+	// join token; the worker obtains one directly from the selected manager at
+	// execution time and sends it only to the enrolled destination agent.
+	var input struct{}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitManagedSwarmJoin(response, request, claims, request.PathValue("id"))
 }
 
 func connectionType(apiURL string) string {
@@ -757,6 +797,10 @@ func (s *Server) withAuth(csrf bool, handler protectedHandler) http.HandlerFunc 
 		}
 		if csrf && !s.auth.VerifyCSRF(claims, request.Header.Get("X-CSRF-Token")) {
 			writeError(response, http.StatusForbidden, "Invalid request token")
+			return
+		}
+		if csrf && request.URL.Path != "/api/v1/auth/logout" && !strings.HasPrefix(request.URL.Path, "/api/v1/mobility") && s.controlPlaneHandoverActive() {
+			writeError(response, http.StatusConflict, "Control-plane handover is in progress. Monitor or retire that handover before queuing other changes.")
 			return
 		}
 		handler(response, request, claims)

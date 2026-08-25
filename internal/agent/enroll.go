@@ -40,24 +40,29 @@ func newEnrollment(secret []byte, file string) (*enrollment, error) {
 // exchange verifies the presented one-time secret and, on the single accepted
 // call, burns it. It returns false for every later call so a replayed token
 // cannot hand the machine API key to a second party.
-func (e *enrollment) exchange(presented []byte) bool {
+func (e *enrollment) exchange(presented []byte, beforeBurn func() error) (bool, error) {
 	if e == nil {
-		return false
+		return false, nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.spent || len(presented) == 0 {
-		return false
+		return false, nil
 	}
 	if subtle.ConstantTimeCompare(presented, e.secret) != 1 {
 		e.attempts++
 		if e.attempts >= maxEnrollmentAttempts {
 			e.burn()
 		}
-		return false
+		return false, nil
+	}
+	if beforeBurn != nil {
+		if err := beforeBurn(); err != nil {
+			return false, err
+		}
 	}
 	e.burn()
-	return true
+	return true, nil
 }
 
 // burn must be called with the mutex held.
@@ -89,7 +94,12 @@ func (s *Server) enroll(response http.ResponseWriter, request *http.Request) {
 		http.Error(response, "enrollment is closed", http.StatusGone)
 		return
 	}
-	if !s.enrollment.exchange([]byte(bearer(request))) {
+	accepted, err := s.enrollment.exchange([]byte(bearer(request)), s.managed.MarkManaged)
+	if err != nil {
+		http.Error(response, "enrollment state unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !accepted {
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
 	}

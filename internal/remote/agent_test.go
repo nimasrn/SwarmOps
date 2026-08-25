@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
@@ -81,6 +82,77 @@ func TestManagerRejectsWrongMachineAPICertificatePin(t *testing.T) {
 	}
 	if profiles := manager.List(); len(profiles) != 0 {
 		t.Fatalf("untrusted machine API was persisted: %#v", profiles)
+	}
+}
+
+func TestManagerRefreshUsesExistingPinnedAgentCredential(t *testing.T) {
+	t.Parallel()
+	const apiKey = "test-machine-api-key"
+	var dockerReady atomic.Bool
+	dockerBackend := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/_ping":
+			if !dockerReady.Load() {
+				http.Error(response, "Docker starting", http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = response.Write([]byte("OK"))
+		case "/version":
+			_, _ = response.Write([]byte(`{"Version":"27.0.0"}`))
+		case "/info":
+			_, _ = response.Write([]byte(`{"Swarm":{"ControlAvailable":false,"LocalNodeState":"inactive"}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(dockerBackend.Close)
+	docker, err := dockerapi.NewForURL(dockerBackend.URL, dockerBackend.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentServer, err := agent.NewServer(agent.Config{Docker: docker, NodeName: "worker-1", RemoteControlEnabled: true, Version: "test"}, []byte(apiKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := httptest.NewTLSServer(agentServer.Handler())
+	t.Cleanup(machine.Close)
+	parsed, err := url.Parse(machine.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.ParseUint(parsed.Port(), 10, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := sha256.Sum256(machine.Certificate().Raw)
+	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := manager.Add(context.Background(), AddInput{
+		APIKey:                    apiKey,
+		APIURL:                    parsed.Scheme + "://" + parsed.Hostname(),
+		Name:                      "worker one",
+		Port:                      uint16(port),
+		TLSCertificateFingerprint: "SHA256:" + strings.ToUpper(hex.EncodeToString(fingerprint[:])),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.DockerAvailable {
+		t.Fatal("agent reported Docker ready before its daemon was ready")
+	}
+	dockerReady.Store(true)
+	refreshed, err := manager.Refresh(context.Background(), profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !refreshed.DockerAvailable || refreshed.DockerVersion != "27.0.0" {
+		t.Fatalf("refreshed profile = %#v", refreshed)
+	}
+	connection, err := manager.Resolve(profile.ID)
+	if err != nil || connection.Docker == nil {
+		t.Fatalf("refreshed connection = %#v, err=%v", connection, err)
 	}
 }
 

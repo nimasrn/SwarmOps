@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/nimasrn/SwarmOps/internal/mobility"
 )
 
 const MaxComposeBytes = 1 << 20
@@ -17,6 +19,7 @@ const (
 	OperationServiceRestart   = "service_restart"
 	OperationServiceRollback  = "service_rollback"
 	OperationServiceScale     = "service_scale"
+	OperationServiceMove      = "service_move"
 	OperationServiceLogs      = "service_logs"
 	OperationStackConfig      = "stack_config"
 	OperationStackDeploy      = "stack_deploy"
@@ -48,9 +51,11 @@ type Request struct {
 	Operation           string `json:"operation"`
 	Replicas            uint64 `json:"replicas,omitempty"`
 	ResolveImageChanged bool   `json:"resolveImageChanged,omitempty"`
+	PriorNodeID         string `json:"priorNodeId,omitempty"`
 	Secret              string `json:"secret,omitempty"`
 	ServiceID           string `json:"serviceId,omitempty"`
 	Tail                uint64 `json:"tail,omitempty"`
+	TargetNodeID        string `json:"targetNodeId,omitempty"`
 	WithRegistryAuth    bool   `json:"withRegistryAuth,omitempty"`
 }
 
@@ -87,6 +92,19 @@ func serviceRequest(args []string, input []byte) (Request, error) {
 		return Request{}, fmt.Errorf("service operations do not accept input")
 	}
 	switch {
+	case len(args) == 6 && args[1] == "update" && args[2] == "--detach=false" && args[3] == "--constraint-add":
+		target, found := strings.CutPrefix(args[4], "node.id==")
+		if !found || !validReference(target) || !movableService(args[5]) {
+			return Request{}, fmt.Errorf("invalid managed service move")
+		}
+		return Request{Operation: OperationServiceMove, ServiceID: args[5], TargetNodeID: target}, nil
+	case len(args) == 8 && args[1] == "update" && args[2] == "--detach=false" && args[3] == "--constraint-rm" && args[5] == "--constraint-add":
+		prior, priorFound := strings.CutPrefix(args[4], "node.id==")
+		target, targetFound := strings.CutPrefix(args[6], "node.id==")
+		if !priorFound || !targetFound || !validReference(prior) || !validReference(target) || prior == target || !movableService(args[7]) {
+			return Request{}, fmt.Errorf("invalid managed service move")
+		}
+		return Request{Operation: OperationServiceMove, PriorNodeID: prior, ServiceID: args[7], TargetNodeID: target}, nil
 	case len(args) == 4 && args[1] == "update" && args[2] == "--force":
 		return Request{Operation: OperationServiceRestart, ServiceID: args[3]}, nil
 	case len(args) == 3 && args[1] == "rollback":
@@ -189,6 +207,16 @@ func DockerArgs(request Request) ([]string, []byte, error) {
 			return nil, nil, fmt.Errorf("invalid service scale operation")
 		}
 		return []string{"service", "scale", fmt.Sprintf("%s=%d", request.ServiceID, request.Replicas)}, nil, nil
+	case OperationServiceMove:
+		if !movableService(request.ServiceID) || !validReference(request.TargetNodeID) || (request.PriorNodeID != "" && (!validReference(request.PriorNodeID) || request.PriorNodeID == request.TargetNodeID)) {
+			return nil, nil, fmt.Errorf("invalid managed service move")
+		}
+		args := []string{"service", "update", "--detach=false"}
+		if request.PriorNodeID != "" {
+			args = append(args, "--constraint-rm", "node.id=="+request.PriorNodeID)
+		}
+		args = append(args, "--constraint-add", "node.id=="+request.TargetNodeID, request.ServiceID)
+		return args, nil, nil
 	case OperationServiceLogs:
 		if !validReference(request.ServiceID) || request.Tail == 0 || request.Tail > 1000 {
 			return nil, nil, fmt.Errorf("invalid service logs operation")
@@ -243,6 +271,11 @@ func validCompose(value string) ([]byte, error) {
 
 func validReference(value string) bool {
 	return referencePattern.MatchString(value)
+}
+
+func movableService(value string) bool {
+	_, found := mobility.ComponentForService(value)
+	return found
 }
 
 func oneOf(value string, choices ...string) bool {

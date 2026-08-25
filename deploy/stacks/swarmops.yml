@@ -32,6 +32,10 @@ services:
       SWARMOPS_BUILD_MAX_MEMORY_MIB: ${SWARMOPS_BUILD_MAX_MEMORY_MIB:-2048}
       SWARMOPS_DATA_ENCRYPTION_KEY_FILE: /run/secrets/swarmops_data_encryption_key
       SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-ghcr.io/nimasrn/}
+      # Docker expands this Swarm template inside each API task. A promoted
+      # replacement uses it to prove that its own healthcheck is running on
+      # the nominated handover node before source data can be retired.
+      SWARMOPS_INSTANCE_NODE_ID: "{{.Node.ID}}"
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
       SWARMOPS_ALERTMANAGER_CONFIG_NAME: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
       SWARMOPS_ALLOY_CONFIG_NAME: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}

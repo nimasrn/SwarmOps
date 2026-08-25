@@ -36,17 +36,18 @@ the [changelog](CHANGELOG.md) for release contents.
 
 | Area | Capability | Boundary |
 | --- | --- | --- |
-| Servers | Run one installer and paste its single-use enrollment token; advanced manual URL, port, fingerprint, and API-key fields remain available | Core exchanges the token over pinned TLS and, by default, retains the key only as AES-256-GCM-sealed state for restart recovery. Disconnect removes both live and sealed copies. A Swarm manager is required before cluster pages or mutations are enabled. |
+| Servers | Run one installer and paste its single-use enrollment token; then approve fixed Docker installation, Swarm initialization, or joining the selected Swarm from the panel | Core exchanges the token over pinned TLS and, by default, retains the key only as AES-256-GCM-sealed state for restart recovery. The installer never changes Docker or Swarm; a selected manager relays a short-lived join credential only between enrolled agents. |
 | Nodes | Docker role/state/availability, labels, task placement, and engine-declared CPU/memory capacity from the selected machine agent | A target must be a remote Swarm manager for cluster operations; optional global host probes are not required for connection. |
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
 | Services | Read a bounded service-log tail; restart, rollback, or scale with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. |
-| Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention | The API writes the command ledger before returning `202`; it exposes no raw payload, source archive, remote output, or secret. |
+| Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention, with safe execution evidence beside the command | The API writes the command ledger before returning `202`; fixed-operation output is bounded, redacted, AES-256-GCM sealed, and readable in the panel. It never stores service logs, source archives, raw build output, payloads, or secrets there. |
 | Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmopsctl build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
 | Edge / TLS | Discover and reconcile the checked-in Traefik stack; protected dashboard, internal Prometheus metrics, and ACME DNS challenge | DNS/provider tokens and dashboard credentials remain external Swarm secrets; the browser never supplies routes or credentials. |
-| Observability | One Grafana + Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection | Core, host-probe, and log-collector removal require exact typed confirmations. |
-| Databases | Enable reviewed single-node PostgreSQL, MongoDB, or Redis stacks with generated credentials on the internal data overlay | Credentials are created as Swarm secrets and sealed by Core, never returned to the browser. Removal requires an engine-specific typed phrase and leaves the named volume and Swarm secrets for deliberate recovery or cleanup. |
+| Observability | One Grafana + Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection | Core, host-probe, and log-collector removal require exact typed confirmations. Its durable local volumes can move through the guarded mobility workflow. |
+| Databases | Enable reviewed single-node PostgreSQL, MongoDB, or Redis stacks with generated credentials on the internal data overlay | Credentials are created as Swarm secrets and sealed by Core, never returned to the browser. Their local volumes can make a quiesced, checksummed move; this is not a claim of database replication or zero-downtime HA. |
+| Data mobility | Move the control plane, MongoDB, PostgreSQL, Redis, or the reviewed monitoring stores to another eligible managed node | The source is retained after a verified copy and health burn-in. Only an administrator can press the separate source-retirement action; no generic file transfer, automatic deletion, or browser-supplied path is available. |
 | Applications | Select a manifest-approved slot, immutable image, domain, health/metrics path, backend, and managed databases; preview or deploy the rendered Compose | Core admits its rendered output through the same closed Compose policy and fresh live-capacity check. Database URIs use stack-scoped secrets by default; `/metrics/targets` exposes only safe Prometheus discovery metadata. |
-| Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Docker installation and Swarm formation remain reviewed Ansible operator actions; the machine API may be installed first, but Docker/Swarm operations wait for Docker to become available. |
+| Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Ansible remains the reviewed multi-manager bootstrap. For an enrolled individual host, the panel can queue only fixed Docker and Swarm initialization/join actions. |
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
 | Fleet jobs | Queue an allow-listed Ansible operation on every selected inventory host and read durable status | A node-owned transient systemd job survives an accepted SSH control-channel loss; the remote model uses the trusted-workstation SSH inventory status path and never exposes command output in the browser. |
 | Backups | Install an opt-in Restic timer for local Docker named-volume paths to S3-compatible storage | Credentials are supplied only through a protected controller-side file; repository initialisation and restore validation stay explicit operator actions. |
@@ -87,12 +88,13 @@ trusted workstation ─ swarmopsctl tar stream ─> API build endpoint ─> encr
 ## Durable command lifecycle
 
 All approved remote mutations — node availability, application-stack deploy,
-service action, image build, Traefik reconciliation, and reviewed
-observability controls — require an `Idempotency-Key`. After admission and
+service action, image build, Traefik reconciliation, reviewed observability
+controls, managed host setup, and data handovers — require an `Idempotency-Key`. After admission and
 policy checks, SwarmOps atomically writes an encrypted command record before
-returning HTTP `202` with a command ID. The matching console route shows only
-safe metadata: action, target, state, attempt count, next retry, and generic
-failure guidance.
+returning HTTP `202` with a command ID. The matching console route shows safe
+metadata plus a bounded, redacted log of the fixed operation. It deliberately
+excludes service-log content, source archives, build output, full command
+payloads, and secrets.
 
 The singleton worker runs one command at a time. Its states are `queued`,
 `running`, `retry_scheduled`, `succeeded`, and `needs_attention`. Only
@@ -111,6 +113,46 @@ successful lifecycle write. A failed upload is retained as a visible
 `needs_attention` command rather than silently discarded. Server-profile
 connect/disconnect and local login/session management are not remote mutation
 commands and remain synchronous.
+
+## Managed host setup and data mobility
+
+Installing the machine agent is deliberately Docker- and Swarm-free. After its
+one-time enrollment succeeds, **Servers** can queue only three reviewed host
+actions: install Docker Engine on Debian/Ubuntu, initialize a new Swarm, or
+join the currently selected Swarm. The join button never asks for or displays a
+token: the selected active manager obtains Docker's short-lived manager token
+and the controller sends it directly to the enrolled destination agent. The
+token is not in the browser request, command payload, audit record, or command
+log.
+
+**Data mobility** is a deliberate cold handover for the current single-node,
+local-volume topology. Choose a supported resource and an eligible destination
+node with its managed agent connected. SwarmOps resolves the current source
+task, quiesces it, streams the reviewed named volume through the pinned agents,
+verifies byte count and SHA-256 receipt on the destination, pins the exact
+reviewed service to that node, and waits for a sustained health window (10
+minutes by default). For Core, the source first writes its handover fence,
+stops accepting mutations, copies that sealed state, and then stops its own
+worker as the replacement service starts; the replacement independently owns
+burn-in. This produces a short control-plane interruption, not active-active
+operation. The source volume remains untouched. Only when the status becomes **Ready for
+retirement** does an administrator get the separate **Retire source data**
+button; that action again verifies no task is running on the source before
+deleting the reviewed source volume. It also rechecks that every replacement
+task is still healthy on the exact destination immediately before cleanup.
+
+The catalog is fixed: SwarmOps Core, MongoDB, PostgreSQL, Redis, and the
+Prometheus, Alertmanager, Grafana, Jaeger, and Loki stores. Monitoring moves
+its components serially, and an interrupted handover becomes **Needs
+attention** with source data retained. Before source cleanup begins, an
+administrator may explicitly close a failed record with the panel's typed
+confirmation after manual review; that only releases the handover fence and
+never deletes, restarts, or repairs data. A record whose source cleanup may
+have started remains open for recovery. This workflow is not a replacement for
+MongoDB replication, PostgreSQL replication, Redis Sentinel/Cluster, shared
+ACME storage, database-consistent backup/restore testing, or a replicated
+control plane. It makes the reviewed present topology movable without turning
+the agent into a file-copy or remote-shell service.
 
 ## Decision artifacts
 
@@ -281,12 +323,10 @@ Swarm operations. On Linux, run the installer with `sudo`. On macOS, run it as
 the logged-in user, without `sudo`:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
 # Linux:
-sudo bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
 # macOS:
-bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 To validate a fixed release and your listener/advertise settings without
@@ -294,7 +334,7 @@ changing the host, add `--validate-only`, for example:
 
 ```bash
 sudo bash install-swarmops-agent.sh \
-  --release v0.4.2 \
+  --release <tag> \
   --advertise-host <server-ip> \
   --validate-only
 ```
@@ -312,15 +352,18 @@ Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
 `--tls-cert-file` and `--tls-key-file` flags only when an operator deliberately
 uses a different managed certificate. Pass `--install-dependencies` only when
 its documented Debian/Ubuntu or Homebrew package installation is appropriate.
-By default it does not install Docker, change the firewall, or create a Swarm.
-On Debian/Ubuntu, `--install-docker` uses Docker’s signed APT repository and
-`--init-swarm` forms a single-node Swarm using the detected or explicitly
-supplied `--advertise-host`. Joining an existing cluster remains an explicit
-operator action. The installer never prints the generated API key.
+It does not install Docker, change the firewall, or create/join a Swarm. After
+the printed token is enrolled, **Servers** offers a fixed controller-managed
+Docker installation for Debian/Ubuntu and either a Swarm initialization or a
+join to the selected manager. The join credential is exchanged directly between
+enrolled agents and never appears in the panel. The installer never prints the
+generated API key.
 
 It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_ENROLLMENT_FILE`,
+`SWARMOPS_AGENT_MANAGED_STATE_FILE`, `SWARMOPS_AGENT_MOBILITY_TRANSFER_DIR`,
 `SWARMOPS_AGENT_TLS_CERT_FILE`, `SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
-`SWARMOPS_DOCKER_SOCKET`, and `SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true`
+`SWARMOPS_DOCKER_SOCKET`, `SWARMOPS_AGENT_BOOTSTRAP_ENABLED=true`,
+`SWARMOPS_AGENT_MOBILITY_ENABLED=true`, and `SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true`
 into its protected service environment. Keep the token/key file owner-only;
 the agent refuses a symlink or group/world-readable token or TLS key.
 
@@ -337,13 +380,14 @@ known-good releases. Start `swarmops-agent-warden.service` manually for an
 immediate Linux check; see the native-release document for the controller and
 macOS equivalents.
 
-The installer prints one `swarmops1.…` enrollment token containing the detected
-host, machine API port, public TLS certificate fingerprint, and a one-time
-secret. Open **Servers**, paste that token, and optionally give the host a
-display name. Core pins the exact leaf certificate, exchanges the one-time
-secret for the API key, and the agent burns the token after that successful
-exchange. The manual connection fields remain an advanced fallback for an
-already-installed agent or deliberately managed TLS material.
+The installer prints an explicit completion summary followed by one
+`swarmops1.…` enrollment token containing the detected host, machine API port,
+public TLS certificate fingerprint, and a one-time secret. Open **Servers**,
+paste that token, and optionally give the host a display name. Core pins the
+exact leaf certificate, exchanges the one-time secret for the API key, and the
+agent burns the token after that successful exchange. The manual connection
+fields remain an advanced fallback for an already-installed agent or
+deliberately managed TLS material.
 
 Profiles saved before this transport change are marked **Legacy SSH** in the
 Servers table. They remain readable only for migration; remove each one and
@@ -694,8 +738,10 @@ registry configuration, or service-log output.
 The command ledger is separate from audit history: it is the durable source of
 truth for accepted command intent and local lifecycle, not proof that a remote
 Docker side effect occurred exactly once. It records safe state transitions in
-the audit trail without copying command payloads, source archives, or remote
-output.
+the audit trail without copying command payloads or source archives. Bounded,
+redacted output from reviewed operations is encrypted alongside the command
+and visible only in its **Logs** panel; service logs and raw build output are
+never copied into that evidence store.
 
 Server profiles persist only display name, machine API origin/port,
 authentication method, and pinned TLS certificate fingerprint in sealed state
@@ -708,8 +754,8 @@ audit records; explicit disconnect removes the retained copy. Set
 The Servers panel reports safe, actionable connection diagnostics for TLS-pin
 mismatches, rejected API keys, machine-API reachability, disabled control, and
 Docker Engine failures. It includes a request ID for protected server-log
-correlation, but never returns credentials, raw remote output, or unreviewed
-remote error text to the browser.
+correlation, but never returns credentials, unreviewed remote error text,
+service-log output, or raw build output to the browser.
 
 The fingerprint pins the exact TLS leaf certificate presented by the machine
 agent. Verify its public SHA-256 fingerprint from the target's trusted console
@@ -718,20 +764,26 @@ explicit verified profile update.
 
 ## Important limitations
 
-- The control plane is intentionally a single replica on the designated
-  control manager because its encrypted state and live machine API connections
-  are local to that task. A separate replicated state and credential design is
-  required before it can become HA.
+- The control plane remains one active replica with a local encrypted volume.
+  The mobility workflow can hand it over to another eligible manager only after
+  a verified copy and health burn-in; it does not create active-active control
+  plane HA or replace a replicated state and credential design.
 - A remote host must run the native machine agent before it can be added. It
   can connect before Docker starts, but Docker and cluster operations remain
-  unavailable until the engine is ready. Cluster operations require a selected
-  remote Swarm manager; use the reviewed Ansible workflow or the Linux
-  installer’s explicit `--install-docker --init-swarm` options to prepare a
-  fresh Debian/Ubuntu host. SwarmOps does not install Docker or form a Swarm
-  from the browser.
+  unavailable until the engine is ready. The installer does not install Docker
+  or change Swarm. Once the host is enrolled, a selected manager can approve
+  only the reviewed Docker, initialize-Swarm, or join-selected-Swarm actions;
+  the Ansible workflow remains the reviewed path for a new three-manager
+  cluster.
 - The managed database stacks are intentionally one replica with local named
-  volumes on a `nim.stateful=true` node. They require an external backup and
-  tested restore plan and do not claim database high availability.
+  volumes on a `nim.stateful=true` node. The mobility workflow can perform a
+  quiesced move with source retention, but they still require an external
+  backup and tested restore plan and do not claim database high availability.
+- A **Needs attention** mobility record is evidence of an incomplete operation,
+  not a safe retry signal. Before source cleanup begins, an administrator can
+  close that record only with its typed confirmation after review; it retains
+  source data and makes no Docker change. Once source cleanup begins, leave
+  the record open and complete recovery review before any further move.
 - Jaeger’s checked-in Badger store is durable only on its labelled stateful
   node. Use documented OpenSearch config and a tested backup/restore plan when
   trace HA/retention requires it.

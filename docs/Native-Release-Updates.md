@@ -61,12 +61,10 @@ On Linux, download the release installer and run it with `sudo`. On macOS, run
 it as the logged-in user without `sudo`:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
 # Linux:
-sudo bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
 # macOS:
-bash install-swarmops-agent.sh
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 The agent installer defaults to `0.0.0.0:9180` and creates a P-256,
@@ -85,11 +83,21 @@ firewall rule. Advanced operators may provide a certificate only with the
 paired `--tls-cert-file` and `--tls-key-file` flags, or use the console’s manual
 connection fields for an existing installation.
 
-The default installation does not change Docker or Swarm. On Debian/Ubuntu,
-`--install-docker` installs Docker Engine from Docker’s signed APT repository,
-and `--init-swarm` forms a single-node Swarm using the detected or explicitly
-supplied `--advertise-host`. Joining an existing cluster remains a separate,
-reviewed operator action.
+The default installation does not change Docker or Swarm, and legacy
+`--install-docker` / `--init-swarm` flags are rejected. After the token has
+been enrolled, **Servers** can approve the fixed Debian/Ubuntu Docker setup,
+initialize a new Swarm, or join the selected Swarm. For a join, the selected
+manager issues Docker's short-lived credential directly to the enrolled
+destination agent; it never enters the browser, a queued payload, audit event,
+or command log.
+
+For the reviewed local-volume handover workflow, source data remains until a
+replacement completes sustained health burn-in and an administrator presses the
+separate retirement action. SwarmOps rechecks the replacement on the exact
+destination immediately before that cleanup. If a handover fails before source
+cleanup starts, the console offers a typed-confirmation closure that only
+releases its record after manual review; it never deletes data or changes
+Docker. A record whose cleanup may have started stays open for recovery.
 
 The agent service starts without a Docker CLI or live Docker socket. It reports
 the host as connected but Docker-unavailable until Docker starts; Core blocks

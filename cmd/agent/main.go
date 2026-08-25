@@ -23,7 +23,10 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 )
 
-const buildTimeout = 30 * time.Minute
+const (
+	buildTimeout    = 30 * time.Minute
+	mobilityTimeout = 6 * time.Hour
+)
 
 // version is set by the release build with -ldflags. Keeping a development
 // fallback makes local go run and test workflows deterministic.
@@ -42,20 +45,25 @@ func main() {
 		os.Exit(1)
 	}
 	agentServer, err := agent.NewServer(agent.Config{
-		AllowedImagePrefixes: runtime.allowedImagePrefixes,
-		BuildEnabled:         runtime.buildEnabled,
-		BuildMaxBytes:        runtime.buildMaxBytes,
-		BuildMaxCPUs:         runtime.buildMaxCPUs,
-		BuildMaxMemoryMiB:    runtime.buildMaxMemoryMiB,
-		Docker:               docker,
-		EnrollmentSecret:     runtime.enrollmentSecret,
-		EnrollmentSecretFile: runtime.enrollmentSecretFile,
-		HostOS:               env("SWARMOPS_HOST_OS", "/host/etc/os-release"),
-		HostProc:             env("SWARMOPS_HOST_PROC", "/host/proc"),
-		HostRoot:             env("SWARMOPS_HOST_ROOT", "/host"),
-		NodeName:             os.Getenv("NODE_NAME"),
-		RemoteControlEnabled: runtime.remoteControlEnabled,
-		Version:              version,
+		AllowedImagePrefixes:     runtime.allowedImagePrefixes,
+		BootstrapEnabled:         runtime.bootstrapEnabled,
+		BuildEnabled:             runtime.buildEnabled,
+		BuildMaxBytes:            runtime.buildMaxBytes,
+		BuildMaxCPUs:             runtime.buildMaxCPUs,
+		BuildMaxMemoryMiB:        runtime.buildMaxMemoryMiB,
+		Docker:                   docker,
+		EnrollmentSecret:         runtime.enrollmentSecret,
+		EnrollmentSecretFile:     runtime.enrollmentSecretFile,
+		HostOS:                   env("SWARMOPS_HOST_OS", "/host/etc/os-release"),
+		HostProc:                 env("SWARMOPS_HOST_PROC", "/host/proc"),
+		HostRoot:                 env("SWARMOPS_HOST_ROOT", "/host"),
+		ManagedStateFile:         runtime.managedStateFile,
+		MobilityEnabled:          runtime.mobilityEnabled,
+		MobilityTransferDir:      runtime.mobilityTransferDir,
+		MobilityTransferMaxBytes: runtime.mobilityTransferMaxBytes,
+		NodeName:                 os.Getenv("NODE_NAME"),
+		RemoteControlEnabled:     runtime.remoteControlEnabled,
+		Version:                  version,
 	}, runtime.token)
 	if err != nil {
 		logger.Error("create agent", "error", err)
@@ -69,6 +77,10 @@ func main() {
 		// them bounded while ReadHeaderTimeout protects the handshake.
 		readTimeout = buildTimeout
 		writeTimeout = buildTimeout
+	}
+	if runtime.mobilityEnabled {
+		readTimeout = mobilityTimeout
+		writeTimeout = mobilityTimeout
 	}
 	server := &http.Server{
 		Addr:              runtime.listenAddr,
@@ -103,19 +115,24 @@ func main() {
 }
 
 type runtimeConfig struct {
-	allowedImagePrefixes []string
-	buildEnabled         bool
-	buildMaxBytes        int64
-	buildMaxCPUs         float64
-	buildMaxMemoryMiB    int64
-	dockerSocket         string
-	enrollmentSecret     []byte
-	enrollmentSecretFile string
-	listenAddr           string
-	remoteControlEnabled bool
-	tlsCertFile          string
-	tlsKeyFile           string
-	token                []byte
+	allowedImagePrefixes     []string
+	bootstrapEnabled         bool
+	buildEnabled             bool
+	buildMaxBytes            int64
+	buildMaxCPUs             float64
+	buildMaxMemoryMiB        int64
+	dockerSocket             string
+	enrollmentSecret         []byte
+	enrollmentSecretFile     string
+	listenAddr               string
+	managedStateFile         string
+	mobilityEnabled          bool
+	mobilityTransferDir      string
+	mobilityTransferMaxBytes int64
+	remoteControlEnabled     bool
+	tlsCertFile              string
+	tlsKeyFile               string
+	token                    []byte
 }
 
 func loadRuntime() (runtimeConfig, error) {
@@ -136,21 +153,26 @@ func loadRuntime() (runtimeConfig, error) {
 		}
 	}
 	config := runtimeConfig{
-		allowedImagePrefixes: splitCSV(env("SWARMOPS_AGENT_IMAGE_PREFIXES", "ghcr.io/nimasrn/")),
-		buildEnabled:         boolEnv("SWARMOPS_AGENT_BUILD_ENABLED", false),
-		buildMaxBytes:        int64Env("SWARMOPS_AGENT_BUILD_MAX_BYTES", 512<<20),
-		buildMaxCPUs:         floatEnv("SWARMOPS_AGENT_BUILD_MAX_CPUS", 2),
-		buildMaxMemoryMiB:    int64Env("SWARMOPS_AGENT_BUILD_MAX_MEMORY_MIB", 2048),
-		dockerSocket:         env("SWARMOPS_DOCKER_SOCKET", "/var/run/docker.sock"),
-		enrollmentSecret:     enrollmentSecret,
-		enrollmentSecretFile: enrollmentSecretFile,
-		listenAddr:           env("SWARMOPS_AGENT_LISTEN_ADDR", ":9180"),
-		remoteControlEnabled: boolEnv("SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED", false),
-		tlsCertFile:          strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_TLS_CERT_FILE")),
-		tlsKeyFile:           strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_TLS_KEY_FILE")),
-		token:                token,
+		allowedImagePrefixes:     splitCSV(env("SWARMOPS_AGENT_IMAGE_PREFIXES", "ghcr.io/nimasrn/")),
+		bootstrapEnabled:         boolEnv("SWARMOPS_AGENT_BOOTSTRAP_ENABLED", false),
+		buildEnabled:             boolEnv("SWARMOPS_AGENT_BUILD_ENABLED", false),
+		buildMaxBytes:            int64Env("SWARMOPS_AGENT_BUILD_MAX_BYTES", 512<<20),
+		buildMaxCPUs:             floatEnv("SWARMOPS_AGENT_BUILD_MAX_CPUS", 2),
+		buildMaxMemoryMiB:        int64Env("SWARMOPS_AGENT_BUILD_MAX_MEMORY_MIB", 2048),
+		dockerSocket:             env("SWARMOPS_DOCKER_SOCKET", "/var/run/docker.sock"),
+		enrollmentSecret:         enrollmentSecret,
+		enrollmentSecretFile:     enrollmentSecretFile,
+		listenAddr:               env("SWARMOPS_AGENT_LISTEN_ADDR", ":9180"),
+		managedStateFile:         strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_MANAGED_STATE_FILE")),
+		mobilityEnabled:          boolEnv("SWARMOPS_AGENT_MOBILITY_ENABLED", false),
+		mobilityTransferDir:      env("SWARMOPS_AGENT_MOBILITY_TRANSFER_DIR", "/var/lib/swarmops-agent/transfers"),
+		mobilityTransferMaxBytes: int64Env("SWARMOPS_AGENT_MOBILITY_TRANSFER_MAX_BYTES", 64<<30),
+		remoteControlEnabled:     boolEnv("SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED", false),
+		tlsCertFile:              strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_TLS_CERT_FILE")),
+		tlsKeyFile:               strings.TrimSpace(os.Getenv("SWARMOPS_AGENT_TLS_KEY_FILE")),
+		token:                    token,
 	}
-	if config.buildMaxBytes <= 0 || config.buildMaxCPUs <= 0 || config.buildMaxMemoryMiB <= 0 || len(config.allowedImagePrefixes) == 0 {
+	if config.buildMaxBytes <= 0 || config.buildMaxCPUs <= 0 || config.buildMaxMemoryMiB <= 0 || config.mobilityTransferMaxBytes <= 0 || len(config.allowedImagePrefixes) == 0 {
 		return runtimeConfig{}, fmt.Errorf("agent build limits and image prefixes must be configured")
 	}
 	if (config.tlsCertFile == "") != (config.tlsKeyFile == "") {
@@ -172,6 +194,15 @@ func loadRuntime() (runtimeConfig, error) {
 		if !loopback && config.tlsCertFile == "" {
 			return runtimeConfig{}, fmt.Errorf("remote control on a non-loopback listener requires agent TLS")
 		}
+	}
+	if config.bootstrapEnabled && !config.remoteControlEnabled {
+		return runtimeConfig{}, fmt.Errorf("managed host bootstrap requires remote control")
+	}
+	if config.mobilityEnabled && !config.remoteControlEnabled {
+		return runtimeConfig{}, fmt.Errorf("managed volume mobility requires remote control")
+	}
+	if config.mobilityEnabled && (!filepath.IsAbs(config.mobilityTransferDir) || filepath.Clean(config.mobilityTransferDir) == "/") {
+		return runtimeConfig{}, fmt.Errorf("SWARMOPS_AGENT_MOBILITY_TRANSFER_DIR must be an absolute non-root path")
 	}
 	return config, nil
 }

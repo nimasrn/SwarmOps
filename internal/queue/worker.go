@@ -14,6 +14,14 @@ const (
 	defaultStoreRetryDelay    = time.Second
 )
 
+// ErrExecutorHandoff is returned only by a reviewed executor that has moved
+// the controller's own durable state to a replacement process. The worker
+// must not write a completion or failure transition afterward: either write
+// would make the source state newer than the archive the replacement starts
+// from. The replacement recovers the in-flight command as operator-visible
+// attention evidence after it has opened the transferred ledger.
+var ErrExecutorHandoff = errors.New("command executor handed off to replacement")
+
 type ExecuteFunc func(context.Context, Record) error
 type TransitionFunc func(domain.Command, string)
 
@@ -73,6 +81,11 @@ func (w Worker) Run(ctx context.Context) error {
 		err := w.Execute(executionContext, record)
 		executionErr := executionContext.Err()
 		cancel()
+		if errors.Is(err, ErrExecutorHandoff) {
+			// A handoff has already durably fenced the source and activated a
+			// replacement. Returning immediately avoids a stale source write.
+			return ErrExecutorHandoff
+		}
 		// A controller shutdown or execution deadline leaves the remote effect
 		// unknowable. Never turn that uncertainty into an automatic replay,
 		// even for a normally reconcilable command. This is intentionally based

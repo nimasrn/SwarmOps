@@ -38,6 +38,30 @@ var (
 // operations and cannot send an arbitrary executable or argument vector.
 type AgentRunner struct{ client *agentClient }
 
+// HostBootstrapper is the only controller-side extension beyond the reviewed
+// Docker vocabulary. The agent accepts it only after its single-use enrollment
+// exchange has durably marked the host as managed.
+type HostBootstrapper interface {
+	Bootstrap(context.Context, agentcontrol.BootstrapRequest) (string, error)
+}
+
+// SwarmJoinTokenProvider returns a short-lived manager token only to the
+// controller's fixed join workflow. It is intentionally distinct from the
+// browser-facing API and must never be included in a queued payload or audit
+// event.
+type SwarmJoinTokenProvider interface {
+	ManagerJoinToken(context.Context) (string, error)
+}
+
+// VolumeMover transports only reviewed SwarmOps local volumes between two
+// enrolled machine agents. It never exposes a filesystem path or a generic
+// archive endpoint to the controller.
+type VolumeMover interface {
+	ExportVolume(context.Context, string) (io.ReadCloser, error)
+	ImportVolume(context.Context, string, string, io.Reader) (agent.VolumeReceipt, error)
+	RemoveVolume(context.Context, string) error
+}
+
 func (r *AgentRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
 	request, err := agentcontrol.FromDockerCLI(name, args, nil)
 	if err != nil {
@@ -62,6 +86,41 @@ func (r *AgentRunner) RunInput(ctx context.Context, name string, input io.Reader
 		return "", err
 	}
 	return r.client.Command(ctx, request)
+}
+
+func (r *AgentRunner) Bootstrap(ctx context.Context, request agentcontrol.BootstrapRequest) (string, error) {
+	if r == nil || r.client == nil {
+		return "", fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.Bootstrap(ctx, request)
+}
+
+func (r *AgentRunner) ManagerJoinToken(ctx context.Context) (string, error) {
+	if r == nil || r.client == nil {
+		return "", fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.ManagerJoinToken(ctx)
+}
+
+func (r *AgentRunner) ExportVolume(ctx context.Context, volume string) (io.ReadCloser, error) {
+	if r == nil || r.client == nil {
+		return nil, fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.ExportVolume(ctx, volume)
+}
+
+func (r *AgentRunner) ImportVolume(ctx context.Context, volume, migrationID string, input io.Reader) (agent.VolumeReceipt, error) {
+	if r == nil || r.client == nil {
+		return agent.VolumeReceipt{}, fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.ImportVolume(ctx, volume, migrationID, input)
+}
+
+func (r *AgentRunner) RemoveVolume(ctx context.Context, volume string) error {
+	if r == nil || r.client == nil {
+		return fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.RemoveVolume(ctx, volume)
 }
 
 func (r *AgentRunner) Close() {
@@ -164,6 +223,9 @@ func establishAgentAPI(ctx context.Context, profile domain.Server, credentials C
 	profile.LastConnectedAt = time.Now().UTC()
 	profile.DockerAvailable = status.DockerAvailable
 	profile.DockerVersion = status.DockerVersion
+	profile.BootstrapAvailable = status.BootstrapAvailable
+	profile.Managed = status.Managed
+	profile.MobilityAvailable = status.MobilityAvailable
 	profile.SwarmControlAvailable = status.SwarmControlAvailable
 	profile.SwarmState = status.SwarmState
 	connection := &Connection{Profile: profile, Runner: &AgentRunner{client: client}}
@@ -285,6 +347,114 @@ func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (
 	return output.Output, nil
 }
 
+func (c *agentClient) Bootstrap(ctx context.Context, input agentcontrol.BootstrapRequest) (string, error) {
+	if err := agentcontrol.ValidateBootstrapRequest(input); err != nil {
+		return "", err
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		return "", fmt.Errorf("encode managed bootstrap request: %w", err)
+	}
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/bootstrap", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return "", ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("managed machine bootstrap failed")
+	}
+	var output struct {
+		Output string `json:"output"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&output); err != nil {
+		return "", fmt.Errorf("decode managed bootstrap response: %w", err)
+	}
+	return output.Output, nil
+}
+
+func (c *agentClient) ManagerJoinToken(ctx context.Context) (string, error) {
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/bootstrap/join-token", nil)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return "", ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("managed Swarm join token is unavailable")
+	}
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&payload); err != nil {
+		return "", fmt.Errorf("decode managed Swarm join token: %w", err)
+	}
+	if !agentcontrol.ValidSwarmJoinToken(payload.Token) {
+		return "", fmt.Errorf("managed Swarm join token is invalid")
+	}
+	return payload.Token, nil
+}
+
+func (c *agentClient) ExportVolume(ctx context.Context, volume string) (io.ReadCloser, error) {
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodGet, "/v1/mobility/volumes/"+url.PathEscape(volume)+"/archive", nil)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode == http.StatusUnauthorized {
+		_ = response.Body.Close()
+		return nil, ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusOK {
+		_ = response.Body.Close()
+		return nil, fmt.Errorf("managed volume export failed")
+	}
+	return response.Body, nil
+}
+
+func (c *agentClient) ImportVolume(ctx context.Context, volume, migrationID string, input io.Reader) (agent.VolumeReceipt, error) {
+	if input == nil {
+		return agent.VolumeReceipt{}, fmt.Errorf("managed volume archive is required")
+	}
+	headers := make(http.Header)
+	headers.Set("Content-Type", "application/gzip")
+	headers.Set("X-SwarmOps-Migration-ID", migrationID)
+	response, err := c.requestWithClientHeaders(ctx, c.longHTTP, http.MethodPost, "/v1/mobility/volumes/"+url.PathEscape(volume)+"/restore", input, headers)
+	if err != nil {
+		return agent.VolumeReceipt{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return agent.VolumeReceipt{}, ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusOK {
+		return agent.VolumeReceipt{}, fmt.Errorf("managed volume restore failed")
+	}
+	receipt, err := agent.DecodeVolumeReceipt(response.Body)
+	if err != nil {
+		return agent.VolumeReceipt{}, fmt.Errorf("decode managed volume restore receipt: %w", err)
+	}
+	return receipt, nil
+}
+
+func (c *agentClient) RemoveVolume(ctx context.Context, volume string) error {
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodDelete, "/v1/mobility/volumes/"+url.PathEscape(volume), nil)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("managed source cleanup failed")
+	}
+	return nil
+}
+
 func (c *agentClient) requestJSON(ctx context.Context, method, endpoint string, body io.Reader, output any) error {
 	response, err := c.request(ctx, method, endpoint, body)
 	if err != nil {
@@ -311,6 +481,10 @@ func (c *agentClient) request(ctx context.Context, method, endpoint string, body
 }
 
 func (c *agentClient) requestWithClient(ctx context.Context, client *http.Client, method, endpoint string, body io.Reader) (*http.Response, error) {
+	return c.requestWithClientHeaders(ctx, client, method, endpoint, body, nil)
+}
+
+func (c *agentClient) requestWithClientHeaders(ctx context.Context, client *http.Client, method, endpoint string, body io.Reader, headers http.Header) (*http.Response, error) {
 	if c == nil || client == nil || len(c.key) == 0 {
 		return nil, fmt.Errorf("machine API client is not configured")
 	}
@@ -319,8 +493,15 @@ func (c *agentClient) requestWithClient(ctx context.Context, client *http.Client
 		return nil, fmt.Errorf("create machine API request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+string(c.key))
+	for key, values := range headers {
+		for _, value := range values {
+			request.Header.Add(key, value)
+		}
+	}
 	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
+		if request.Header.Get("Content-Type") == "" {
+			request.Header.Set("Content-Type", "application/json")
+		}
 	}
 	response, err := client.Do(request)
 	if err != nil {

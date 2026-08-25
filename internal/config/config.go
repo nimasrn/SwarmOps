@@ -52,6 +52,7 @@ type Config struct {
 	DataEncryptionKey               []byte
 	DevMachineAPI                   *DevMachineAPI
 	ImagePrefixes                   []string
+	InstanceNodeID                  string
 	InsecureDevAuth                 bool
 	ListenAddr                      string
 	LogsStackFile                   string
@@ -59,6 +60,7 @@ type Config struct {
 	MongoPasswordSecret             string
 	MongoStackFile                  string
 	MutationEnabled                 bool
+	MobilityHealthyFor              time.Duration
 	ObservabilityStackFile          string
 	PostgresImage                   string
 	PostgresPasswordSecret          string
@@ -135,6 +137,7 @@ func Load() (Config, error) {
 		CommandHistoryLimit:    int(envInt64("SWARMOPS_COMMAND_HISTORY_LIMIT", DefaultCommandHistoryLimit)),
 		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
 		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
+		InstanceNodeID:         strings.TrimSpace(os.Getenv("SWARMOPS_INSTANCE_NODE_ID")),
 		InsecureDevAuth:        envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
 		ListenAddr:             env("SWARMOPS_LISTEN_ADDR", ":8084"),
 		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
@@ -142,6 +145,7 @@ func Load() (Config, error) {
 		MongoPasswordSecret:    env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
 		MongoStackFile:         env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
 		MutationEnabled:        envBool("SWARMOPS_MUTATIONS_ENABLED", false),
+		MobilityHealthyFor:     envDuration("SWARMOPS_MOBILITY_HEALTHY_FOR", 10*time.Minute),
 		ObservabilityStackFile: env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
 		PostgresImage:          env("POSTGRES_IMAGE", "postgres:18.2-alpine"),
 		PostgresPasswordSecret: env("SWARMOPS_POSTGRES_PASSWORD_SECRET", "swarmops_postgres_password_v1"),
@@ -206,6 +210,9 @@ func Load() (Config, error) {
 	}
 	if c.SessionTTL < time.Minute || c.SessionTTL > 7*24*time.Hour {
 		return Config{}, fmt.Errorf("SWARMOPS_SESSION_TTL must be between one minute and seven days")
+	}
+	if c.MobilityHealthyFor < time.Minute || c.MobilityHealthyFor > 24*time.Hour {
+		return Config{}, fmt.Errorf("SWARMOPS_MOBILITY_HEALTHY_FOR must be between one minute and 24 hours")
 	}
 	if dashboardURL := strings.TrimSpace(c.TraefikDashboardURL); dashboardURL != "" && !strings.HasPrefix(dashboardURL, "https://") {
 		return Config{}, fmt.Errorf("SWARMOPS_TRAEFIK_DASHBOARD_URL must use https")

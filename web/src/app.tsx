@@ -44,11 +44,16 @@ import type {
   AuditEvent,
   Capacity,
   Command,
+  CommandLogEntry,
   ApplicationSpec,
   ApplicationStatus,
   ApprovedWorkload,
   ComposePlan,
   DatabaseStatus,
+  Health,
+  MobilityMigration,
+  MobilityResource,
+  MobilityStatus,
   Node,
   ObservabilityStatus,
   Overview,
@@ -62,8 +67,8 @@ import type {
   TraefikStatus,
 } from './types'
 
-type Page = 'applications' | 'audit' | 'builds' | 'commands' | 'databases' | 'fleet' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'servers' | 'services' | 'stacks' | 'traefik'
-type ClusterPage = Exclude<Page, 'audit' | 'commands' | 'fleet' | 'provisioning' | 'servers'>
+type Page = 'applications' | 'audit' | 'builds' | 'commands' | 'databases' | 'fleet' | 'mobility' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'servers' | 'services' | 'stacks' | 'traefik'
+type ClusterPage = Exclude<Page, 'audit' | 'commands' | 'fleet' | 'mobility' | 'provisioning' | 'servers'>
 type AgentPlatform = 'linux' | 'macos'
 
 interface DashboardData {
@@ -88,6 +93,7 @@ const PAGES: Record<Page, string> = {
   commands: 'Command queue',
   databases: 'Managed databases',
   fleet: 'Fleet operations',
+  mobility: 'Data mobility',
   nodes: 'Nodes',
   observability: 'Observability',
   overview: 'Cluster overview',
@@ -109,7 +115,7 @@ const AGENT_PLATFORM_OPTIONS: { label: string; value: AgentPlatform }[] = [
 // token pasted into the form beside it.
 function agentInstallCommand(platform: AgentPlatform) {
   return platform === 'linux'
-    ? `curl -fsSL ${AGENT_INSTALL_URL} | sudo bash -s -- --install-docker --init-swarm`
+    ? `curl -fsSL ${AGENT_INSTALL_URL} | sudo bash`
     : `curl -fsSL ${AGENT_INSTALL_URL} | bash`
 }
 
@@ -213,7 +219,7 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
         action={{ label: 'I have the enrollment token — sign in to paste it', onClick: onBack }}
         back={{ label: 'Back to sign in', onClick: onBack }}
         brand={<Brand />}
-        subtitle="Run one command on the Docker host, then sign in and paste the enrollment token it prints."
+        subtitle="Run one command on the target host, then sign in and paste the enrollment token it prints."
         title="Connect your first server"
       >
         <AgentInstallGuide />
@@ -230,8 +236,8 @@ function AgentInstallGuide({ nextStep = 'Sign in and paste the token into SwarmO
       <Segmented fullWidth label="Target operating system" onChange={setPlatform} options={AGENT_PLATFORM_OPTIONS} value={platform} />
       <CodeBlock label={`${platformLabel} installation command`} wrap>{agentInstallCommand(platform)}</CodeBlock>
       <Body size="sm">{platform === 'linux'
-        ? 'This installs Docker Engine if it is missing, forms a single-node Swarm if this host has none, then installs the agent as a systemd service. Drop --install-docker or --init-swarm to leave either step to you.'
-        : 'Docker Desktop must already be running. The agent installs as a per-user LaunchAgent.'}</Body>
+        ? 'This installs only the SwarmOps agent as a systemd service. It does not install Docker or create or join a Swarm. After enrollment, manage this server in SwarmOps to approve those fixed setup actions.'
+        : 'This installs only the agent as a per-user LaunchAgent. Docker Desktop remains a separate managed prerequisite.'}</Body>
       <Body size="sm">The installer generates the agent’s TLS certificate, machine API key, and a single-use enrollment secret, then prints one enrollment token. Allow only the SwarmOps controller to reach the agent’s port.</Body>
       <TaskProgress
         caption="The enrollment token carries the host address, the pinned certificate fingerprint, and a one-time secret — never the machine API key. SwarmOps trades the secret for that key over the pinned connection, and the agent refuses every later use of the same token."
@@ -305,6 +311,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         { icon: 'activity' as const, key: 'services', label: 'Services', onSelect: () => setPage('services') },
         { icon: 'package' as const, key: 'builds', label: 'Image builds', onSelect: () => setPage('builds') },
         { icon: 'database' as const, key: 'databases', label: 'Databases', onSelect: () => setPage('databases') },
+        { icon: 'server' as const, key: 'mobility', label: 'Data mobility', onSelect: () => setPage('mobility') },
       ],
     },
     {
@@ -386,6 +393,8 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
           {commandsError ? <Banner title="Command queue unavailable" tone="danger">{commandsError}</Banner> : null}
           {commandsLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} onRefresh={refreshCommands} toast={toast} />}
         </>
+      ) : page === 'mobility' ? (
+        <MobilityPage activeServer={activeServer} servers={servers} toast={toast} />
       ) : !activeServer ? (
         <ServerRequiredPage
           page={page}
@@ -635,11 +644,40 @@ function ServersPage({
     }
   }
 
+  const bootstrap = async (server: Server, action: 'docker_install' | 'swarm_init') => {
+    const description = action === 'docker_install' ? 'install Docker Engine' : `initialise a new Swarm on ${server.host}`
+    if (!window.confirm(`Queue a managed action to ${description}? The agent was enrolled by this control plane and will run only this fixed action.`)) return
+    try {
+      const command = await api.bootstrapServer(server.id, action === 'docker_install'
+        ? { action }
+        : { action, advertiseAddr: server.host })
+      toast({ message: `${server.name}: ${description} queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    }
+  }
+
+  const selectedManager = servers.find((server) => server.id === activeServerID && server.connectionState === 'connected' && server.swarmControlAvailable)
+
+  const joinSelectedSwarm = async (server: Server) => {
+    if (!selectedManager || selectedManager.id === server.id) {
+      toast({ message: 'Select a connected Swarm manager first', tone: 'danger', duration: 0 })
+      return
+    }
+    if (!window.confirm(`Queue a managed action for ${server.name} to join the Swarm managed by ${selectedManager.name}? SwarmOps transfers the join credential directly between enrolled agents and never displays it.`)) return
+    try {
+      const command = await api.joinServerSwarm(server.id)
+      toast({ message: `${server.name}: join to ${selectedManager.name} queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    }
+  }
+
   const columns: TableColumn<Server>[] = [
     { header: 'Server', key: 'server', render: (server) => <RecordLink meta={`${server.apiUrl ?? server.host}:${server.port}`} title={server.name} /> },
     { header: 'Connection', key: 'transport', render: (server) => server.connectionType === 'agent_api' ? 'Machine API' : 'Legacy SSH' },
     { header: 'Docker', key: 'docker', render: (server) => server.dockerAvailable ? server.dockerVersion || 'Engine reachable' : 'Not detected' },
-    { header: 'Swarm', key: 'swarm', render: (server) => server.swarmControlAvailable ? 'Manager' : server.dockerAvailable ? server.swarmState || 'Not active' : 'Bootstrap required' },
+    { header: 'Swarm', key: 'swarm', render: (server) => server.swarmControlAvailable ? 'Manager' : server.dockerAvailable ? server.swarmState || 'Not active' : server.bootstrapAvailable ? 'Managed setup available' : 'Docker unavailable' },
     { header: 'Status', key: 'connection', render: (server) => <StatusBadge health={server.connectionState === 'connected' ? 'healthy' : 'unknown'} label={server.connectionState === 'connected' ? 'Connected' : 'Reconnect required'} /> },
     {
       header: 'Action',
@@ -647,7 +685,7 @@ function ServersPage({
       render: (server) => server.connectionType !== 'agent_api'
         ? <Button onClick={() => void removeLegacyProfile(server)} size="sm" variant="ghost">Remove legacy profile</Button>
         : server.connectionState === 'connected'
-        ? <Inline gap="tight">{server.swarmControlAvailable ? <Button onClick={() => onSelect(server.id)} size="sm" variant={activeServerID === server.id ? 'secondary' : 'ghost'}>{activeServerID === server.id ? 'Selected' : 'Use server'}</Button> : <Button onClick={onProvision} size="sm" variant="secondary">Open provisioning</Button>}<Button onClick={() => void disconnect(server)} size="sm" variant="ghost">Disconnect</Button></Inline>
+        ? <Inline gap="tight">{server.swarmControlAvailable ? <Button onClick={() => onSelect(server.id)} size="sm" variant={activeServerID === server.id ? 'secondary' : 'ghost'}>{activeServerID === server.id ? 'Selected' : 'Use server'}</Button> : !server.dockerAvailable && server.bootstrapAvailable ? <Button onClick={() => void bootstrap(server, 'docker_install')} size="sm" variant="secondary">Install Docker</Button> : server.dockerAvailable && server.bootstrapAvailable && server.swarmState === 'inactive' ? selectedManager && selectedManager.id !== server.id ? <Button onClick={() => void joinSelectedSwarm(server)} size="sm" variant="secondary">Join selected Swarm</Button> : <Button onClick={() => void bootstrap(server, 'swarm_init')} size="sm" variant="secondary">Initialize Swarm</Button> : <Button onClick={onProvision} size="sm" variant="secondary">Open provisioning</Button>}<Button onClick={() => void disconnect(server)} size="sm" variant="ghost">Disconnect</Button></Inline>
         : <Button onClick={() => beginReconnect(server)} size="sm" variant="secondary">Reconnect</Button>,
     },
   ]
@@ -655,7 +693,7 @@ function ServersPage({
   const connectionReady = Boolean(apiKey) && Boolean(apiURL) && Boolean(tlsFingerprint)
   return (
     <Page>
-      <DetailHeader subtitle="Run one command on the Docker host, paste the enrollment token it prints, and SwarmOps connects over a pinned machine API — no Docker socket, no SSH session, and no key for you to carry." title="Connect a remote server" />
+      <DetailHeader subtitle="Run one command on the target host, paste the enrollment token it prints, and SwarmOps connects over a pinned machine API. The installer does not install Docker or touch Swarm; managed setup is a separately queued, fixed action." title="Connect a remote server" />
       <Columns>
         <Panel eyebrow="Step 1 · target machine" title="Install the machine agent">
           <AgentInstallGuide nextStep="Paste the token in Step 2" />
@@ -704,7 +742,7 @@ function ServersPage({
       <Columns>
         <Panel eyebrow="Step 3 · connection check" title="What SwarmOps verifies">
           <TaskProgress caption="A successful connection verifies the certificate pin, authenticates the key, and then asks the local agent for Docker/Swarm readiness." steps={[{ id: 'tls', label: 'Match the required TLS certificate fingerprint', status: 'pending' }, { id: 'key', label: 'Authenticate with the supplied machine API key', status: 'pending' }, { id: 'docker', label: 'Probe Docker and Swarm readiness through fixed API operations', status: 'pending' }]} title="Connection sequence" />
-          <Body size="sm">A connected machine without Docker remains visible, but cluster pages and mutations require a remote Swarm manager.</Body>
+          <Body size="sm">A connected managed machine without Docker remains visible. Its row can queue fixed Docker setup, then fixed Swarm initialization; cluster pages and mutations remain unavailable until a remote Swarm manager is healthy.</Body>
         </Panel>
         <Panel eyebrow="After enrollment" title="Where the machine API key lives">
           <Rows gap="tight">
@@ -1291,6 +1329,149 @@ function DatabasesPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   )
 }
 
+function MobilityPage({ activeServer, servers, toast }: { activeServer?: Server; servers: Server[]; toast: ReturnType<typeof useToast> }) {
+  const [status, setStatus] = useState<MobilityStatus | null>(null)
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState('')
+  const [targets, setTargets] = useState<Record<string, string>>({})
+  const [abandonConfirmations, setAbandonConfirmations] = useState<Record<string, string>>({})
+
+  const refresh = useCallback(async () => {
+    try {
+      setError('')
+      setStatus(await api.mobility())
+    } catch (reason) {
+      setError(messageOf(reason))
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    const timer = window.setInterval(() => { void refresh() }, 5000)
+    return () => window.clearInterval(timer)
+  }, [refresh])
+
+  const targetsForMove = servers.filter((server) => server.connectionState === 'connected' && server.connectionType === 'agent_api' && server.dockerAvailable && server.managed && server.mobilityAvailable)
+
+  const move = async (resource: MobilityResource) => {
+    const target = targets[resource.resource] ?? ''
+    if (!target) {
+      toast({ message: 'Choose an enrolled destination server first.', tone: 'danger', duration: 0 })
+      return
+    }
+    const destination = servers.find((server) => server.id === target)
+    const handover = resource.resource === 'control_plane'
+      ? 'SwarmOps will fence new panel mutations, copy its encrypted controller state, and move the API to the destination. The original data remains until the replacement has stayed healthy and an administrator explicitly retires it.'
+      : 'The service will be quiesced before its local data is copied. The original data remains until the replacement has stayed healthy and an administrator explicitly retires it.'
+    if (!window.confirm(`Move ${resource.displayName} to ${destination?.name ?? 'the selected server'}? ${handover}`)) return
+    setPending(resource.resource)
+    try {
+      const command = await api.moveResource(resource.resource, target)
+      toast({ message: `${resource.displayName} handover queued (${shortID(command.id)})`, tone: 'success' })
+      await refresh()
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    } finally {
+      setPending('')
+    }
+  }
+
+  const retire = async (migration: MobilityMigration) => {
+    if (!window.confirm(`Retire the original ${migration.displayName} data now? SwarmOps will first verify the replacement is no longer running on every source node, then remove only the reviewed source volumes.`)) return
+    setPending(migration.id)
+    try {
+      const command = await api.retireMigration(migration.id)
+      toast({ message: `Source retirement queued (${shortID(command.id)})`, tone: 'success' })
+      await refresh()
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    } finally {
+      setPending('')
+    }
+  }
+
+  const abandon = async (migration: MobilityMigration) => {
+    const confirmation = abandonConfirmations[migration.id] ?? ''
+    const expected = `ABANDON_HANDOVER_${migration.id}`
+    if (confirmation !== expected) return
+    if (!window.confirm(`Close this failed ${migration.displayName} handover record? This does not delete source data, restart services, or make an uncertain workload safe. Complete any manual recovery first.`)) return
+    setPending(migration.id)
+    try {
+      await api.abandonMigration(migration.id, confirmation)
+      toast({ message: 'Handover record closed. Source data was retained.', tone: 'success' })
+      await refresh()
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    } finally {
+      setPending('')
+    }
+  }
+
+  if (error) return <Banner tone="danger" title="Data mobility is unavailable">{error}</Banner>
+  if (!status) return <LoadingScreen label="Reading handover status" />
+  return (
+    <Page>
+      <DetailHeader subtitle="Move the control plane, managed databases, and retained monitoring data through a maintenance handover: databases and monitoring quiesce before transfer; the control plane uses a fenced self-handover. Every path streams the reviewed local volume, starts on the target, holds it healthy, then waits for explicit source retirement." title="Data mobility" />
+      {!activeServer ? <Banner title="A selected Swarm manager is required to start or retire a handover" tone="warning">You can review existing handovers here, but choose a connected remote Swarm manager in Servers before making a change.</Banner> : null}
+      <Banner title="No automatic deletion" tone="info">A successful copy does not remove any source volume. The Retire source button appears only after the replacement passes the configured sustained-health window.</Banner>
+      <Columns>
+        {status.resources.map((resource) => {
+          const migration = status.migrations.find((candidate) => candidate.resource === resource.resource && candidate.state !== 'retired' && candidate.state !== 'abandoned')
+          const target = targets[resource.resource] ?? ''
+          const destinationOptions = targetsForMove.map((server) => ({ label: `${server.name} · ${server.host}`, value: server.id }))
+          return (
+            <Panel eyebrow={migration ? migration.state.replaceAll('_', ' ') : `requires ${resource.requiredNodeLabel}=true`} key={resource.resource} title={resource.displayName}>
+              <Rows gap="tight">
+                <StatusBadge health={mobilityHealth(migration?.state)} label={migration ? capitalize(migration.state.replaceAll('_', ' ')) : 'Ready to plan'} />
+                <Body size="sm">{resource.requireManager ? 'The target must be an active Swarm manager with the control-plane label.' : 'The target must be an active Swarm node with the stateful label.'}</Body>
+                <List plain>
+                  {resource.components.map((component) => <ListRow key={component.service} subtitle={<Mono>{component.volume}</Mono>} title={component.displayName} />)}
+                </List>
+                {migration ? (
+                  <Rows gap="tight">
+                    <Facts items={[
+                      { label: 'Destination node', mono: true, value: shortID(migration.targetNodeId) },
+                      { label: 'Updated', value: formatDateTime(migration.updatedAt) },
+                      ...(migration.cleanupEligibleAt ? [{ label: 'Source cleanup', value: migration.state === 'ready_for_retirement' ? 'Administrator decision required' : `Available after ${formatDateTime(migration.cleanupEligibleAt)}` }] : []),
+                    ]} />
+                    {migration.failure ? <Banner title="Operator review required" tone="warning">{migration.failure}</Banner> : null}
+                    <List plain>
+                      {migration.components.map((component) => <ListRow key={component.service} subtitle={`${component.state.replaceAll('_', ' ')}${component.healthySince ? ` · healthy since ${formatDateTime(component.healthySince)}` : ''}${component.bytes ? ` · ${formatBytes(component.bytes)} transferred` : ''}`} title={component.displayName} />)}
+                    </List>
+                    {migration.state === 'ready_for_retirement' ? <Button disabled={!activeServer || pending === migration.id} loading={pending === migration.id} onClick={() => void retire(migration)} variant="danger">Retire source data</Button> : null}
+                    {migration.state === 'needs_attention' && !migration.sourceCleanupStarted ? <Rows gap="tight">
+                      <Input hint="This only closes the failed handover record. It keeps source data and does not repair, remove, or restart any workload." label="Close handover confirmation" onChange={(event) => setAbandonConfirmations((current) => ({ ...current, [migration.id]: event.target.value }))} placeholder={`ABANDON_HANDOVER_${migration.id}`} value={abandonConfirmations[migration.id] ?? ''} />
+                      <Button disabled={pending === migration.id || (abandonConfirmations[migration.id] ?? '') !== `ABANDON_HANDOVER_${migration.id}`} loading={pending === migration.id} onClick={() => void abandon(migration)} variant="ghost">Close failed handover record</Button>
+                    </Rows> : null}
+                  </Rows>
+                ) : (
+                  <Rows gap="tight">
+                    <Select disabled={!activeServer || pending !== ''} label="Destination enrolled server" onChange={(event) => setTargets((current) => ({ ...current, [resource.resource]: event.target.value }))} options={destinationOptions} placeholder={destinationOptions.length ? 'Choose a managed destination' : 'No managed destinations connected'} value={target} />
+                    <Button disabled={!activeServer || !target || pending !== ''} loading={pending === resource.resource} onClick={() => void move(resource)}>Start safe handover</Button>
+                  </Rows>
+                )}
+              </Rows>
+            </Panel>
+          )
+        })}
+      </Columns>
+      {status.migrations.some((migration) => migration.state === 'abandoned') ? <Panel eyebrow="Source retained" title="Closed handovers">
+        <Rows as="ul" gap="tight" className="nim-body nim-body--sm">
+          {status.migrations.filter((migration) => migration.state === 'abandoned').map((migration) => <li key={migration.id}>{migration.displayName} was closed after operator review on {formatDateTime(migration.updatedAt)}. No source cleanup ran for this record.</li>)}
+        </Rows>
+      </Panel> : null}
+      <Panel eyebrow="Handover contract" title="What SwarmOps proves before cleanup">
+        <Rows as="ul" gap="tight" className="nim-body nim-body--sm">
+          <li>Database and monitoring services are stopped before a local-volume copy, so their archive is not a live database filesystem snapshot. The control-plane handover instead fences panel mutations and carries its durable handover state inside the encrypted copy.</li>
+          <li>The target agent accepts only reviewed SwarmOps volume names and returns a streamed integrity receipt; it cannot receive a browser-selected path or arbitrary archive destination.</li>
+          <li>The replacement must remain running and healthy for the configured burn-in before an administrator can retire the original source volume.</li>
+          <li>Before cleanup, SwarmOps checks the replacement is still healthy on the exact target. A failed pre-cleanup check keeps source data intact; a failed record can be closed only with explicit confirmation before source cleanup begins.</li>
+        </Rows>
+      </Panel>
+    </Page>
+  )
+}
+
 function TraefikPage({ status, toast }: { status: TraefikStatus; toast: ReturnType<typeof useToast> }) {
   const running = status.service?.health === 'healthy'
   const [confirmation, setConfirmation] = useState('')
@@ -1403,6 +1584,35 @@ function AuditPage({ events }: { events: AuditEvent[] }) {
 
 function CommandQueuePage({ commands, onRefresh, toast }: { commands: Command[]; onRefresh: () => Promise<void>; toast: ReturnType<typeof useToast> }) {
   const [retrying, setRetrying] = useState('')
+  const [logCommandID, setLogCommandID] = useState('')
+  const [logs, setLogs] = useState<CommandLogEntry[]>([])
+  const [logsError, setLogsError] = useState('')
+  const [logsLoading, setLogsLoading] = useState(false)
+  const selectedLogCommand = commands.find((command) => command.id === logCommandID)
+  const loadLogs = useCallback(async (id: string, showLoading = false) => {
+    if (showLoading) setLogsLoading(true)
+    try {
+      setLogs(await api.commandLogs(id))
+      setLogsError('')
+    } catch (reason) {
+      setLogsError(messageOf(reason))
+    } finally {
+      if (showLoading) setLogsLoading(false)
+    }
+  }, [])
+  const openLogs = (command: Command) => {
+    setLogCommandID(command.id)
+    setLogs([])
+    setLogsError('')
+    void loadLogs(command.id, true)
+  }
+  useEffect(() => {
+    if (!logCommandID) return
+    const active = selectedLogCommand?.state === 'queued' || selectedLogCommand?.state === 'running' || selectedLogCommand?.state === 'retry_scheduled'
+    if (!active) return
+    const timer = window.setInterval(() => { void loadLogs(logCommandID) }, 2000)
+    return () => window.clearInterval(timer)
+  }, [loadLogs, logCommandID, selectedLogCommand?.state])
   const retry = async (command: Command) => {
     setRetrying(command.id)
     try {
@@ -1423,24 +1633,51 @@ function CommandQueuePage({ commands, onRefresh, toast }: { commands: Command[];
     { header: 'Attempts', key: 'attempts', numeric: true, render: (command) => `${command.attempt} / ${command.maxAttempts}` },
     { header: 'Next attempt', key: 'next', render: (command) => command.nextAttemptAt ? formatDateTime(command.nextAttemptAt) : '—' },
     { header: 'Updated', key: 'updated', render: (command) => formatDateTime(command.updatedAt) },
-    { header: 'Action', key: 'action', render: (command) => command.state === 'needs_attention' || command.state === 'retry_scheduled' ? <Button disabled={Boolean(retrying)} loading={retrying === command.id} onClick={() => void retry(command)} size="sm" variant="secondary">Retry now</Button> : '—' },
+    {
+      header: 'Action',
+      key: 'action',
+      render: (command) => (
+        <Inline gap="tight">
+          <Button onClick={() => openLogs(command)} size="sm" variant="ghost">{command.logCount ? `Logs (${command.logCount})` : 'Logs'}</Button>
+          {command.state === 'needs_attention' || command.state === 'retry_scheduled'
+            ? <Button disabled={Boolean(retrying)} loading={retrying === command.id} onClick={() => void retry(command)} size="sm" variant="secondary">Retry now</Button>
+            : null}
+        </Inline>
+      ),
+    },
   ]
   return (
     <Page>
       <DetailHeader subtitle="Every approved cluster mutation is written to durable command storage before execution. Declarative actions retry with bounded backoff; uncertain or non-idempotent outcomes stop for an operator decision." title="Command queue" />
       {attention.length > 0 ? <Banner title={`${attention.length} command${attention.length === 1 ? '' : 's'} need operator attention`} tone="warning">Inspect the target before retrying. SwarmOps does not replay an in-flight, timed-out, restarted, rollback, or build command automatically.</Banner> : null}
-      <Panel eyebrow="Durable ledger" title="Recent commands">
-        <DataTable
-          caption="SwarmOps command queue"
-          columns={columns}
-          empty={<EmptyState description="No cluster mutations have been queued yet." icon="clock" title="No commands" />}
-          rowKey={(command) => command.id}
-          rows={commands}
-        />
-      </Panel>
+      <Columns>
+        <Panel eyebrow="Durable ledger" title="Recent commands">
+          <DataTable
+            caption="SwarmOps command queue"
+            columns={columns}
+            empty={<EmptyState description="No cluster mutations have been queued yet." icon="clock" title="No commands" />}
+            rowKey={(command) => command.id}
+            rows={commands}
+          />
+        </Panel>
+        <Panel eyebrow="Encrypted execution evidence" title={selectedLogCommand ? `Logs · ${selectedLogCommand.action}` : 'Command logs'}>
+          <Rows gap="tight">
+            {selectedLogCommand ? <Inline gap="tight"><Body size="sm">{selectedLogCommand.target} · attempt {selectedLogCommand.attempt || 1} · {selectedLogCommand.state.replace('_', ' ')}</Body><Button onClick={() => setLogCommandID('')} size="sm" variant="ghost">Clear</Button></Inline> : null}
+            {logsError ? <Banner title="Command logs unavailable" tone="danger">{logsError}</Banner> : null}
+            {logsLoading ? <Spinner label="Loading command logs" size="sm" /> : null}
+            {selectedLogCommand && logs.length ? <CodeBlock label="Encrypted command evidence" wrap>{formatCommandLogs(logs)}</CodeBlock> : null}
+            {!selectedLogCommand ? <EmptyState description="Choose Logs on a command to keep its durable execution evidence beside the queue. Running commands refresh here automatically." icon="document" title="No command selected" /> : null}
+            {selectedLogCommand && !logsLoading && !logsError && !logs.length ? <EmptyState description="This command has not emitted a retained operational event yet. Running commands refresh here automatically." icon="document" title="No command logs yet" /> : null}
+          </Rows>
+        </Panel>
+      </Columns>
       {attention.length > 0 ? <Panel eyebrow="Safe failure detail" title="Commands awaiting review"><List plain>{attention.map((command) => <ListRow key={command.id} subtitle={command.lastError ?? 'Inspect the target before retrying.'} title={`${command.action} · ${command.target}`} />)}</List></Panel> : null}
     </Page>
   )
+}
+
+function formatCommandLogs(logs: CommandLogEntry[]) {
+  return logs.map((entry) => `${formatDateTime(entry.occurredAt)} · ${entry.source} · ${entry.level.toUpperCase()}\n${entry.message}`).join('\n\n')
 }
 
 function FleetOperationsPage() {
@@ -1464,10 +1701,10 @@ function FleetOperationsPage() {
 function ProvisioningPage() {
   return (
     <Page>
-      <DetailHeader subtitle="A host only needs SSH, Python 3, and sudo access for Ansible provisioning. Install Docker and form the Swarm first, then install its machine API before adding it to Servers." title="Cluster provisioning" />
+      <DetailHeader subtitle="Install the machine agent first, enroll it in Servers, then approve reviewed Docker and Swarm setup from the managed-server workflow. SwarmOps never performs an unauthorised host bootstrap from the installer." title="Cluster provisioning" />
       <Columns>
           <Panel eyebrow="Ansible workflow" title="From fresh hosts to a SwarmOps stack">
-            <TaskProgress caption="Run the reviewed bootstrap from the checked-out monorepo after the remote servers are reachable." steps={[{ id: 'docker', label: 'Install Docker and verify managers', status: 'pending' }, { id: 'swarm', label: 'Initialise/join the Swarm and verify quorum', status: 'pending' }, { id: 'agent', label: 'Install the machine API and add each manager in Servers', status: 'pending' }, { id: 'preflight', label: 'Check the reviewed platform manifest against live node capacity', status: 'pending' }, { id: 'secrets', label: 'Create versioned runtime secrets', status: 'pending' }, { id: 'platform', label: 'Deploy Traefik, SwarmOps, and monitoring', status: 'pending' }]} title="Bootstrap checklist" />
+            <TaskProgress caption="Run the reviewed bootstrap from the checked-out monorepo after the remote servers are reachable." steps={[{ id: 'agent', label: 'Install the machine agent and add the server in Servers', status: 'pending' }, { id: 'docker', label: 'Approve Docker setup from the managed-server workflow', status: 'pending' }, { id: 'swarm', label: 'Initialise or join the Swarm and verify quorum', status: 'pending' }, { id: 'preflight', label: 'Check the reviewed platform manifest against live node capacity', status: 'pending' }, { id: 'secrets', label: 'Create versioned runtime secrets', status: 'pending' }, { id: 'platform', label: 'Deploy Traefik, SwarmOps, and monitoring', status: 'pending' }]} title="Bootstrap checklist" />
         </Panel>
         <Panel eyebrow="Runbook entrypoint" title="Credential-safe invocation">
           <CodeBlock label="Command" wrap>{"make swarmops-provision"}</CodeBlock>
@@ -1516,6 +1753,12 @@ function Resource({ capacity, capacityOnly = false, detail, label, unit }: { cap
 function StatusBadge({ health, label }: { health: string; label?: string }) {
   const variant: BadgeVariant = health === 'healthy' ? 'success' : health === 'unhealthy' ? 'danger' : health === 'degraded' ? 'warning' : 'neutral'
   return <Badge dot pill size="sm" tone="soft" variant={variant}>{label ?? capitalize(health)}</Badge>
+}
+
+function mobilityHealth(state?: string): Health {
+  if (state === 'ready_for_retirement' || state === 'retired') return 'healthy'
+  if (state === 'needs_attention') return 'degraded'
+  return 'unknown'
 }
 
 function CommandStateBadge({ state }: { state: Command['state'] }) {
