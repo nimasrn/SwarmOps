@@ -38,6 +38,10 @@ export interface ServerCredentials {
   apiKey: string
 }
 
+export interface ServerReconnectInput extends ServerCredentials {
+  tlsCertificateFingerprint?: string
+}
+
 export interface ServerInput extends ServerCredentials {
   apiUrl: string
   name: string

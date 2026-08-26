@@ -112,6 +112,11 @@ attempts recovery. It prints the replacement key only after a successful
 restart. Paste that value into **Servers → Reconnect**; the Core intentionally
 does not persist machine API keys.
 
+If the Agent TLS certificate changes, **Servers → Reconnect** keeps the saved
+machine API origin and port fixed while allowing its public certificate pin to
+be replaced. Core verifies the replacement pin before persisting it, so a
+failed reconnect leaves the previous pin unchanged.
+
 An older installed Agent has no `upgrade` command. Run the same one-line
 bootstrap command once; it detects the native installation, downloads the
 checksum-verified current release, preserves the API key/TLS/listener/service

@@ -327,6 +327,11 @@ the protected key file and restarts the Agent. The command prints the new key
 once; paste it into **Servers → Reconnect**, because Core deliberately clears
 machine API keys on disconnect or restart rather than storing them.
 
+If the Agent's TLS certificate changes, **Servers → Reconnect** keeps the
+machine API URL and port fixed but lets the operator replace the public
+fingerprint alongside the API key. Core verifies that replacement pin against
+the machine before saving it; a failed connection leaves the saved pin intact.
+
 The installer prints the machine API port and a public TLS certificate
 fingerprint in `SHA256:<64-hex>` form, and gives the protected key-file path.
 Copy the key through an approved secure channel. Then open **Servers** and add
