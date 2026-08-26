@@ -350,7 +350,11 @@ set_current_release() {
   local temporary_link="$release_dir/.current-next"
   rm -f "$temporary_link"
   ln -s "$release_version" "$temporary_link"
-  mv -f "$temporary_link" "$release_dir/current"
+  case "$os_name" in
+    Linux) mv -Tf "$temporary_link" "$release_dir/current" ;;
+    Darwin) mv -fh "$temporary_link" "$release_dir/current" ;;
+    *) fail "unsupported operating system: $os_name" ;;
+  esac
 }
 
 install_api_key() {
