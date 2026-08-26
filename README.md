@@ -30,6 +30,9 @@ below uses an `apps/swarmops` path, run it from that monorepo checkout.
 
 Published native installations and their rollback behavior are documented in
 [Native release installation and updates](docs/Native-Release-Updates.md).
+For a fresh Linux Core host, that one-command bootstrap can generate the
+initial `admin` password on-host and print it only after Core is healthy; the
+host retains only its bcrypt hash.
 
 ## What it operates
 

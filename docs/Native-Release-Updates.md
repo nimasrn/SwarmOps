@@ -35,14 +35,15 @@ not an independently signed provenance statement.
 
 ## Install Core on the controller and data host
 
-Download the release installer, then run it as root on a fresh Linux controller:
+For a fresh Linux controller, this non-interactive one-command install creates
+the fixed `admin` account with a server-generated 256-bit password:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \
   --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32
+  --allow-cidr <operator-device-ip>/32 \
+  --install-dependencies \
+  --generate-admin-password
 ```
 
 Core obtains a random high port, direct TLS certificate, independent session
@@ -50,7 +51,11 @@ and data-encryption keys, and a restricted `swarmops-control-plane.service`.
 Its listener uses a wildcard bind so Warden can query its own loopback
 `/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
 operator CIDRs supplied at installation. It does not receive a Docker socket or
-Docker-group membership.
+Docker-group membership. `--generate-admin-password` uses 32 cryptographically
+random bytes rendered as 64 hexadecimal characters, prints them only after the
+Core health check succeeds, and retains only the bcrypt password hash. Do not
+redirect that installer output or paste the password into chat. Omit the flag
+to enter an administrator password interactively instead.
 
 ## Install Agent on a host
 

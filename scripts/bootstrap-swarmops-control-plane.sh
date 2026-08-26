@@ -23,12 +23,14 @@ listen_address=""
 all_cidrs=""
 admin_password=""
 admin_password_confirm=""
+generate_admin_password=false
+generated_admin_password=""
 
 usage() {
   printf '%s\n' \
     'Usage:' \
-    '  sudo bash install-swarmops-core.sh \' \
-    '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> [--install-dependencies]' \
+    '  curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \' \
+    '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> --generate-admin-password [--install-dependencies]' \
     '' \
     'Downloads a checksum-verified SwarmOps Core + Warden release bundle for a' \
     'Docker-free, server-local controller. It generates an IP-SAN TLS' \
@@ -40,6 +42,7 @@ usage() {
     '--allow-cidr <CIDR>         An operator device or trusted network; repeatable.' \
     '--release <tag|latest>      GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
+    '--generate-admin-password   Generate a 256-bit password for the admin account and print it once after a successful install.' \
     '--install-dependencies      Install curl, OpenSSL, and iproute2 on Debian/Ubuntu.' \
     '-h, --help                  Show this help.'
 }
@@ -52,6 +55,7 @@ fail() {
 cleanup() {
   admin_password=""
   admin_password_confirm=""
+  generated_admin_password=""
 }
 trap cleanup EXIT
 
@@ -270,25 +274,31 @@ write_random_secret() {
 write_admin_password_hash() {
   local destination="$config_dir/admin-password-hash"
   local password_hash temporary
-  [[ -t 0 && -t 1 ]] || fail 'a terminal is required to set the initial administrator password'
-  while true; do
-    IFS= read -r -s -p 'Set SwarmOps administrator password (at least 16 characters): ' admin_password
-    printf '\n'
-    [[ ${#admin_password} -ge 16 ]] || {
-      printf '%s\n' 'Password must be at least 16 characters.' >&2
-      admin_password=""
-      continue
-    }
-    IFS= read -r -s -p 'Confirm administrator password: ' admin_password_confirm
-    printf '\n'
-    [[ "$admin_password" == "$admin_password_confirm" ]] || {
-      printf '%s\n' 'Passwords did not match.' >&2
-      admin_password=""
-      admin_password_confirm=""
-      continue
-    }
-    break
-  done
+  if [[ "$generate_admin_password" == true ]]; then
+    generated_admin_password="$(openssl rand -hex 32)" || fail 'generate initial administrator password'
+    [[ "$generated_admin_password" =~ ^[[:xdigit:]]{64}$ ]] || fail 'generated administrator password is invalid'
+    admin_password="$generated_admin_password"
+  else
+    [[ -t 0 && -t 1 ]] || fail 'a terminal is required to set the initial administrator password'
+    while true; do
+      IFS= read -r -s -p 'Set SwarmOps administrator password (at least 16 characters): ' admin_password
+      printf '\n'
+      [[ ${#admin_password} -ge 16 ]] || {
+        printf '%s\n' 'Password must be at least 16 characters.' >&2
+        admin_password=""
+        continue
+      }
+      IFS= read -r -s -p 'Confirm administrator password: ' admin_password_confirm
+      printf '\n'
+      [[ "$admin_password" == "$admin_password_confirm" ]] || {
+        printf '%s\n' 'Passwords did not match.' >&2
+        admin_password=""
+        admin_password_confirm=""
+        continue
+      }
+      break
+    done
+  fi
   password_hash="$(printf '%s' "$admin_password" | "$release_dir/current/swarmops-core" password-hash)" || fail 'hash administrator password'
   admin_password=""
   admin_password_confirm=""
@@ -527,6 +537,10 @@ while [[ "$#" -gt 0 ]]; do
       github_repository="$2"
       shift 2
       ;;
+    --generate-admin-password)
+      generate_admin_password=true
+      shift
+      ;;
     --install-dependencies)
       install_dependencies=true
       shift
@@ -596,3 +610,10 @@ printf 'Allowed client networks: %s\n' "$operator_cidrs"
 printf '%s\n' 'Verify this fingerprint over your server console before trusting the self-signed certificate in a browser.'
 printf '%s\n' 'The controller has no Docker socket access; mutations and builds remain disabled until you explicitly enable them.'
 printf '%s\n' 'SwarmOps Warden checks published GitHub releases every 12 hours, health-checks locally, rolls back failures, and retains three known-good releases.'
+if [[ "$generate_admin_password" == true ]]; then
+  printf '\n%s\n' 'Initial administrator credentials (shown once):'
+  printf '%s\n' 'Username: admin'
+  printf 'Password: %s\n' "$generated_admin_password"
+  printf '%s\n' 'Store this password in a password manager now. Only its bcrypt hash is retained on the host.'
+  generated_admin_password=""
+fi
