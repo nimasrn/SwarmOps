@@ -1,6 +1,6 @@
 # Native release installation and updates
 
-SwarmOps native installations use exactly two executables on a host:
+SwarmOps releases contain exactly three native programs:
 
 - `swarmops-core` is the Docker-free control-plane API, embedded console, and
   reviewed deployment-assets process. Its encrypted state remains outside a
@@ -86,6 +86,41 @@ the host as connected but Docker-unavailable until Docker starts; Core blocks
 Docker and Swarm operations during that state. This lets Warden supervise the
 host agent and its pinned TLS health endpoint independently of Docker startup.
 
+## Immediate upgrade and Agent key rotation
+
+Installed hosts expose fixed local commands rather than accepting update
+instructions from Core or a browser:
+
+```bash
+# Linux Agent host
+sudo swarmops-agent upgrade
+sudo swarmops-agent gen key
+
+# Linux Core host
+sudo swarmops-core upgrade
+```
+
+`upgrade` starts the matching local Warden service. Warden is the only process
+that knows the fixed GitHub Release repository, verifies the checksum, switches
+the `current` release symlink, health-checks the candidate, and rolls back a
+failed update. The commands do not accept a repository, URL, branch, command,
+or binary argument.
+
+`swarmops-agent gen key` atomically replaces the existing protected machine API
+key and restarts the Agent. If the restart fails, it restores the prior key and
+attempts recovery. It prints the replacement key only after a successful
+restart. Paste that value into **Servers → Reconnect**; the Core intentionally
+does not persist machine API keys.
+
+An older installed Agent has no `upgrade` command. Run the same one-line
+bootstrap command once; it detects the native installation, downloads the
+checksum-verified current release, preserves the API key/TLS/listener/service
+configuration, switches the release, and restarts the local services:
+
+```bash
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
+```
+
 ## Warden behavior
 
 Linux timers check every 12 hours after an initial 15-minute delay:
@@ -95,7 +130,8 @@ sudo systemctl start swarmops-core-warden.service
 sudo systemctl start swarmops-agent-warden.service
 ```
 
-Only run the unit installed for that component. On macOS, the agent updater is
+Only run the unit installed for that component. The CLI commands above are the
+preferred manual path. On macOS, the agent updater is
 the `com.nimasrn.swarmops-warden` LaunchAgent.
 
 For an update, Warden downloads and checksum-verifies the candidate before it

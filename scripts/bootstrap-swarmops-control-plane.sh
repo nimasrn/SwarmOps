@@ -213,6 +213,11 @@ set_current_release() {
   mv -f "$temporary_link" "$release_dir/current"
 }
 
+install_command_shim() {
+  install -d -o root -g root -m 0755 /usr/local/bin
+  ln -sfn "$release_dir/current/swarmops-core" /usr/local/bin/swarmops-core
+}
+
 assert_local_ip() {
   local address="$1"
   [[ -n "$address" && "$address" != *$'\n'* && "$address" != *$'\r'* ]] || fail '--listen-ip must be one literal local IP address'
@@ -565,6 +570,7 @@ release_platform
 resolve_release_version
 install_core_release
 set_current_release
+install_command_shim
 write_admin_password_hash
 write_random_secret "$config_dir/session-key" 48
 write_random_secret "$config_dir/data-encryption-key" 32

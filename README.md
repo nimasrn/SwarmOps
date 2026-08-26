@@ -282,9 +282,12 @@ sudo bash install-swarmops-agent.sh
 bash install-swarmops-agent.sh
 ```
 
-The installer downloads a checksum-verified GitHub Release bundle containing
-`swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
-systemd service on Linux or a per-user LaunchAgent on macOS. It requires curl,
+The release repository publishes three native programs: `swarmops-core`,
+`swarmops-agent`, and the shared checksum-verifying **SwarmOps Warden**
+(`swarmops-warden`). An agent host receives Agent + Warden, while a controller
+host receives Core + Warden. The installer downloads the matching
+checksum-verified GitHub Release bundle, then installs a systemd service on
+Linux or a per-user LaunchAgent on macOS. It requires curl,
 OpenSSL, and the platform service manager—not a live Docker socket, Docker CLI,
 Git, Go, or pre-created TLS files. By default it listens on `0.0.0.0:9180`,
 generates a P-256 self-signed certificate for SwarmOps'
@@ -313,9 +316,16 @@ controller through an explicit firewall rule.
 Warden checks GitHub Releases every 12 hours. It downloads and verifies a new
 bundle before stopping the agent, probes only the local health endpoint, rolls
 back a failed candidate, and retains the current release plus two prior
-known-good releases. Start `swarmops-agent-warden.service` manually for an
-immediate Linux check; see the native-release document for the controller and
-macOS equivalents.
+known-good releases. Use `sudo swarmops-agent upgrade` for an immediate agent
+update, or `sudo swarmops-core upgrade` on a Linux controller. An older agent
+that predates these commands is upgraded once with the same one-line installer
+above; it preserves its existing API key, TLS identity, listener, and service
+configuration.
+
+Rotate an Agent key with `sudo swarmops-agent gen key`. It atomically replaces
+the protected key file and restarts the Agent. The command prints the new key
+once; paste it into **Servers → Reconnect**, because Core deliberately clears
+machine API keys on disconnect or restart rather than storing them.
 
 The installer prints the machine API port and a public TLS certificate
 fingerprint in `SHA256:<64-hex>` form, and gives the protected key-file path.

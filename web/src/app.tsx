@@ -456,9 +456,8 @@ function ServersPage({
       <Banner title="1. Install SwarmOps Agent on the Docker host" tone="info">
         <Rows gap="tight">
           <Body size="sm">The host downloads the release binary from GitHub. It runs only <code>swarmops-agent</code> and the local rollback updater, <code>SwarmOps Warden</code>; it does not clone or compile source. The default setup listens on port <code>9180</code>, creates its pinned TLS identity under <code>/etc/swarmops-agent/tls</code>, and generates the API key.</Body>
-          <CodeBlock label="Linux installer" wrap>{`curl --fail --location --remote-name https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-sudo bash install-swarmops-agent.sh`}</CodeBlock>
-          <Body size="sm">The installer prints the public TLS fingerprint, port, and protected API-key file path. Keep the API key private, then use the form below to add and connect the machine.</Body>
+          <CodeBlock label="Linux installer or legacy-agent upgrade" wrap>{`curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash`}</CodeBlock>
+          <Body size="sm">For a current installation, run <code>sudo swarmops-agent upgrade</code>. The one-line installer is also the first-time upgrade for an older agent without that command; it preserves its API key, TLS identity, and listener. The installer prints the public TLS fingerprint, port, and protected API-key file path.</Body>
         </Rows>
       </Banner>
       <Banner title="Use the machine API certificate pin" tone="info">
@@ -474,7 +473,7 @@ sudo bash install-swarmops-agent.sh`}</CodeBlock>
             <Input disabled={Boolean(editing)} hint="A local label only; it never affects the remote host." label="Name" onChange={(event) => setName(event.target.value)} required value={name} />
             <Input disabled={Boolean(editing)} hint="HTTPS origin only, for example https://manager.example.com. Enter its port separately." label="Machine API URL" onChange={(event) => setAPIURL(event.target.value)} required type="url" value={apiURL} />
             <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input disabled={Boolean(editing)} hint="Public SHA-256 fingerprint of the API certificate." label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
-            <Input autoComplete="off" hint="It is used to connect now and cleared on disconnect or API restart." label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
+            <Input autoComplete="off" hint={editing ? 'It is intentionally blank because Core never saves it. To rotate it on the host, run sudo swarmops-agent gen key, then paste the printed value here.' : 'It is used to connect now and cleared on disconnect or API restart.'} label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
             {error ? <Banner title={error.message} tone="danger"><Rows gap="tight">{error.detail ? <p>{error.detail}</p> : null}{error.requestID ? <Body size="sm">Request ID: <code>{error.requestID}</code></Body> : null}</Rows></Banner> : null}
             <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit">{editing ? 'Reconnect server' : 'Add and connect server'}</Button>{editing ? <Button onClick={reset} type="button" variant="ghost">Cancel</Button> : null}</Inline>
           </Rows>

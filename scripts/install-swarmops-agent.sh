@@ -361,6 +361,30 @@ install_api_key() {
   rm -f "$temporary_key"
 }
 
+install_command_shim() {
+  local command_directory command_path
+  case "$os_name" in
+    Linux)
+      command_directory='/usr/local/bin'
+      ;;
+    Darwin)
+      if [[ -d /opt/homebrew/bin && -w /opt/homebrew/bin ]]; then
+        command_directory='/opt/homebrew/bin'
+      elif [[ -d /usr/local/bin && -w /usr/local/bin ]]; then
+        command_directory='/usr/local/bin'
+      else
+        command_directory="$HOME/.local/bin"
+      fi
+      ;;
+  esac
+  install -d -m 0755 "$command_directory"
+  command_path="$command_directory/swarmops-agent"
+  ln -sfn "$release_dir/current/swarmops-agent" "$command_path"
+  if [[ "$os_name" == Darwin && ":$PATH:" != *":$command_directory:"* ]]; then
+    printf 'SwarmOps machine-agent install: add %s to PATH to use swarmops-agent directly.\n' "$command_directory" >&2
+  fi
+}
+
 local_health_url() {
   local port="${listen_addr##*:}" host="${listen_addr%:*}"
   case "$host" in
@@ -417,6 +441,61 @@ write_warden_environment_file() {
   rm -f "$temporary_environment"
 }
 
+unit_has_namespace_error() {
+  local unit status_code
+  unit="$1"
+  status_code="$(systemctl show "$unit" --property=ExecMainStatus --value 2>/dev/null | tr -d '[:space:]')"
+  [[ "$status_code" == '226' ]]
+}
+
+write_namespace_compatibility_override() {
+  local unit dropin_directory override_file
+  unit="$1"
+  dropin_directory="/etc/systemd/system/${unit}.d"
+  override_file="$dropin_directory/99-swarmops-namespace-compat.conf"
+  install -d -m 0755 "$dropin_directory"
+  {
+    printf '%s\n' '[Service]' 'RestrictNamespaces=no'
+  } | install -m 0644 /dev/stdin "$override_file"
+}
+
+start_systemd_service_with_fallback() {
+  local unit failure_message
+  unit="$1"
+  failure_message="$2"
+  systemctl restart "$unit" >/dev/null 2>&1 || true
+  if systemctl is-active --quiet "$unit"; then
+    return
+  fi
+  if unit_has_namespace_error "$unit"; then
+    write_namespace_compatibility_override "$unit"
+    systemctl daemon-reload
+    systemctl restart "$unit" >/dev/null 2>&1 || true
+    if systemctl is-active --quiet "$unit"; then
+      printf 'SwarmOps machine-agent install: %s does not support strict namespace restrictions; installed a narrow compatibility override.\n' "$unit" >&2
+      return
+    fi
+  fi
+  systemctl status --no-pager "$unit" >&2 || true
+  fail "$failure_message"
+}
+
+restart_existing_native_install() {
+  case "$os_name" in
+    Linux)
+      systemctl daemon-reload
+      start_systemd_service_with_fallback "$(basename "$service_file")" 'machine agent service did not become active'
+      systemctl start "$(basename "$warden_service_file")"
+      ;;
+    Darwin)
+      local uid
+      uid="$(id -u)"
+      launchctl kickstart -k "gui/$uid/com.nimasrn.swarmops-agent"
+      launchctl kickstart -k "gui/$uid/com.nimasrn.swarmops-warden"
+      ;;
+  esac
+}
+
 write_linux_services() {
   local temporary_agent temporary_warden temporary_timer
   temporary_agent="$(mktemp '/etc/systemd/system/.swarmops-agent.XXXXXX')"
@@ -454,9 +533,9 @@ write_linux_services() {
   rm -f "$temporary_timer"
 
   systemctl daemon-reload
-  systemctl enable --now "$(basename "$service_file")"
+  systemctl enable "$(basename "$service_file")"
   systemctl enable --now "$(basename "$warden_timer_file")"
-  systemctl is-active --quiet "$(basename "$service_file")" || fail 'machine agent service did not become active'
+  start_systemd_service_with_fallback "$(basename "$service_file")" 'machine agent service did not become active'
 }
 
 xml_escape() {
@@ -568,18 +647,24 @@ case "$os_name" in
 esac
 
 set_paths
-validate_listener "$listen_addr"
+existing_native_install=false
+if [[ -L "$release_dir/current" || -e "$release_dir/current" ]]; then
+  existing_native_install=true
+fi
 validate_repository
 validate_release
-select_tls_material
-if [[ -n "$api_key_file" ]]; then
-  require_safe_value '--api-key-file' "$api_key_file"
+if [[ "$existing_native_install" == false ]]; then
+  validate_listener "$listen_addr"
+  select_tls_material
+  if [[ -n "$api_key_file" ]]; then
+    require_safe_value '--api-key-file' "$api_key_file"
+  fi
+  if [[ -z "$docker_socket" ]]; then
+    docker_socket="$(default_docker_socket)"
+  fi
+  require_safe_value '--docker-socket' "$docker_socket"
+  [[ "$docker_socket" == /* && "$docker_socket" != / ]] || fail '--docker-socket must be an absolute, non-root path'
 fi
-if [[ -z "$docker_socket" ]]; then
-  docker_socket="$(default_docker_socket)"
-fi
-require_safe_value '--docker-socket' "$docker_socket"
-[[ "$docker_socket" == /* && "$docker_socket" != / ]] || fail '--docker-socket must be an absolute, non-root path'
 
 if [[ "$install_dependencies" == true ]]; then
   install_host_dependencies
@@ -597,16 +682,23 @@ fi
 for install_path in "$config_dir" "$tls_dir" "$runtime_dir" "$release_dir" "$service_file" "$warden_service_file"; do
   require_safe_value 'installation path' "$install_path"
 done
-if [[ -L "$release_dir/current" || -e "$release_dir/current" ]]; then
-  fail 'a native agent is already installed; run its SwarmOps Warden updater instead of reinstalling it'
-fi
 install -d -m 0755 "$runtime_dir" "$release_dir"
-install_api_key
-install_managed_tls_material
 release_platform
 resolve_release_version
 install_release
 set_current_release
+install_command_shim
+if [[ "$existing_native_install" == true ]]; then
+  restart_existing_native_install
+  printf '%s\n' \
+    'Upgraded the existing SwarmOps machine agent and preserved its API key, TLS identity, listener, and service configuration.' \
+    "Release: $release_version" \
+    'Future updates: sudo swarmops-agent upgrade' \
+    'Key rotation: sudo swarmops-agent gen key'
+  exit 0
+fi
+install_api_key
+install_managed_tls_material
 write_environment_file
 write_warden_environment_file
 case "$os_name" in
