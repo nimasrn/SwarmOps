@@ -2,6 +2,7 @@ package scripts
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -33,5 +34,37 @@ func TestNativeAgentInstallerLegacyUpgradeContract(t *testing.T) {
 	installKey := strings.LastIndex(script, "\ninstall_api_key\n")
 	if legacyBranch < 0 || installKey < 0 || legacyBranch > installKey {
 		t.Fatal("legacy installer branch must complete before install_api_key can replace a protected key")
+	}
+}
+
+func TestNativeAgentInstallerAcceptsDefaultLinuxPaths(t *testing.T) {
+	data, err := os.ReadFile("install-swarmops-agent.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	functionStart := strings.Index(script, "value_is_safe() {")
+	functionEnd := strings.Index(script[functionStart:], "\n}\n")
+	if functionStart < 0 || functionEnd < 0 {
+		t.Fatal("installer is missing value_is_safe")
+	}
+	command := exec.Command("bash", "-s")
+	command.Stdin = strings.NewReader(script[functionStart:functionStart+functionEnd+3] + `
+set -e
+for path in \
+  /etc/swarmops-agent \
+  /etc/swarmops-agent/tls \
+  /usr/local/lib/swarmops-agent \
+  /usr/local/lib/swarmops-agent/releases \
+  /etc/systemd/system/swarmops-agent.service \
+  /etc/systemd/system/swarmops-agent-warden.service; do
+  value_is_safe "$path"
+done
+if value_is_safe '/etc/swarmops agent'; then
+  exit 1
+fi
+`)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("safe-path validation contract failed: %v\n%s", err, output)
 	}
 }

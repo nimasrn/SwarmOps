@@ -52,7 +52,16 @@ require_command() {
 }
 
 value_is_safe() {
-  [[ "$1" =~ ^[A-Za-z0-9_./:\[\]-]+$ ]]
+  local value="$1" character
+  while [[ -n "$value" ]]; do
+    character="${value:0:1}"
+    case "$character" in
+      [[:alnum:]_./:]|'['|']'|-) ;;
+      *) return 1 ;;
+    esac
+    value="${value:1}"
+  done
+  return 0
 }
 
 require_safe_value() {
