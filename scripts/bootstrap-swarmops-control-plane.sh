@@ -25,11 +25,13 @@ admin_password=""
 admin_password_confirm=""
 generate_admin_password=false
 generated_admin_password=""
+bootstrap_phase="initializing"
 
 usage() {
   printf '%s\n' \
     'Usage:' \
-    '  curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \' \
+    "  set -o pipefail; curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \\" \
+    '    https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \' \
     '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> --generate-admin-password [--install-dependencies]' \
     '' \
     'Downloads a checksum-verified SwarmOps Core + Warden release bundle for a' \
@@ -42,14 +44,25 @@ usage() {
     '--allow-cidr <CIDR>         An operator device or trusted network; repeatable.' \
     '--release <tag|latest>      GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
-    '--generate-admin-password   Generate a 256-bit password for the admin account and print it once after a successful install.' \
+    '--generate-admin-password   Generate a 256-bit password for the operator account and print it once after a successful install.' \
     '--install-dependencies      Install curl, OpenSSL, and iproute2 on Debian/Ubuntu.' \
     '-h, --help                  Show this help.'
+}
+
+info() {
+  printf 'SwarmOps controller bootstrap: %s\n' "$*" >&2
 }
 
 fail() {
   printf 'SwarmOps controller bootstrap: %s\n' "$*" >&2
   exit 1
+}
+
+unexpected_failure() {
+  local status="$?"
+  trap - ERR
+  info "failed during $bootstrap_phase (exit $status); no URL or credentials were printed."
+  exit "$status"
 }
 
 cleanup() {
@@ -58,6 +71,7 @@ cleanup() {
   generated_admin_password=""
 }
 trap cleanup EXIT
+trap unexpected_failure ERR
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
@@ -555,14 +569,19 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+bootstrap_phase='validating controller settings'
+info 'Starting the SwarmOps Core installation; validating controller settings.'
 require_root
 [[ -n "$listen_ip" ]] || fail '--listen-ip is required'
 [[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 validate_repository
 validate_release
 if [[ "$install_dependencies" == true ]]; then
+  bootstrap_phase='installing required controller dependencies'
+  info 'Installing required controller dependencies.'
   install_host_dependencies
 fi
+bootstrap_phase='checking the controller host'
 require_command curl
 require_command ip
 require_command od
@@ -574,6 +593,8 @@ command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || fai
 assert_local_ip "$listen_ip"
 assert_fresh_controller
 
+bootstrap_phase='preparing protected controller directories'
+info 'Preparing protected controller directories.'
 if ! id -u "$service_user" >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin "$service_user"
 fi
@@ -586,9 +607,13 @@ install -d -o root -g root -m 0755 "$release_dir"
 install -d -o root -g "$service_user" -m 0750 "$config_dir"
 release_platform
 resolve_release_version
+bootstrap_phase='downloading the verified Core release'
+info "Downloading checksum-verified Core release $release_version for Linux/$release_arch."
 install_core_release
 set_current_release
 install_command_shim
+bootstrap_phase='configuring Core and its local updater'
+info 'Configuring the restricted Core service and local release updater.'
 write_admin_password_hash
 write_random_secret "$config_dir/session-key" 48
 write_random_secret "$config_dir/data-encryption-key" 32
@@ -599,6 +624,8 @@ write_warden_service "$port"
 systemctl daemon-reload
 systemctl enable --now "$service_name"
 systemctl enable --now "$warden_timer_name"
+bootstrap_phase='waiting for Core readiness'
+info 'Waiting for the local Core readiness check.'
 wait_for_service
 wait_for_health "$port"
 
@@ -612,7 +639,7 @@ printf '%s\n' 'The controller has no Docker socket access; mutations and builds 
 printf '%s\n' 'SwarmOps Warden checks published GitHub releases every 12 hours, health-checks locally, rolls back failures, and retains three known-good releases.'
 if [[ "$generate_admin_password" == true ]]; then
   printf '\n%s\n' 'Initial administrator credentials (shown once):'
-  printf '%s\n' 'Username: admin'
+  printf '%s\n' 'Username: operator'
   printf 'Password: %s\n' "$generated_admin_password"
   printf '%s\n' 'Store this password in a password manager now. Only its bcrypt hash is retained on the host.'
   generated_admin_password=""

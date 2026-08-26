@@ -173,21 +173,27 @@ controller must not run Docker or join a cluster, install the native Core
 release on that host instead of deploying the `swarmops` stack:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
+set -o pipefail
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
   --listen-ip <literal-controller-ip> \
-  --allow-cidr <operator-device-ip>/32
+  --allow-cidr <operator-device-ip>/32 \
+  --install-dependencies \
+  --generate-admin-password
 ```
 
 The bootstrap downloads `swarmops-core` and `swarmops-warden`, then serves the
 embedded GUI and API through a generated TLS 1.3 certificate on a random high
-port. It prints the certificate fingerprint, creates a dedicated service
-account with no Docker group, enforces the supplied client CIDR in the API, and
-starts with remote builds and mutations disabled. Core's Warden follows the
-same local health/rollback/three-version policy. The random port is not the
-security boundary: verify the fingerprint and enforce the same operator CIDR
-at the host/cloud firewall.
+port. `pipefail` and curl's visible error mode ensure an unavailable installer
+cannot return an empty-script success, while the installer reports safe
+progress stages. It prints the certificate fingerprint and generated
+`operator` password only after its health check succeeds, creates a dedicated
+service account with no Docker group, enforces the supplied client CIDR in the
+API, and starts with remote builds and mutations disabled. Core's Warden
+follows the same local health/rollback/three-version policy. The random port is
+not the security boundary: verify the fingerprint and enforce the same operator
+CIDR at the host/cloud firewall.
 
 Server profiles, audit history, command metadata/payload, and pending build
 contexts are AES-256-GCM sealed in `/var/lib/swarmops`. The unrelated

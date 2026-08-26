@@ -36,10 +36,13 @@ not an independently signed provenance statement.
 ## Install Core on the controller and data host
 
 For a fresh Linux controller, this non-interactive one-command install creates
-the fixed `admin` account with a server-generated 256-bit password:
+the fixed `operator` account with a server-generated 256-bit password:
 
 ```bash
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \
+set -o pipefail
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
   --listen-ip <literal-server-ip> \
   --allow-cidr <operator-device-ip>/32 \
   --install-dependencies \
@@ -51,11 +54,14 @@ and data-encryption keys, and a restricted `swarmops-control-plane.service`.
 Its listener uses a wildcard bind so Warden can query its own loopback
 `/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
 operator CIDRs supplied at installation. It does not receive a Docker socket or
-Docker-group membership. `--generate-admin-password` uses 32 cryptographically
-random bytes rendered as 64 hexadecimal characters, prints them only after the
-Core health check succeeds, and retains only the bcrypt password hash. Do not
-redirect that installer output or paste the password into chat. Omit the flag
-to enter an administrator password interactively instead.
+Docker-group membership. `set -o pipefail` plus curl's visible error mode make
+a failed release download fail the one-paste command instead of feeding an
+empty script to Bash. The installer prints safe progress stages as it runs.
+`--generate-admin-password` uses 32 cryptographically random bytes rendered as
+64 hexadecimal characters, prints them only after the Core health check
+succeeds, and retains only the bcrypt password hash. Do not redirect that
+installer output or paste the password into chat. Omit the flag to enter an
+administrator password interactively instead.
 
 ## Install Agent on a host
 

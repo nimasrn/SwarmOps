@@ -31,7 +31,7 @@ below uses an `apps/swarmops` path, run it from that monorepo checkout.
 Published native installations and their rollback behavior are documented in
 [Native release installation and updates](docs/Native-Release-Updates.md).
 For a fresh Linux Core host, that one-command bootstrap can generate the
-initial `admin` password on-host and print it only after Core is healthy; the
+initial `operator` password on-host and print it only after Core is healthy; the
 host retains only its bcrypt hash.
 
 ## What it operates
@@ -231,26 +231,32 @@ state at the directory root.
 
 ## Direct Docker-free controller
 
-For a separate, freshly installed controller host, download the published
-native Core installer. It serves the bundled GUI and API from that host only;
-it does not install Docker, join a Swarm, or contact a cluster.
+For a separate, freshly installed controller host, paste this one command. It
+serves the bundled GUI and API from that host only; it does not install Docker,
+join a Swarm, or contact a cluster.
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
+set -o pipefail
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
   --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32
+  --allow-cidr <operator-device-ip>/32 \
+  --install-dependencies \
+  --generate-admin-password
 ```
 
 The command requires the exact IP already configured on the server and one or
-more trusted operator CIDRs. It prompts for a 16+ character administrator
-password, generates independent session and AES-256-GCM data keys, installs a
-restricted systemd service, and chooses a random high TCP port. It prints the
-HTTPS URL and the SHA-256 certificate fingerprint. Verify that fingerprint
-from a trusted server console before accepting the self-signed IP certificate
-in a browser. The controller downloads a release binary; it does not need Git,
-Go, or npm on the server.
+more trusted operator CIDRs. `pipefail` and curl's visible error mode prevent a
+failed release download from being passed to an empty `bash` process as a false
+success. The installer immediately prints its safe progress stages, generates
+the `operator` password plus independent session and AES-256-GCM data keys,
+installs a restricted systemd service, and chooses a random high TCP port. It
+prints the HTTPS URL, SHA-256 certificate fingerprint, and generated password
+only after the health check succeeds. Verify the fingerprint from a trusted
+server console before accepting the self-signed IP certificate in a browser.
+The controller downloads a release binary; it does not need Git, Go, or npm on
+the server.
 
 The service account has no Docker-group membership or capabilities, and the
 service gets no Docker socket. Browser mutations and remote builds begin
