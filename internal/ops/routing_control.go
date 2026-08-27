@@ -16,7 +16,11 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/domain"
 )
 
-const traefikServiceName = "traefik_traefik"
+const (
+	traefikServiceName    = "traefik_traefik"
+	lokiServiceName       = "swarmops-logs_loki"
+	prometheusServiceName = "swarmops-observability_prometheus"
+)
 
 func SensitivePublishConfirmation(serviceKey string) string {
 	value := strings.ToUpper(strings.Map(func(r rune) rune {
@@ -587,6 +591,13 @@ func (c *ControlPlane) RefreshTraefikRuntime(ctx context.Context) error {
 	if err := c.requireRouting(); err != nil {
 		return err
 	}
+	installed, err := serviceAvailable(ctx, c.Docker, traefikServiceName)
+	if err != nil {
+		return err
+	}
+	if !installed {
+		return nil
+	}
 	adapter, err := c.traefikMachineAdapter()
 	if err != nil {
 		return err
@@ -629,6 +640,13 @@ func (c *ControlPlane) TraefikLogs(ctx context.Context, filter TraefikLogFilter)
 	if err := filter.Validate(time.Now().UTC()); err != nil {
 		return nil, err
 	}
+	services, err := requiredServicesAvailable(ctx, c.Docker, traefikServiceName, lokiServiceName)
+	if err != nil {
+		return nil, err
+	}
+	if !services {
+		return []TraefikLogRecord{}, nil
+	}
 	adapter, err := c.traefikMachineAdapter()
 	if err != nil {
 		return nil, err
@@ -645,6 +663,13 @@ func (c *ControlPlane) TraefikLogs(ctx context.Context, filter TraefikLogFilter)
 }
 
 func (c *ControlPlane) TraefikPrometheusStatus(ctx context.Context) (PrometheusStatus, error) {
+	services, err := requiredServicesAvailable(ctx, c.Docker, traefikServiceName, prometheusServiceName)
+	if err != nil {
+		return PrometheusStatus{}, err
+	}
+	if !services {
+		return PrometheusStatus{Collected: false, Observed: c.now().UTC(), Targets: []PrometheusTargetStatus{}}, nil
+	}
 	adapter, err := c.traefikMachineAdapter()
 	if err != nil {
 		return PrometheusStatus{}, err
@@ -1022,19 +1047,37 @@ func (c *ControlPlane) routeServiceIDs(ctx context.Context, serviceKey string) (
 }
 
 func serviceExists(ctx context.Context, client *dockerapi.Client, serviceKey string) bool {
-	if client == nil || !validServiceKey(serviceKey) {
-		return false
+	exists, err := serviceAvailable(ctx, client, serviceKey)
+	return err == nil && exists
+}
+
+func serviceAvailable(ctx context.Context, client *dockerapi.Client, serviceKey string) (bool, error) {
+	if client == nil {
+		return false, fmt.Errorf("Docker API client is unavailable")
+	}
+	if !validServiceKey(serviceKey) {
+		return false, fmt.Errorf("service key is invalid")
 	}
 	services, err := client.ListServices(ctx)
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, service := range services {
 		if service.ID == serviceKey || service.Spec.Name == serviceKey {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+func requiredServicesAvailable(ctx context.Context, client *dockerapi.Client, serviceKeys ...string) (bool, error) {
+	for _, serviceKey := range serviceKeys {
+		available, err := serviceAvailable(ctx, client, serviceKey)
+		if err != nil || !available {
+			return available, err
+		}
+	}
+	return true, nil
 }
 
 func disabledRouteTemplate(service dockerapi.Service) RouteSpec {

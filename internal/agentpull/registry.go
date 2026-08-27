@@ -33,9 +33,10 @@ const (
 )
 
 type EnrollmentToken struct {
-	Code      string    `json:"code"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	Name      string    `json:"name,omitempty"`
+	Code            string    `json:"code"`
+	CoreFingerprint string    `json:"coreFingerprint,omitempty"`
+	ExpiresAt       time.Time `json:"expiresAt"`
+	Name            string    `json:"name,omitempty"`
 }
 
 type EnrollInput struct {

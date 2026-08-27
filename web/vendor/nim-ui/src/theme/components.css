@@ -5649,6 +5649,9 @@
   .nim-admin {
     container-type: inline-size;
     display: flex;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
     block-size: 100%;
     background: var(--nim-canvas-sunken);
   }
@@ -5863,6 +5866,8 @@
 
   .nim-admin__main {
     flex: 1;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     min-block-size: 0;
     overflow-y: auto;
     padding: var(--nim-space-5);
@@ -6991,6 +6996,14 @@
     gap: var(--nim-space-6);
     inline-size: 100%;
     margin-inline: auto;
+  }
+
+  /* Grid items keep their min-content width by default. Console headers,
+     banners, and tab strips must shrink to the page track and own any local
+     scrolling instead of being clipped by the workspace scroller. */
+  .nim-page > * {
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
   .nim-page[data-width='wide'] {
@@ -8220,6 +8233,18 @@
 
   [data-nim-style='console'] .nim-chart__line {
     stroke-width: 1.5;
+  }
+
+  @container (max-width: 38rem) {
+    [data-nim-style='console'] .nim-admin__title > .nim-inline {
+      flex-wrap: wrap;
+    }
+
+    [data-nim-style='console'] .nim-admin__title .nim-field {
+      inline-size: 100%;
+      max-inline-size: 100%;
+      flex: 1 1 100%;
+    }
   }
 }
 

@@ -39,13 +39,14 @@ expect_failure() {
 }
 
 help="$(run_installer Darwin 1000 --help)"
-for required in '--core <https-url>' '--enrollment-code <code>' '--defer-docker' '--no-auto-update'; do
+for required in '--core <https-url>' '--core-fingerprint <SHA256:' '--enrollment-code <code>' '--defer-docker' '--no-auto-update'; do
   [[ "$help" == *"$required"* ]] || { printf 'installer help is missing %s\n' "$required" >&2; exit 1; }
 done
 
 expect_failure Darwin 1000 'unknown option: --unknown' --unknown
 expect_failure Darwin 1000 '--core must be one HTTPS origin without whitespace' --core http://core.example.com
 expect_failure Darwin 1000 '--enrollment-code requires --core' --enrollment-code 0123456789abcdef0123456789abcdef0123456789abcdef
+expect_failure Darwin 1000 '--core-fingerprint must use SHA256:<64-hex>' --core https://core.example.com --core-fingerprint SHA256:invalid
 expect_failure Darwin 1000 '--enrollment-code is invalid' --core https://core.example.com --enrollment-code invalid
 expect_failure Darwin 1000 '--listen-addr may contain only letters, numbers, _, ., /, :, [, ], and -' --listen-addr '0.0.0.0:9180;id'
 expect_failure Linux 1000 'run this command with sudo on Linux' --core https://core.example.com

@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +25,61 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/remote"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestServerUpdateExplainsDisabledAutomaticUpdates(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	dataKey := bytes.Repeat([]byte{31}, 32)
+	profiles, err := json.Marshal(map[string]any{
+		"version": 1,
+		"servers": []domain.Server{{
+			ID:              "pull-agent",
+			Name:            "pull agent",
+			Authentication:  remote.AuthenticationMTLS,
+			ConnectionType:  remote.ConnectionAgentPull,
+			ConnectionState: "connected",
+			AgentHealth: domain.AgentHealth{
+				Update: domain.AgentUpdateStatus{Automatic: false},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "servers.json"), profiles, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(dataDir, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditStore, err := audit.Open(t.TempDir(), dataKey, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(config.Config{
+		AdminPasswordHash: passwordHash,
+		AdminUsername:     "operator",
+		DataDir:           t.TempDir(),
+		DataEncryptionKey: dataKey,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+	}, TargetResolverFunc(func(string) (Target, error) { return Target{}, nil }), servers, auditStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/pull-agent/agent-update", nil)
+	request.SetPathValue("id", "pull-agent")
+	response := httptest.NewRecorder()
+	server.serverUpdate(response, request, auth.Claims{Username: "operator"})
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "not configured") {
+		t.Fatalf("update response = %d: %s", response.Code, response.Body.String())
+	}
+}
 
 // The console's Agent diagnostics page must receive the retained safe failure
 // after an agent stops responding. It must not replace it with a generic

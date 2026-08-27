@@ -26,6 +26,7 @@ func TestAgentInstallerOutboundEnrollmentContract(t *testing.T) {
 		`"SWARMOPS_CORE_URL=$core_url"`,
 		`"SWARMOPS_AGENT_STATE_DIR=$update_status_dir"`,
 		`enroll_args=(enroll --core "$core_url"`,
+		`enroll_args+=(--core-fingerprint "$core_fingerprint")`,
 		`enroll_args+=(--code "$enrollment_code")`,
 		`--defer-docker`,
 	} {
@@ -44,6 +45,7 @@ func TestAgentInstallerHelpDocumentsOutboundInstall(t *testing.T) {
 	text := string(output)
 	for _, required := range []string{
 		"--core <https-url>",
+		"--core-fingerprint <SHA256:",
 		"--enrollment-code <code>",
 		"--defer-docker",
 		"--no-auto-update",

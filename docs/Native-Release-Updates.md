@@ -81,11 +81,12 @@ host can omit the one-time code and print a short-lived approval code instead:
 set -o pipefail
 curl --fail --silent --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --defer-docker
+  | sudo bash -s -- --core https://core.example.com --core-fingerprint 'SHA256:<64-hex>' --enrollment-code '<one-time-code>' --defer-docker
 ```
 
+The console supplies Core's exact TLS leaf fingerprint in the generated command.
 The installer clones or fast-forwards the standalone SwarmOps repository,
-builds the agent locally, creates an owner-only private identity, pins Core,
+builds the agent locally, creates an owner-only private identity, verifies that Core pin,
 and starts outbound mutual-TLS polling. It never prints the private key or
 requires an inbound agent port. The agent burns a one-time enrollment grant
 after successful certificate issuance. Legacy macOS and direct-listener
@@ -136,6 +137,8 @@ The outbound Agent's six-hour timer fast-forwards only the trusted standalone
 checkout, rebuilds the agent with protected caches, and atomically replaces
 the binary before restarting the service. Core can request that fixed local
 check, but cannot supply a repository, branch, executable, or shell command.
+When automatic updates were disabled at installation, that Core request
+returns an explicit conflict and leaves the healthy connection state intact.
 
 ## Publishing a release
 

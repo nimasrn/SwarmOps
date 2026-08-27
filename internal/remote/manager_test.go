@@ -17,9 +17,58 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"golang.org/x/crypto/ssh"
 )
+
+type unavailableRoundTripper struct{}
+
+func (unavailableRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("agent is offline")
+}
+
+func TestManagerMarksStaleOutboundAgentDisconnectedUntilNextPoll(t *testing.T) {
+	t.Parallel()
+	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := agentpull.Status{DockerAvailable: true, NodeName: "manager-1", RemoteControlEnabled: true, SwarmControlAvailable: true, SwarmState: "active", Version: "test"}
+	profile, err := manager.AttachPull("agent-1", "manager-1", status, unavailableRoundTripper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed := manager.List(); len(listed) != 1 || listed[0].ConnectionState != connectedState {
+		t.Fatalf("fresh outbound list = %#v", listed)
+	}
+	if health, err := manager.AgentDiagnostics(context.Background(), profile.ID); err != nil || health.Summary != "Outbound agent is connected" {
+		t.Fatalf("fresh outbound diagnostics = %#v, err=%v", health, err)
+	}
+
+	manager.mu.Lock()
+	profile = manager.profiles[profile.ID]
+	profile.LastConnectedAt = time.Now().UTC().Add(-agentPullStaleAfter - time.Second)
+	manager.profiles[profile.ID] = profile
+	manager.mu.Unlock()
+	if listed := manager.List(); len(listed) != 1 || listed[0].ConnectionState != disconnectedState || listed[0].AgentHealth.Summary != "Outbound agent has stopped polling" {
+		t.Fatalf("stale outbound list = %#v", listed)
+	}
+	if _, err := manager.Resolve(profile.ID); err == nil {
+		t.Fatal("stale outbound agent resolved")
+	}
+	if health, err := manager.AgentDiagnostics(context.Background(), profile.ID); err == nil || health.Summary != "Outbound agent has stopped polling" {
+		t.Fatalf("stale outbound diagnostics = %#v, err=%v", health, err)
+	}
+
+	if _, err := manager.AttachPull("agent-1", "manager-1", status, unavailableRoundTripper{}); err != nil {
+		t.Fatal(err)
+	}
+	if listed := manager.List(); len(listed) != 1 || listed[0].ConnectionState != connectedState {
+		t.Fatalf("reconnected outbound list = %#v", listed)
+	}
+}
 
 func TestManagerConnectsThroughPinnedSSHWithoutPersistingCredentials(t *testing.T) {
 	t.Parallel()

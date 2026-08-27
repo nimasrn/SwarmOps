@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -127,6 +130,7 @@ Build options:
   --cpus <n>                Requested build vCPU cap (default 2)
   --memory-mib <n>          Requested RAM cap in MiB (default 2048)
   --push                    Request registry push after a successful build
+  --core-fingerprint <pin>  Exact SHA256:<64-hex> Core certificate pin
   --password-stdin          Read password once from standard input
   --max-context-mib <n>     Local preflight source-content cap (default 480)
 
@@ -136,6 +140,7 @@ Preflight options:
   --url <URL>               Check the manifest against live node inventory
   --username <name>         SwarmOps operator for --url
   --server-id <id>          Connected remote server profile for --url
+  --core-fingerprint <pin>  Exact SHA256:<64-hex> Core certificate pin
   --password-stdin          Read the operator password once from standard input
 `)
 }
@@ -147,6 +152,7 @@ func preflightCommand(arguments []string) error {
 	jsonOutput := flags.Bool("json", false, "emit JSON")
 	baseURL := flags.String("url", "", "SwarmOps URL for live node validation")
 	serverID := flags.String("server-id", "", "connected remote server profile for live validation")
+	coreFingerprint := flags.String("core-fingerprint", "", "exact SHA-256 Core certificate fingerprint")
 	username := flags.String("username", "", "SwarmOps username for live node validation")
 	passwordStdin := flags.Bool("password-stdin", false, "read SwarmOps password once from stdin")
 	if err := flags.Parse(arguments); err != nil {
@@ -172,13 +178,13 @@ func preflightCommand(arguments []string) error {
 		if err != nil {
 			return err
 		}
-		observed, err := preflightNodesHTTP(endpoint, *username, password, *serverID)
+		observed, err := preflightNodesHTTP(endpoint, *username, password, *serverID, *coreFingerprint)
 		if err != nil {
 			return err
 		}
 		report = preflight.CheckObserved(manifest, observed)
-	} else if strings.TrimSpace(*username) != "" || strings.TrimSpace(*serverID) != "" || *passwordStdin {
-		return errors.New("--username, --server-id, and --password-stdin require --url")
+	} else if strings.TrimSpace(*username) != "" || strings.TrimSpace(*serverID) != "" || strings.TrimSpace(*coreFingerprint) != "" || *passwordStdin {
+		return errors.New("--username, --server-id, --core-fingerprint, and --password-stdin require --url")
 	}
 	if *jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
@@ -202,12 +208,11 @@ func preflightCommand(arguments []string) error {
 	return report.Error()
 }
 
-func preflightNodesHTTP(endpoint *url.URL, username, password, serverID string) ([]preflight.ObservedNode, error) {
-	jar, err := cookiejar.New(nil)
+func preflightNodesHTTP(endpoint *url.URL, username, password, serverID, coreFingerprint string) ([]preflight.ObservedNode, error) {
+	client, err := swarmOpsHTTPClient(endpoint, coreFingerprint, 8*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("create cookie jar: %w", err)
+		return nil, err
 	}
-	client := &http.Client{Jar: jar, Timeout: 8 * time.Second}
 	if _, err := login(client, endpoint, username, password); err != nil {
 		return nil, err
 	}
@@ -256,6 +261,7 @@ func build(arguments []string) error {
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("url", "", "SwarmOps URL")
 	serverID := flags.String("server-id", "", "connected remote server profile")
+	coreFingerprint := flags.String("core-fingerprint", "", "exact SHA-256 Core certificate fingerprint")
 	clusterID := flags.String("cluster-id", "", "explicit cluster target")
 	username := flags.String("username", "", "SwarmOps username")
 	contextDir := flags.String("context", "", "local build context directory")
@@ -286,11 +292,10 @@ func build(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	jar, err := cookiejar.New(nil)
+	client, err := swarmOpsHTTPClient(endpoint, *coreFingerprint, 35*time.Minute)
 	if err != nil {
-		return fmt.Errorf("create cookie jar: %w", err)
+		return err
 	}
-	client := &http.Client{Jar: jar, Timeout: 35 * time.Minute}
 	csrf, err := login(client, endpoint, *username, password)
 	if err != nil {
 		return err
@@ -339,6 +344,54 @@ func build(arguments []string) error {
 	}
 	fmt.Printf("Build command queued: %s\n", command.ID)
 	return nil
+}
+
+func swarmOpsHTTPClient(endpoint *url.URL, fingerprint string, timeout time.Duration) (*http.Client, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, fmt.Errorf("create cookie jar: %w", err)
+	}
+	client := &http.Client{Jar: jar, Timeout: timeout}
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return client, nil
+	}
+	if endpoint == nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" {
+		return nil, fmt.Errorf("--core-fingerprint requires an absolute HTTPS Core URL")
+	}
+	expected, err := parseCoreCertificateFingerprint(fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		ServerName:         endpoint.Hostname(),
+		InsecureSkipVerify: true, // the exact leaf pin below is the trust root
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return fmt.Errorf("Core did not present a certificate")
+			}
+			actual := sha256.Sum256(state.PeerCertificates[0].Raw)
+			if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
+				return fmt.Errorf("Core certificate fingerprint does not match the pinned identity")
+			}
+			return nil
+		},
+	}}
+	return client, nil
+}
+
+func parseCoreCertificateFingerprint(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	const prefix = "SHA256:"
+	if len(value) != len(prefix)+sha256.Size*2 || !strings.EqualFold(value[:len(prefix)], prefix) {
+		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
+	}
+	digest, err := hex.DecodeString(value[len(prefix):])
+	if err != nil || len(digest) != sha256.Size {
+		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
+	}
+	return digest, nil
 }
 
 func newCommandIdempotencyKey() (string, error) {

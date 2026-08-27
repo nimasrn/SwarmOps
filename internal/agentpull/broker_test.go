@@ -2,12 +2,48 @@ package agentpull
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestBrokerResumesAboveDurableAgentCursorAfterCoreRestart(t *testing.T) {
+	t.Parallel()
+	broker := NewBroker(1)
+	seedContext, cancelSeed := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancelSeed()
+	if _, err := broker.Poll(seedContext, PollRequest{AgentID: "node-1", AuthorityEpoch: 1, Cursor: 41, Protocol: ProtocolVersion}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("seed poll error = %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		request, _ := http.NewRequest(http.MethodGet, "http://agent.invalid/v1/status", nil)
+		response, err := broker.Transport("node-1").RoundTrip(request)
+		if response != nil {
+			response.Body.Close()
+		}
+		done <- err
+	}()
+	pollContext, cancelPoll := context.WithTimeout(context.Background(), time.Second)
+	defer cancelPoll()
+	request, err := broker.Poll(pollContext, PollRequest{AgentID: "node-1", AuthorityEpoch: 1, Cursor: 41, Protocol: ProtocolVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Sequence != 42 {
+		t.Fatalf("sequence = %d, want 42", request.Sequence)
+	}
+	if err := broker.Respond("node-1", Response{RequestID: request.ID, Sequence: request.Sequence, StatusCode: http.StatusNoContent}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestBrokerRoundTripIsOrderedAndBounded(t *testing.T) {
 	broker := NewBroker(7)

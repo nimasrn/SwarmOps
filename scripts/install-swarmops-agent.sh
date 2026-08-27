@@ -23,6 +23,7 @@ os_name="$(uname -s)"
 generated_tls=false
 trusted_update_repo="https://github.com/nimasrn/SwarmOps.git"
 core_url=""
+core_fingerprint=""
 enrollment_code=""
 
 usage() {
@@ -42,6 +43,7 @@ usage() {
     'private local helper for the console’s fixed server-readiness operations.' \
     '' \
 	'--core <https-url>             Core origin for outbound-only HTTPS polling.' \
+	'--core-fingerprint <SHA256:…>  Exact Core leaf pin; required for self-signed Core TLS.' \
 	'--enrollment-code <code>      Dashboard-generated grant; omit to print a standalone claim code.' \
 	'--listen-addr <host:port>      Legacy direct-listener mode only.' \
     '--tls-cert-file <path>         Required non-symlink PEM certificate.' \
@@ -855,6 +857,11 @@ while [[ "$#" -gt 0 ]]; do
 	  core_url="${2%/}"
 	  shift 2
 	  ;;
+	--core-fingerprint)
+	  [[ "$#" -ge 2 ]] || fail '--core-fingerprint requires a value'
+	  core_fingerprint="$2"
+	  shift 2
+	  ;;
 	--enrollment-code)
 	  [[ "$#" -ge 2 ]] || fail '--enrollment-code requires a value'
 	  enrollment_code="$2"
@@ -949,6 +956,9 @@ esac
 if [[ -n "$core_url" || -n "$enrollment_code" ]]; then
 	[[ -n "$core_url" ]] || fail '--enrollment-code requires --core'
 	[[ "$core_url" == https://* && "$core_url" != *[[:space:]]* ]] || fail '--core must be one HTTPS origin without whitespace'
+	if [[ -n "$core_fingerprint" ]]; then
+		[[ "$core_fingerprint" =~ ^SHA256:[A-Fa-f0-9]{64}$ ]] || fail '--core-fingerprint must use SHA256:<64-hex>'
+	fi
 	if [[ -n "$enrollment_code" ]]; then
 		[[ "$enrollment_code" =~ ^[A-Fa-f0-9]{48}$ ]] || fail '--enrollment-code is invalid'
 	fi
@@ -1068,6 +1078,9 @@ build_agent
 install_api_key
 if [[ -n "$core_url" ]]; then
 	enroll_args=(enroll --core "$core_url" --name "$(hostname)" --state-dir "$update_status_dir")
+	if [[ -n "$core_fingerprint" ]]; then
+		enroll_args+=(--core-fingerprint "$core_fingerprint")
+	fi
 	if [[ -n "$enrollment_code" ]]; then
 		enroll_args+=(--code "$enrollment_code")
 	fi

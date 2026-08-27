@@ -92,6 +92,12 @@ func (b *Broker) Poll(ctx context.Context, input PollRequest) (*Request, error) 
 		if input.Cursor > state.cursor {
 			state.cursor = input.Cursor
 		}
+		// Core's broker is intentionally in-memory while the Agent cursor is
+		// durable. After a Core restart, resume sequence allocation above the
+		// authenticated cursor so the Agent never sees new work as a replay.
+		if input.Cursor > state.next {
+			state.next = input.Cursor
+		}
 		for len(state.pending) > 0 {
 			item := state.pending[0]
 			state.pending = state.pending[1:]

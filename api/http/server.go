@@ -144,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/logout", s.withAuth(true, s.logout))
 	mux.HandleFunc("POST /api/v1/agents/enrollment-tokens", s.withActiveAuth(s.agentEnrollmentToken))
 	mux.HandleFunc("POST /api/v1/agents/claims/approve", s.withActiveAuth(s.agentClaimApprove))
+	mux.HandleFunc("GET /agent/v1/identity", s.agentIdentity)
 	mux.HandleFunc("POST /agent/v1/enroll", s.agentEnrollPull)
 	mux.HandleFunc("POST /agent/v1/claims", s.agentClaimStart)
 	mux.HandleFunc("POST /agent/v1/claims/redeem", s.agentClaimRedeem)

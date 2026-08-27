@@ -11,6 +11,44 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.6.2 — 2026-08-28
+
+This reliability release repairs first enrollment against the self-signed TLS
+identity created by the Docker-free Core installer, closing the restart loop
+that left legacy in-memory agent profiles permanently disconnected.
+
+- **Authenticated first contact** — Core publishes its exact SHA-256 leaf
+  fingerprint over the same direct HTTPS endpoint and includes it in every
+  authenticated one-time enrollment grant. The console carries that pin in
+  each generated install command.
+- **No insecure TLS fallback** — the Agent accepts a Core pin only in the
+  strict `SHA256:<64-hex>` form and constant-time checks the presented leaf.
+  Without a pin it keeps normal system-CA verification; it never silently
+  disables certificate verification.
+- **Restart-safe transport** — newly enrolled agents keep their private key
+  locally and reconnect to Core with renewable mTLS outbound long polls, so a
+  Core restart no longer depends on a memory-only legacy API key.
+- **Ordered restart recovery** — Core advances a restarted in-memory broker to
+  the durable cursor reported by the authenticated agent, so the next leased
+  command cannot be rejected as a replay after Core restarts.
+- **Truthful connection health** — an outbound profile becomes disconnected
+  after 45 seconds without a poll and reconnects automatically on the next
+  authenticated lease. Diagnostics support outbound agents instead of
+  rejecting them as legacy listener profiles.
+- **Absent services are not transport failures** — when Traefik, Loki, or
+  Prometheus is not deployed, the API returns empty runtime/log data and an
+  explicit not-collected status. The console labels Traefik “Not installed”
+  rather than “unhealthy.”
+- **Pinned workstation CLI and update feedback** — live preflight and build
+  accept the same exact Core certificate pin. A server without automatic agent
+  updates returns a clear conflict instead of a generic gateway failure.
+- **Narrow console containment** — shared nim-ui console pages, headers,
+  banners, selectors, and tab strips stay inside a 390px workspace; wide tab
+  sets retain their own horizontal scroller.
+- **Installer regression coverage** — self-signed acceptance, wrong-pin and
+  malformed-pin rejection, Core fingerprint extraction, help text and CLI
+  propagation are exercised by automated tests.
+
 ## Warden recovery 0.6.0.1 — 2026-08-27
 
 This updater-only prerelease repairs the v0.5.10-to-v0.6.0 native Core bridge;

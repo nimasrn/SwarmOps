@@ -97,18 +97,25 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
 
   useEffect(() => { void load(false) }, [])
 
+  const installed = Boolean(status.service)
   const running = status.service?.health === 'healthy'
   return (
     <Page>
       <DetailHeader
         actions={<Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="secondary">Refresh runtime</Button>}
-        status={<Badge dot variant={running ? 'success' : 'danger'}>{running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
+        status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not installed' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
         subtitle="Declare service routing, DNS, certificate, logs, and Prometheus collection through one typed control plane. Raw Traefik labels, rules, provider URLs, LogQL, and PromQL are never accepted here."
         title="Traefik & TLS"
       />
-      <Banner title="One gateway, one accepted failure domain" tone="warning">
-        Traefik intentionally runs as one task. Applying static settings or adding a TCP/UDP entrypoint restarts that singleton and can interrupt every routed connection. Route enable/disable is dynamic once its entrypoint exists.
-      </Banner>
+      {!installed ? (
+        <Banner title="Traefik is not installed on this cluster" tone="info">
+          Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. Stored routing declarations are preserved and do not imply that a gateway is running.
+        </Banner>
+      ) : (
+        <Banner title="One gateway, one accepted failure domain" tone="warning">
+          Traefik intentionally runs as one task. Applying static settings or adding a TCP/UDP entrypoint restarts that singleton and can interrupt every routed connection. Route enable/disable is dynamic once its entrypoint exists.
+        </Banner>
+      )}
       <Segmented fullWidth label="Traefik control-plane sections" onChange={setTab} options={tabs} value={tab} />
       {error ? <Banner title="Routing state unavailable" tone="danger">{error}</Banner> : null}
       {loading || !state ? <Panel><Rows><Body>Loading the selected manager’s sealed routing state…</Body></Rows></Panel> : null}

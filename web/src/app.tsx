@@ -54,6 +54,7 @@ import { CommandCataloguePage, InsightsPage, ResourcesPage } from './inventory'
 import { HomePage } from './home'
 import { isNativeAgent, serverConnectionLabel, serverEndpointLabel } from './server-connection'
 import type {
+	AgentEnrollmentToken,
   AuditEvent,
   Capacity,
   Command,
@@ -249,7 +250,17 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
 }
 
 function AgentSetupScreen({ onBack }: { onBack: () => void }) {
-	const command = `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}'`
+	const [coreFingerprint, setCoreFingerprint] = useState('')
+	const [identityError, setIdentityError] = useState('')
+	useEffect(() => {
+		void api.agentIdentity().then((identity) => {
+			setCoreFingerprint(identity.coreFingerprint ?? '')
+			setIdentityError(identity.coreFingerprint ? '' : 'Core did not publish its TLS fingerprint.')
+		}).catch((reason) => setIdentityError(messageOf(reason)))
+	}, [])
+	const command = coreFingerprint
+		? `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --core-fingerprint '${coreFingerprint}'`
+		: 'Reading the pinned Core identity…'
   return (
     <main className="swarmops-auth-page">
       <AuthScreen
@@ -259,7 +270,8 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
         subtitle="Run one command on Ubuntu, then sign in and approve the short-lived code it prints."
         title="Connect your first server"
       >
-        <Rows gap="tight">
+		<Rows gap="tight">
+		  {identityError ? <Banner title="Pinned Core identity unavailable" tone="danger">{identityError}</Banner> : null}
 		  <CodeBlock label="Ubuntu 22.04 or 24.04" wrap>{command}</CodeBlock>
 		  <Body size="sm">The agent creates its private key locally and waits for approval. It then receives a renewable client certificate and connects to Core with outbound HTTPS long polls. No inbound agent port, SSH access, Docker socket proxy, or long-lived printed key is required.</Body>
 		  <TaskProgress steps={[{ id: 'install', label: 'Run the command on the host', status: 'active' }, { id: 'approve', label: 'Sign in and approve its code in Infrastructure → Agents', status: 'pending' }, { id: 'connect', label: 'Watch compatibility and host health appear', status: 'pending' }]} title="Install-first enrollment" />
@@ -271,7 +283,7 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
 
 function OutboundEnrollmentGuide({ toast }: { toast: ReturnType<typeof useToast> }) {
 	const [name, setName] = useState('')
-	const [token, setToken] = useState<{ code: string; expiresAt: string } | null>(null)
+	const [token, setToken] = useState<AgentEnrollmentToken | null>(null)
 	const [pending, setPending] = useState(false)
 	const secureOrigin = window.location.protocol === 'https:'
 	const create = async () => {
@@ -285,7 +297,7 @@ function OutboundEnrollmentGuide({ toast }: { toast: ReturnType<typeof useToast>
 		}
 	}
 	const command = token
-		? `bash -o pipefail -c "curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --enrollment-code '${token.code}' --defer-docker"`
+		? `bash -o pipefail -c "curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}'${token.coreFingerprint ? ` --core-fingerprint '${token.coreFingerprint}'` : ''} --enrollment-code '${token.code}' --defer-docker"`
 		: ''
 	return (
 		<Panel eyebrow="Recommended · outbound HTTPS" title="Install and enroll with one command">
@@ -302,7 +314,11 @@ function OutboundEnrollmentGuide({ toast }: { toast: ReturnType<typeof useToast>
 
 function StandaloneClaimGuide({ onApproved, toast }: { onApproved: () => Promise<void>; toast: ReturnType<typeof useToast> }) {
 	const [code, setCode] = useState('')
+	const [coreFingerprint, setCoreFingerprint] = useState('')
 	const [pending, setPending] = useState(false)
+	useEffect(() => {
+		void api.agentIdentity().then((identity) => setCoreFingerprint(identity.coreFingerprint ?? '')).catch(() => setCoreFingerprint(''))
+	}, [])
 	const approve = async (event: FormEvent) => {
 		event.preventDefault()
 		setPending(true)
@@ -320,8 +336,8 @@ function StandaloneClaimGuide({ onApproved, toast }: { onApproved: () => Promise
 	return (
 		<Panel eyebrow="Standalone · install first" title="Enter the code printed by the agent">
 			<Rows as="form" onSubmit={approve}>
-				<Body size="sm">Run the installer with only <code>--core</code>. The agent keeps its private key and redemption secret, prints a short-lived code, and waits. Approving the code issues the same renewable client certificate as the dashboard-generated flow.</Body>
-				<CodeBlock label="Install first on Ubuntu 22.04 or 24.04" wrap>{`curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}'`}</CodeBlock>
+				<Body size="sm">Run the installer with the Core certificate pin. The agent keeps its private key and redemption secret, prints a short-lived code, and waits. Approving the code issues the same renewable client certificate as the dashboard-generated flow.</Body>
+				<CodeBlock label="Install first on Ubuntu 22.04 or 24.04" wrap>{coreFingerprint ? `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --core-fingerprint '${coreFingerprint}'` : 'Reading the pinned Core identity…'}</CodeBlock>
 				<Input autoComplete="off" hint="Four groups of four characters; expires after 15 minutes." label="Agent enrollment code" onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH-JKLM-NPQR" required value={code} />
 				<Button disabled={pending || code.replaceAll('-', '').length !== 16} loading={pending} type="submit" variant="accent">Approve and enroll agent</Button>
 			</Rows>

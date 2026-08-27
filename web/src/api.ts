@@ -1,6 +1,7 @@
 import type {
 	AgentEnrollmentToken,
 	AgentClaimApproval,
+	AgentIdentity,
   ApplicationSpec,
 	AgentHealth,
   CommandDefinition,
@@ -106,6 +107,7 @@ export class SwarmOpsAPI {
 	approveAgentClaim(code: string) {
 		return this.request<AgentClaimApproval>('/api/v1/agents/claims/approve', { method: 'POST', body: JSON.stringify({ code }) })
 	}
+	agentIdentity() { return this.request<AgentIdentity>('/agent/v1/identity') }
 
   coreTopology() { return this.request<CoreTopology>('/api/v1/core') }
 

@@ -33,6 +33,7 @@ The console renders these states:
 | Degraded: agent update required | The pinned machine responded but one required fixed route returned `404`. | Run the current installer once. Future checks can then be automatic. |
 | Degraded: Docker unavailable | The agent responded but cannot use its local Docker Engine. | Repair Docker or use Server readiness. |
 | Unhealthy: machine API unreachable | Core cannot reach, authenticate, or verify the pinned machine API. | Check agent service, port, TLS pin, routing, and firewall. |
+| Disconnected: outbound polling stopped | The outbound agent has not polled Core for 45 seconds. | Check the agent service and outbound HTTPS path; the next authenticated poll reconnects it automatically. |
 
 A degraded or unhealthy server is never silently selected as a manager for a
 cluster operation.
@@ -55,7 +56,9 @@ The Core request has no body and cannot select a source, branch, commit,
 binary, shell command, or restart target. The updater defers while a native
 agent mutation is active. `--no-auto-update` disables and removes the installed
 update triggers. A custom source or branch cannot become an unattended update
-source.
+source. In that state the update-request endpoint returns `409 Conflict` with
+a specific not-configured message; it does not convert the agent to a generic
+transport failure.
 
 ## Rollout boundary
 
@@ -73,5 +76,5 @@ use the install-first form and approve the printed code within 15 minutes:
 set -o pipefail
 curl --fail --silent --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com --defer-docker
+  | sudo bash -s -- --core https://core.example.com --core-fingerprint 'SHA256:<64-hex>' --defer-docker
 ```

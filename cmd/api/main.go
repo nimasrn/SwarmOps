@@ -23,7 +23,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-var version = "0.6.1"
+var version = "0.6.2"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {

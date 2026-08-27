@@ -1,10 +1,60 @@
 package ops
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 )
+
+func TestTraefikObservabilityIsEmptyWhenServicesAreNotInstalled(t *testing.T) {
+	t.Parallel()
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.URL.Path != "/services" {
+			t.Fatalf("unexpected machine request %s", request.URL.Path)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte("[]"))
+	}))
+	t.Cleanup(server.Close)
+	docker, err := dockerapi.NewForURL(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	routing, err := NewRoutingStore(t.TempDir(), make([]byte, 32), "ops@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := NewControlPlane(docker, DockerCLI{}, nil, ControlPlaneOptions{Routing: routing, ServerID: "manager-1"})
+	observed := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
+	control.now = func() time.Time { return observed }
+
+	if err := control.RefreshTraefikRuntime(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	logs, err := control.TraefikLogs(context.Background(), TraefikLogFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if logs == nil || len(logs) != 0 {
+		t.Fatalf("logs = %#v, want a non-nil empty list", logs)
+	}
+	status, err := control.TraefikPrometheusStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Collected || !status.Observed.Equal(observed) || status.Targets == nil || len(status.Targets) != 0 {
+		t.Fatalf("status = %#v, want an observed not-collected empty status", status)
+	}
+	if requests != 3 {
+		t.Fatalf("service inventory requests = %d, want 3", requests)
+	}
+}
 
 func TestRouteApplyConfirmations(t *testing.T) {
 	t.Parallel()

@@ -1,6 +1,7 @@
 package apihttp
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/nimasrn/SwarmOps/internal/auth"
@@ -18,7 +19,7 @@ func (s *Server) serverDiagnostics(response http.ResponseWriter, request *http.R
 		writeError(response, http.StatusNotFound, "Server was not found")
 		return
 	}
-	if server.ConnectionType != remote.ConnectionAgentAPI {
+	if server.ConnectionType != remote.ConnectionAgentAPI && server.ConnectionType != remote.ConnectionAgentPull {
 		writeError(response, http.StatusUnprocessableEntity, "This server does not expose a native SwarmOps machine agent")
 		return
 	}
@@ -37,6 +38,21 @@ func (s *Server) serverDiagnostics(response http.ResponseWriter, request *http.R
 // decides nothing from this request except to wake its preconfigured updater.
 func (s *Server) serverUpdate(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	id := request.PathValue("id")
+	server, found := savedServerProfile(s.servers.List(), id)
+	if !found {
+		writeError(response, http.StatusNotFound, "Server was not found")
+		return
+	}
+	if server.ConnectionType != remote.ConnectionAgentAPI && server.ConnectionType != remote.ConnectionAgentPull {
+		writeError(response, http.StatusUnprocessableEntity, "This server does not expose a native SwarmOps machine agent")
+		return
+	}
+	if !server.AgentHealth.Update.Automatic {
+		err := fmt.Errorf("automatic agent updates are not configured on this server")
+		s.record(claims.Username, requestID(request), "agent.update.request", "server/"+id, err, nil)
+		writeError(response, http.StatusConflict, "Automatic agent updates are not configured on this server")
+		return
+	}
 	health, err := s.servers.RequestAgentUpdate(request.Context(), id)
 	if err != nil {
 		s.record(claims.Username, requestID(request), "agent.update.request", "server/"+id, err, nil)

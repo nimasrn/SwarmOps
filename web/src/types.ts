@@ -48,8 +48,14 @@ export interface AgentHealth {
 
 export interface AgentEnrollmentToken {
 	code: string
+	coreFingerprint?: string
 	expiresAt: string
 	name?: string
+}
+
+export interface AgentIdentity {
+	coreFingerprint?: string
+	protocolVersion: number
 }
 
 export interface AgentClaimApproval {

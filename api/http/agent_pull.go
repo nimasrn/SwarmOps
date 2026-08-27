@@ -2,10 +2,15 @@ package apihttp
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,15 +33,55 @@ func (s *Server) agentEnrollmentToken(response http.ResponseWriter, request *htt
 	if !decodeJSON(response, request, &input) {
 		return
 	}
+	fingerprint, err := coreTLSFingerprint(s.config.TLSCertFile)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Core TLS identity is unavailable")
+		return
+	}
 	token, err := s.agentRegistry.CreateEnrollment(input.Name)
 	if err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	token.CoreFingerprint = fingerprint
 	// The one-time code is returned only in this response and is never written
 	// to the audit ledger. It expires quickly and is consumed atomically.
 	s.record(claims.Username, requestID(request), "agent.enrollment.create", "agent/new", nil, map[string]string{"expires_at": token.ExpiresAt.Format(time.RFC3339)})
 	writeJSON(response, http.StatusCreated, token)
+}
+
+func (s *Server) agentIdentity(response http.ResponseWriter, request *http.Request) {
+	if !s.secureAgentRequest(request, false) {
+		writeError(response, http.StatusUpgradeRequired, "Agent identity requires direct HTTPS to Core")
+		return
+	}
+	fingerprint, err := coreTLSFingerprint(s.config.TLSCertFile)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Core TLS identity is unavailable")
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"coreFingerprint": fingerprint, "protocolVersion": agentpull.ProtocolVersion})
+}
+
+func coreTLSFingerprint(certificateFile string) (string, error) {
+	certificateFile = strings.TrimSpace(certificateFile)
+	if certificateFile == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(certificateFile)
+	if err != nil {
+		return "", fmt.Errorf("read Core TLS certificate: %w", err)
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return "", fmt.Errorf("Core TLS certificate is not PEM")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("parse Core TLS certificate: %w", err)
+	}
+	digest := sha256.Sum256(certificate.Raw)
+	return "SHA256:" + strings.ToUpper(hex.EncodeToString(digest[:])), nil
 }
 
 func (s *Server) agentEnrollPull(response http.ResponseWriter, request *http.Request) {

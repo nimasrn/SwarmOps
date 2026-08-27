@@ -48,6 +48,12 @@ func (m *Manager) Probe(ctx context.Context, id string) (domain.Server, error) {
 	if !found {
 		return domain.Server{}, fmt.Errorf("server not found")
 	}
+	if profile.ConnectionType == ConnectionAgentPull {
+		if connection == nil || !pullConnectionFresh(profile, time.Now().UTC()) {
+			return profile, fmt.Errorf("outbound agent has stopped polling")
+		}
+		return profile, nil
+	}
 	if profile.ConnectionType != ConnectionAgentAPI {
 		return profile, nil
 	}
@@ -180,9 +186,26 @@ func (m *Manager) probeAndScheduleUpdates(ctx context.Context) {
 // fresh probe fails. This is what lets the control plane explain an outage
 // instead of replacing it with a generic request error.
 func (m *Manager) AgentDiagnostics(ctx context.Context, id string) (domain.AgentHealth, error) {
-	_, probeErr := m.Probe(ctx, id)
 	m.mu.RLock()
 	profile, found := m.profiles[id]
+	connection := m.connections[id]
+	m.mu.RUnlock()
+	if !found {
+		return domain.AgentHealth{}, fmt.Errorf("server not found")
+	}
+	if profile.ConnectionType == ConnectionAgentPull {
+		if connection == nil || !pullConnectionFresh(profile, time.Now().UTC()) {
+			health := profile.AgentHealth
+			health.State = domain.HealthUnknown
+			health.Summary = "Outbound agent has stopped polling"
+			health.Detail = "Check the Agent service and its pinned HTTPS path to Core; it will reconnect without a new credential."
+			return health, fmt.Errorf("outbound agent has stopped polling")
+		}
+		return profile.AgentHealth, nil
+	}
+	_, probeErr := m.Probe(ctx, id)
+	m.mu.RLock()
+	profile, found = m.profiles[id]
 	m.mu.RUnlock()
 	if !found {
 		return domain.AgentHealth{}, fmt.Errorf("server not found")

@@ -26,12 +26,14 @@ command and run it on the Ubuntu host:
 ```sh
 curl --fail --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --defer-docker
+  | sudo bash -s -- --core https://core.example.com --core-fingerprint 'SHA256:<64-hex>' --enrollment-code '<one-time-code>' --defer-docker
 ```
 
 The installer creates the systemd service, generates the private key on the
-host, exchanges the one-time code for a renewable client certificate, pins
-Core identity, and starts the outbound poll loop. Docker installation and
+host, verifies the exact Core certificate fingerprint before exchanging the
+one-time code for a renewable client certificate, and starts the outbound poll loop. The console
+adds `--core-fingerprint` to its generated command automatically; it is required
+for the self-signed certificate created by the Docker-free Core installer. Docker installation and
 Swarm initialization remain separate typed catalog operations after the agent
 is visible; the Core process itself never needs Docker. Alternatively, run the
 same command without `--enrollment-code`; the agent prints a short-lived code
@@ -254,7 +256,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.6.1`. Release history is in
+The current version is `0.6.2`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -342,10 +344,11 @@ For an install-first agent, run:
 ```bash
 curl --fail --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com --defer-docker
+  | sudo bash -s -- --core https://core.example.com --core-fingerprint 'SHA256:<64-hex>' --defer-docker
 ```
 
-Approve the printed code within 15 minutes. After approval, the agent redeems
+Copy the fingerprint from Core's trusted server console or the command rendered
+by SwarmOps, then approve the printed code within 15 minutes. After approval, the agent redeems
 the certificate over the same pinned Core identity, installs its systemd
 service, and appears without an inbound port or manually handled credential.
 
@@ -686,8 +689,14 @@ Use a reviewed, non-secret platform manifest for every cluster-wide rollout:
 # API password is prompted locally.
 go run ./cmd/swarmopsctl preflight \
   --manifest deploy/swarmops/platform.example.yml \
-  --url https://swarmops.example.com --username operator --server-id <server-id>
+  --url https://swarmops.example.com --username operator --server-id <server-id> \
+  --core-fingerprint 'SHA256:<64-hex>'
 ```
+
+Use `--core-fingerprint` when Core has the direct self-signed certificate made
+by the native installer. Obtain the exact leaf pin from the authenticated
+console-generated enrollment material or another trusted channel; the CLI
+constant-time checks that pin and does not add a general insecure-TLS mode.
 
 The manifest carries only public topology and versioned secret *names*. It
 requires globally unique workload names within its namespace, unique routed

@@ -41,9 +41,10 @@ const (
 	ConnectionAgentPull      = "agent_pull"
 	ConnectionSSH            = "ssh"
 
-	connectedState    = "connected"
-	disconnectedState = "disconnected"
-	profileStateKey   = "server-profiles"
+	connectedState      = "connected"
+	disconnectedState   = "disconnected"
+	profileStateKey     = "server-profiles"
+	agentPullStaleAfter = 45 * time.Second
 )
 
 var (
@@ -292,12 +293,18 @@ func (m *Manager) loadProfiles(data []byte) error {
 func (m *Manager) List() []domain.Server {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	now := time.Now().UTC()
 	profiles := make([]domain.Server, 0, len(m.profiles))
 	for id, profile := range m.profiles {
-		if connection := m.connections[id]; connection != nil {
+		if connection := m.connections[id]; connection != nil && pullConnectionFresh(profile, now) {
 			profile.ConnectionState = connectedState
 		} else {
 			profile.ConnectionState = disconnectedState
+			if profile.ConnectionType == ConnectionAgentPull {
+				profile.AgentHealth.State = domain.HealthUnknown
+				profile.AgentHealth.Summary = "Outbound agent has stopped polling"
+				profile.AgentHealth.Detail = "Check the Agent service and its pinned HTTPS path to Core; it will reconnect without a new credential."
+			}
 		}
 		profiles = append(profiles, profile)
 	}
@@ -535,11 +542,16 @@ func (m *Manager) Resolve(id string) (*Connection, error) {
 	}
 	m.mu.RLock()
 	connection := m.connections[id]
+	profile := m.profiles[id]
 	m.mu.RUnlock()
-	if connection == nil {
+	if connection == nil || !pullConnectionFresh(profile, time.Now().UTC()) {
 		return nil, fmt.Errorf("server is not connected; reconnect with its machine API key")
 	}
 	return connection, nil
+}
+
+func pullConnectionFresh(profile domain.Server, now time.Time) bool {
+	return profile.ConnectionType != ConnectionAgentPull || (!profile.LastConnectedAt.IsZero() && now.Sub(profile.LastConnectedAt) <= agentPullStaleAfter)
 }
 
 func (m *Manager) saveLocked() error {

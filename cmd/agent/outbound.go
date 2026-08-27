@@ -30,11 +30,13 @@ type outboundIdentity struct {
 	AgentID         string `json:"agentId"`
 	CoreFingerprint string `json:"coreFingerprint"`
 	CoreURL         string `json:"coreUrl"`
+	NodeName        string `json:"nodeName,omitempty"`
 }
 
 func runEnrollment(args []string) {
 	flags := flag.NewFlagSet("enroll", flag.ExitOnError)
 	coreURL := flags.String("core", "", "HTTPS Core URL")
+	coreFingerprint := flags.String("core-fingerprint", "", "pinned SHA-256 Core certificate fingerprint")
 	code := flags.String("code", "", "one-time enrollment code")
 	name := flags.String("name", "", "agent display name")
 	stateDir := flags.String("state-dir", "/var/lib/swarmops-agent", "root-owned agent state directory")
@@ -42,14 +44,14 @@ func runEnrollment(args []string) {
 		return
 	}
 	if flags.NArg() != 0 || strings.TrimSpace(*coreURL) == "" {
-		fmt.Fprintln(os.Stderr, "usage: swarmops-agent enroll --core https://core.example [--code <dashboard-code>] [--name node-1]")
+		fmt.Fprintln(os.Stderr, "usage: swarmops-agent enroll --core https://core.example [--core-fingerprint SHA256:<64-hex>] [--code <dashboard-code>] [--name node-1]")
 		os.Exit(2)
 	}
 	var err error
 	if strings.TrimSpace(*code) == "" {
-		err = enrollStandalone(context.Background(), *coreURL, *name, *stateDir)
+		err = enrollStandalone(context.Background(), *coreURL, *coreFingerprint, *name, *stateDir)
 	} else {
-		err = enrollOutbound(context.Background(), *coreURL, *code, *name, *stateDir)
+		err = enrollOutbound(context.Background(), *coreURL, *coreFingerprint, *code, *name, *stateDir)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "enrollment failed:", err)
@@ -57,7 +59,7 @@ func runEnrollment(args []string) {
 	}
 }
 
-func enrollOutbound(ctx context.Context, coreURL, code, name, stateDir string) error {
+func enrollOutbound(ctx context.Context, coreURL, coreFingerprint, code, name, stateDir string) error {
 	coreURL = strings.TrimSuffix(strings.TrimSpace(coreURL), "/")
 	parsed, err := url.Parse(coreURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
@@ -73,7 +75,10 @@ func enrollOutbound(ctx context.Context, coreURL, code, name, stateDir string) e
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 30 * time.Second}
+	client, err := enrollmentHTTPClient(coreURL, coreFingerprint)
+	if err != nil {
+		return err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return fmt.Errorf("connect to Core: %w", err)
@@ -87,14 +92,14 @@ func enrollOutbound(ctx context.Context, coreURL, code, name, stateDir string) e
 		return fmt.Errorf("decode enrollment: %w", err)
 	}
 	fingerprint := sha256.Sum256(response.TLS.PeerCertificates[0].Raw)
-	if err := persistOutboundIdentity(coreURL, stateDir, key, enrollment, strings.ToUpper(hex.EncodeToString(fingerprint[:]))); err != nil {
+	if err := persistOutboundIdentity(coreURL, stateDir, key, enrollment, strings.ToUpper(hex.EncodeToString(fingerprint[:])), name); err != nil {
 		return err
 	}
 	fmt.Printf("SwarmOps agent enrolled as %s; no long-lived key was printed.\n", enrollment.AgentID)
 	return nil
 }
 
-func enrollStandalone(ctx context.Context, coreURL, name, stateDir string) error {
+func enrollStandalone(ctx context.Context, coreURL, coreFingerprint, name, stateDir string) error {
 	coreURL = strings.TrimSuffix(strings.TrimSpace(coreURL), "/")
 	parsed, err := url.Parse(coreURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
@@ -117,7 +122,10 @@ func enrollStandalone(ctx context.Context, coreURL, name, stateDir string) error
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 30 * time.Second}
+	client, err := enrollmentHTTPClient(coreURL, coreFingerprint)
+	if err != nil {
+		return err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return fmt.Errorf("connect to Core: %w", err)
@@ -176,13 +184,64 @@ func enrollStandalone(ctx context.Context, coreURL, name, stateDir string) error
 			return fmt.Errorf("decode standalone enrollment: %w", err)
 		}
 		redeemResponse.Body.Close()
-		if err := persistOutboundIdentity(coreURL, stateDir, key, enrollment, fingerprint); err != nil {
+		if err := persistOutboundIdentity(coreURL, stateDir, key, enrollment, fingerprint, name); err != nil {
 			return err
 		}
 		fmt.Printf("SwarmOps agent enrolled as %s; no long-lived key was printed.\n", enrollment.AgentID)
 		return nil
 	}
 	return fmt.Errorf("standalone enrollment code expired before approval")
+}
+
+func enrollmentHTTPClient(coreURL, fingerprint string) (*http.Client, error) {
+	parsed, err := url.Parse(strings.TrimSuffix(strings.TrimSpace(coreURL), "/"))
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return nil, fmt.Errorf("Core URL must be an absolute HTTPS origin")
+	}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13, ServerName: parsed.Hostname()}
+	if strings.TrimSpace(fingerprint) != "" {
+		expected, err := parseCoreFingerprint(fingerprint)
+		if err != nil {
+			return nil, err
+		}
+		// The exact leaf pin is the trust root for a self-signed Docker-free
+		// Core. Normal chain verification is replaced only when the operator
+		// supplied that authenticated pin.
+		tlsConfig = pinnedCoreTLSConfig(coreURL, nil, expected)
+	}
+	return &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}, Timeout: 30 * time.Second}, nil
+}
+
+func parseCoreFingerprint(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	const prefix = "SHA256:"
+	if len(value) != len(prefix)+sha256.Size*2 || !strings.EqualFold(value[:len(prefix)], prefix) {
+		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
+	}
+	digest, err := hex.DecodeString(value[len(prefix):])
+	if err != nil || len(digest) != sha256.Size {
+		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
+	}
+	return digest, nil
+}
+
+func pinnedCoreTLSConfig(coreURL string, certificates []tls.Certificate, expected []byte) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		Certificates:       certificates,
+		ServerName:         mustHostname(coreURL),
+		InsecureSkipVerify: true, // the exact leaf pin below is the trust root
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return fmt.Errorf("Core did not present a certificate")
+			}
+			actual := sha256.Sum256(state.PeerCertificates[0].Raw)
+			if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
+				return fmt.Errorf("Core certificate fingerprint does not match the pinned identity")
+			}
+			return nil
+		},
+	}
 }
 
 func newAgentIdentity() (*ecdsa.PrivateKey, string, error) {
@@ -197,12 +256,12 @@ func newAgentIdentity() (*ecdsa.PrivateKey, string, error) {
 	return key, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})), nil
 }
 
-func persistOutboundIdentity(coreURL, stateDir string, key *ecdsa.PrivateKey, enrollment agentpull.Enrollment, fingerprint string) error {
+func persistOutboundIdentity(coreURL, stateDir string, key *ecdsa.PrivateKey, enrollment agentpull.Enrollment, fingerprint, nodeName string) error {
 	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		return err
 	}
-	identity := outboundIdentity{AgentID: enrollment.AgentID, CoreFingerprint: fingerprint, CoreURL: coreURL}
+	identity := outboundIdentity{AgentID: enrollment.AgentID, CoreFingerprint: fingerprint, CoreURL: coreURL, NodeName: strings.TrimSpace(nodeName)}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return fmt.Errorf("create agent state directory: %w", err)
 	}
@@ -244,20 +303,15 @@ func newOutboundClient(runtime runtimeConfig, server *agent.Server) (*agentpull.
 	if err != nil || len(expected) != sha256.Size {
 		return nil, fmt.Errorf("stored Core identity fingerprint is invalid")
 	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}, ServerName: mustHostname(identity.CoreURL), VerifyConnection: func(state tls.ConnectionState) error {
-		if len(state.PeerCertificates) == 0 {
-			return fmt.Errorf("Core did not present a certificate")
-		}
-		actual := sha256.Sum256(state.PeerCertificates[0].Raw)
-		if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
-			return fmt.Errorf("Core identity fingerprint changed")
-		}
-		return nil
-	}}
+	tlsConfig := pinnedCoreTLSConfig(identity.CoreURL, []tls.Certificate{certificate}, expected)
 	httpClient := &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: tlsConfig}, Timeout: 40 * time.Second}
 	return agentpull.NewClient(agentpull.ClientConfig{AgentID: identity.AgentID, BaseURL: identity.CoreURL, Handler: server.Handler(), HTTP: httpClient, LocalKey: runtime.token, StateFile: filepath.Join(runtime.outboundStateDir, "cursor.json"), Status: func(ctx context.Context) (agentpull.Status, error) {
 		status := server.CurrentStatus(ctx)
-		return agentpull.Status{DockerAvailable: status.DockerAvailable, DockerVersion: status.DockerVersion, NodeName: status.NodeName, RemoteControlEnabled: status.RemoteControlEnabled, SwarmControlAvailable: status.SwarmControlAvailable, SwarmState: status.SwarmState, Version: status.Version}, nil
+		nodeName := strings.TrimSpace(identity.NodeName)
+		if nodeName == "" {
+			nodeName = status.NodeName
+		}
+		return agentpull.Status{DockerAvailable: status.DockerAvailable, DockerVersion: status.DockerVersion, NodeName: nodeName, RemoteControlEnabled: status.RemoteControlEnabled, SwarmControlAvailable: status.SwarmControlAvailable, SwarmState: status.SwarmState, Version: status.Version}, nil
 	}})
 }
 
