@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,9 +23,21 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-const version = "0.6.0"
+var version = "0.6.0"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(version)
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "upgrade" {
+		runCoreUpgrade(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "access" {
+		runCoreAccess(os.Args[2:])
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -108,6 +121,12 @@ func main() {
 		AlertmanagerImage:         cfg.TrustedAlertmanagerImage,
 		AlloyConfigName:           cfg.TrustedAlloyConfig,
 		AlloyImage:                cfg.TrustedAlloyImage,
+		GrafanaAdminSecret:        cfg.TrustedGrafanaAdminSecret,
+		GrafanaDashboardConfig:    cfg.TrustedGrafanaDashboard,
+		GrafanaDashboardProvider:  cfg.TrustedGrafanaProvider,
+		GrafanaDatasourcesConfig:  cfg.TrustedGrafanaDatasources,
+		GrafanaHost:               cfg.TrustedGrafanaHost,
+		GrafanaImage:              cfg.TrustedGrafanaImage,
 		JaegerConfigName:          cfg.TrustedJaegerConfig,
 		JaegerImage:               cfg.TrustedJaegerImage,
 		LokiConfigName:            cfg.TrustedLokiConfig,

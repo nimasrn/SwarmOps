@@ -30,8 +30,8 @@ import type {
   Overview,
   Service,
   Server,
-  ServerCredentials,
   ServerInput,
+  ServerReconnectInput,
   ServerReadiness,
   ServerReadinessRequest,
   Session,
@@ -159,7 +159,7 @@ export class SwarmOpsAPI {
     })
   }
 
-  connectServer(id: string, credentials: ServerCredentials) {
+  connectServer(id: string, credentials: ServerReconnectInput) {
     return this.request<Server>(`/api/v1/servers/${encodeURIComponent(id)}/connect`, {
       method: 'POST',
       body: JSON.stringify(credentials),

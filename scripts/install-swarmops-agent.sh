@@ -6,7 +6,7 @@ umask 077
 # authenticated controller a small fixed Docker-operation API; it never opens
 # the Docker socket or an arbitrary shell over the network.
 
-repo_url="https://github.com/nimasrn/nim.git"
+repo_url="https://github.com/nimasrn/SwarmOps.git"
 branch="main"
 listen_addr="0.0.0.0:9180"
 tls_cert_file=""
@@ -21,7 +21,7 @@ defer_docker=false
 automatic_updates=true
 os_name="$(uname -s)"
 generated_tls=false
-trusted_update_repo="https://github.com/nimasrn/nim.git"
+trusted_update_repo="https://github.com/nimasrn/SwarmOps.git"
 core_url=""
 enrollment_code=""
 
@@ -48,7 +48,7 @@ usage() {
     '--tls-key-file <path>          Required owner-only non-symlink PEM key.' \
     '--api-key-file <path>          Copy this protected key file; otherwise generate one.' \
     '--docker-socket <path>         Docker Unix socket; defaults by platform.' \
-    '--repo <Git URL>               Repository to clone (default: nimasrn/nim).' \
+    '--repo <Git URL>               Standalone repository to clone (default: nimasrn/SwarmOps).' \
     '--branch <name>                Git branch to install (default: main).' \
     '--install-dependencies         Install Git, Go, and OpenSSL where supported.' \
     '--install-docker              Install Docker before enrolling (Debian/Ubuntu only).' \
@@ -244,11 +244,11 @@ ensure_checkout() {
 
 build_agent() {
   local temporary_binary
-  [[ -f "$source_dir/apps/swarmops/go.mod" ]] || fail 'the cloned repository does not contain apps/swarmops'
+  [[ -f "$source_dir/go.mod" ]] || fail 'the cloned repository is not the standalone SwarmOps source'
   install -d -m 0755 "$binary_dir"
   temporary_binary="$(mktemp "$binary_dir/.swarmops-agent.XXXXXX")"
   if ! (
-    cd "$source_dir/apps/swarmops"
+    cd "$source_dir"
     CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent
   ); then
     rm -f "$temporary_binary"
@@ -390,7 +390,7 @@ write_update_script() {
       '  exit 0' \
       'fi' \
       'temporary_binary="$(mktemp "$binary_dir/.swarmops-agent.XXXXXX")"' \
-      'if ! (cd "$source_dir/apps/swarmops" && CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent); then' \
+      'if ! (cd "$source_dir" && CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent); then' \
       '  rm -f "$temporary_binary"' \
       '  write_status failed "$target"' \
       '  exit 0' \

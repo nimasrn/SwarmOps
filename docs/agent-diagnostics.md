@@ -40,7 +40,7 @@ cluster operation.
 ## Update model
 
 The native installer enables automatic updates only for its reviewed
-`https://github.com/nimasrn/nim.git` `main` source. It installs a local
+`https://github.com/nimasrn/SwarmOps.git` `main` source. It installs a local
 systemd timer/path unit on Linux or a LaunchAgent on macOS:
 
 1. The host checks on its own every six hours, even if Core is unavailable.
@@ -66,9 +66,12 @@ old cached connection as healthy. No local test proves that a remote host has
 actually installed the newer binary; verify that separately through its next
 authenticated probe.
 
-Use one of these one-command installs on the host:
+Generate the one-time enrollment command in **Infrastructure → Agents**, or
+use the install-first form and approve the printed code within 15 minutes:
 
 ```sh
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash -s --
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
+  | sudo bash -s -- --core https://core.example.com --defer-docker
 ```

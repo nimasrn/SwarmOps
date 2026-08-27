@@ -2,8 +2,10 @@
 set -euo pipefail
 
 # Build every supported native, self-updating release asset published by GitHub
-# Actions. The target never compiles source: each Agent/Core bundle includes its
-# matching Warden updater and a checksums.txt file is generated alongside it.
+# Actions. Each Agent/Core bundle includes its matching Warden updater and a
+# checksums.txt file is generated alongside it. The published outbound Agent
+# installer currently builds from the trusted standalone checkout; the Agent
+# bundles remain available for native recovery and future bundle activation.
 #
 # Agent: Linux (amd64, arm64) and macOS (amd64, arm64)
 # Core: Linux (amd64, arm64); Core uses systemd and is the controller/data host.

@@ -145,32 +145,29 @@ SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 ```
 
 The local server proxies browser API requests to the manager; it has no
-SwarmOps data directory, Docker dependency, or local API process. Install the
-machine agent on each Linux or macOS Docker host from a GitHub Release:
+SwarmOps data directory, Docker dependency, or local API process. Generate an
+outbound enrollment command in **Infrastructure → Agents** for each Ubuntu
+host, or use the install-first form and approve its printed code:
 
 ```bash
-# Linux:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
-# macOS:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
+  | sudo bash -s -- --core https://core.example.com --defer-docker
 ```
 
-The installer downloads checksum-verified `swarmops-agent` and
-`swarmops-warden` binaries, configures TLS 1.3, and generates its pinned
-P-256 TLS identity plus protected API-key and one-time-enrollment files. The
-Linux identity is stored at `/etc/swarmops-agent/tls/agent.crt` and
-`/etc/swarmops-agent/tls/agent.key`; macOS uses
-`$HOME/.config/swarmops-agent/tls/`. It prints the public certificate
-fingerprint and a single `swarmops1.…` enrollment token, but never prints the
-key. Warden checks releases locally every 12 hours, rolls back an unhealthy
-candidate, and keeps three known-good versions. Paste the token into
-**Servers → Add server**. Core exchanges its one-time secret over pinned TLS,
-then stores the API key only as AES-256-GCM-sealed state so the machine can
-reconnect after a restart. Explicit disconnect removes the live and sealed key;
+The installer clones the standalone repository, builds the agent locally,
+generates its protected private identity, pins Core, and starts outbound
+mutual-TLS polling. It never prints the private key and requires no inbound
+agent listener. The host's fixed updater checks only the trusted standalone
+repository and cannot accept a source, branch, command, or executable from
+Core or the browser. Core stores the renewable connection credential only as
+AES-256-GCM-sealed state; explicit disconnect removes it, and
 `SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual, memory-only posture.
 
-The installer does not install Docker or form/join a Swarm. Once the token is
-enrolled, **Servers** offers only fixed controller-managed setup actions:
+The normal installer command does not install Docker or form/join a Swarm.
+Once the agent is enrolled, **Infrastructure → Readiness** offers only fixed
+controller-managed setup actions:
 install Docker on Debian/Ubuntu, initialize a new Swarm, or join the selected
 Swarm. The join credential is not shown or persisted in the browser.
 
@@ -184,14 +181,25 @@ not expose it as the machine-control endpoint.
 
 The Swarm stack remains the default production topology. If the designated
 controller must not run Docker or join a cluster, install the native Core
-release on that host instead of deploying the `swarmops` stack:
+release on that host instead of deploying the `swarmops` stack. Keep
+`pipefail` enabled so a failed download cannot be treated as a successful
+empty pipeline:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
-  --listen-ip <literal-controller-ip> \
-  --allow-cidr <operator-device-ip>/32
+set -o pipefail
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+For unattended installation:
+
+```bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
+      --listen-ip <literal-controller-ip> \
+      --allow-cidr <operator-device-ip>/32 \
+      --generate-admin-password
 ```
 
 The bootstrap downloads `swarmops-core` and `swarmops-warden`, then serves the

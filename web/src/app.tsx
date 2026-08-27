@@ -285,7 +285,7 @@ function OutboundEnrollmentGuide({ toast }: { toast: ReturnType<typeof useToast>
 		}
 	}
 	const command = token
-		? `bash -o pipefail -c "curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --enrollment-code '${token.code}' --install-docker"`
+		? `bash -o pipefail -c "curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --enrollment-code '${token.code}' --defer-docker"`
 		: ''
 	return (
 		<Panel eyebrow="Recommended · outbound HTTPS" title="Install and enroll with one command">
@@ -707,7 +707,7 @@ function ServersPage({
     const credentials: ServerCredentials = { apiKey }
     try {
       const connected = editing
-        ? await api.connectServer(editing.id, credentials)
+		? await api.connectServer(editing.id, { ...credentials, tlsCertificateFingerprint: tlsFingerprint })
         : await api.addServer({ ...credentials, apiUrl: apiURL, name, port: parsedPort, tlsCertificateFingerprint: tlsFingerprint } satisfies ServerInput)
       setAPIKey('')
       await onConnected(connected)
@@ -774,8 +774,8 @@ function ServersPage({
           <Rows as="form" onSubmit={submit}>
             <Input disabled={Boolean(editing)} hint="A local label only; it never affects the remote host." label="Name" onChange={(event) => setName(event.target.value)} required value={name} />
             <Input disabled={Boolean(editing)} hint="HTTPS origin only, for example https://manager.example.com. Enter its port separately." label="Machine API URL" onChange={(event) => setAPIURL(event.target.value)} required type="url" value={apiURL} />
-            <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input disabled={Boolean(editing)} hint="Public SHA-256 fingerprint of the API certificate." label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
-            <Input autoComplete="off" hint="It is used to connect now and cleared on disconnect or API restart." label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
+            <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input hint={editing ? 'Replace this pin only with the verified public SHA-256 fingerprint currently served by the machine API.' : 'Public SHA-256 fingerprint of the API certificate.'} label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
+            <Input autoComplete="off" hint={editing ? 'It is intentionally blank. Paste the protected key only for this verified reconnect; Core never returns it to the browser.' : 'It is used for the initial verified connection and never returned to the browser.'} label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
             {error ? <Banner title={error.message} tone="danger"><Rows gap="tight">{error.detail ? <p>{error.detail}</p> : null}{error.requestID ? <Body size="sm">Request ID: <code>{error.requestID}</code></Body> : null}</Rows></Banner> : null}
             <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit" variant="accent">{editing ? 'Reconnect server' : 'Add and connect server'}</Button><Button onClick={reset} type="button" variant="ghost">Cancel</Button></Inline>
           </Rows>

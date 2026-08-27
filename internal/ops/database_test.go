@@ -20,7 +20,7 @@ func testDatabaseSettings() DatabaseSettings {
 
 func databaseAsset(t *testing.T, engine string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "deploy", "stacks", "swarmops-"+engine+".yml"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "stacks", "swarmops-"+engine+".yml"))
 	if err != nil {
 		t.Fatalf("read %s asset: %v", engine, err)
 	}

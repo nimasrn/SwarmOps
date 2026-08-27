@@ -45,7 +45,7 @@ func TestCheckedInTrustedStackAssetsRenderWithoutRemoteEnvironment(t *testing.T)
 	if !ok {
 		t.Fatal("locate trusted stack test source")
 	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../../../.."))
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../.."))
 	for stack, file := range map[string]string{
 		"swarmops-agent":         "swarmops-agent.yml",
 		"swarmops-logs":          "swarmops-logs.yml",
@@ -72,6 +72,12 @@ func testTrustedStackSettings() TrustedStackSettings {
 		AlertmanagerImage:         "prom/alertmanager:v0.33.1",
 		AlloyConfigName:           "swarmops_alloy_config_v1",
 		AlloyImage:                "grafana/alloy:v1.18.1",
+		GrafanaAdminSecret:        "swarmops_grafana_admin_password_v1",
+		GrafanaDashboardConfig:    "swarmops_grafana_dashboard_v1",
+		GrafanaDashboardProvider:  "swarmops_grafana_dashboard_provider_v1",
+		GrafanaDatasourcesConfig:  "swarmops_grafana_datasources_v1",
+		GrafanaHost:               "grafana.example.com",
+		GrafanaImage:              "grafana/grafana:13.1.4",
 		JaegerConfigName:          "swarmops_jaeger_config_v1",
 		JaegerImage:               "jaegertracing/jaeger:2.20.0",
 		LokiConfigName:            "swarmops_loki_config_v1",

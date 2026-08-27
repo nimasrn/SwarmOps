@@ -18,7 +18,7 @@ import (
 // admitted. It does not prove that a cluster accepted them, that DNS resolved,
 // or that a certificate was issued.
 func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "..", "deploy", "swarmops")
+	root := filepath.Join("..", "..", "deploy", "swarmops")
 	manifest, err := preflight.LoadFile(filepath.Join(root, "platform.example.yml"))
 	if err != nil {
 		t.Fatalf("load example platform manifest: %v", err)

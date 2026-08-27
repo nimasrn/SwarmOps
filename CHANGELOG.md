@@ -19,7 +19,7 @@ Core/Agent recovery line are published together for the first time.
 - **Unified native release and recovery** — the release line now contains the
   complete `v0.5.10` native installer and updater hardening alongside the full
   control plane. Installed Core and Agent binaries expose allow-listed
-  `upgrade`, `doctor`, `fix`, and credential-generation commands; Core can
+  `upgrade` and credential-generation commands; Core can
   manage its trusted client CIDRs; streamed installers preserve executable
   modes, recover root-owned staging directories, verify checksums and
   readiness, and roll back failed activation before showing login details.
@@ -87,7 +87,7 @@ Core/Agent recovery line are published together for the first time.
   now reads as a record — provider, masked credential state, verified account —
   and the connection form returns only when there is something to add or
   replace. None of this is app CSS: the stage spine, the sticky plan rail, the
-  numbered panel marker, and the copy chip are `nim-ui` 0.13.0 console
+  numbered panel marker, and the copy chip are `nim-ui` 0.14.0 console
   components, per the standing rule that a layout rule in
   `web/src/styles.css` is a missing kit component.
 - **A real mark** — SwarmOps had a letter in a box, which is a placeholder

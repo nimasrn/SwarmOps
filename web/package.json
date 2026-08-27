@@ -5,16 +5,14 @@
   "version": "0.6.0",
   "type": "module",
   "scripts": {
-    "predev": "npm --prefix ../../../nim-ui run build",
     "dev": "vite",
-    "prebuild": "npm --prefix ../../../nim-ui run build",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint src",
     "test": "node --experimental-strip-types --test src/*.test.mjs",
     "typecheck": "tsc -b --pretty"
   },
   "dependencies": {
-    "@nim.zone/ui": "file:../../../nim-ui",
+    "@nim.zone/ui": "file:./vendor/nim-ui",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

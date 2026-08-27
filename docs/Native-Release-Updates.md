@@ -1,6 +1,6 @@
 # Native release installation and updates
 
-SwarmOps native installations use exactly two executables on a host:
+SwarmOps native installations keep Core and Agent as separate host processes:
 
 - `swarmops-core` is the Docker-free control-plane API, embedded console, and
   reviewed deployment-assets process. Core bundles include the agent, logging,
@@ -9,8 +9,10 @@ SwarmOps native installations use exactly two executables on a host:
 - `swarmops-agent` is the constrained host-side machine API. It remains
   separate from Core so the controller never receives a Docker socket, and it
   stays healthy when Docker is not yet running.
-- `swarmops-warden` is the shared local updater. A Core host has Core + Warden;
-  an agent host has Agent + Warden. It has no network control endpoint.
+- `swarmops-warden` supervises checksum-verified native release bundles. The
+  Core installer activates it. Outbound Agent installations instead use a
+  fixed local Git updater restricted to the standalone repository's `main`
+  branch. Neither updater has a network control endpoint.
 
 The GitHub release workflow builds the following assets for every immutable
 `v*` tag:
@@ -27,23 +29,37 @@ install-swarmops-agent.sh
 install-swarmops-core.sh
 ```
 
-The installer resolves `latest` by default, downloads only HTTPS GitHub release
-assets, validates the matching SHA-256 entry in `checksums.txt`, rejects archive
-contents other than the expected files, and never clones or compiles source on
-the target. The GitHub repository and immutable release tag remain the trust
-root; the checksum catches transfer corruption or an incomplete download but is
-not an independently signed provenance statement.
+The Core installer resolves `latest` by default, downloads only HTTPS GitHub
+release assets, validates the matching SHA-256 entry in `checksums.txt`, and
+rejects archive contents other than the expected files. The outbound Agent
+installer uses a shallow checkout of the standalone repository and builds the
+agent locally so its enrollment identity is created on the host; its automatic
+updater is restricted to that repository's `main` branch. The GitHub repository
+and immutable release tag remain the trust root. Release checksums detect
+transfer corruption or an incomplete download but are not an independently
+signed provenance statement.
 
 ## Install Core on the controller and data host
 
-Download the release installer, then run it as root on a fresh Linux controller:
+Run the release installer as root on a fresh Linux controller. Keep
+`pipefail` enabled so a failed download cannot turn into an empty successful
+shell pipeline:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
-  --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32
+set -o pipefail
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+For unattended installation:
+
+```bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
+      --listen-ip <literal-server-ip> \
+      --allow-cidr <operator-device-ip>/32 \
+      --generate-admin-password
 ```
 
 Core obtains a random high port, direct TLS certificate, independent session
@@ -57,35 +73,28 @@ only in AES-256-GCM-sealed Core state so agents reconnect after a restart; set
 
 ## Install Agent on a host
 
-On Linux, download the release installer and run it with `sudo`. On macOS, run
-it as the logged-in user without `sudo`:
+For the supported production flow, generate an enrollment command in
+**Infrastructure → Agents** and run it with `sudo` on Ubuntu. An install-first
+host can omit the one-time code and print a short-lived approval code instead:
 
 ```bash
-# Linux:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
-# macOS:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
+  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --defer-docker
 ```
 
-The agent installer defaults to `0.0.0.0:9180` and creates a P-256,
-self-signed certificate and owner-only key itself. Their SwarmOps-owned paths
-are `/etc/swarmops-agent/tls/agent.crt` and
-`/etc/swarmops-agent/tls/agent.key` on Linux, or
-`$HOME/.config/swarmops-agent/tls/agent.crt` and
-`$HOME/.config/swarmops-agent/tls/agent.key` on macOS. The controller pins the
-exact leaf certificate, so no external CA or operator-supplied certificate is
-required. The installer prints the TLS fingerprint and one `swarmops1.…`
-enrollment token—never the API key. Paste that token into **Servers → Add
-server**. Core exchanges its one-time secret for the key over the pinned TLS
-connection, and the agent burns the token after the successful exchange. The
-listener must remain reachable only from the controller through an explicit
-firewall rule. Advanced operators may provide a certificate only with the
-paired `--tls-cert-file` and `--tls-key-file` flags, or use the console’s manual
-connection fields for an existing installation.
+The installer clones or fast-forwards the standalone SwarmOps repository,
+builds the agent locally, creates an owner-only private identity, pins Core,
+and starts outbound mutual-TLS polling. It never prints the private key or
+requires an inbound agent port. The agent burns a one-time enrollment grant
+after successful certificate issuance. Legacy macOS and direct-listener
+installations remain available with paired TLS file arguments, but are not the
+production outbound path.
 
-The default installation does not change Docker or Swarm, and legacy
-`--install-docker` / `--init-swarm` flags are rejected. After the token has
-been enrolled, **Servers** can approve the fixed Debian/Ubuntu Docker setup,
+The default installation does not change Docker or Swarm. After the agent has
+been enrolled, **Infrastructure → Readiness** can approve the fixed
+Debian/Ubuntu Docker setup,
 initialize a new Swarm, or join the selected Swarm. For a join, the selected
 manager issues Docker's short-lived credential directly to the enrolled
 destination agent; it never enters the browser, a queued payload, audit event,
@@ -101,30 +110,32 @@ Docker. A record whose cleanup may have started stays open for recovery.
 
 The agent service starts without a Docker CLI or live Docker socket. It reports
 the host as connected but Docker-unavailable until Docker starts; Core blocks
-Docker and Swarm operations during that state. This lets Warden supervise the
-host agent and its pinned TLS health endpoint independently of Docker startup.
+Docker and Swarm operations during that state. The fixed local updater can
+supervise the agent independently of Docker startup.
 
-## Warden behavior
+## Updater behavior
 
-Linux timers check every 12 hours after an initial 15-minute delay:
+Core's Warden checks GitHub releases every 12 hours after an initial 15-minute
+delay:
 
 ```bash
 sudo systemctl start swarmops-core-warden.service
-sudo systemctl start swarmops-agent-warden.service
 ```
 
-Only run the unit installed for that component. On macOS, the agent updater is
-the `com.nimasrn.swarmops-warden` LaunchAgent.
-
-For an update, Warden downloads and checksum-verifies the candidate before it
+For a Core update, Warden downloads and checksum-verifies the candidate before it
 stops the local service. It atomically changes only the `current` symlink in
-the component's release directory, starts the fixed service, and waits for the
-local `/healthz` (Agent) or `/readyz` (Core) probe. A failed candidate is
+the release directory, starts the fixed service, and waits for the local
+`/readyz` probe. A failed candidate is
 stopped, the previous symlink is restored, the previous service is started and
 checked, and the failed candidate directory is removed. A successful update
 keeps the current release plus the two most recent prior known-good release
 directories. It never deletes `/var/lib/swarmops`, `/etc/swarmops`, the agent
 API key, or TLS material.
+
+The outbound Agent's six-hour timer fast-forwards only the trusted standalone
+checkout, rebuilds the agent with protected caches, and atomically replaces
+the binary before restarting the service. Core can request that fixed local
+check, but cannot supply a repository, branch, executable, or shell command.
 
 ## Publishing a release
 

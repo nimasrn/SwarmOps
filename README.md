@@ -26,7 +26,7 @@ command and run it on the Ubuntu host:
 ```sh
 curl --fail --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --install-docker
+  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --defer-docker
 ```
 
 The installer creates the systemd service, generates the private key on the
@@ -113,7 +113,7 @@ resource ceiling — comes from the reviewed platform manifest, so an operator
 picks from approved domains rather than claiming an arbitrary one. Everything
 else is generated: no Compose, no Traefik label, and no connection string is
 written by hand. See
-[applications.example.json](../../deploy/swarmops/applications.example.json)
+[applications.example.json](deploy/swarmops/applications.example.json)
 for two worked specs.
 
 It does **not** make Docker’s root-equivalent socket harmless. The product
@@ -277,9 +277,9 @@ cases, changelog, and roadmap — is published at
 - [Source-to-deploy system design](docs/SwarmOps-Source-to-Deploy-System-Design.docx)
   records provider adapters, sealed credentials, evidence classification,
   managed/shared substitutions, dynamic-domain policy, and rollout gates.
-- [Source-to-deploy ADR](../../docs/adr/ADR-0006-swarmops-source-to-deploy.md)
+- [Source-to-deploy ADR](https://github.com/nimasrn/nim/blob/main/docs/adr/ADR-0006-swarmops-source-to-deploy.md)
   records why repository Compose remains evidence rather than executable input.
-- [Docker-free controller ADR](../../docs/adr/ADR-0003-docker-free-swarmops-controller.md)
+- [Docker-free controller ADR](https://github.com/nimasrn/nim/blob/main/docs/adr/ADR-0003-docker-free-swarmops-controller.md)
   records the security trade-offs and production evidence gates.
 - [Business review](docs/SwarmOps-Business-Review.pptx) frames the adoption
   decision and its explicit production-evidence gates.
@@ -292,7 +292,6 @@ The standard local workflow runs the UI only. Point Vite at the HTTPS origin of
 the deployed SwarmOps API on the designated manager:
 
 ```bash
-cd apps/swarmops
 SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 ```
 
@@ -330,7 +329,7 @@ For an install-first agent, run:
 ```bash
 curl --fail --show-error --location \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
-  | sudo bash -s -- --core https://core.example.com
+  | sudo bash -s -- --core https://core.example.com --defer-docker
 ```
 
 Approve the printed code within 15 minutes. After approval, the agent redeems
@@ -391,22 +390,37 @@ environment file or Swarm service.
 
 ## Direct Docker-free controller
 
-For a separate, freshly installed controller host, run the bootstrap from a
-reviewed checkout. It serves the compiled GUI and API from that host only; it
-does not install Docker, join a Swarm, or contact a cluster.
+For a separate, freshly installed controller host, stream the latest release
+installer with pipeline failure propagation. It serves the compiled GUI and
+API from that host only; it does not install Docker, join a Swarm, or contact a
+cluster. The zero-argument form prompts for the controller IP and operator
+CIDR:
 
 ```bash
-sudo bash scripts/bootstrap-swarmops-control-plane.sh \
-  --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32 \
-  --install-dependencies
+set -o pipefail
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+For unattended installation, pass the reviewed values explicitly and let the
+installer generate the initial administrator password:
+
+```bash
+set -o pipefail
+curl --fail --silent --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
+  | sudo bash -s -- \
+      --listen-ip <literal-server-ip> \
+      --allow-cidr <operator-device-ip>/32 \
+      --generate-admin-password
 ```
 
 To bootstrap a recovery candidate, give it a different stable identity and a
 standby role from the start:
 
 ```bash
-sudo bash scripts/bootstrap-swarmops-control-plane.sh \
+curl --fail --location --remote-name \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
+sudo bash install-swarmops-core.sh \
   --listen-ip <literal-standby-ip> \
   --allow-cidr <operator-device-ip>/32 \
   --core-id core-manager-02 \
@@ -470,7 +484,7 @@ bash scripts/install-swarmops-agent.sh \
   --tls-key-file /secure/swarmops-agent.key
 ```
 
-The installer clones or fast-forwards `https://github.com/nimasrn/nim.git`
+The installer clones or fast-forwards `https://github.com/nimasrn/SwarmOps.git`
 (`main` by default), builds `cmd/agent`, and installs a systemd service on
 Linux or a per-user LaunchAgent on macOS. It also installs a fixed trusted-Git
 update check: the host runs it every six hours, and a current connected Core
@@ -498,7 +512,7 @@ To rotate the machine API key on an existing host, run the installed binary
 directly and restart the service:
 
 ```bash
-sudo /usr/local/lib/swarmops-agent/releases/current/swarmops-agent gen apikey --key-file /etc/swarmops-agent/api-key
+sudo /usr/local/lib/swarmops-agent/bin/swarmops-agent gen apikey --key-file /etc/swarmops-agent/api-key
 sudo systemctl restart swarmops-agent.service
 ```
 
@@ -508,7 +522,7 @@ profile in the panel. The old key is invalid immediately after restart.
 If you prefer a shorter command, create a root-owned symlink once:
 
 ```bash
-sudo ln -sf /usr/local/lib/swarmops-agent/releases/current/swarmops-agent /usr/local/bin/swarmops-agent
+sudo ln -sf /usr/local/lib/swarmops-agent/bin/swarmops-agent /usr/local/bin/swarmops-agent
 ```
 
 Then run `swarmops-agent gen apikey --key-file ...` from shell.
@@ -629,33 +643,16 @@ need live verification.
 ## Local checks
 
 ```bash
-cd apps/swarmops
 go test ./...
-cd web && npm run typecheck && npm run build
-
-# Opt-in: runs Core -> encrypted queue -> pinned local machine agent ->
-# disposable one-node Docker Swarm. It refuses to touch an already-active
-# Swarm and removes only the uniquely named resources it creates.
-cd ..
-SWARMOPS_INTEGRATION_DOCKER=1 make integration
-
-cd ../..
+go vet ./...
+npm --prefix web run test
+npm --prefix web run typecheck
+npm --prefix web run lint
+npm --prefix web run build
 bash -n scripts/install-swarmops-agent.sh
-make build APP=swarmops TARGET=api TAG=<immutable-tag>
-make build APP=swarmops TARGET=agent TAG=<immutable-tag>
-make build APP=swarmops TARGET=cli TAG=<immutable-tag>
-make stack-check STACK=swarmops TAG=<immutable-tag>
-make stack-check STACK=swarmops-agent TAG=<immutable-tag>
-make stack-check STACK=swarmops-observability TAG=<immutable-tag>
-make stack-check STACK=swarmops-logs TAG=<immutable-tag>
-make stack-check STACK=mongo-replicaset TAG=<immutable-tag>
-make stack-check STACK=postgres-primary-replica TAG=<immutable-tag>
-make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
-
-# The controlled build path will refuse to start until the same plan passes.
-make swarmops-checked-build \
-  MANIFEST=deploy/swarmops/platform.example.yml \
-  APP=swarmops TARGET=api TAG=<immutable-tag>
+make docs-check
+make stack-check-all TAG=<immutable-tag>
+bash scripts/build-release-bundles.sh <immutable-tag> <empty-absolute-output-directory>
 ```
 
 No Docker daemon or Swarm is required to run the local UI against the deployed
@@ -671,14 +668,11 @@ image-build checks above.
 Use a reviewed, non-secret platform manifest for every cluster-wide rollout:
 
 ```bash
-make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
-
 # After a remote manager is connected through its machine API, compare the same
 # manifest to that selected server's current Docker inventory. The controller
 # API password is prompted locally.
-cd apps/swarmops
 go run ./cmd/swarmopsctl preflight \
-  --manifest ../../deploy/swarmops/platform.example.yml \
+  --manifest deploy/swarmops/platform.example.yml \
   --url https://swarmops.example.com --username operator --server-id <server-id>
 ```
 
@@ -755,7 +749,7 @@ After a reconnect or reboot, run the catalogued continuity diagnostic from the
 node page before touching data. It checks Docker, Swarm membership,
 local-volume continuity, and manager visibility; it never restores, deletes,
 or promotes a database. The full stateful contract is
-[`../../docs/swarmops-stateful.md`](../../docs/swarmops-stateful.md).
+the [stateful services guide](https://github.com/nimasrn/nim/blob/main/docs/swarmops-stateful.md).
 
 ## Durable node operations
 

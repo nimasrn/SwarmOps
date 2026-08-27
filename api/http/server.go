@@ -408,11 +408,12 @@ func (s *Server) serverAdd(response http.ResponseWriter, request *http.Request, 
 
 func (s *Server) serverConnect(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	var input struct {
-		APIKey             string `json:"apiKey"`
-		Authentication     string `json:"authentication"`
-		Password           string `json:"password"`
-		PrivateKey         string `json:"privateKey"`
-		PrivateKeyPassword string `json:"privateKeyPassphrase"`
+		APIKey                    string `json:"apiKey"`
+		Authentication            string `json:"authentication"`
+		Password                  string `json:"password"`
+		PrivateKey                string `json:"privateKey"`
+		PrivateKeyPassword        string `json:"privateKeyPassphrase"`
+		TLSCertificateFingerprint string `json:"tlsCertificateFingerprint"`
 	}
 	if !decodeJSON(response, request, &input) {
 		return
@@ -425,11 +426,12 @@ func (s *Server) serverConnect(response http.ResponseWriter, request *http.Reque
 	}()
 	id := request.PathValue("id")
 	server, err := s.servers.Connect(request.Context(), id, remote.Credentials{
-		APIKey:             input.APIKey,
-		Authentication:     input.Authentication,
-		Password:           input.Password,
-		PrivateKey:         input.PrivateKey,
-		PrivateKeyPassword: input.PrivateKeyPassword,
+		APIKey:                    input.APIKey,
+		Authentication:            input.Authentication,
+		Password:                  input.Password,
+		PrivateKey:                input.PrivateKey,
+		PrivateKeyPassword:        input.PrivateKeyPassword,
+		TLSCertificateFingerprint: input.TLSCertificateFingerprint,
 	})
 	if err != nil {
 		s.record(claims.Username, requestID(request), "server.reconnect", "server/"+id, err, nil)
