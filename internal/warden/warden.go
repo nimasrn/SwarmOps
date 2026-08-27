@@ -41,6 +41,7 @@ const (
 var (
 	repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 	versionPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	assetFilePattern  = regexp.MustCompile(`^assets/[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\.yml$`)
 )
 
 // ServiceManager controls one fixed, local service. Implementations must not
@@ -476,7 +477,12 @@ func allowedBundleFile(component, name string) bool {
 			return true
 		}
 	}
-	return false
+	// Core release assets are reviewed Compose documents. Keep executables and
+	// every other archive path fixed, while allowing a future release to add a
+	// flat, safely named stack asset without first requiring an updater bridge.
+	// Checksums, regular-file enforcement, path containment, extracted-size
+	// limits, and the known required files remain mandatory.
+	return component == "core" && assetFilePattern.MatchString(name)
 }
 
 func requiredBundleFiles(component string) []string {
@@ -497,10 +503,12 @@ func requiredBundleFiles(component string) []string {
 }
 
 func bundleFileMode(name string) os.FileMode {
-	if strings.HasPrefix(filepath.Base(name), "swarmops-") {
+	switch name {
+	case "swarmops-agent", "swarmops-core", "swarmops-warden":
 		return 0o755
+	default:
+		return 0o644
 	}
-	return 0o644
 }
 
 func pathWithin(root, candidate string) bool {

@@ -259,6 +259,19 @@ The current version is `0.6.1`. Release history is in
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
 
+Core installations on v0.5.10 whose Warden rejects a newly added reviewed
+stack asset can recover without reinstalling or touching controller state:
+
+```sh
+curl --fail --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/download/warden-v0.6.0.1/repair-swarmops-core-updater.sh \
+  | sudo bash
+```
+
+The script verifies the immutable recovery Warden checksum, then hands control
+back to the normal health-checked updater. The Warden recovery prerelease is a
+tooling release and does not change the Core/Agent product version.
+
 ## Decision artifacts
 
 - [System design](docs/SwarmOps-System-Design.docx) records the technical

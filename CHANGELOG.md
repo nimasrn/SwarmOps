@@ -11,6 +11,20 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## Warden recovery 0.6.0.1 — 2026-08-27
+
+This updater-only prerelease repairs the v0.5.10-to-v0.6.0 native Core bridge;
+it does not change the SwarmOps Core or Agent product version.
+
+- **Forward-compatible reviewed assets** — Warden continues to require every
+  known Core binary and stack asset, checksum verification, regular files,
+  path containment, and the extraction limit, while permitting additional
+  flat `assets/<safe-name>.yml` documents in later trusted release bundles.
+- **Verified one-paste recovery** — the recovery script downloads a fixed
+  Linux Warden from the immutable `warden-v0.6.0.1` prerelease, verifies its
+  published checksum, and runs the normal health-checked, rollback-capable
+  update without replacing controller state or the installed updater by hand.
+
 ## 0.6.1 — 2026-08-27
 
 This corrective release makes the intended observability boundary explicit:

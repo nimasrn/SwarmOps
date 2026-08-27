@@ -1,0 +1,56 @@
+name: Release Warden recovery
+
+on:
+  push:
+    tags:
+      - 'warden-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.created && !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Select immutable Warden tag
+        id: release
+        env:
+          REQUESTED_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TAG" =~ ^warden-v[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+          git rev-parse --verify --quiet "refs/tags/$REQUESTED_TAG" >/dev/null
+          git checkout --detach "refs/tags/$REQUESTED_TAG"
+          printf 'tag=%s\n' "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Warden source
+        run: |
+          go test ./internal/warden ./scripts
+          go vet ./internal/warden ./scripts
+          bash -n scripts/repair-swarmops-core-updater.sh
+          bash -n scripts/build-warden-recovery-release.sh
+          make docs-check
+
+      - name: Build Warden recovery bundles
+        run: bash scripts/build-warden-recovery-release.sh "${{ steps.release.outputs.tag }}" "$GITHUB_WORKSPACE/dist"
+
+      - name: Publish immutable Warden prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --title "SwarmOps Warden recovery $TAG" \
+            --notes "Verified recovery Warden for installed Core updaters that cannot stage newly added reviewed stack assets. This prerelease does not replace the stable SwarmOps release selected by /releases/latest." \
+            --prerelease --verify-tag

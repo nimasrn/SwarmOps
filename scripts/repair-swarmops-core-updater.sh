@@ -2,15 +2,15 @@
 set -euo pipefail
 umask 077
 
-# Recover Core installations whose original root-run Warden staged candidate
-# directories as 0700. This downloads one fixed Warden from the immutable
-# v0.5.10 bundle, verifies that bundle with the published checksum, and runs
-# the fixed Warden only from a private temporary directory. It does not replace
-# the installed updater directly; the normal verified update installs it.
+# Recover Core installations whose installed Warden cannot stage the current
+# Core bundle. This downloads one fixed Warden from an immutable, dedicated
+# recovery release, verifies it with the published checksum, and runs it only
+# from a private temporary directory. It does not replace the installed updater
+# directly; the normal checksum-verified update installs the stable Warden.
 
 repository="nimasrn/SwarmOps"
-recovery_version="v0.5.10"
-release_base="https://github.com/$repository/releases/download/$recovery_version"
+recovery_release="warden-v0.6.0.1"
+release_base="https://github.com/$repository/releases/download/$recovery_release"
 warden_environment="/etc/swarmops/warden.env"
 release_root="/usr/local/lib/swarmops/releases"
 
@@ -51,12 +51,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-bundle_name="swarmops-core_${recovery_version}_linux_${release_arch}.tar.gz"
+bundle_name="swarmops-warden_${recovery_release}_linux_${release_arch}.tar.gz"
 bundle_file="$recovery_dir/$bundle_name"
 checksums_file="$recovery_dir/checksums.txt"
 curl_options=(--fail --silent --show-error --location --proto '=https' --proto-redir '=https')
 
-info "Downloading the immutable $recovery_version recovery Warden for Linux/$release_arch."
+info "Downloading the immutable $recovery_release recovery Warden for Linux/$release_arch."
 curl "${curl_options[@]}" "$release_base/checksums.txt" -o "$checksums_file"
 curl "${curl_options[@]}" "$release_base/$bundle_name" -o "$bundle_file"
 

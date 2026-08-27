@@ -162,6 +162,47 @@ func TestExtractCoreBundleIncludesReviewedAssets(t *testing.T) {
 	}
 }
 
+func TestExtractCoreBundleAllowsFutureReviewedAsset(t *testing.T) {
+	files := map[string][]byte{}
+	for _, name := range requiredBundleFiles("core") {
+		files[name] = []byte(name)
+	}
+	const futureAsset = "assets/swarmops-valkey-sentinel.yml"
+	files[futureAsset] = []byte("services: {}\n")
+	directory := t.TempDir()
+	if err := extractBundle(archiveWithFiles(t, files), directory, "core"); err != nil {
+		t.Fatalf("extractBundle() rejected a safely named future Core asset: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(directory, futureAsset))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o644); got != want {
+		t.Fatalf("future Core asset mode = %04o, want %04o", got, want)
+	}
+}
+
+func TestExtractCoreBundleRejectsUnreviewableExtraPaths(t *testing.T) {
+	for _, name := range []string{
+		"assets/nested/stack.yml",
+		"assets/stack.yaml",
+		"assets/Stack.yml",
+		"assets/-stack.yml",
+		"swarmops-helper",
+	} {
+		t.Run(name, func(t *testing.T) {
+			files := map[string][]byte{}
+			for _, required := range requiredBundleFiles("core") {
+				files[required] = []byte(required)
+			}
+			files[name] = []byte("unexpected")
+			if err := extractBundle(archiveWithFiles(t, files), t.TempDir(), "core"); err == nil {
+				t.Fatalf("extractBundle() accepted unsupported Core path %q", name)
+			}
+		})
+	}
+}
+
 func TestValidateLoopbackHealthURL(t *testing.T) {
 	if err := validateLoopbackHealthURL("https://control.example.test/healthz"); err == nil {
 		t.Fatal("validateLoopbackHealthURL() accepted a remote host")
