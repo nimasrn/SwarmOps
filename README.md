@@ -4,106 +4,244 @@
 > [nim.zone](https://nim.zone), maintained by Nima Sarayan.
 
 SwarmOps is a remote Docker Swarm control plane. It is the replacement path
-for Portainer: an auditable Go API plus React console, an Ansible bootstrap
-entrypoint, and shared Grafana/Prometheus/Alertmanager/Jaeger observability
-manifests. In the deployed platform, the API is a singleton on the designated
-control manager: its persisted cluster profiles, audit history, encrypted
-command ledger, checked-in deployment assets, and production console all live
-there. An operator can run only the Vite UI locally and proxy it to that API;
-no local SwarmOps API, Docker daemon, Docker socket, or local Swarm is needed.
-Operators install the native machine agent on a Linux or macOS host, then paste
-the installer’s single-use enrollment token into the console. The token carries
-the address and TLS pin, never the long-lived machine API key.
+for Portainer: an auditable host-native Go Core, host-native Ubuntu agents,
+and Prometheus/Jaeger/Loki observability manifests. A
+production installation has one active **control-plane** member by default:
+its persisted cluster profiles, audit history, encrypted command ledger,
+checked-in deployment assets, and production console live there. That process
+is not a Docker target and has no implicit local Docker, UFW, or provisioning
+access. **Servers** contains only independently installed and enrolled native
+machine agents, including when an agent happens to run on the same host as the
+core. An operator can run only the Vite UI locally and proxy it to the active
+API; no local SwarmOps API, Docker daemon, Docker socket, or local Swarm is
+needed. Production agents run on Ubuntu 22.04 or 24.04 and initiate outbound
+mutual-TLS long polls to Core. No inbound agent port, SSH session, WebSocket,
+or Traefik route is required for control traffic.
+
+## Quick start
+
+In **Infrastructure → Agents**, generate a short-lived one-time installer
+command and run it on the Ubuntu host:
+
+```sh
+curl --fail --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
+  | sudo bash -s -- --core https://core.example.com --enrollment-code '<one-time-code>' --install-docker
+```
+
+The installer creates the systemd service, generates the private key on the
+host, exchanges the one-time code for a renewable client certificate, pins
+Core identity, and starts the outbound poll loop. Docker installation and
+Swarm initialization remain separate typed catalog operations after the agent
+is visible; the Core process itself never needs Docker. Alternatively, run the
+same command without `--enrollment-code`; the agent prints a short-lived code
+to approve in **Infrastructure → Agents** and retains the private redemption
+secret locally.
+
+After a native agent is enrolled, **Infrastructure → Readiness** offers a
+one-target plan in the console. The page reads a bounded host snapshot first —
+hostname, operating system, kernel, architecture, CPU capacity and load,
+memory, root-disk capacity, uptime, agent version, Docker state, and Swarm
+state — even when Docker has not been installed yet. It can then queue a fixed
+Debian/Ubuntu plan to update OS packages, install or update Docker Engine,
+initialise an inactive host as a single-node Swarm, and apply a CIDR-scoped UFW
+baseline. Docker Swarm ports are restricted to reviewed peer CIDRs. Joining an
+existing Swarm, manager promotion, node availability, and package maintenance
+are typed catalog operations; custom shell commands and arbitrary UFW rules do
+not exist.
+
+### Control-plane placement and recovery
+
+**Settings → Core and movement** is deliberately separate from **Agents**.
+It reports the API process identity, whether this member is active or standby,
+and the recorded handoff state. The host serving the console never appears in
+the agent inventory by itself. If it must be operated as a Docker host, install
+and enrol its own machine agent through either certificate flow, then link that
+already-enrolled server profile as optional topology context.
+
+The normal deployment remains one active API task. A standby is a recovery
+candidate, not a second active controller: give it a unique
+`SWARMOPS_CORE_ID`, set `SWARMOPS_CORE_MODE=standby`, deploy the same reviewed
+release, and restore a complete encrypted controller-state copy plus its
+separately protected data-encryption key. The Control plane page records an
+operator-attested restore verification; it never copies state, secrets, or
+service binaries over an unpinned connection.
+
+For the Docker-free bootstrap, pass `--core-id <unique-id> --core-mode standby`
+on the recovery host. It starts with no managed-server profile and stays unable
+to act on agents until the restored topology is explicitly promoted.
+
+For a planned move, prepare the verified standby, take and restore a final
+state copy, fence the old primary from the page, copy the resulting fenced
+state to the target, and promote the target from its own page. Fencing pauses
+new agent and cluster work on the former primary; a command that is already
+running is left visible rather than guessed at or replayed. Emergency
+promotion is available only after an operator explicitly confirms the former
+primary is stopped or fenced. There is no automatic failover, shared-volume
+replication, or split-brain detector. Use a tested encrypted-state restore and
+external fencing instead of running two active cores.
+
+### Deploying an application
+
+Once a host is enrolled, deploy from an immutable image or connect a private
+Git provider and let SwarmOps discover the deployment evidence. SwarmOps
+renders the Compose, Traefik route, health probe, metrics/tracing wiring, and
+managed database attachments:
+
+1. **Databases** → deploy PostgreSQL, MongoDB, or Redis. SwarmOps generates the
+   password and the connection URI as Swarm secrets.
+2. **Applications** → choose an approved slot, give it an already-pushed
+   immutable image tag, tick the databases it needs, and deploy.
+3. **Source deploy** → add a GitHub, GitLab, or Gitea/Forgejo token, choose a
+   repository and ref, review every Compose/Dockerfile found in the monorepo,
+   then release one application candidate. The screen is four numbered stages —
+   Source, Discovery, Review, Release — beside a standing deployment plan.
+   Source contains both the sealed provider connection and the immutable
+   repository revision; Discovery scans the complete tree; Review owns the
+   accepted mapping; Release builds and starts the healthy task first. The plan
+   lists the applications, immutable images, managed
+   databases, shared stacks, domain, and telemetry the deployment will own, and
+   the warnings and blockers still in its way. The plan is the only place the
+   deployment is queued from, and it can be saved as a browser-local draft
+   holding the selection alone — never evidence. Source PostgreSQL/MongoDB/Redis/
+   Valkey services are replaced by managed databases; Prometheus,
+   Alertmanager, Jaeger, Loki, Alloy, and exporters reuse the global stacks.
+   Dashboard containers from a source repository are unsupported.
+
+The application slot — its name, public domain, certificate resolver, and
+resource ceiling — comes from the reviewed platform manifest, so an operator
+picks from approved domains rather than claiming an arbitrary one. Everything
+else is generated: no Compose, no Traefik label, and no connection string is
+written by hand. See
+[applications.example.json](../../deploy/swarmops/applications.example.json)
+for two worked specs.
 
 It does **not** make Docker’s root-equivalent socket harmless. The product
 reduces its exposure to a small, reviewed API rather than forwarding arbitrary
 Docker commands from a browser.
 
-## Source-release scope
+## Product direction
 
-This repository is self-contained for SwarmOps controller and machine-agent
-development, container builds, native installers, managed-database stack
-assets, and example application/admission specifications. Wider `nim` platform
-manifests and operator automation remain in
-[nimasrn/nim](https://github.com/nimasrn/nim). When an operational procedure
-below uses an `apps/swarmops` path, run it from that monorepo checkout.
+The SwarmOps program goal is to create the kind of developer platform offered
+by managed container PaaS providers, but as open-source, self-hostable
+software that operators can run on infrastructure they control. “Better” is a
+directional standard rather than a premature feature-parity claim: portable
+image and deployment definitions, operator-owned data and infrastructure,
+auditable bounded operations, and no required provider lock-in.
 
-Published native installations and their rollback behavior are documented in
-[Native release installation and updates](docs/Native-Release-Updates.md). See
-the [changelog](CHANGELOG.md) for release contents.
+Today, SwarmOps is a Docker Swarm control plane, not a turnkey multi-tenant
+cloud PaaS. Its deployment primitive is a reviewed, generated image-only
+Compose v3.9 application stack. Private repository content can inform that
+generator and its bounded image build, but source Compose is never deployed
+directly. SwarmOps does not ingest Kubernetes manifests or Helm charts.
+Kubernetes/Helm compatibility is a future product decision, not an existing
+capability or promise. The dated Iranian market scan and the exact comparison
+boundary are in [market positioning](docs/market-positioning.md). The
+bilingual programme reference and phased resilience roadmap are rendered from
+the nim.zone site’s versioned docs content and publish at
+[nim.zone/docs/swarmops](https://nim.zone/docs/swarmops) when the current site
+version is deployed.
 
 ## What it operates
 
 | Area | Capability | Boundary |
 | --- | --- | --- |
-| Servers | Run one installer and paste its single-use enrollment token; then approve fixed Docker installation, Swarm initialization, or joining the selected Swarm from the panel | Core exchanges the token over pinned TLS and, by default, retains the key only as AES-256-GCM-sealed state for restart recovery. The installer never changes Docker or Swarm; a selected manager relays a short-lived join credential only between enrolled agents. |
+| Control plane | Show the active or standby controller identity, register a recovery standby, record a tested encrypted-state restore, fence a planned handoff, and promote a local standby | A core member is never an implicit Server. A standby does not contact agents, claim queued commands, or run cluster mutations until promotion. State/key transfer and external primary fencing remain an explicit operator recovery procedure; automatic failover is intentionally not claimed. |
+| Agents | Enrol an Ubuntu 22.04/24.04 host with a dashboard-generated command or approve the code printed by an install-first agent | Both flows generate the private key locally, issue a renewable client certificate, pin Core identity, and use outbound HTTPS long polls. Long-lived credentials are never printed. A Swarm manager is required before cluster pages or mutations are enabled. |
 | Nodes | Docker role/state/availability, labels, task placement, and engine-declared CPU/memory capacity from the selected machine agent | A target must be a remote Swarm manager for cluster operations; optional global host probes are not required for connection. |
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
-| Services | Read a bounded service-log tail; restart, rollback, or scale with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. |
-| Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention, with safe execution evidence beside the command | The API writes the command ledger before returning `202`; fixed-operation output is bounded, redacted, AES-256-GCM sealed, and readable in the panel. It never stores service logs, source archives, raw build output, payloads, or secrets there. |
-| Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmopsctl build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
-| Edge / TLS | Discover and reconcile the checked-in Traefik stack; protected dashboard, internal Prometheus metrics, and ACME DNS challenge | DNS/provider tokens and dashboard credentials remain external Swarm secrets; the browser never supplies routes or credentials. |
-| Observability | One Grafana + Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection | Core, host-probe, and log-collector removal require exact typed confirmations. Its durable local volumes can move through the guarded mobility workflow. |
-| Databases | Enable reviewed single-node PostgreSQL, MongoDB, or Redis stacks with generated credentials on the internal data overlay | Credentials are created as Swarm secrets and sealed by Core, never returned to the browser. Their local volumes can make a quiesced, checksummed move; this is not a claim of database replication or zero-downtime HA. |
-| Data mobility | Move the control plane, MongoDB, PostgreSQL, Redis, or the reviewed monitoring stores to another eligible managed node | The source is retained after a verified copy and health burn-in. Only an administrator can press the separate source-retirement action; no generic file transfer, automatic deletion, or browser-supplied path is available. |
-| Applications | Select a manifest-approved slot, immutable image, domain, health/metrics path, backend, and managed databases; preview or deploy the rendered Compose | Core admits its rendered output through the same closed Compose policy and fresh live-capacity check. Database URIs use stack-scoped secrets by default; `/metrics/targets` exposes only safe Prometheus discovery metadata. |
-| Provisioning | Guided `make swarmops-provision` invokes Ansible with fresh manager IPs and SSH user | Ansible remains the reviewed multi-manager bootstrap. For an enrolled individual host, the panel can queue only fixed Docker and Swarm initialization/join actions. |
+| Services | Read a bounded service-log tail; restart, rollback, or scale a replicated service with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. The console permits a whole replica count from 0 through 1000 and deliberately omits replica control for global services. |
+| Docker resources | Read containers, images, volumes, networks, secrets, and configs on the selected target, and create or delete networks, volumes, and configs; start, stop, restart, or remove a container; pull or remove an image | Reads are projections, not a socket proxy: container environment values are reduced to variable names, secret values are unreadable by Docker itself, and config payloads are never returned. Every create or delete is one fixed, CSRF-protected, audited command with its own typed confirmation phrase. |
+| Insight dashboard | Charted trends over a rolling in-memory series sampled once a minute — tasks and containers over time, failures and degradation, disk by resource with reclaimable split out, largest images, and Engine activity by action — beside the live totals | The series is in-memory only, bounded to four hours per target, and lost on API restart; it holds counts and byte totals, never operator data. Long-range history remains the Prometheus stack SwarmOps deploys. |
+| Command runner | Run any catalogued operation from the console against an explicitly chosen server: the form is generated from the operation's own parameter description, a read shows exactly what that server returned, and a mutation is queued in the ledger for it | The target is named per command rather than inherited from the shell's selection, and only a connected remote Swarm manager is eligible; the Command queue shows the server each row will change. The runner adds no capability. It builds requests only from catalogued routes, and a destructive entry stays disabled until the operator types the phrase the API derives for that exact target. |
+| Cluster insights | Node, service, task, and container counts; fleet CPU/memory/disk capacity; image, volume, container, and build-cache disk usage with reclaimable totals; a bounded Engine event window; and swarm orchestration settings | Computed once on the control plane so every screen reads the same numbers. Pruning any resource kind needs its own `PRUNE_<RESOURCE>` confirmation; a volume prune destroys data SwarmOps cannot restore. |
+| Swarm | Read the cluster object and raft/orchestration settings, set the task-history retention limit, and rotate a leaked worker or manager join token | Join tokens are never returned by any read path or by the rotation itself; enrolment stays an installer workflow on the machine. |
+| Supported commands | A served catalogue of every read and mutation SwarmOps offers, with the Docker command each becomes, its API route, and the guards on it | The vocabulary is closed. An operation absent from the catalogue has no route, no queue action, and no argv the machine agent will accept. |
+| Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention | The API writes the command ledger before returning `202`; it exposes no raw payload, source archive, remote output, or secret. The newest queued or retry-scheduled command for the same server/action/target atomically replaces the older one; running and needs-attention commands remain visible. |
+| Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmops build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
+| Source deploy | Verify and seal GitHub, GitLab, GitHub Enterprise, self-managed GitLab, or Gitea/Forgejo-compatible tokens; list accessible repositories; resolve a ref to a commit; find every Compose file and Dockerfile at any depth; build and deploy one classified application | Private hosts require an exact `SWARMOPS_SOURCE_ALLOWED_HOSTS` entry. Provider content is evidence only: browser responses and audit records contain paths, digests, classifications, and findings—not tokens, Compose/Dockerfile bodies, environment values, build contexts, or logs. Only regular files from the pinned build context enter the encrypted artifact queue. |
+| Edge / TLS | Typed HTTP/TCP/UDP routes, service-role inventory, isolated dependency bindings, static entrypoints, Cloudflare/Arvan DNS records, ACME state/retry, bounded logs, internal Prometheus status, and one-action cutover | Raw labels/rules/provider URLs/queries are never accepted. Every mutation is durably queued for the selected manager; public exposure is denied by default and static changes warn that they restart the singleton. |
+| Applications | Render and deploy an application from a small spec: approved slot, immutable image, container port, health path, attached databases, metrics/tracing, optional backend, and an optional policy-bounded domain | SwarmOps generates the Compose and puts its own output through `ValidateCompose` and platform admission. Manual applications use an already-pushed image; Source deploy may first build a pinned repository context through the same capped build service. Exact domains and optional suffix policies come from the reviewed manifest, runtime assignments are unique, and removal needs the application-specific confirmation. |
+| Databases | Deploy or remove one managed PostgreSQL, MongoDB, or Redis instance from the console | Each is a reviewed, checked-in Compose asset rendered on the controller; the browser never authors it. The password and routed connection URI are generated as Swarm secrets and never returned to a browser. Each engine is pinned to a `nim.stateful=true` node and attached only to its encrypted service-and-Traefik overlay; removal needs the exact `REMOVE_DATABASE_<ENGINE>` confirmation and leaves the named volume in place. |
+| Observability | Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection. Applications that publish metrics are discovered automatically | Every scrape/dependency path uses a typed internal Traefik alias. The console reports collection health and target status without arbitrary PromQL or charts; the few product graphs will be implemented directly in SwarmOps later. |
+| Provisioning | After enrollment, Server readiness shows the agent's bounded live host snapshot and queues typed Docker install/repair, Swarm init/join/leave, manager promotion, node availability, package, and diagnostic operations for explicit targets. | Docker comes from Docker's signed apt repository. Host inspection exposes capacity and OS metadata, never files, processes, environment, package lists, or command output. The agent validates each closed operation locally; no arbitrary remote shell or Docker-socket proxy exists. |
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
-| Fleet jobs | Queue an allow-listed Ansible operation on every selected inventory host and read durable status | A node-owned transient systemd job survives an accepted SSH control-channel loss; the remote model uses the trusted-workstation SSH inventory status path and never exposes command output in the browser. |
+| Agent operations | Queue a typed operation for one node or an explicit node set and inspect durable attempts, evidence, retries, and attention states. | Agents lease work through outbound HTTPS, acknowledge ordered events, resume after disconnects, and reject commands from stale Core authority epochs. |
 | Backups | Install an opt-in Restic timer for local Docker named-volume paths to S3-compatible storage | Credentials are supplied only through a protected controller-side file; repository initialisation and restore validation stay explicit operator actions. |
 
 ## Architecture
 
 ```text
 hosted browser ── HTTPS ──────────────────────────┐
-local Vite UI ── relative /api proxy ──────────────┼──> SwarmOps API on the control manager
-                                                    │          (no Docker socket)
+local Vite UI ── relative /api proxy ──────────────┼──> active SwarmOps core
+                                                    │    (separate identity; no Docker socket)
                                                     │
-                         one-paste enrollment → pinned TLS machine API
+                                  outbound mutual-TLS long polls
                                                     │
-                                      Linux/macOS Docker host / Swarm manager
+                             independently enrolled Ubuntu machine agent
                                                     │
-                              fixed agent endpoints ──> local Docker Engine/CLI
+                                      Docker host / Swarm manager / local Engine
 
-trusted workstation ─ swarmopsctl tar stream ─> API build endpoint ─> encrypted command ledger ─> selected remote Engine
+trusted workstation ─ swarmops tar stream ─> API build endpoint ─> encrypted command ledger ─> selected remote Engine
+private Git provider ─ bounded HTTPS API ─> evidence plan ─ regular-file tar ────────────────┘
 ```
 
 - `cmd/api` serves the React build and authenticated API on port `8084`. The
-  deployed singleton is constrained to a manager with `nim.control=true`; its
-  named volume holds AES-256-GCM-sealed server profiles, retained machine keys,
-  database/application state, audit history, command metadata/payload, and
-  pending build contexts. It starts without a Docker daemon or socket.
-- `cmd/swarmopsctl` runs on the operator workstation for a real local build
+  default active core is constrained to a manager with `nim.control=true`; its
+  named volume holds AES-256-GCM-sealed server profiles, audit history, command
+  metadata/payload, pending build contexts, and non-secret core-topology state.
+  It starts without a Docker daemon or socket. A restored standby has its own
+  stable core ID and blocks agent/cluster operations until it is explicitly
+  promoted.
+- `swarmops` runs on the operator workstation for a real local build
   path. It prompts for a password securely or reads it once from stdin.
+- `internal/enroll` defines the single copy-paste token: origin, pinned leaf
+  fingerprint, and a one-time enrollment secret. The agent serves exactly one
+  `POST /v1/enroll` exchange, burns the secret, deletes its on-disk copy, and
+  closes the window permanently — including after a small budget of failed
+  attempts.
 - `internal/remote` owns the pinned machine-API transport. It exposes a
   bounded Docker facade and fixed Docker command shapes only; it never exposes
   a shell, socket proxy, or remote filesystem API to the browser.
 - `internal/ops` is the narrow mutation boundary. It owns Compose policy,
   selected-node placement injection, and audit calls. Domain data does not
   depend on HTTP, a machine API, or Docker.
-- `internal/queue` is the singleton command ledger and worker. It admits only
-  fixed mutation shapes, serializes remote execution, and preserves every
-  accepted command across an API restart.
+- `internal/coretopology` owns the separate core-membership and handoff record.
+  It has no remote shell, Docker, or agent-registration path.
+- `internal/queue` is the active-core command ledger and worker. It admits only
+  fixed mutation shapes, serializes remote execution, preserves every accepted
+  command across an API restart, and does not claim work while the local core
+  is standby.
 
 ## Durable command lifecycle
 
 All approved remote mutations — node availability, application-stack deploy,
-service action, image build, Traefik reconciliation, reviewed observability
-controls, managed host setup, and data handovers — require an `Idempotency-Key`. After admission and
+service action, image build, Traefik reconciliation, and reviewed
+observability controls — require an `Idempotency-Key`. After admission and
 policy checks, SwarmOps atomically writes an encrypted command record before
-returning HTTP `202` with a command ID. The matching console route shows safe
-metadata plus a bounded, redacted log of the fixed operation. It deliberately
-excludes service-log content, source archives, build output, full command
-payloads, and secrets.
+returning HTTP `202` with a command ID. The matching console route shows only
+safe metadata: action, target, state, attempt count, next retry, and generic
+failure guidance.
 
-The singleton worker runs one command at a time. Its states are `queued`,
+The active-core worker runs one command at a time. Its states are `queued`,
 `running`, `retry_scheduled`, `succeeded`, and `needs_attention`. Only
 reconcilable fixed actions receive bounded automatic retry: 2, 4, 8, 16, 32,
 then 64 seconds, with no more than eight attempts. A shutdown, timeout, API
 restart while a command is running, deterministic policy error, non-retryable
 action, or exhausted retry budget becomes `needs_attention`; SwarmOps never
 blindly replays an uncertain remote effect. An operator can manually requeue
-that terminal state after inspecting the target.
+that terminal state after inspecting the target. A planned fence stops it from
+claiming new work; it does not cancel an already-running remote operation. The
+worker also retries a
+transient durable-store failure with bounded exponential backoff before it
+stops, and every store transition rolls back its in-memory change when the
+encrypted write fails, so a claim can never leave a phantom running command.
+
+The ledger is bounded: succeeded commands beyond
+`SWARMOPS_COMMAND_HISTORY_LIMIT` (default `2000`) are pruned oldest-first on
+each transition. Queued, running, retry-scheduled, and needs-attention
+commands are never pruned, and pruning only takes effect once the sealed
+write succeeds.
 
 Command metadata and JSON payloads are AES-256-GCM sealed in the controller
 volume. A build source archive remains in an AES-256-GCM-sealed, owner-only
@@ -114,45 +252,12 @@ successful lifecycle write. A failed upload is retained as a visible
 connect/disconnect and local login/session management are not remote mutation
 commands and remain synchronous.
 
-## Managed host setup and data mobility
+## Versions
 
-Installing the machine agent is deliberately Docker- and Swarm-free. After its
-one-time enrollment succeeds, **Servers** can queue only three reviewed host
-actions: install Docker Engine on Debian/Ubuntu, initialize a new Swarm, or
-join the currently selected Swarm. The join button never asks for or displays a
-token: the selected active manager obtains Docker's short-lived manager token
-and the controller sends it directly to the enrolled destination agent. The
-token is not in the browser request, command payload, audit record, or command
-log.
-
-**Data mobility** is a deliberate cold handover for the current single-node,
-local-volume topology. Choose a supported resource and an eligible destination
-node with its managed agent connected. SwarmOps resolves the current source
-task, quiesces it, streams the reviewed named volume through the pinned agents,
-verifies byte count and SHA-256 receipt on the destination, pins the exact
-reviewed service to that node, and waits for a sustained health window (10
-minutes by default). For Core, the source first writes its handover fence,
-stops accepting mutations, copies that sealed state, and then stops its own
-worker as the replacement service starts; the replacement independently owns
-burn-in. This produces a short control-plane interruption, not active-active
-operation. The source volume remains untouched. Only when the status becomes **Ready for
-retirement** does an administrator get the separate **Retire source data**
-button; that action again verifies no task is running on the source before
-deleting the reviewed source volume. It also rechecks that every replacement
-task is still healthy on the exact destination immediately before cleanup.
-
-The catalog is fixed: SwarmOps Core, MongoDB, PostgreSQL, Redis, and the
-Prometheus, Alertmanager, Grafana, Jaeger, and Loki stores. Monitoring moves
-its components serially, and an interrupted handover becomes **Needs
-attention** with source data retained. Before source cleanup begins, an
-administrator may explicitly close a failed record with the panel's typed
-confirmation after manual review; that only releases the handover fence and
-never deletes, restarts, or repairs data. A record whose source cleanup may
-have started remains open for recovery. This workflow is not a replacement for
-MongoDB replication, PostgreSQL replication, Redis Sentinel/Cluster, shared
-ACME storage, database-consistent backup/restore testing, or a replicated
-control plane. It makes the reviewed present topology movable without turning
-the agent into a file-copy or remote-shell service.
+The current version is `0.6.0`. Release history is in
+[CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
+cases, changelog, and roadmap — is published at
+[nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
 
 ## Decision artifacts
 
@@ -163,14 +268,19 @@ the agent into a file-copy or remote-shell service.
   design introduced for this operating model.
 - [Docker-free controller system design](docs/SwarmOps-Docker-Free-Controller-System-Design.docx)
   records the separate-host direct-TLS, encrypted-state, and recovery model.
+- [Control-plane topology system design](docs/SwarmOps-Control-Plane-Topology-System-Design.docx)
+  records the explicit core/agent boundary, restored-standby evidence, and
+  fenced promotion workflow without an automatic-HA claim.
 - [Durable command queue design](docs/SwarmOps-Command-Queue-System-Design.docx)
-  records the write-before-execute invariant, retry policy, Ansible boundary,
+  records the write-before-execute invariant, retry policy, agent boundary,
   and rollout gates for this lifecycle.
-- [Docker-free controller ADR](https://github.com/nimasrn/nim/blob/main/docs/adr/ADR-0003-docker-free-swarmops-controller.md)
+- [Source-to-deploy system design](docs/SwarmOps-Source-to-Deploy-System-Design.docx)
+  records provider adapters, sealed credentials, evidence classification,
+  managed/shared substitutions, dynamic-domain policy, and rollout gates.
+- [Source-to-deploy ADR](../../docs/adr/ADR-0006-swarmops-source-to-deploy.md)
+  records why repository Compose remains evidence rather than executable input.
+- [Docker-free controller ADR](../../docs/adr/ADR-0003-docker-free-swarmops-controller.md)
   records the security trade-offs and production evidence gates.
-- [Native release installation and updates](docs/Native-Release-Updates.md)
-  records the Core/Agent/Warden host layout, GitHub Release assets, update
-  health checks, rollback behavior, and retention policy.
 - [Business review](docs/SwarmOps-Business-Review.pptx) frames the adoption
   decision and its explicit production-evidence gates.
 - [Operating review](docs/SwarmOps-Operating-Review.pptx) is the operator
@@ -182,6 +292,7 @@ The standard local workflow runs the UI only. Point Vite at the HTTPS origin of
 the deployed SwarmOps API on the designated manager:
 
 ```bash
+cd apps/swarmops
 SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 ```
 
@@ -194,11 +305,37 @@ targets and invalid TLS certificates. The production API remains the source of
 truth for cluster profiles, audit records, checked-in deployment assets, and
 the served production console.
 
-The sidebar always changes the console route. Servers, Provisioning, Fleet
-operations, the Command queue, and the Audit trail remain available before a Swarm manager is
-selected; cluster inventory and mutation pages instead show their selected
-manager prerequisite with a direct path back to Servers. The console never
-silently replaces a chosen destination with the Servers page.
+The console has eight stable sections: **Home**, **Infrastructure**,
+**Applications**, **Deploy**, **Traffic**, **Observe**, **Operations**, and
+**Settings**. They appear as one horizontal section bar on desktop and the same
+ordered destinations in the mobile drawer. The masthead keeps Core authority
+separate from the selected Swarm cluster, and every cluster read or mutation
+continues to carry that explicit manager target. Infrastructure owns agents,
+readiness, diagnostics, and Docker resources; Operations owns the durable
+command ledger, audit trail, catalog, and fleet work. Pages that require a
+manager show a selected-manager workspace with direct recovery paths instead
+of silently replacing the requested destination.
+
+### First server onboarding
+
+The sign-in screen includes **Install and connect a server**, so an operator
+can discover the install-first flow before signing in. The Ubuntu agent prints
+a short-lived approval code, keeps its private key and redemption secret on the
+host, and waits. After sign-in, **Infrastructure → Agents** gives equal
+prominence to approving that code or generating a one-command certificate
+grant.
+
+For an install-first agent, run:
+
+```bash
+curl --fail --show-error --location \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh \
+  | sudo bash -s -- --core https://core.example.com
+```
+
+Approve the printed code within 15 minutes. After approval, the agent redeems
+the certificate over the same pinned Core identity, installs its systemd
+service, and appears without an inbound port or manually handled credential.
 
 ### Cluster overview
 
@@ -217,82 +354,77 @@ the headroom card) are shown only when every selected node has a healthy
 read-only host probe; otherwise the console labels the source-coverage gap and
 shows capacity without a misleading percentage.
 
-`make dev-api` starts the local Core API with `admin` / `admin`, uses an
-owner-only development session
-value, and does not represent or share the manager's control-plane state. The
-development password hash can be overridden with `SWARMOPS_DEV_PASSWORD_HASH`
-when launching the API manually. `SWARMOPS_INSECURE_DEV_AUTH` is absent from
-the Swarm manifest, which always uses external secrets; never set the
-development flag or values in a host environment file or Swarm service.
+### Local development
 
-### Full local development
-
-When developing the Core API and a source-built machine agent on the same
-computer, start the complete local environment with one command:
+Run the complete local path with:
 
 ```bash
 make local
 ```
 
-It prepares the local identity, starts the loopback machine API, waits for its
-TLS health check, then starts Core and the Vite console. On exit, it cleans up
-the processes it started. The machine API is a host process and starts even
-when Docker is not running. Core connects it automatically, while Docker and
-Swarm operations remain unavailable until the local Docker Engine comes up.
+It creates or reuses a private development identity under
+`$TMPDIR/swarmops-dev` (override with `SWARMOPS_DEV_DIR`), then starts
+Core at `http://127.0.0.1:8084` and the Vite console at
+`http://127.0.0.1:5284` when it is free (Vite prints the next loopback port if
+it is occupied). Sign in with `admin` / `admin`. The Core connects the
+loopback agent when it is running through a pinned local certificate and a private
+API key; neither credential goes through the browser or the saved profile.
+Set `SWARMOPS_WEB_PORT` before `make local` to choose a different preferred UI
+port.
 
-To debug the two parts independently, run the agent in one terminal and Core
-plus the console in another:
+The agent is a host process, not a Docker container. Run `make dev-agent`
+when you want it on the host; `make dev` and `make local` run Core and the
+console only. `make dev-api` runs only Core while preparing the same local
+identity.
 
-```bash
-# Terminal 1: starts the loopback machine API.
-make dev-agent
+The development session/data key is persistent instead of being regenerated at
+each launch. New Core state is kept in `$SWARMOPS_DEV_DIR/core`, deliberately
+separate from the former `$TMPDIR/swarmops-dev` root state that may have been
+sealed with an unrecoverable old key. The commands never delete existing state;
+choose a new `SWARMOPS_DEV_DIR` when an intentionally clean local instance is
+needed. The development password hash can be overridden with
+`SWARMOPS_DEV_PASSWORD_HASH` when launching the API manually.
 
-# Terminal 2: starts the local Core API and Vite console.
-make dev
-```
-
-`make dev-agent` creates a private development API key and pinned P-256 TLS
-identity in SwarmOps' local development directory, then serves the agent only
-at `https://127.0.0.1:9180`. `make dev-api` uses that same local identity and
-automatically adds and connects the **Local machine** profile without sending a
-key through the browser. It continues waiting if the agent starts after Core;
-the console refreshes the server list and selects it automatically when the
-local Docker Engine is a Swarm manager. The local identity remains owner-only
-where private and is never printed.
-
-By default the shared development directory is
-`${TMPDIR:-/tmp}/swarmops-dev`; set `SWARMOPS_DEV_DIR` to another absolute
-non-root directory when needed. To run Core yourself instead of `make dev`,
-use `make dev-api` and `make web-dev`; Vite already proxies relative browser
-requests to `http://127.0.0.1:8084` automatically. This shortcut is available
-only with `SWARMOPS_INSECURE_DEV_AUTH`, accepts only a loopback HTTPS agent,
-and is rejected by production configuration. Core's encrypted development
-state lives under that directory's `core` subdirectory, so it remains readable
-across local restarts but stays separate from earlier disposable development
-state at the directory root.
+`SWARMOPS_INSECURE_DEV_AUTH` is absent from the Swarm manifest, which always
+uses external secrets; never set the development flag or values in a host
+environment file or Swarm service.
 
 ## Direct Docker-free controller
 
-For a separate, freshly installed controller host, download the published
-native Core installer. It serves the bundled GUI and API from that host only;
-it does not install Docker, join a Swarm, or contact a cluster.
+For a separate, freshly installed controller host, run the bootstrap from a
+reviewed checkout. It serves the compiled GUI and API from that host only; it
+does not install Docker, join a Swarm, or contact a cluster.
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh
-sudo bash install-swarmops-core.sh \
+sudo bash scripts/bootstrap-swarmops-control-plane.sh \
   --listen-ip <literal-server-ip> \
-  --allow-cidr <operator-device-ip>/32
+  --allow-cidr <operator-device-ip>/32 \
+  --install-dependencies
+```
+
+To bootstrap a recovery candidate, give it a different stable identity and a
+standby role from the start:
+
+```bash
+sudo bash scripts/bootstrap-swarmops-control-plane.sh \
+  --listen-ip <literal-standby-ip> \
+  --allow-cidr <operator-device-ip>/32 \
+  --core-id core-manager-02 \
+  --core-mode standby
 ```
 
 The command requires the exact IP already configured on the server and one or
 more trusted operator CIDRs. It prompts for a 16+ character administrator
-password, generates independent session and AES-256-GCM data keys, installs a
-restricted systemd service, and chooses a random high TCP port. It prints the
-HTTPS URL and the SHA-256 certificate fingerprint. Verify that fingerprint
-from a trusted server console before accepting the self-signed IP certificate
-in a browser. The controller downloads a release binary; it does not need Git,
-Go, or npm on the server.
+password, generates independent session and AES-256-GCM data keys, builds the
+embedded React console, installs a restricted systemd service, and chooses a
+random high TCP port. Before it prints the panel URL or login name, it waits
+for Core's local TLS `/readyz` endpoint, which verifies both the durable audit
+and command stores. If the service stops or does not become ready within 60
+seconds, the installer prints the service issue, rolls back the new service,
+runtime, configuration, and state, and prints no panel login details. On
+success it prints the HTTPS URL, `operator` login name, and SHA-256 certificate
+fingerprint. Verify that fingerprint from a trusted server console before
+accepting the self-signed IP certificate in a browser.
 
 The service account has no Docker-group membership or capabilities, and the
 service gets no Docker socket. Browser mutations and remote builds begin
@@ -300,94 +432,99 @@ disabled. Server profiles, audit history, and command metadata/payload are
 sealed with AES-256-GCM under `/var/lib/swarmops`; pending build contexts are
 owner-only spool files retained only while a queued or needs-attention build
 needs its source and deleted after a successful build. The separate key remains
-in a protected file under `/etc/swarmops`. Enrollment-based installations seal
-machine API keys in controller state so hosts can reconnect after a restart;
-the keys are never returned by an endpoint or written to audit records. Set
-`SWARMOPS_RETAIN_MACHINE_KEYS=false` before enrollment to keep keys memory-only
-and accept manual reconnects after every restart. Encryption protects copied
-state or backups without the key; it cannot protect a controller host already
-compromised as root.
+in a protected file under `/etc/swarmops`. Machine API keys are never stored in
+controller state. The encryption protects copied state or backups without the
+key; it cannot protect a controller host already compromised as root.
 
 The allowlist is enforced by the API, not by the random port. Also add an outer
 firewall or security-group rule that exposes the printed port only to the same
 trusted networks. Back up the state key separately from the encrypted state:
 losing it makes saved controller state unrecoverable.
 
+The bootstrap writes a stable `SWARMOPS_CORE_ID` derived from its bound IP and
+marks the initial service `SWARMOPS_CORE_MODE=active`. A replacement controller
+must use a different stable ID and `SWARMOPS_CORE_MODE=standby`; stop its API
+before restoring a complete state copy, restore the matching data-encryption
+key through the protected host path, then start it and use **Control plane** to
+record verification and promote it. Do not mount the same local state directory
+on two machines, use a network filesystem as live controller state, or start
+two active cores.
+
 ## Direct machine agent (Linux and macOS)
 
-The target machine runs a native agent from a published release as a host
-process; it is not the global read-only `swarmops-agent` Swarm service. It can
-start before Docker is installed or running, reports that Docker is unavailable
-until the Engine appears, and needs a ready Docker Engine only for inventory or
-Swarm operations. On Linux, run the installer with `sudo`. On macOS, run it as
-the logged-in user, without `sudo`:
+### Legacy direct-listener migration
+
+The target Docker machine runs a native agent from this repository; it is not
+the global read-only `swarmops-agent` Swarm service. The following inbound mode
+is retained only to migrate existing installations; new production agents use
+outbound Ubuntu enrollment. On Linux, run the installer
+with `sudo`. On macOS, run it as the logged-in Docker Desktop user, without
+`sudo`. The command below is for a full Nim source checkout; for the published
+operator package, use the dedicated `nimasrn/SwarmOps` checkout in
+[First server onboarding](#first-server-onboarding):
 
 ```bash
-# Linux:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
-# macOS:
-curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
+bash scripts/install-swarmops-agent.sh \
+  --listen-addr 0.0.0.0:9180 \
+  --tls-cert-file /secure/swarmops-agent.crt \
+  --tls-key-file /secure/swarmops-agent.key
 ```
 
-To validate a fixed release and your listener/advertise settings without
-changing the host, add `--validate-only`, for example:
-
-```bash
-sudo bash install-swarmops-agent.sh \
-  --release <tag> \
-  --advertise-host <server-ip> \
-  --validate-only
-```
-
-The installer downloads a checksum-verified GitHub Release bundle containing
-`swarmops-agent` and **SwarmOps Warden** (`swarmops-warden`), then installs a
-systemd service on Linux or a per-user LaunchAgent on macOS. It requires curl,
-OpenSSL, and the platform service manager—not a live Docker socket, Docker CLI,
-Git, Go, or pre-created TLS files. By default it listens on `0.0.0.0:9180`,
-generates a P-256 self-signed certificate for SwarmOps'
-certificate-pin trust model, and writes its TLS identity to
-`/etc/swarmops-agent/tls/agent.crt` and `/etc/swarmops-agent/tls/agent.key` on
-Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
-`$HOME/.config/swarmops-agent/tls/agent.key` on macOS. Pass the paired
-`--tls-cert-file` and `--tls-key-file` flags only when an operator deliberately
-uses a different managed certificate. Pass `--install-dependencies` only when
-its documented Debian/Ubuntu or Homebrew package installation is appropriate.
-It does not install Docker, change the firewall, or create/join a Swarm. After
-the printed token is enrolled, **Servers** offers a fixed controller-managed
-Docker installation for Debian/Ubuntu and either a Swarm initialization or a
-join to the selected manager. The join credential is exchanged directly between
-enrolled agents and never appears in the panel. The installer never prints the
+The installer clones or fast-forwards `https://github.com/nimasrn/nim.git`
+(`main` by default), builds `cmd/agent`, and installs a systemd service on
+Linux or a per-user LaunchAgent on macOS. It also installs a fixed trusted-Git
+update check: the host runs it every six hours, and a current connected Core
+can only ask the host to run that same local check. The updater verifies its
+configured upstream before it fast-forwards and rebuilds the native service.
+This legacy updater is not the signed Current/Candidate/Previous supervisor
+specified for the completed product and must not be represented as one. It
+never accepts an update URL, branch, executable, or shell command from Core or
+a browser. Use `--no-auto-update` to remove the timer and request path
+explicitly; custom Git sources and branches disable unattended updates. Pass
+`--install-dependencies` only when its documented Debian/Ubuntu or Homebrew
+package installation is appropriate. With `--install-docker` and
+`--init-swarm`, it can prepare a fresh Debian/Ubuntu host before the agent
+starts; the normal outbound flow instead leaves Docker and Swarm to
+Infrastructure readiness. On Linux it also installs a private Unix-socket provisioning helper;
+after enrollment, readiness can request only the documented fixed OS,
+Docker, single-node Swarm, and CIDR-scoped UFW operations. It never prints the
 generated API key.
 
-It writes `SWARMOPS_AGENT_TOKEN_FILE`, `SWARMOPS_AGENT_ENROLLMENT_FILE`,
-`SWARMOPS_AGENT_MANAGED_STATE_FILE`, `SWARMOPS_AGENT_MOBILITY_TRANSFER_DIR`,
-`SWARMOPS_AGENT_TLS_CERT_FILE`, `SWARMOPS_AGENT_TLS_KEY_FILE`, `SWARMOPS_AGENT_LISTEN_ADDR`,
-`SWARMOPS_DOCKER_SOCKET`, `SWARMOPS_AGENT_BOOTSTRAP_ENABLED=true`,
-`SWARMOPS_AGENT_MOBILITY_ENABLED=true`, and `SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true`
-into its protected service environment. Keep the token/key file owner-only;
-the agent refuses a symlink or group/world-readable token or TLS key.
+It writes the Core URL and root-owned identity directory into its protected
+service environment. The outbound private key and renewable certificate remain
+owner-readable only; the agent refuses unsafe state permissions.
 
-On Linux, the default TLS identity is already in the SwarmOps-owned
-`/etc/swarmops-agent/tls` directory. A custom TLS identity must stay outside
-`/home`, `/root`, and `/run/user`, because the installed systemd service
-protects home directories. The agent must remain reachable only from the
-controller through an explicit firewall rule.
+To rotate the machine API key on an existing host, run the installed binary
+directly and restart the service:
 
-Warden checks GitHub Releases every 12 hours. It downloads and verifies a new
-bundle before stopping the agent, probes only the local health endpoint, rolls
-back a failed candidate, and retains the current release plus two prior
-known-good releases. Start `swarmops-agent-warden.service` manually for an
-immediate Linux check; see the native-release document for the controller and
-macOS equivalents.
+```bash
+sudo /usr/local/lib/swarmops-agent/releases/current/swarmops-agent gen apikey --key-file /etc/swarmops-agent/api-key
+sudo systemctl restart swarmops-agent.service
+```
 
-The installer prints an explicit completion summary followed by one
-`swarmops1.…` enrollment token containing the detected host, machine API port,
-public TLS certificate fingerprint, and a one-time secret. Open **Servers**,
-paste that token, and optionally give the host a display name. Core pins the
-exact leaf certificate, exchanges the one-time secret for the API key, and the
-agent burns the token after that successful exchange. The manual connection
-fields remain an advanced fallback for an already-installed agent or
-deliberately managed TLS material.
+The command prints the new API key so you can paste it into the same server
+profile in the panel. The old key is invalid immediately after restart.
+
+If you prefer a shorter command, create a root-owned symlink once:
+
+```bash
+sudo ln -sf /usr/local/lib/swarmops-agent/releases/current/swarmops-agent /usr/local/bin/swarmops-agent
+```
+
+Then run `swarmops-agent gen apikey --key-file ...` from shell.
+
+On Linux, keep the TLS files outside `/home`, `/root`, and `/run/user`: the
+installed systemd service protects home directories. The agent must remain
+reachable only from the controller through an explicit firewall rule.
+
+The installer prints the machine API port and a public TLS certificate
+fingerprint in `SHA256:<64-hex>` form, and gives the protected key-file path.
+Copy the key through an approved secure channel. Then open **Servers** and add
+the HTTPS origin without a port, the port, the fingerprint, and that key. The
+controller pins the exact leaf certificate and retains the key only until the
+server disconnects. By default, enrollment-based controllers seal the key in
+their encrypted local state so they can reconnect after restart; set
+`SWARMOPS_RETAIN_MACHINE_KEYS=false` to require an explicit reconnect instead.
 
 Profiles saved before this transport change are marked **Legacy SSH** in the
 Servers table. They remain readable only for migration; remove each one and
@@ -429,39 +566,107 @@ example. If browser deployments or platform admission are required, keep its
 reviewed, non-secret manifest on this same control host and set
 `SWARMOPS_PLATFORM_MANIFEST_FILE` to that path before starting the API.
 
+## Private source-to-deploy
+
+Source deployment is a separate, default-off controller capability. Enable it
+only after the controller data key, provider-token revocation process, selected
+manager, platform manifest, registry, and build policy are ready:
+
+```bash
+SWARMOPS_SOURCE_ENABLED=true
+SWARMOPS_SOURCE_ALLOWED_HOSTS=github.company.example,gitlab.company.example
+SWARMOPS_SOURCE_IMAGE_PREFIX=ghcr.io/nimasrn
+SWARMOPS_IMAGE_PREFIXES=ghcr.io/nimasrn/
+SWARMOPS_BUILD_ENABLED=true
+```
+
+`SWARMOPS_SOURCE_ALLOWED_HOSTS` is needed only for private/self-managed hosts;
+use the exact hostname (and port when non-standard). GitHub.com, GitLab.com,
+and Gitea.com API origins are built in. Enter the full API base for a private
+installation: typically `https://github.example/api/v3`,
+`https://gitlab.example/api/v4`, or `https://git.example/api/v1`. Unknown
+forges need a reviewed adapter; SwarmOps is not an arbitrary Git/HTTP proxy.
+
+The controller verifies `/user` before saving a connection, then AES-256-GCM
+seals the token in `source-connections.sealed`. Use a provider token with only
+the read scopes required to list repositories, read trees/files, resolve
+commits, and download an archive. The token is sent only in the provider's
+authentication header. It is never returned to the browser, copied to a
+command payload, mounted into a build, or written to audit. Updating a
+connection verifies the replacement token before the sealed record changes;
+removing it deletes the sealed credential.
+
+The guided flow is deterministic:
+
+1. Choose a sealed connection and one accessible repository.
+2. Resolve the selected branch/tag/SHA to an immutable commit.
+3. Scan the bounded recursive tree for every canonical or named Compose file
+   (`compose.yml`, `compose.production.yaml`, `docker-compose.dev.yml`, and
+   their `.yaml` forms), plus every `Dockerfile` and `Dockerfile.*`, including
+   nested monorepo applications. Each discovered Compose variant receives its
+   own immutable build identity.
+4. Review classifications. Application services become closed
+   `ApplicationSpec` candidates. PostgreSQL, MongoDB, Redis, and Valkey become
+   managed attachments. Prometheus, Alertmanager, Jaeger, Loki,
+   Alloy, node-exporter, and cAdvisor map to reviewed global stacks. Unsupported
+   stateful engines and unsafe/ambiguous build evidence stop the candidate.
+5. Select an approved application slot and, when its manifest permits it, an
+   exact domain or hostname inside one reviewed suffix.
+6. Queue one `source.deploy` command. It reconciles required managed/global
+   stacks, builds and pushes the pinned regular-file-only context when needed,
+   and deploys SwarmOps' generated Compose. The command has one automatic
+   attempt because a build plus several declarative stages can partially
+   complete; any uncertainty remains visible as `needs_attention`.
+
+Source Compose, Dockerfile bodies, environment values, repository symlinks,
+special files, commands, labels, mounts, and arbitrary networks are never
+forwarded to Docker. The plan contains only bounded metadata and digests. A
+database substitution provisions a new SwarmOps-managed service and connection
+secret; it does not migrate source data. A domain assignment changes the
+Traefik route, not authoritative DNS, so DNS resolution and ACME issuance still
+need live verification.
+
 ## Local checks
 
 ```bash
+cd apps/swarmops
 go test ./...
-npm --prefix web ci
-npm --prefix web run typecheck
-npm --prefix web run lint
-npm --prefix web run build
+cd web && npm run typecheck && npm run build
 
-make build TARGET=api TAG=<immutable-tag>
-make build TARGET=agent TAG=<immutable-tag>
-make build TARGET=cli TAG=<immutable-tag>
+# Opt-in: runs Core -> encrypted queue -> pinned local machine agent ->
+# disposable one-node Docker Swarm. It refuses to touch an already-active
+# Swarm and removes only the uniquely named resources it creates.
+cd ..
+SWARMOPS_INTEGRATION_DOCKER=1 make integration
+
+cd ../..
+bash -n scripts/install-swarmops-agent.sh
+make build APP=swarmops TARGET=api TAG=<immutable-tag>
+make build APP=swarmops TARGET=agent TAG=<immutable-tag>
+make build APP=swarmops TARGET=cli TAG=<immutable-tag>
 make stack-check STACK=swarmops TAG=<immutable-tag>
 make stack-check STACK=swarmops-agent TAG=<immutable-tag>
 make stack-check STACK=swarmops-observability TAG=<immutable-tag>
 make stack-check STACK=swarmops-logs TAG=<immutable-tag>
+make stack-check STACK=mongo-replicaset TAG=<immutable-tag>
+make stack-check STACK=postgres-primary-replica TAG=<immutable-tag>
+make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
+
+# The controlled build path will refuse to start until the same plan passes.
+make swarmops-checked-build \
+  MANIFEST=deploy/swarmops/platform.example.yml \
+  APP=swarmops TARGET=api TAG=<immutable-tag>
 ```
 
 No Docker daemon or Swarm is required to run the local UI against the deployed
 API or use the console's Servers page. The target machine must run the native
-agent before it can connect, but it may connect before Docker is available;
-Docker and Swarm operations remain unavailable until the engine starts. A
-remote Swarm manager is required to verify cluster placement, service
-operations, or Swarm mutations.
-A local Docker daemon is still needed only to build the container images in the
-optional image-build checks above.
+agent before it can connect; Docker may be installed afterwards through the
+closed Server readiness plan. A remote Swarm manager is required to verify
+cluster placement, service operations, or Swarm mutations. A local Docker
+daemon is still needed only to build the container images in the optional
+image-build checks above.
 
-## Platform admission before build or deploy (nim monorepo)
-
-The following platform procedures use the full, reviewed `nim` deployment
-repository. Clone [nimasrn/nim](https://github.com/nimasrn/nim) and run these
-commands there; this source release does not carry unrelated application stacks
-or production host configuration.
+## Platform admission before build or deploy
 
 Use a reviewed, non-secret platform manifest for every cluster-wide rollout:
 
@@ -478,8 +683,9 @@ go run ./cmd/swarmopsctl preflight \
 ```
 
 The manifest carries only public topology and versioned secret *names*. It
-requires globally unique workload names within its namespace and unique routed
-domains across that plan. It validates the selected registry (`ghcr` or
+requires globally unique workload names within its namespace, unique routed
+domains, and non-overlapping optional application-domain suffix policies. It
+validates the selected registry (`ghcr` or
 `private`), cache/build labels, S3-compatible provider references, backup
 prefix/schedule, certificate resolver selection, and reservation budget.
 
@@ -495,11 +701,13 @@ The deployed API loads the same manifest from an immutable Swarm config. It
 accepts browser Compose only for declared `application` workloads in that
 namespace, rejects stateful profiles, and validates the browser's boundary as
 well as its image policy. A routed service may use only an HTTPS `websecure`
-router whose name begins with `<stack-name>-`, claims the declared domain, and
-uses the declared resolver; TCP/UDP routes, shared middleware, and arbitrary
-Traefik service settings stay Git-reviewed. Any external secret, config, or
-volume must declare a safe physical name beginning with `<stack-name>-` (or
-`<stack-name>_`), while the only permitted external network is `traefik`.
+router whose name begins with `<stack-name>-`, claims its exact domain or a
+hostname inside its reviewed suffix policy, and uses the declared resolver;
+TCP/UDP routes, shared middleware, and arbitrary Traefik service settings stay
+Git-reviewed. Any external secret, config, or volume must declare a safe
+physical name beginning with `<stack-name>-` (or `<stack-name>_`). The closed
+renderer may join only `traefik`, `swarmops-data`, and `swarmops`: edge,
+managed-data, and shared telemetry respectively.
 Browser services must remain replicated and their combined replica, CPU, and
 memory reservations cannot exceed the reviewed workload budget.
 MongoDB and PostgreSQL can only be deployed with their checked-in stacks after
@@ -534,59 +742,29 @@ hooks, and a tested restore before it is deployed.
 
 ## Fresh nodes, stateful slots, and reconnect recovery
 
-Add a fresh Debian/Ubuntu server to the ignored inventory's
-`swarm_join_nodes` group, then use the reviewed workflow. It installs Docker
-only when absent, refuses an unexpected conflicting runtime, and joins through
-the designated private Swarm address without logging a join token:
-
-```bash
-make swarmops-join-node INVENTORY=deploy/ansible/inventory.yml
-make swarmops-join-node INVENTORY=deploy/ansible/inventory.yml APPLY=1
-```
+Enroll a fresh Ubuntu server with the one-time installer command, wait for its
+agent health and compatibility report, then queue Docker installation and the
+appropriate Swarm init or join operation from **Infrastructure → Readiness**.
+Every mutation carries an explicit Core, cluster, and node target and remains
+visible in **Operations** through disconnect, retry, or operator attention.
 
 PostgreSQL primary/replica requires two separate `nim.postgres.slot` labels;
 the Mongo replica set requires all three `nim.mongo.slot=1|2|3` labels. A
 second node alone cannot safely create the checked-in three-member Mongo set.
-After a reconnect or reboot, run the read-only continuity check before touching
-any data:
-
-```bash
-make swarmops-recovery-check INVENTORY=deploy/ansible/inventory.yml
-```
-
-It checks Docker, Swarm membership, local-volume continuity, optional backup
-timer state, and manager visibility. Set each stateful host's exact local
-volume names in `swarmops_recovery_expected_volumes` in the ignored inventory
-to make the read-only check fail if one is missing; it never restores, deletes,
+After a reconnect or reboot, run the catalogued continuity diagnostic from the
+node page before touching data. It checks Docker, Swarm membership,
+local-volume continuity, and manager visibility; it never restores, deletes,
 or promotes a database. The full stateful contract is
 [`../../docs/swarmops-stateful.md`](../../docs/swarmops-stateful.md).
 
-## Durable all-node operations
+## Durable node operations
 
-Run a reviewed operation from the trusted workstation, not from a browser:
-
-```bash
-make swarmops-fleet-run \
-  INVENTORY=deploy/ansible/inventory.yml \
-  OPERATION=node-health-report
-
-# Remote targets use the SSH inventory status path directly.
-cd apps/swarmops
-go run ./cmd/swarmopsctl fleet status \
-  --inventory ../../deploy/ansible/inventory.yml \
-  --run-id fleet-<generated-id>
-```
-
-Only `node-health-report` and `warm-docker-cache` are allowed. Ansible submits
-a fixed systemd transient unit to every selected host; once that unit is
-accepted it continues independently of an SSH disconnect. `swarmopsctl` retries
-the same run ID through Ansible up to eight times with the same 2, 4, 8, 16,
-32, and 64 second backoff; the host runner applies the same bounded retry
-schedule and records `attempt`, `maxAttempts`, and `nextAttemptAt` in its
-root-owned status. Reuse the same run ID to resume hosts that missed a submit
-attempt. For remote-server operation, use the inventory SSH read-only status
-path. Operation output remains root-owned on the host and is never returned by
-the API or console.
+Use **Operations** or the `swarmops` CLI to submit a versioned catalog action
+to an explicit node or node set. Core persists the command before acceptance;
+an agent leases it, emits ordered state transitions, and resumes from its last
+acknowledged cursor after an outage. Only retry-safe actions retry
+automatically. An uncertain remote outcome becomes `needs_attention`, and a
+newer exact queued intent supersedes only its older non-running equivalent.
 
 ## S3-compatible local-volume backups
 
@@ -595,16 +773,8 @@ protected environment file must contain only the Restic repository/password and
 the S3-compatible credential variable names/values required by the chosen
 provider; keep that file outside this repository with restrictive permissions.
 
-```bash
-make swarmops-backup-install \
-  INVENTORY=deploy/ansible/inventory.yml \
-  BACKUP_ENV_FILE=/secure/swarmops-restic-s3.env
-
-# This is a separate external S3 mutation for a confirmed empty repository.
-make swarmops-backup-init INVENTORY=deploy/ansible/inventory.yml
-```
-
-The timer backs up `/var/lib/docker/volumes` with retention and does not expose
+The catalogued backup workflow backs up approved volume paths with retention
+and does not expose
 S3 credentials to SwarmOps. Each host tags and retains only its own snapshots;
 the shared repository lock is retried for up to 30 minutes so simultaneous
 timers do not silently skip a backup. Add each reviewed persistent bind-mount
@@ -630,7 +800,7 @@ versioned private-registry auth secret when needed. SwarmOps' own image build
 uses a BuildKit npm cache mount; the manifest requires that intended build/cache
 capacity is labelled `nim.build=true` and `nim.cache=true`. The bounded build
 runs on the selected remote Docker Engine through the pinned machine API;
-selecting that target is explicit in the console or `swarmopsctl --server-id`.
+selecting that target is explicit in the console or `swarmops --server-id`.
 The trusted
 workstation chooses a local Dockerfile/context and uploads only a bounded,
 `.dockerignore`-honouring tar stream; SwarmOps never scans arbitrary paths on
@@ -638,21 +808,21 @@ the GUI machine.
 
 ## Production prerequisites
 
-1. Deploy the SwarmOps stack as a singleton on the designated control manager
-   (`node.role == manager` and `nim.control=true`). Its `swarmops_data` volume
-   keeps AES-256-GCM-sealed control-plane profiles, audit history, and command
-   ledger on that
-   node; the API image and mounted Swarm configs provide the production console
-   and reviewed deployment assets there. It starts without a local Docker
-   socket. Sign in through that API, install the native machine agent on each
-   selected Linux/macOS Docker host, and add its HTTPS origin, port, TLS
-   certificate fingerprint, and API key. Select the target only after it is a
-   Swarm manager.
-2. Form the three-manager Swarm and create the encrypted `traefik` overlay if
-   the target cluster is not already formed. `make swarmops-provision` prompts
-   for manager addresses and SSH user; its optional platform phase accepts only
-   protected secret-file paths plus a reviewed non-secret platform manifest,
-   then deploys Traefik plus SwarmOps after images are already pushed.
+1. Deploy one active SwarmOps core on the designated control manager
+   (`node.role == manager` and `nim.control=true`) with a stable
+   `SWARMOPS_CORE_ID`. Its `swarmops_data` volume keeps AES-256-GCM-sealed
+   control-plane profiles, audit history, command ledger, and handoff state on
+   that node; the API image and mounted Swarm configs provide the production
+   console and reviewed deployment assets there. It starts without a local
+   Docker socket. The core host is not added to **Servers** automatically:
+   install and enrol a native machine agent independently when that host must
+   be operated. Sign in through the active API, install the native Ubuntu agent
+   on each selected host through either certificate flow, and wait for its
+   outbound health report. Select the target only after it is a Swarm manager.
+2. Form the Swarm with typed init/join/manager-promotion operations and create
+   the encrypted `traefik` overlay if the target cluster is not already formed.
+   One manager is allowed and shown as non-resilient; three managers are the
+   recommended target.
 3. Build and push the immutable API and agent images through the root Makefile.
 4. Create the versioned external secrets from permission-restricted files
    outside this repository. The API needs a bcrypt hash (not a cleartext
@@ -665,12 +835,11 @@ the GUI machine.
 5. Create the Traefik Cloudflare DNS-token, ArvanCloud API-key, and
    `htpasswd`-format dashboard-auth secrets. The dashboard is routed to
    `api@internal`; port `8080` is never published.
-6. Create the Grafana administrator-password secret before enabling the core
-   observability stack. Configure a reviewed Alertmanager receiver before
+6. Configure a reviewed Alertmanager receiver before
    relying on notifications; the committed baseline uses a blackhole receiver.
    Jaeger uses the checked-in v2.20 Badger config on the labelled stateful
    node, so its volume needs a backup/recovery procedure.
-7. Set non-secret host values such as `SWARMOPS_HOST`, `GRAFANA_HOST`,
+7. Set non-secret host values such as `SWARMOPS_HOST`,
    `TRAEFIK_DASHBOARD_HOST`, `TRAEFIK_DASHBOARD_URL`, and
    `TRAEFIK_ACME_EMAIL` in the ignored `deploy/hosts/<host>.env` file.
 
@@ -685,7 +854,6 @@ make secret-create HOST=manager-01 SECRET=swarmops_session_key_v1 FILE=/secure/s
 make secret-create HOST=manager-01 SECRET=swarmops_data_encryption_key_v1 FILE=/secure/swarmops-data-key.base64
 make secret-create HOST=manager-01 SECRET=swarmops_agent_token_v1 FILE=/secure/swarmops-agent-token
 make secret-create HOST=manager-01 SECRET=swarmops_registry_config_v1 FILE=/secure/swarmops-registry-config.json
-make secret-create HOST=manager-01 SECRET=swarmops_grafana_admin_password_v1 FILE=/secure/grafana-admin-password
 make secret-create HOST=manager-01 SECRET=traefik_cf_dns_token_v1 FILE=/secure/traefik-cf-dns-token
 make secret-create HOST=manager-01 SECRET=traefik_arvan_api_key_v1 FILE=/secure/traefik-arvan-api-key
 make secret-create HOST=manager-01 SECRET=traefik_dashboard_auth_v1 FILE=/secure/traefik-dashboard.htpasswd
@@ -706,7 +874,7 @@ make stack-check STACK=traefik TAG=<immutable-tag>
 make stack-check STACK=swarmops TAG=<immutable-tag>
 make platform-deploy HOST=manager-01 TAG=<immutable-tag>
 
-# After Grafana's versioned secret and SwarmOps config versions exist:
+# After the versioned SwarmOps observability configs exist:
 make deploy STACK=swarmops-observability HOST=manager-01 TAG=<immutable-tag>
 ```
 
@@ -717,8 +885,8 @@ core and API are healthy.
 
 For the first controlled rollout, leave `SWARMOPS_MUTATIONS_ENABLED=false` and
 `SWARMOPS_BUILD_ENABLED=false`, log in, connect a remote manager, verify node
-inventory, Traefik HTTPS/dashboard access, Grafana authentication, Prometheus
-targets, Alertmanager delivery, Grafana's overview dashboard, and Jaeger
+inventory, Traefik HTTPS/dashboard access, Prometheus targets,
+Alertmanager delivery, and Jaeger
 storage. Enable each mutation surface deliberately
 afterwards.
 
@@ -730,32 +898,43 @@ short-lived HTTP-only SameSite cookie and CSRF token; no password or token is
 persisted in the client. Login attempts are locally throttled and Traefik adds
 an edge rate limit to the login route.
 
-Audit events are append-only JSONL records in the API’s named volume. They
-contain actor, target, action, outcome, request ID, and non-sensitive details.
+By default the throttle key is the username plus the socket peer address,
+because a forwarded header is attacker-controlled without a trusted-proxy
+boundary. Set `SWARMOPS_TRUSTED_PROXY_CIDRS` to the reverse proxy's source
+networks (comma-separated CIDRs) when running behind one: only then is
+`X-Forwarded-For` honoured, resolving each login attempt to its first
+untrusted address so clients behind a shared proxy are throttled individually
+and cannot lock the operator account out from one shared bucket. A malformed
+or fully trusted forwarding chain falls back to the socket peer.
+
+Audit events are bounded JSONL-style records sealed in the API's named volume.
+They contain actor, target, action, outcome, request ID, and non-sensitive details.
 They never contain cleartext credentials, Compose content, build contexts,
-registry configuration, or service-log output.
+registry configuration, or service-log output. Only the most recent
+`SWARMOPS_AUDIT_MAX_EVENTS` records (default `10000`) are retained, so failed
+login attempts cannot grow controller memory or disk without bound; a failed
+audit write is logged loudly rather than silently dropped.
 
 The command ledger is separate from audit history: it is the durable source of
 truth for accepted command intent and local lifecycle, not proof that a remote
 Docker side effect occurred exactly once. It records safe state transitions in
-the audit trail without copying command payloads or source archives. Bounded,
-redacted output from reviewed operations is encrypted alongside the command
-and visible only in its **Logs** panel; service logs and raw build output are
-never copied into that evidence store.
+the audit trail without copying command payloads, source archives, or remote
+output.
 
-Server profiles persist only display name, machine API origin/port,
-authentication method, and pinned TLS certificate fingerprint in sealed state
-beside the audit data. Enrollment-based installations also retain the machine
-API key in a separate AES-256-GCM-sealed file so Core can reconnect after a
-restart. API keys are never returned, placed in a Swarm secret, or included in
-audit records; explicit disconnect removes the retained copy. Set
-`SWARMOPS_RETAIN_MACHINE_KEYS=false` for a memory-only posture.
+Server profiles persist display metadata, the pinned machine API endpoint, and
+the last bounded safe agent-health evidence in sealed state beside the audit
+data. API keys are never returned, placed in a Swarm secret, or included in
+audit records. Enrollment-based controllers seal the key separately by default
+so a restart can reconnect; set `SWARMOPS_RETAIN_MACHINE_KEYS=false` for the
+memory-only posture.
 
 The Servers panel reports safe, actionable connection diagnostics for TLS-pin
 mismatches, rejected API keys, machine-API reachability, disabled control, and
-Docker Engine failures. It includes a request ID for protected server-log
-correlation, but never returns credentials, unreviewed remote error text,
-service-log output, or raw build output to the browser.
+Docker Engine failures. **Agent diagnostics** retains the last authenticated
+probe plus bounded agent and Core events, so an unreachable server does not
+silently stay green. It intentionally does not copy service logs, command
+output, credentials, raw remote responses, or unreviewed error text to the
+browser.
 
 The fingerprint pins the exact TLS leaf certificate presented by the machine
 agent. Verify its public SHA-256 fingerprint from the target's trusted console
@@ -764,26 +943,16 @@ explicit verified profile update.
 
 ## Important limitations
 
-- The control plane remains one active replica with a local encrypted volume.
-  The mobility workflow can hand it over to another eligible manager only after
-  a verified copy and health burn-in; it does not create active-active control
-  plane HA or replace a replicated state and credential design.
-- A remote host must run the native machine agent before it can be added. It
-  can connect before Docker starts, but Docker and cluster operations remain
-  unavailable until the engine is ready. The installer does not install Docker
-  or change Swarm. Once the host is enrolled, a selected manager can approve
-  only the reviewed Docker, initialize-Swarm, or join-selected-Swarm actions;
-  the Ansible workflow remains the reviewed path for a new three-manager
-  cluster.
-- The managed database stacks are intentionally one replica with local named
-  volumes on a `nim.stateful=true` node. The mobility workflow can perform a
-  quiesced move with source retention, but they still require an external
-  backup and tested restore plan and do not claim database high availability.
-- A **Needs attention** mobility record is evidence of an incomplete operation,
-  not a safe retry signal. Before source cleanup begins, an administrator can
-  close that record only with its typed confirmation after review; it retains
-  source data and makes no Docker change. Once source cleanup begins, leave
-  the record open and complete recovery review before any further move.
+- The control plane runs one active core at a time. It can record a standby,
+  an operator-attested restore, a fenced handoff, and an emergency promotion,
+  but it has no shared-state quorum, automatic health election, or automatic
+  failover. A complete encrypted-state/key restore and external primary fencing
+  are required before a standby can safely become active.
+- A remote host can be enrolled with the native machine agent before Docker is
+  ready. Cluster operations still require a selected remote Swarm manager.
+  Server readiness supports only one pinned Debian/Ubuntu host and its closed
+  fixed plan. Multi-manager changes use the same typed, explicit-target agent
+  operations and remain visible in the durable command ledger.
 - Jaeger’s checked-in Badger store is durable only on its labelled stateful
   node. Use documented OpenSearch config and a tested backup/restore plan when
   trace HA/retention requires it.

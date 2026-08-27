@@ -1,4 +1,4 @@
-// Command swarmopsctl is the trusted-workstation companion for operations
+// Command swarmops is the trusted-workstation companion for operations
 // that need a local path, most notably a resource-capped image build context.
 package main
 
@@ -17,9 +17,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -33,11 +31,6 @@ import (
 
 const defaultContextLimit = 480 << 20
 
-var (
-	fleetLimitPattern = regexp.MustCompile(`^[A-Za-z0-9_.:-]+(,[A-Za-z0-9_.:-]+)*$`)
-	fleetRunIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
-)
-
 func main() {
 	if len(os.Args) < 2 {
 		usage(os.Stderr)
@@ -46,22 +39,17 @@ func main() {
 	switch os.Args[1] {
 	case "build":
 		if err := build(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			fmt.Fprintln(os.Stderr, "swarmops:", err)
 			os.Exit(1)
 		}
 	case "preflight":
 		if err := preflightCommand(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
-			os.Exit(1)
-		}
-	case "fleet":
-		if err := fleet(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			fmt.Fprintln(os.Stderr, "swarmops:", err)
 			os.Exit(1)
 		}
 	case "password-hash":
 		if err := passwordHash(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmopsctl:", err)
+			fmt.Fprintln(os.Stderr, "swarmops:", err)
 			os.Exit(1)
 		}
 	case "help", "--help", "-h":
@@ -117,19 +105,14 @@ func usage(writer io.Writer) {
 	fmt.Fprint(writer, `SwarmOps trusted-workstation CLI
 
 Usage:
-  swarmopsctl build --url https://swarmops.example.com --username operator \
-    --server-id <server-id> --context ./service --image ghcr.io/example/service:2026.08.23 [options]
+  swarmops build --url https://swarmops.example.com --username operator \
+    --cluster-id default --server-id <server-id> --context ./service --image ghcr.io/example/service:2026.08.23 [options]
 
-  swarmopsctl preflight --manifest deploy/swarmops/platform.yml [--json]
-  swarmopsctl preflight --manifest deploy/swarmops/platform.yml \
+  swarmops preflight --manifest deploy/swarmops/platform.yml [--json]
+  swarmops preflight --manifest deploy/swarmops/platform.yml \
     --url https://swarmops.example.com --username operator --server-id <server-id>
 
-  swarmopsctl password-hash --stdin
-
-  swarmopsctl fleet run --inventory deploy/ansible/inventory.yml \
-    --operation node-health-report [--limit manager-02]
-  swarmopsctl fleet status --url https://swarmops.example.com --username operator \
-    --server-id <server-id> --inventory deploy/ansible/inventory.yml --run-id <id>
+  swarmops password-hash --stdin
 
 The password is prompted without echo from a terminal, or read only from stdin
 when --password-stdin is supplied. It is never accepted as a command argument.
@@ -139,6 +122,7 @@ SwarmOps acknowledges a durable build command ID rather than returning remote
 build output to the workstation.
 
 Build options:
+  --cluster-id <id>         Explicit cluster target (v1 requires default)
   --dockerfile <path>       Dockerfile path within the context (default Dockerfile)
   --cpus <n>                Requested build vCPU cap (default 2)
   --memory-mib <n>          Requested RAM cap in MiB (default 2048)
@@ -153,300 +137,7 @@ Preflight options:
   --username <name>         SwarmOps operator for --url
   --server-id <id>          Connected remote server profile for --url
   --password-stdin          Read the operator password once from standard input
-
-Fleet operations are a reviewed allow-list. The command never accepts an
-arbitrary shell command. Run queues a transient systemd job through Ansible so
-accepted work survives SSH loss. Status retries the authenticated HTTP path
-first and uses the supplied inventory as an SSH fallback when an agent is
-unavailable. Passwords are prompted or read once from standard input.
 `)
-}
-
-func fleet(arguments []string) error {
-	if len(arguments) == 0 {
-		return errors.New("fleet requires run or status")
-	}
-	switch arguments[0] {
-	case "run":
-		return fleetRun(arguments[1:])
-	case "status":
-		return fleetStatus(arguments[1:])
-	default:
-		return fmt.Errorf("unknown fleet command %q", arguments[0])
-	}
-}
-
-func fleetRun(arguments []string) error {
-	flags := flag.NewFlagSet("fleet run", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	ansibleDir := flags.String("ansible-dir", "deploy/ansible", "Ansible directory")
-	askBecomePass := flags.Bool("ask-become-pass", false, "prompt Ansible for sudo password")
-	passwordAuth := flags.Bool("password-auth", false, "prompt Ansible for SSH password")
-	inventory := flags.String("inventory", "", "Ansible inventory path")
-	limit := flags.String("limit", "", "comma-separated inventory host names")
-	operation := flags.String("operation", "", "reviewed fleet operation")
-	runID := flags.String("run-id", "", "durable fleet run identifier")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	if strings.TrimSpace(*inventory) == "" || strings.TrimSpace(*operation) == "" {
-		return errors.New("--inventory and --operation are required")
-	}
-	if !allowedFleetOperation(*operation) {
-		return errors.New("--operation must be node-health-report or warm-docker-cache")
-	}
-	if *runID == "" {
-		generated, err := newFleetRunID()
-		if err != nil {
-			return err
-		}
-		*runID = generated
-	}
-	if !fleetRunIDPattern.MatchString(*runID) {
-		return errors.New("invalid --run-id")
-	}
-	if *limit != "" && !fleetLimitPattern.MatchString(*limit) {
-		return errors.New("--limit accepts only comma-separated inventory host names")
-	}
-	if err := runFleetAnsibleWithBackoff(context.Background(), *ansibleDir, *inventory, *limit, *passwordAuth, *askBecomePass, *runID, *operation); err != nil {
-		return err
-	}
-	fmt.Printf("Fleet run accepted: %s\n", *runID)
-	return nil
-}
-
-func fleetStatus(arguments []string) error {
-	flags := flag.NewFlagSet("fleet status", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	ansibleDir := flags.String("ansible-dir", "deploy/ansible", "Ansible directory")
-	askBecomePass := flags.Bool("ask-become-pass", false, "prompt Ansible for sudo password")
-	inventory := flags.String("inventory", "", "Ansible inventory path for SSH fallback")
-	limit := flags.String("limit", "", "comma-separated inventory host names")
-	passwordStdin := flags.Bool("password-stdin", false, "read the SwarmOps password once from stdin")
-	passwordAuth := flags.Bool("password-auth", false, "prompt Ansible for SSH password")
-	runID := flags.String("run-id", "", "durable fleet run identifier")
-	baseURL := flags.String("url", "", "SwarmOps URL for HTTP status")
-	serverID := flags.String("server-id", "", "connected remote server profile")
-	username := flags.String("username", "", "SwarmOps username")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	if !fleetRunIDPattern.MatchString(*runID) {
-		return errors.New("a valid --run-id is required")
-	}
-	if *limit != "" && !fleetLimitPattern.MatchString(*limit) {
-		return errors.New("--limit accepts only comma-separated inventory host names")
-	}
-	if *baseURL != "" {
-		if *username == "" || strings.TrimSpace(*serverID) == "" {
-			return errors.New("--username and --server-id are required with --url")
-		}
-		endpoint, err := parseBaseURL(*baseURL)
-		if err != nil {
-			return err
-		}
-		password, err := readPassword(*passwordStdin)
-		if err != nil {
-			return err
-		}
-		status, err := fleetStatusHTTP(endpoint, *username, password, *serverID, *runID)
-		if err == nil && fleetStatusComplete(status) {
-			return writeFleetStatus(status)
-		}
-		if *inventory == "" {
-			if err != nil {
-				return err
-			}
-			return writeFleetStatus(status)
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "SwarmOps HTTP fleet status is unavailable; falling back to SSH inventory status.")
-		} else {
-			fmt.Fprintln(os.Stderr, "Some node agents are unavailable; falling back to SSH inventory status.")
-		}
-	}
-	if *inventory == "" {
-		return errors.New("--inventory is required when HTTP status is not available")
-	}
-	return runAnsible(context.Background(), *ansibleDir, *inventory, "fleet-status.yml", *limit, *passwordAuth, *askBecomePass, "swarmops_fleet_run_id="+*runID)
-}
-
-func fleetStatusHTTP(endpoint *url.URL, username, password, serverID, runID string) (domain.FleetRun, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return domain.FleetRun{}, fmt.Errorf("create cookie jar: %w", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 8 * time.Second}
-	if _, err := login(client, endpoint, username, password); err != nil {
-		return domain.FleetRun{}, err
-	}
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		result, err := fleetStatusOnce(client, endpoint, serverID, runID)
-		if err == nil {
-			return result, nil
-		}
-		lastErr = err
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
-		}
-	}
-	return domain.FleetRun{}, lastErr
-}
-
-func fleetStatusOnce(client *http.Client, endpoint *url.URL, serverID, runID string) (domain.FleetRun, error) {
-	statusURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/fleet/runs/" + runID})
-	request, err := http.NewRequest(http.MethodGet, statusURL.String(), nil)
-	if err != nil {
-		return domain.FleetRun{}, fmt.Errorf("create fleet status request: %w", err)
-	}
-	request.Header.Set("X-SwarmOps-Server-ID", serverID)
-	response, err := client.Do(request)
-	if err != nil {
-		return domain.FleetRun{}, fmt.Errorf("read fleet status: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return domain.FleetRun{}, responseError(response)
-	}
-	var result domain.FleetRun
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
-		return domain.FleetRun{}, fmt.Errorf("decode fleet status: %w", err)
-	}
-	return result, nil
-}
-
-func fleetStatusComplete(status domain.FleetRun) bool {
-	if len(status.Nodes) == 0 {
-		return false
-	}
-	for _, node := range status.Nodes {
-		if node.State == "unavailable" {
-			return false
-		}
-	}
-	return true
-}
-
-func writeFleetStatus(status domain.FleetRun) error {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(status); err != nil {
-		return fmt.Errorf("write fleet status: %w", err)
-	}
-	return nil
-}
-
-func runAnsible(ctx context.Context, ansibleDir, inventory, playbook, limit string, passwordAuth, askBecomePass bool, extraVars ...string) error {
-	if strings.TrimSpace(ansibleDir) == "" || strings.TrimSpace(inventory) == "" {
-		return errors.New("Ansible directory and inventory are required")
-	}
-	absInventory, err := filepath.Abs(inventory)
-	if err != nil {
-		return fmt.Errorf("resolve inventory: %w", err)
-	}
-	info, err := os.Stat(absInventory)
-	if err != nil {
-		return fmt.Errorf("read inventory: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("--inventory must name a file")
-	}
-	absAnsibleDir, err := filepath.Abs(ansibleDir)
-	if err != nil {
-		return fmt.Errorf("resolve Ansible directory: %w", err)
-	}
-	if _, err := os.Stat(filepath.Join(absAnsibleDir, playbook)); err != nil {
-		return fmt.Errorf("read Ansible playbook: %w", err)
-	}
-	args := []string{"-i", absInventory, filepath.Join(absAnsibleDir, playbook)}
-	if passwordAuth {
-		args = append(args, "--ask-pass")
-	}
-	if askBecomePass {
-		args = append(args, "--ask-become-pass")
-	}
-	if limit != "" {
-		args = append(args, "--limit", limit)
-	}
-	for _, variable := range extraVars {
-		args = append(args, "-e", variable)
-	}
-	command := exec.CommandContext(ctx, "ansible-playbook", args...)
-	command.Stdin = os.Stdin
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("run Ansible %s: %w", playbook, err)
-	}
-	return nil
-}
-
-// runFleetAnsibleWithBackoff re-submits the same reviewed run ID after a
-// transient Ansible/SSH failure. Hosts that already accepted it retain their
-// fixed status file, while hosts the previous play never reached are safely
-// picked up by the next pass.
-func runFleetAnsibleWithBackoff(ctx context.Context, ansibleDir, inventory, limit string, passwordAuth, askBecomePass bool, runID, operation string) error {
-	return retryFleetSubmission(ctx, func(ctx context.Context) error {
-		return runAnsible(ctx, ansibleDir, inventory, "fleet.yml", limit, passwordAuth, askBecomePass, "swarmops_fleet_run_id="+runID, "swarmops_fleet_operation="+operation)
-	}, waitForFleetBackoff, func(attempt uint, delay time.Duration) {
-		fmt.Fprintf(os.Stderr, "Fleet submission did not complete; retrying in %s (attempt %d/8).\n", delay, attempt+1)
-	})
-}
-
-func retryFleetSubmission(ctx context.Context, submit func(context.Context) error, wait func(context.Context, time.Duration) error, onRetry func(uint, time.Duration)) error {
-	var lastErr error
-	for attempt := uint(1); attempt <= 8; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := submit(ctx); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-		if attempt == 8 {
-			break
-		}
-		delay := fleetBackoff(attempt)
-		if onRetry != nil {
-			onRetry(attempt, delay)
-		}
-		if err := wait(ctx, delay); err != nil {
-			return err
-		}
-	}
-	return fmt.Errorf("fleet submission did not complete after 8 attempts: %w", lastErr)
-}
-
-func fleetBackoff(attempt uint) time.Duration {
-	if attempt > 5 {
-		attempt = 5
-	}
-	return time.Second * time.Duration(1<<attempt)
-}
-
-func waitForFleetBackoff(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func allowedFleetOperation(value string) bool {
-	return value == "node-health-report" || value == "warm-docker-cache"
-}
-
-func newFleetRunID() (string, error) {
-	bytes := make([]byte, 4)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("generate fleet run ID: %w", err)
-	}
-	return "fleet-" + time.Now().UTC().Format("20060102t150405") + "-" + hex.EncodeToString(bytes), nil
 }
 
 func preflightCommand(arguments []string) error {
@@ -565,6 +256,7 @@ func build(arguments []string) error {
 	flags.SetOutput(io.Discard)
 	baseURL := flags.String("url", "", "SwarmOps URL")
 	serverID := flags.String("server-id", "", "connected remote server profile")
+	clusterID := flags.String("cluster-id", "", "explicit cluster target")
 	username := flags.String("username", "", "SwarmOps username")
 	contextDir := flags.String("context", "", "local build context directory")
 	image := flags.String("image", "", "immutable image reference")
@@ -577,8 +269,11 @@ func build(arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*baseURL) == "" || strings.TrimSpace(*username) == "" || strings.TrimSpace(*serverID) == "" || strings.TrimSpace(*contextDir) == "" || strings.TrimSpace(*image) == "" {
-		return errors.New("--url, --username, --server-id, --context, and --image are required")
+	if strings.TrimSpace(*baseURL) == "" || strings.TrimSpace(*username) == "" || strings.TrimSpace(*clusterID) == "" || strings.TrimSpace(*serverID) == "" || strings.TrimSpace(*contextDir) == "" || strings.TrimSpace(*image) == "" {
+		return errors.New("--url, --username, --cluster-id, --server-id, --context, and --image are required")
+	}
+	if *clusterID != "default" {
+		return errors.New("v1 requires --cluster-id default")
 	}
 	if *cpus <= 0 || *memoryMiB <= 0 || *maxContextMiB <= 0 {
 		return errors.New("build resource and context limits must be positive")
@@ -614,6 +309,7 @@ func build(arguments []string) error {
 	}
 	request.Header.Set("Content-Type", "application/x-tar")
 	request.Header.Set("X-CSRF-Token", csrf)
+	request.Header.Set("X-SwarmOps-Cluster-ID", *clusterID)
 	request.Header.Set("X-SwarmOps-Server-ID", *serverID)
 	request.Header.Set("X-SwarmOps-CPUs", fmt.Sprintf("%.4g", *cpus))
 	request.Header.Set("X-SwarmOps-Dockerfile", *dockerfile)

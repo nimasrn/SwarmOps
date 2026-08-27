@@ -2,12 +2,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,33 +19,12 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-// version is set by the release build with -ldflags. Keeping a development
-// fallback makes local go run and test workflows deterministic.
-var version = "dev"
+const version = "0.6.0"
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println(version)
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "upgrade" {
-		runCoreUpgrade(os.Args[2:])
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "access" {
-		runCoreAccess(os.Args[2:])
-		return
-	}
-	if len(os.Args) == 2 && os.Args[1] == "password-hash" {
-		if err := passwordHash(os.Stdin, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmops-core password-hash:", err)
-			os.Exit(1)
-		}
-		return
-	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -67,13 +43,15 @@ func main() {
 		logger.Error("load remote server profiles", "error", err)
 		os.Exit(1)
 	}
-	// Enrolled hosts have no operator-held key to retype, so reconnect them
-	// from the sealed store at startup. A host that stays unreachable is
-	// reported and left disconnected rather than blocking the API.
-	for _, failure := range servers.Resume(ctx) {
-		logger.Warn("resume machine API connection", "error", failure)
+	// A standby retains state but never contacts machine agents. An active core
+	// resumes enrolled hosts from sealed controller state; failures become safe
+	// persisted diagnostics instead of blocking API startup.
+	if cfg.CoreMode == "active" {
+		for _, failure := range servers.Resume(ctx) {
+			logger.Warn("resume machine API connection", "error", failure)
+		}
+		startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
 	}
-	startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
 	admission, err := ops.LoadPlatformAdmission(cfg.PlatformManifestFile)
 	if err != nil {
 		logger.Error("load platform admission", "error", err)
@@ -89,6 +67,28 @@ func main() {
 		logger.Error("load sealed applications", "error", err)
 		os.Exit(1)
 	}
+	routing, err := ops.NewRoutingStore(cfg.DataDir, cfg.DataEncryptionKey, cfg.TraefikACMEEmail)
+	if err != nil {
+		logger.Error("load sealed Traefik routing state", "error", err)
+		os.Exit(1)
+	}
+	var sourceService *source.Service
+	if cfg.SourceEnabled {
+		sourceStore, sourceErr := source.NewStore(cfg.DataDir, cfg.DataEncryptionKey)
+		if sourceErr != nil {
+			logger.Error("load sealed source connections", "error", sourceErr)
+			os.Exit(1)
+		}
+		sourceService, sourceErr = source.NewService(sourceStore, source.Options{
+			AllowedHosts:    cfg.SourceAllowedHosts,
+			ImagePrefix:     cfg.SourceImagePrefix,
+			MaxArchiveBytes: cfg.BuildMaxBytes,
+		})
+		if sourceErr != nil {
+			logger.Error("configure source deployment", "error", sourceErr)
+			os.Exit(1)
+		}
+	}
 	var agentReader ops.AgentReader
 	if len(cfg.AgentToken) > 0 {
 		agentReader = ops.HTTPAgentReader{Token: cfg.AgentToken}
@@ -103,40 +103,44 @@ func main() {
 		Image:               cfg.TraefikImage,
 	}
 	trustedStackSettings := ops.TrustedStackSettings{
-		AgentTokenSecret:                   cfg.TrustedAgentTokenSecret,
-		AlertmanagerConfigName:             cfg.TrustedAlertmanagerConfig,
-		AlertmanagerImage:                  cfg.TrustedAlertmanagerImage,
-		AlloyConfigName:                    cfg.TrustedAlloyConfig,
-		AlloyImage:                         cfg.TrustedAlloyImage,
-		GrafanaAdminPasswordSecret:         cfg.TrustedGrafanaPasswordSecret,
-		GrafanaDashboardConfigName:         cfg.TrustedGrafanaDashboard,
-		GrafanaDashboardProviderConfigName: cfg.TrustedGrafanaDashboardProvider,
-		GrafanaDatasourcesConfigName:       cfg.TrustedGrafanaDatasources,
-		GrafanaHost:                        cfg.TrustedGrafanaHost,
-		GrafanaImage:                       cfg.TrustedGrafanaImage,
-		JaegerConfigName:                   cfg.TrustedJaegerConfig,
-		JaegerImage:                        cfg.TrustedJaegerImage,
-		LokiConfigName:                     cfg.TrustedLokiConfig,
-		LokiImage:                          cfg.TrustedLokiImage,
-		NodeExporterImage:                  cfg.TrustedNodeExporterImage,
-		PrometheusConfigName:               cfg.TrustedPrometheusConfig,
-		PrometheusImage:                    cfg.TrustedPrometheusImage,
-		PrometheusRetention:                cfg.TrustedPrometheusRetention,
-		PrometheusRulesConfigName:          cfg.TrustedPrometheusRules,
-		Registry:                           cfg.TrustedRegistry,
-		RegistryNamespace:                  cfg.TrustedRegistryNamespace,
-		Tag:                                cfg.TrustedTag,
+		AgentTokenSecret:          cfg.TrustedAgentTokenSecret,
+		AlertmanagerConfigName:    cfg.TrustedAlertmanagerConfig,
+		AlertmanagerImage:         cfg.TrustedAlertmanagerImage,
+		AlloyConfigName:           cfg.TrustedAlloyConfig,
+		AlloyImage:                cfg.TrustedAlloyImage,
+		JaegerConfigName:          cfg.TrustedJaegerConfig,
+		JaegerImage:               cfg.TrustedJaegerImage,
+		LokiConfigName:            cfg.TrustedLokiConfig,
+		LokiImage:                 cfg.TrustedLokiImage,
+		NodeExporterImage:         cfg.TrustedNodeExporterImage,
+		PrometheusConfigName:      cfg.TrustedPrometheusConfig,
+		PrometheusImage:           cfg.TrustedPrometheusImage,
+		PrometheusRetention:       cfg.TrustedPrometheusRetention,
+		PrometheusRulesConfigName: cfg.TrustedPrometheusRules,
+		Registry:                  cfg.TrustedRegistry,
+		RegistryNamespace:         cfg.TrustedRegistryNamespace,
+		Tag:                       cfg.TrustedTag,
 	}
 	targets := apihttp.TargetResolverFunc(func(id string) (apihttp.Target, error) {
 		connection, err := servers.Resolve(id)
 		if err != nil {
 			return apihttp.Target{}, err
 		}
+		target := apihttp.Target{}
+		if inspector, ok := connection.Runner.(apihttp.HostInspector); ok {
+			target.Host = inspector
+		}
+		if provisioner, ok := connection.Runner.(apihttp.Provisioner); ok {
+			target.Provisioner = provisioner
+		}
 		if !connection.Profile.DockerAvailable || connection.Docker == nil {
-			return apihttp.Target{}, fmt.Errorf("%w: selected machine API is connected, but Docker is not ready; finish the machine setup before running cluster operations", remote.ErrDockerUnavailable)
+			// A connected native agent remains a valid server-readiness target even
+			// before Docker exists. Cluster reads and operations still fail closed
+			// in targetFor because Control stays nil.
+			return target, nil
 		}
 		if !connection.Profile.SwarmControlAvailable {
-			return apihttp.Target{}, fmt.Errorf("selected server is not a remote Swarm manager")
+			return target, nil
 		}
 		// Remote Docker operations run through the selected machine agent's
 		// fixed-operation API. The controller never has the machine's socket or
@@ -164,41 +168,51 @@ func main() {
 			LogsStackFile:          cfg.LogsStackFile,
 			Mutations:              cfg.MutationEnabled,
 			ObservabilityStackFile: cfg.ObservabilityStackFile,
+			Routing:                routing,
+			ServerID:               id,
 			TraefikSettings:        traefikSettings,
 			TraefikStackFile:       cfg.TraefikStackFile,
 			TrustedStackSettings:   trustedStackSettings,
 		})
-		return apihttp.Target{Build: build.Service{
+		target.Build = build.Service{
 			Docker:        connection.Docker,
 			Enabled:       cfg.BuildEnabled,
 			ImagePrefixes: cfg.ImagePrefixes,
 			MaxCPUs:       cfg.BuildMaxCPUs,
 			MaxMemoryMiB:  cfg.BuildMaxMemoryMiB,
 			RegistryAuth:  cfg.RegistryAuth,
-		}, Control: control}, nil
+		}
+		target.Control = control
+		return target, nil
 	})
 	api, err := apihttp.New(cfg, targets, servers, auditStore, logger)
 	if err == nil {
 		api.SetApplicationDiscovery(applications, admission.Namespace())
+		api.SetSourceService(sourceService)
 	}
 	if err != nil {
 		logger.Error("create HTTP server", "error", err)
 		os.Exit(1)
 	}
+	// The monitor is the source of truth for the Servers surface. It probes the
+	// authenticated agent and its fixed Docker facade on a bounded cadence, and
+	// asks configured native agents to run their own trusted Git update check.
+	// A standby stays read-only until promotion because the callback is evaluated
+	// on every pass rather than only at process startup.
+	go servers.StartAgentMonitor(ctx, 30*time.Second, api.CanExecuteCommands)
 	worker := queue.Worker{
+		CanExecute:       api.CanExecuteCommands,
 		Execute:          api.ExecuteCommand,
 		ExecutionTimeout: api.CommandExecutionTimeout,
 		OnTransition:     api.RecordCommandTransition,
 		Store:            api.CommandStore(),
 	}
+	// The dashboard's trend lines come from a short in-memory series. Sampling
+	// here rather than on request keeps one reading per interval however many
+	// browsers are open.
+	go api.StartInsightsSampler(ctx)
 	go func() {
-		if err := worker.Run(ctx); errors.Is(err, queue.ErrExecutorHandoff) && ctx.Err() == nil {
-			// The source controller deliberately leaves its running command in
-			// the transferred sealed ledger. Stopping here prevents any source
-			// write after the target has received that archive.
-			logger.Info("controller handover activated; stopping source process")
-			stop()
-		} else if err != nil && ctx.Err() == nil {
+		if err := worker.Run(ctx); err != nil && ctx.Err() == nil {
 			// Continuing to accept mutations after the durable executor has
 			// stopped would violate the command queue contract. Cancelling the
 			// process context lets the normal graceful shutdown close the API.
@@ -221,6 +235,8 @@ func main() {
 		server.TLSConfig = &tls.Config{
 			MinVersion:       tls.VersionTLS13,
 			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+			ClientAuth:       tls.VerifyClientCertIfGiven,
+			ClientCAs:        api.AgentClientCAs(),
 		}
 	}
 	go func() {
@@ -241,34 +257,6 @@ func main() {
 	if err := server.Shutdown(shutdown); err != nil {
 		logger.Error("shutdown HTTP server", "error", err)
 	}
-}
-
-// passwordHash is intentionally a mode of the released core binary so a
-// fresh controller installation never has to fetch source or a compiler just
-// to create its first bcrypt administrator password hash.
-func passwordHash(input io.Reader, output io.Writer) error {
-	password, err := io.ReadAll(io.LimitReader(input, 4097))
-	if err != nil {
-		return fmt.Errorf("read password: %w", err)
-	}
-	defer func() {
-		for index := range password {
-			password[index] = 0
-		}
-	}()
-	password = bytes.TrimSuffix(password, []byte("\n"))
-	password = bytes.TrimSuffix(password, []byte("\r"))
-	if len(password) < 16 {
-		return errors.New("password must contain at least 16 bytes")
-	}
-	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
-	}
-	if _, err := fmt.Fprintln(output, string(hash)); err != nil {
-		return fmt.Errorf("write password hash: %w", err)
-	}
-	return nil
 }
 
 func serve(server *http.Server, cfg config.Config) error {

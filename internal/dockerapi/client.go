@@ -156,87 +156,6 @@ func (c *Client) ListTasks(ctx context.Context, filters map[string][]string) ([]
 	return output, nil
 }
 
-// Volume reads one named volume's local-driver metadata. Callers must still
-// constrain the name to their own fixed vocabulary; this client deliberately
-// makes no policy decision about it.
-func (c *Client) Volume(ctx context.Context, name string) (Volume, error) {
-	if strings.TrimSpace(name) == "" {
-		return Volume{}, fmt.Errorf("volume name is required")
-	}
-	var output Volume
-	if err := c.getJSON(ctx, "/volumes/"+url.PathEscape(name), &output); err != nil {
-		return Volume{}, err
-	}
-	return output, nil
-}
-
-// CreateVolume creates the exact named local volume required by one reviewed
-// mobility target. Callers must apply their own closed vocabulary before
-// reaching this client; this low-level method deliberately accepts no driver
-// options, labels, mount paths, or browser data.
-func (c *Client) CreateVolume(ctx context.Context, name string) (Volume, error) {
-	if strings.TrimSpace(name) == "" {
-		return Volume{}, fmt.Errorf("volume name is required")
-	}
-	body, err := json.Marshal(struct {
-		Driver string `json:"Driver"`
-		Name   string `json:"Name"`
-	}{Driver: "local", Name: name})
-	if err != nil {
-		return Volume{}, fmt.Errorf("encode local volume request: %w", err)
-	}
-	headers := make(http.Header)
-	headers.Set("Content-Type", "application/json")
-	response, err := c.request(ctx, http.MethodPost, "/volumes/create", bytes.NewReader(body), headers)
-	if err != nil {
-		return Volume{}, err
-	}
-	defer response.Body.Close()
-	var output Volume
-	if err := json.NewDecoder(io.LimitReader(response.Body, responseLimit)).Decode(&output); err != nil {
-		return Volume{}, fmt.Errorf("decode Docker volume response: %w", err)
-	}
-	if output.Name != name || output.Driver != "local" {
-		return Volume{}, fmt.Errorf("Docker did not create the expected local volume")
-	}
-	return output, nil
-}
-
-// RemoveVolume removes one unused local volume. Docker refuses a volume with
-// active consumers, which is the final host-side safety check before source
-// retirement.
-func (c *Client) RemoveVolume(ctx context.Context, name string) error {
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("volume name is required")
-	}
-	response, err := c.request(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(name), nil, nil)
-	if err != nil {
-		return err
-	}
-	return response.Body.Close()
-}
-
-// ContainerHealth returns only a container's runtime and Docker healthcheck
-// state. It intentionally does not expose the rest of Docker inspect.
-func (c *Client) ContainerHealth(ctx context.Context, id string) (ContainerHealth, error) {
-	if strings.TrimSpace(id) == "" {
-		return ContainerHealth{}, fmt.Errorf("container identifier is required")
-	}
-	var output struct {
-		State struct {
-			Health struct {
-				Status string `json:"Status"`
-			} `json:"Health"`
-			Running bool   `json:"Running"`
-			Status  string `json:"Status"`
-		} `json:"State"`
-	}
-	if err := c.getJSON(ctx, "/containers/"+url.PathEscape(id)+"/json", &output); err != nil {
-		return ContainerHealth{}, err
-	}
-	return ContainerHealth{Health: output.State.Health.Status, Running: output.State.Running, Status: output.State.Status}, nil
-}
-
 // Build sends a tar build context to the Docker Engine. The caller owns the
 // input stream and must put a timeout on its context for long-running builds.
 func (c *Client) Build(ctx context.Context, contextTar io.Reader, query url.Values, headers http.Header) (string, error) {
@@ -251,6 +170,33 @@ func (c *Client) Build(ctx context.Context, contextTar io.Reader, query url.Valu
 	}
 	if int64(len(body)) == responseLimit {
 		return "", fmt.Errorf("build response exceeded %d bytes", responseLimit)
+	}
+	return string(body), nil
+}
+
+// PushImage pushes one already-built repository:tag through the Engine API.
+// The caller supplies the registry-auth header after selecting the matching
+// allow-listed credential from its protected Docker configuration.
+func (c *Client) PushImage(ctx context.Context, repository, tag, registryAuth string) (string, error) {
+	repository = strings.Trim(strings.TrimSpace(repository), "/")
+	tag = strings.TrimSpace(tag)
+	if repository == "" || tag == "" || strings.ContainsAny(repository+tag, "\r\n\x00") {
+		return "", fmt.Errorf("Docker image repository and tag are required")
+	}
+	query := url.Values{"tag": {tag}}
+	headers := make(http.Header)
+	headers.Set("X-Registry-Auth", registryAuth)
+	response, err := c.requestWithClient(ctx, c.buildHTTP, http.MethodPost, "/images/"+repository+"/push?"+query.Encode(), nil, headers)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, responseLimit))
+	if err != nil {
+		return "", fmt.Errorf("read image push response: %w", err)
+	}
+	if int64(len(body)) == responseLimit {
+		return "", fmt.Errorf("image push response exceeded %d bytes", responseLimit)
 	}
 	return string(body), nil
 }

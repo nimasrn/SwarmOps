@@ -1,14 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 68" width="68" height="68">
-  <!-- SwarmOps · "Quorum" — six workers on a ring, the manager at the centre.
-       Below ~24px the ring and half the workers are dropped by the media query
-       in the consuming markup; this file is the full mark. -->
-  <rect width="68" height="68" rx="14" fill="#0f1216"/>
-  <circle cx="34" cy="34" r="23" fill="none" stroke="#4a5566" stroke-width="3"/>
-  <circle cx="34" cy="34" r="7.5" fill="#7aa0ff"/>
-  <circle cx="34" cy="11" r="4.6" fill="#eef1f6"/>
-  <circle cx="53.9" cy="22.5" r="4.6" fill="#8c95a4"/>
-  <circle cx="53.9" cy="45.5" r="4.6" fill="#8c95a4"/>
-  <circle cx="34" cy="57" r="4.6" fill="#8c95a4"/>
-  <circle cx="14.1" cy="45.5" r="4.6" fill="#8c95a4"/>
-  <circle cx="14.1" cy="22.5" r="4.6" fill="#8c95a4"/>
+  <!-- SwarmOps · "Quorum" — the three managers that have to agree, as hive
+       cells. Same geometry as `web/src/brand.tsx`: the two are one mark and
+       must be changed together. Malachite is the sole product accent. -->
+  <rect width="68" height="68" rx="15" fill="#0d1117"/>
+  <polygon points="19.79,8.08 31.02,14.56 31.02,27.52 19.79,34.00 8.57,27.52 8.57,14.56" fill="none" stroke="#2fbf8f" stroke-width="3.82" stroke-linejoin="round"/>
+  <polygon points="48.21,8.08 59.43,14.56 59.43,27.52 48.21,34.00 36.98,27.52 36.98,14.56" fill="none" stroke="#2fbf8f" stroke-width="3.82" stroke-linejoin="round"/>
+  <polygon points="34.00,32.94 45.23,39.42 45.23,52.38 34.00,58.86 22.77,52.38 22.77,39.42" fill="none" stroke="#2fbf8f" stroke-width="3.82" stroke-linejoin="round"/>
 </svg>

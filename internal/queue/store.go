@@ -7,6 +7,7 @@ package queue
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -27,19 +28,11 @@ import (
 const (
 	maxPayloadBytes  = 1 << 20
 	maxAttemptsLimit = 8
-	maxLogEntries    = 256
-	maxLogMessage    = 4 << 10
-	maxLogBytes      = 256 << 10
-	storeVersion     = 2
+	storeVersion     = 1
 	stateKey         = "command-queue"
 )
 
-var (
-	commandIDPattern        = regexp.MustCompile(`^cmd-[a-f0-9]{32}$`)
-	logAssignmentPattern    = regexp.MustCompile(`(?i)\b(password|passwd|token|secret|api[_-]?key|authorization)\b(\s*[:=]\s*)([^\s,;]+)`)
-	logBearerPattern        = regexp.MustCompile(`(?i)\bBearer\s+[^\s,;]+`)
-	logURLCredentialPattern = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:@/]+:)[^\s@/]+@`)
-)
+var commandIDPattern = regexp.MustCompile(`^cmd-[a-f0-9]{32}$`)
 
 // ErrIdempotencyConflict means an operator reused a key for a different
 // command. Returning the original command in that case could direct an
@@ -70,13 +63,53 @@ func isPermanent(err error) bool {
 // classified outcome cannot be reinterpreted by later heuristics.
 func IsPermanent(err error) bool { return isPermanent(err) }
 
+// FenceAuthority prevents work accepted by an older Core epoch from crossing
+// a promotion boundary. Records remain visible and can be explicitly retried
+// under the new authority after the operator reviews the uncertain state.
+func (s *Store) FenceAuthority(newEpoch uint64) error {
+	if newEpoch == 0 {
+		return fmt.Errorf("new authority epoch is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().UTC()
+	changed := false
+	for index := range s.records {
+		command := &s.records[index].Command
+		if command.AuthorityEpoch >= newEpoch || terminalCommandState(command.State) {
+			continue
+		}
+		command.State = domain.CommandNeedsAttention
+		command.LastError = "Core authority changed before this command reached a confirmed terminal state. Review and retry it explicitly."
+		command.LeaseExpiresAt = nil
+		command.NextAttemptAt = nil
+		command.UpdatedAt = now
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveLocked()
+}
+
+func terminalCommandState(state domain.CommandState) bool {
+	switch state {
+	case domain.CommandSucceeded, domain.CommandFailed, domain.CommandNeedsAttention, domain.CommandSuperseded, domain.CommandCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 // SubmitInput is deliberately limited to safe command metadata. Any raw
 // Compose document or build archive remains private to the queue store and is
 // never copied into an audit record.
 type SubmitInput struct {
 	Action           string
 	Actor            string
+	AuthorityEpoch   uint64
 	AutoRetry        bool
+	ClusterID        string
 	IdempotencyKey   string
 	MaxArtifactBytes int64
 	MaxAttempts      uint
@@ -94,21 +127,29 @@ type Record struct {
 	Payload  json.RawMessage
 }
 
-// LogInput is deliberately a small, structured event. Callers never pass
-// raw request payloads, credentials, Compose, build output, or service logs.
-type LogInput struct {
-	Attempt uint
-	Level   string
-	Message string
-	Source  string
+// Submission records the public result of a durable enqueue. Superseded holds
+// only safe command metadata for audit; payloads and source artifacts never
+// leave the encrypted queue store.
+type Submission struct {
+	Command    domain.Command
+	Created    bool
+	Superseded []domain.Command
 }
 
 type storedRecord struct {
-	Artifact       bool                     `json:"artifact,omitempty"`
-	Command        domain.Command           `json:"command"`
-	IdempotencyKey string                   `json:"idempotencyKey,omitempty"`
-	Logs           []domain.CommandLogEntry `json:"logs,omitempty"`
-	Payload        json.RawMessage          `json:"payload,omitempty"`
+	Artifact       bool            `json:"artifact,omitempty"`
+	Command        domain.Command  `json:"command"`
+	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
+	LeaseID        string          `json:"leaseId,omitempty"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+}
+
+// Lease is the private delivery envelope returned only to an authenticated
+// pull-connected agent. LeaseID is a capability token and is never copied to
+// the browser-facing Command record or audit history.
+type Lease struct {
+	LeaseID string
+	Record  Record
 }
 
 type storeFile struct {
@@ -162,7 +203,7 @@ func Open(dataDir string, dataEncryptionKey []byte, historyLimit int) (*Store, e
 		if err := json.Unmarshal(data, &persisted); err != nil {
 			return nil, fmt.Errorf("decode command store: %w", err)
 		}
-		if persisted.Version != 1 && persisted.Version != storeVersion {
+		if persisted.Version != storeVersion {
 			return nil, fmt.Errorf("unsupported command store version")
 		}
 		for _, record := range persisted.Commands {
@@ -185,20 +226,32 @@ func Open(dataDir string, dataEncryptionKey []byte, historyLimit int) (*Store, e
 // supplied idempotency key returns the original record, preventing a lost HTTP
 // response from creating a second platform mutation.
 func (s *Store) Submit(input SubmitInput) (domain.Command, bool, error) {
+	submission, err := s.SubmitWithResult(input)
+	return submission.Command, submission.Created, err
+}
+
+// SubmitWithResult makes the newest pending intent authoritative for one
+// server/action/target tuple. A duplicate queued or retry-scheduled command is
+// removed atomically with the replacement. Running commands and explicit
+// needs-attention records are deliberately never cancelled: their remote
+// effect may already exist and must remain visible to an operator.
+func (s *Store) SubmitWithResult(input SubmitInput) (Submission, error) {
 	if err := validateInput(input, false); err != nil {
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if command, found, err := s.idempotentLocked(input, false); err != nil {
-		return domain.Command{}, false, err
+		return Submission{}, err
 	} else if found {
-		return command, false, nil
+		return Submission{Command: command}, nil
 	}
 	record, err := s.newRecordLocked(input, false)
 	if err != nil {
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
+	previous := append([]storedRecord(nil), s.records...)
+	superseded, artifacts := s.supersedePendingLocked(input)
 	s.records = append(s.records, record)
 	// Pruning only ever removes terminal records. If this save fails the
 	// in-memory ledger keeps the smaller history while the previous sealed
@@ -206,10 +259,13 @@ func (s *Store) Submit(input SubmitInput) (domain.Command, bool, error) {
 	// the same bounded result.
 	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
-		s.records = s.records[:len(s.records)-1]
-		return domain.Command{}, false, err
+		s.records = previous
+		return Submission{}, err
 	}
-	return cloneCommand(record.Command), true, nil
+	for _, id := range artifacts {
+		s.removeArtifact(id)
+	}
+	return Submission{Command: cloneCommand(record.Command), Created: true, Superseded: superseded}, nil
 }
 
 // SubmitArtifact writes source input to the protected command store before it
@@ -217,41 +273,55 @@ func (s *Store) Submit(input SubmitInput) (domain.Command, bool, error) {
 // leaves either a recoverable artifact or a visible needs-attention record;
 // it never silently drops an accepted upload.
 func (s *Store) SubmitArtifact(input SubmitInput, body io.Reader) (domain.Command, bool, error) {
+	submission, err := s.SubmitArtifactWithResult(input, body)
+	return submission.Command, submission.Created, err
+}
+
+// SubmitArtifactWithResult follows the same latest-intent rule while keeping
+// source input private. The replacement is persisted before the old artifact
+// is removed, so a controller restart cannot revive stale input.
+func (s *Store) SubmitArtifactWithResult(input SubmitInput, body io.Reader) (Submission, error) {
 	if err := validateInput(input, true); err != nil {
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
 	if body == nil {
-		return domain.Command{}, false, fmt.Errorf("command artifact is required")
+		return Submission{}, fmt.Errorf("command artifact is required")
 	}
 	s.mu.Lock()
 	if command, found, err := s.idempotentLocked(input, true); err != nil {
 		s.mu.Unlock()
-		return domain.Command{}, false, err
+		return Submission{}, err
 	} else if found {
 		s.mu.Unlock()
-		return command, false, nil
+		return Submission{Command: command}, nil
 	}
 	record, err := s.newRecordLocked(input, true)
 	if err != nil {
 		s.mu.Unlock()
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
 	record.Command.State = domain.CommandNeedsAttention
 	record.Command.LastError = "Command input is being stored."
+	previous := append([]storedRecord(nil), s.records...)
+	superseded, artifacts := s.supersedePendingLocked(input)
 	s.records = append(s.records, record)
 	if err := s.saveLocked(); err != nil {
-		s.records = s.records[:len(s.records)-1]
+		s.records = previous
 		s.mu.Unlock()
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
 	s.mu.Unlock()
+	for _, id := range artifacts {
+		s.removeArtifact(id)
+	}
 
 	writeErr := s.writeArtifact(record.Command.ID, body, input.MaxArtifactBytes)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	index := s.indexLocked(record.Command.ID)
 	if index < 0 {
-		return domain.Command{}, false, fmt.Errorf("command disappeared while storing input")
+		s.removeArtifact(record.Command.ID)
+		return Submission{Command: cloneCommand(record.Command), Created: true, Superseded: superseded}, fmt.Errorf("command input was superseded while storing")
 	}
 	updated := &s.records[index]
 	updated.Command.UpdatedAt = s.now().UTC()
@@ -264,12 +334,12 @@ func (s *Store) SubmitArtifact(input SubmitInput, body io.Reader) (domain.Comman
 		updated.Command.LastError = ""
 	}
 	if err := s.saveLocked(); err != nil {
-		return domain.Command{}, false, err
+		return Submission{}, err
 	}
 	if writeErr != nil {
-		return cloneCommand(updated.Command), true, fmt.Errorf("store command input: %w", writeErr)
+		return Submission{Command: cloneCommand(updated.Command), Created: true, Superseded: superseded}, fmt.Errorf("store command input: %w", writeErr)
 	}
-	return cloneCommand(updated.Command), true, nil
+	return Submission{Command: cloneCommand(updated.Command), Created: true, Superseded: superseded}, nil
 }
 
 func (s *Store) List(limit int) ([]domain.Command, error) {
@@ -336,75 +406,9 @@ func (s *Store) Get(id string) (domain.Command, error) {
 	return cloneCommand(s.records[index].Command), nil
 }
 
-// AppendLog durably records a bounded, redacted execution event before the
-// caller proceeds. A completed or ambiguous operation must never be reported
-// successful without its command evidence being safely written first.
-func (s *Store) AppendLog(id string, input LogInput) (domain.CommandLogEntry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	index := s.indexLocked(id)
-	if index < 0 {
-		return domain.CommandLogEntry{}, fmt.Errorf("command not found")
-	}
-	record := &s.records[index]
-	if record.Command.State != domain.CommandRunning {
-		return domain.CommandLogEntry{}, fmt.Errorf("command is not running")
-	}
-	entry, err := newLogEntry(record.Command, input, s.now().UTC())
-	if err != nil {
-		return domain.CommandLogEntry{}, err
-	}
-	if len(record.Logs) >= maxLogEntries || commandLogBytes(record.Logs)+len(entry.Message) > maxLogBytes {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log limit exceeded")
-	}
-	previousLogs := record.Logs
-	previousCount := record.Command.LogCount
-	previousLastLogAt := record.Command.LastLogAt
-	previousUpdatedAt := record.Command.UpdatedAt
-	record.Logs = append(record.Logs, entry)
-	record.Command.LogCount = uint(len(record.Logs))
-	record.Command.LastLogAt = timePointer(entry.OccurredAt)
-	record.Command.UpdatedAt = entry.OccurredAt
-	if err := s.saveLocked(); err != nil {
-		record.Logs = previousLogs
-		record.Command.LogCount = previousCount
-		record.Command.LastLogAt = previousLastLogAt
-		record.Command.UpdatedAt = previousUpdatedAt
-		return domain.CommandLogEntry{}, err
-	}
-	return cloneLogEntry(entry), nil
-}
-
-// Logs returns the latest encrypted operational evidence for one command. It
-// intentionally exposes no queued payload, artifact, service output, or audit
-// material.
-func (s *Store) Logs(id string, limit int) ([]domain.CommandLogEntry, error) {
-	if limit < 1 {
-		return []domain.CommandLogEntry{}, nil
-	}
-	if limit > maxLogEntries {
-		limit = maxLogEntries
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	index := s.indexLocked(id)
-	if index < 0 {
-		return nil, fmt.Errorf("command not found")
-	}
-	logs := s.records[index].Logs
-	if len(logs) > limit {
-		logs = logs[len(logs)-limit:]
-	}
-	result := make([]domain.CommandLogEntry, len(logs))
-	for index := range logs {
-		result[index] = cloneLogEntry(logs[index])
-	}
-	return result, nil
-}
-
 // RetryNow starts a new bounded attempt cycle only after an operator has
 // explicitly acknowledged a terminal/uncertain outcome.
-func (s *Store) RetryNow(id string) (domain.Command, error) {
+func (s *Store) RetryNow(id string, authorityEpoch uint64) (domain.Command, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	index := s.indexLocked(id)
@@ -415,14 +419,19 @@ func (s *Store) RetryNow(id string) (domain.Command, error) {
 	if record.Command.State != domain.CommandNeedsAttention {
 		return domain.Command{}, fmt.Errorf("command is not ready for an operator retry")
 	}
+	if authorityEpoch == 0 || authorityEpoch < record.Command.AuthorityEpoch {
+		return domain.Command{}, fmt.Errorf("command retry authority epoch is stale")
+	}
 	now := s.now().UTC()
 	previousAttempt := record.Command.Attempt
+	previousAuthorityEpoch := record.Command.AuthorityEpoch
 	previousError := record.Command.LastError
 	previousLastAttemptAt := record.Command.LastAttemptAt
 	previousNextAttemptAt := record.Command.NextAttemptAt
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	record.Command.Attempt = 0
+	record.Command.AuthorityEpoch = authorityEpoch
 	record.Command.LastError = ""
 	record.Command.LastAttemptAt = nil
 	record.Command.NextAttemptAt = &now
@@ -430,6 +439,7 @@ func (s *Store) RetryNow(id string) (domain.Command, error) {
 	record.Command.UpdatedAt = now
 	if err := s.saveLocked(); err != nil {
 		record.Command.Attempt = previousAttempt
+		record.Command.AuthorityEpoch = previousAuthorityEpoch
 		record.Command.LastError = previousError
 		record.Command.LastAttemptAt = previousLastAttemptAt
 		record.Command.NextAttemptAt = previousNextAttemptAt
@@ -490,6 +500,192 @@ func (s *Store) ClaimDue() (Record, bool, error) {
 	return cloneRecord(*record), true, nil
 }
 
+// LeaseDue assigns the oldest runnable command for one explicit agent. It is
+// the pull-transport counterpart to ClaimDue: the durable state is written
+// before the command leaves Core, and only the matching lease capability can
+// advance or finish it.
+func (s *Store) LeaseDue(serverID string, authorityEpoch uint64, ttl time.Duration) (Lease, bool, error) {
+	serverID = strings.TrimSpace(serverID)
+	if serverID == "" || authorityEpoch == 0 {
+		return Lease{}, false, fmt.Errorf("agent lease identity is invalid")
+	}
+	if ttl < 5*time.Second || ttl > 5*time.Minute {
+		return Lease{}, false, fmt.Errorf("agent lease duration must be between five seconds and five minutes")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().UTC()
+	if err := s.expireLeasesLocked(now); err != nil {
+		return Lease{}, false, err
+	}
+	for _, record := range s.records {
+		if record.Command.ServerID == serverID && oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning) {
+			return Lease{}, false, nil
+		}
+	}
+	index := -1
+	for current, record := range s.records {
+		if record.Command.ServerID != serverID || !oneOfCommandState(record.Command.State, domain.CommandQueued, domain.CommandRetryScheduled) {
+			continue
+		}
+		if record.Command.NextAttemptAt != nil && record.Command.NextAttemptAt.After(now) {
+			continue
+		}
+		if index == -1 || record.Command.CreatedAt.Before(s.records[index].Command.CreatedAt) {
+			index = current
+		}
+	}
+	if index < 0 {
+		return Lease{}, false, nil
+	}
+	leaseID, err := newLeaseID()
+	if err != nil {
+		return Lease{}, false, err
+	}
+	record := &s.records[index]
+	previous := *record
+	expires := now.Add(ttl)
+	record.Command.Attempt++
+	record.Command.AuthorityEpoch = authorityEpoch
+	record.Command.LastAttemptAt = &now
+	record.Command.LeaseExpiresAt = &expires
+	record.Command.NextAttemptAt = nil
+	record.Command.State = domain.CommandLeased
+	record.Command.UpdatedAt = now
+	record.LeaseID = leaseID
+	if err := s.saveLocked(); err != nil {
+		*record = previous
+		return Lease{}, false, err
+	}
+	return Lease{LeaseID: leaseID, Record: cloneRecord(*record)}, true, nil
+}
+
+// AdvanceLease records agent-side preprocessing or execution. State changes
+// are monotonic and sequence-free here; the HTTP protocol adds ordered event
+// cursors before invoking this store boundary.
+func (s *Store) AdvanceLease(id, leaseID string, state domain.CommandState) (domain.Command, error) {
+	if !oneOfCommandState(state, domain.CommandPreparing, domain.CommandRunning) {
+		return domain.Command{}, fmt.Errorf("invalid leased command state")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return domain.Command{}, fmt.Errorf("command not found")
+	}
+	record := &s.records[index]
+	if record.LeaseID == "" || subtleStringMismatch(record.LeaseID, leaseID) {
+		return domain.Command{}, fmt.Errorf("command lease is invalid")
+	}
+	if state == domain.CommandPreparing && record.Command.State != domain.CommandLeased {
+		return domain.Command{}, fmt.Errorf("command is not leased")
+	}
+	if state == domain.CommandRunning && !oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing) {
+		return domain.Command{}, fmt.Errorf("command is not preparing")
+	}
+	previousState, previousUpdatedAt := record.Command.State, record.Command.UpdatedAt
+	record.Command.State = state
+	record.Command.UpdatedAt = s.now().UTC()
+	if err := s.saveLocked(); err != nil {
+		record.Command.State, record.Command.UpdatedAt = previousState, previousUpdatedAt
+		return domain.Command{}, err
+	}
+	return cloneCommand(record.Command), nil
+}
+
+func (s *Store) RenewLease(id, leaseID string, ttl time.Duration) (domain.Command, error) {
+	if ttl < 5*time.Second || ttl > 5*time.Minute {
+		return domain.Command{}, fmt.Errorf("agent lease duration must be between five seconds and five minutes")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return domain.Command{}, fmt.Errorf("command not found")
+	}
+	record := &s.records[index]
+	if record.LeaseID == "" || subtleStringMismatch(record.LeaseID, leaseID) || !oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning) {
+		return domain.Command{}, fmt.Errorf("command lease is invalid")
+	}
+	previous := record.Command.LeaseExpiresAt
+	expires := s.now().UTC().Add(ttl)
+	record.Command.LeaseExpiresAt = &expires
+	if err := s.saveLocked(); err != nil {
+		record.Command.LeaseExpiresAt = previous
+		return domain.Command{}, err
+	}
+	return cloneCommand(record.Command), nil
+}
+
+func (s *Store) CompleteLease(id, leaseID string) (domain.Command, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return domain.Command{}, fmt.Errorf("command not found")
+	}
+	record := &s.records[index]
+	if record.LeaseID == "" || subtleStringMismatch(record.LeaseID, leaseID) || !oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning) {
+		return domain.Command{}, fmt.Errorf("command lease is invalid")
+	}
+	previous := *record
+	now := s.now().UTC()
+	record.Command.LastError = ""
+	record.Command.LeaseExpiresAt = nil
+	record.Command.NextAttemptAt = nil
+	record.Command.State = domain.CommandSucceeded
+	record.Command.UpdatedAt = now
+	record.LeaseID = ""
+	record.Payload = nil
+	artifact := record.Artifact
+	record.Artifact = false
+	command := cloneCommand(record.Command)
+	s.pruneTerminalLocked()
+	if err := s.saveLocked(); err != nil {
+		*record = previous
+		return domain.Command{}, err
+	}
+	if artifact {
+		s.removeArtifact(id)
+	}
+	return command, nil
+}
+
+func (s *Store) FailLease(id, leaseID string, executionErr error) (domain.Command, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return domain.Command{}, "", fmt.Errorf("command not found")
+	}
+	record := &s.records[index]
+	if record.LeaseID == "" || subtleStringMismatch(record.LeaseID, leaseID) || !oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning) {
+		return domain.Command{}, "", fmt.Errorf("command lease is invalid")
+	}
+	previous := *record
+	now := s.now().UTC()
+	event := "needs_attention"
+	if record.Command.AutoRetry && !isPermanent(executionErr) && record.Command.Attempt < record.Command.MaxAttempts {
+		next := now.Add(backoff(record.Command.Attempt))
+		record.Command.LastError = "Execution failed; retry scheduled with backoff."
+		record.Command.NextAttemptAt = &next
+		record.Command.State = domain.CommandRetryScheduled
+		event = "retry_scheduled"
+	} else {
+		record.Command.LastError = "Execution did not complete; inspect the target before retrying."
+		record.Command.NextAttemptAt = nil
+		record.Command.State = domain.CommandNeedsAttention
+	}
+	record.Command.LeaseExpiresAt = nil
+	record.Command.UpdatedAt = now
+	record.LeaseID = ""
+	if err := s.saveLocked(); err != nil {
+		*record = previous
+		return domain.Command{}, "", err
+	}
+	return cloneCommand(record.Command), event, nil
+}
+
 func (s *Store) Complete(id string) (domain.Command, error) {
 	s.mu.Lock()
 	index := s.indexLocked(id)
@@ -505,12 +701,14 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	now := s.now().UTC()
 	previousError := record.Command.LastError
 	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousLeaseExpiresAt := record.Command.LeaseExpiresAt
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	previousPayload := record.Payload
 	previousArtifact := record.Artifact
 	record.Command.LastError = ""
 	record.Command.NextAttemptAt = nil
+	record.Command.LeaseExpiresAt = nil
 	record.Command.State = domain.CommandSucceeded
 	record.Command.UpdatedAt = now
 	// Successful commands retain their safe ledger metadata, never their raw
@@ -522,6 +720,7 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
 		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.LeaseExpiresAt = previousLeaseExpiresAt
 		record.Command.State = previousState
 		record.Command.UpdatedAt = previousUpdatedAt
 		record.Payload = previousPayload
@@ -554,6 +753,7 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 	now := s.now().UTC()
 	previousError := record.Command.LastError
 	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousLeaseExpiresAt := record.Command.LeaseExpiresAt
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	event := "needs_attention"
@@ -569,10 +769,13 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	record.Command.UpdatedAt = now
+	record.Command.LeaseExpiresAt = nil
+	record.LeaseID = ""
 	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
 		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.LeaseExpiresAt = previousLeaseExpiresAt
 		record.Command.State = previousState
 		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, "", err
@@ -613,9 +816,11 @@ func (s *Store) recover() error {
 	for index := range s.records {
 		record := &s.records[index]
 		switch record.Command.State {
-		case domain.CommandRunning:
+		case domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning:
 			record.Command.State = domain.CommandNeedsAttention
-			record.Command.LastError = "Controller restarted while the command was in flight; inspect the target before retrying."
+			record.Command.LastError = "Core restarted while the command lease was in flight; the agent result must be reconciled before retrying."
+			record.Command.LeaseExpiresAt = nil
+			record.LeaseID = ""
 			record.Command.NextAttemptAt = nil
 			record.Command.UpdatedAt = now
 			changed = true
@@ -653,17 +858,20 @@ func (s *Store) newRecordLocked(input SubmitInput, artifact bool) (storedRecord,
 		IdempotencyKey: strings.TrimSpace(input.IdempotencyKey),
 		Payload:        append(json.RawMessage(nil), input.Payload...),
 		Command: domain.Command{
-			Action:      strings.TrimSpace(input.Action),
-			Actor:       strings.TrimSpace(input.Actor),
-			AutoRetry:   input.AutoRetry,
-			CreatedAt:   now,
-			ID:          id,
-			MaxAttempts: input.MaxAttempts,
-			RequestID:   strings.TrimSpace(input.RequestID),
-			ServerID:    strings.TrimSpace(input.ServerID),
-			State:       domain.CommandQueued,
-			Target:      strings.TrimSpace(input.Target),
-			UpdatedAt:   now,
+			Action:         strings.TrimSpace(input.Action),
+			Actor:          strings.TrimSpace(input.Actor),
+			AuthorityEpoch: max(input.AuthorityEpoch, 1),
+			AutoRetry:      input.AutoRetry,
+			ClusterID:      valueOrDefault(input.ClusterID, "default"),
+			CreatedAt:      now,
+			ID:             id,
+			MaxAttempts:    input.MaxAttempts,
+			NodeID:         strings.TrimSpace(input.ServerID),
+			RequestID:      strings.TrimSpace(input.RequestID),
+			ServerID:       strings.TrimSpace(input.ServerID),
+			State:          domain.CommandQueued,
+			Target:         strings.TrimSpace(input.Target),
+			UpdatedAt:      now,
 		},
 	}, nil
 }
@@ -679,6 +887,45 @@ func (s *Store) idempotentLocked(input SubmitInput, artifact bool) (domain.Comma
 		}
 	}
 	return domain.Command{}, false, nil
+}
+
+// supersedePendingLocked removes only work that has not begun. A running
+// command is never erased or interrupted because the controller cannot know
+// whether the remote side effect has already happened. A needs-attention
+// command also remains until an operator explicitly retries or resolves it;
+// the sole exception is an artifact still marked as uploading, which has not
+// been eligible to execute yet.
+func (s *Store) supersedePendingLocked(input SubmitInput) ([]domain.Command, []string) {
+	action := strings.TrimSpace(input.Action)
+	serverID := strings.TrimSpace(input.ServerID)
+	target := strings.TrimSpace(input.Target)
+	retained := make([]storedRecord, 0, len(s.records))
+	superseded := make([]domain.Command, 0)
+	artifacts := make([]string, 0)
+	for _, record := range s.records {
+		matches := record.Command.Action == action && record.Command.ServerID == serverID && record.Command.Target == target
+		if matches && supersedable(record) {
+			superseded = append(superseded, cloneCommand(record.Command))
+			if record.Artifact {
+				artifacts = append(artifacts, record.Command.ID)
+			}
+			continue
+		}
+		retained = append(retained, record)
+	}
+	s.records = retained
+	return superseded, artifacts
+}
+
+func supersedable(record storedRecord) bool {
+	switch record.Command.State {
+	case domain.CommandQueued, domain.CommandRetryScheduled:
+		return true
+	case domain.CommandNeedsAttention:
+		return record.Artifact && record.Command.LastError == "Command input is being stored."
+	default:
+		return false
+	}
 }
 
 func (s *Store) indexLocked(id string) int {
@@ -863,29 +1110,12 @@ func validateStored(record storedRecord) error {
 		return fmt.Errorf("command has invalid retry policy")
 	}
 	switch record.Command.State {
-	case domain.CommandQueued, domain.CommandRunning, domain.CommandRetryScheduled, domain.CommandSucceeded, domain.CommandNeedsAttention:
+	case domain.CommandUploading, domain.CommandQueued, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning, domain.CommandRetryScheduled, domain.CommandSucceeded, domain.CommandFailed, domain.CommandNeedsAttention, domain.CommandSuperseded, domain.CommandCancelled:
 	default:
 		return fmt.Errorf("command has invalid state")
 	}
 	if len(record.Payload) > maxPayloadBytes || len(record.Payload) > 0 && !json.Valid(record.Payload) {
 		return fmt.Errorf("command has invalid payload")
-	}
-	if len(record.Logs) > maxLogEntries || record.Command.LogCount != uint(len(record.Logs)) {
-		return fmt.Errorf("command has invalid logs")
-	}
-	if len(record.Logs) == 0 && record.Command.LastLogAt != nil {
-		return fmt.Errorf("command has invalid log timestamp")
-	}
-	if len(record.Logs) > 0 && record.Command.LastLogAt == nil {
-		return fmt.Errorf("command has missing log timestamp")
-	}
-	if commandLogBytes(record.Logs) > maxLogBytes {
-		return fmt.Errorf("command logs exceed limit")
-	}
-	for _, entry := range record.Logs {
-		if err := validateLogEntry(entry); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -900,91 +1130,15 @@ func cloneCommand(command domain.Command) domain.Command {
 		value := *command.LastAttemptAt
 		result.LastAttemptAt = &value
 	}
-	if command.LastLogAt != nil {
-		value := *command.LastLogAt
-		result.LastLogAt = &value
-	}
 	if command.NextAttemptAt != nil {
 		value := *command.NextAttemptAt
 		result.NextAttemptAt = &value
 	}
+	if command.LeaseExpiresAt != nil {
+		value := *command.LeaseExpiresAt
+		result.LeaseExpiresAt = &value
+	}
 	return result
-}
-
-func newLogEntry(command domain.Command, input LogInput, occurredAt time.Time) (domain.CommandLogEntry, error) {
-	message := sanitizeLogMessage(input.Message)
-	if message == "" {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log message is required")
-	}
-	if len(message) > maxLogMessage {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log message exceeds limit")
-	}
-	level := strings.ToLower(strings.TrimSpace(input.Level))
-	if level == "" {
-		level = "info"
-	}
-	if level != "info" && level != "warning" && level != "error" {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log level is invalid")
-	}
-	source := strings.ToLower(strings.TrimSpace(input.Source))
-	if source != "controller" && source != "machine" {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log source is invalid")
-	}
-	attempt := input.Attempt
-	if attempt == 0 {
-		attempt = command.Attempt
-	}
-	if attempt == 0 || attempt != command.Attempt {
-		return domain.CommandLogEntry{}, fmt.Errorf("command log attempt is invalid")
-	}
-	return domain.CommandLogEntry{Attempt: attempt, Level: level, Message: message, OccurredAt: occurredAt, Source: source}, nil
-}
-
-func validateLogEntry(entry domain.CommandLogEntry) error {
-	if entry.OccurredAt.IsZero() || entry.Attempt == 0 || len(entry.Message) == 0 || len(entry.Message) > maxLogMessage {
-		return fmt.Errorf("command has invalid log entry")
-	}
-	if entry.Level != "info" && entry.Level != "warning" && entry.Level != "error" {
-		return fmt.Errorf("command has invalid log entry")
-	}
-	if entry.Source != "controller" && entry.Source != "machine" {
-		return fmt.Errorf("command has invalid log entry")
-	}
-	return nil
-}
-
-func commandLogBytes(entries []domain.CommandLogEntry) int {
-	total := 0
-	for _, entry := range entries {
-		total += len(entry.Message)
-	}
-	return total
-}
-
-func sanitizeLogMessage(value string) string {
-	value = strings.ReplaceAll(value, "\r\n", "\n")
-	value = strings.ReplaceAll(value, "\r", "\n")
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	var result strings.Builder
-	result.Grow(len(value))
-	for _, character := range value {
-		if character == '\n' || character == '\t' || character >= 0x20 {
-			result.WriteRune(character)
-		}
-	}
-	redacted := logAssignmentPattern.ReplaceAllString(result.String(), "$1$2[REDACTED]")
-	redacted = logBearerPattern.ReplaceAllString(redacted, "Bearer [REDACTED]")
-	return logURLCredentialPattern.ReplaceAllString(redacted, "$1[REDACTED]@")
-}
-
-func cloneLogEntry(entry domain.CommandLogEntry) domain.CommandLogEntry { return entry }
-
-func timePointer(value time.Time) *time.Time {
-	copy := value
-	return &copy
 }
 
 func newID() (string, error) {
@@ -993,6 +1147,67 @@ func newID() (string, error) {
 		return "", fmt.Errorf("generate command ID: %w", err)
 	}
 	return "cmd-" + hex.EncodeToString(bytes), nil
+}
+
+func newLeaseID() (string, error) {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate command lease: %w", err)
+	}
+	return "lease-" + hex.EncodeToString(bytes), nil
+}
+
+func oneOfCommandState(value domain.CommandState, choices ...domain.CommandState) bool {
+	for _, choice := range choices {
+		if value == choice {
+			return true
+		}
+	}
+	return false
+}
+
+func subtleStringMismatch(left, right string) bool {
+	if len(left) != len(right) {
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) != 1
+}
+
+func valueOrDefault(value, fallback string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func (s *Store) expireLeasesLocked(now time.Time) error {
+	changed := false
+	for index := range s.records {
+		record := &s.records[index]
+		if !oneOfCommandState(record.Command.State, domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning) || record.Command.LeaseExpiresAt == nil || record.Command.LeaseExpiresAt.After(now) {
+			continue
+		}
+		record.LeaseID = ""
+		record.Command.LeaseExpiresAt = nil
+		record.Command.UpdatedAt = now
+		if record.Command.AutoRetry && record.Command.Attempt < record.Command.MaxAttempts {
+			next := now.Add(backoff(record.Command.Attempt))
+			record.Command.NextAttemptAt = &next
+			record.Command.State = domain.CommandRetryScheduled
+			record.Command.LastError = "Agent lease expired; retry scheduled with backoff."
+		} else {
+			record.Command.NextAttemptAt = nil
+			record.Command.State = domain.CommandNeedsAttention
+			record.Command.LastError = "Agent lease expired with an uncertain remote outcome; reconcile the target before retrying."
+		}
+		changed = true
+	}
+	if changed {
+		if err := s.saveLocked(); err != nil {
+			return fmt.Errorf("expire command leases: %w", err)
+		}
+	}
+	return nil
 }
 
 func backoff(attempt uint) time.Duration {

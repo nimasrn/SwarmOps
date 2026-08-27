@@ -226,6 +226,9 @@ func TestLoadDefaultsAndBoundsForRetentionValues(t *testing.T) {
 	if cfg.CommandHistoryLimit != 2000 {
 		t.Fatalf("CommandHistoryLimit = %d, want the 2000 default", cfg.CommandHistoryLimit)
 	}
+	if cfg.CoreID != "core-local" || cfg.CoreMode != "active" || cfg.CoreName != "SwarmOps control plane" || cfg.CoreEndpoint != "" {
+		t.Fatalf("core defaults = id:%q mode:%q name:%q endpoint:%q", cfg.CoreID, cfg.CoreMode, cfg.CoreName, cfg.CoreEndpoint)
+	}
 	if len(cfg.TrustedProxyCIDRs) != 0 {
 		t.Fatalf("TrustedProxyCIDRs = %#v, want none by default", cfg.TrustedProxyCIDRs)
 	}
@@ -254,6 +257,28 @@ func TestLoadDefaultsAndBoundsForRetentionValues(t *testing.T) {
 	t.Setenv("SWARMOPS_TRUSTED_PROXY_CIDRS", "not-a-network")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_TRUSTED_PROXY_CIDRS") {
 		t.Fatalf("Load() error = %v, want trusted proxy parse failure", err)
+	}
+}
+
+func TestLoadSourceImagePrefixMustUseBuildAllowList(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_DEV_SESSION_KEY", strings.Repeat("s", 32))
+	t.Setenv("SWARMOPS_SOURCE_ENABLED", "true")
+	t.Setenv("SWARMOPS_SOURCE_IMAGE_PREFIX", "ghcr.io/acme")
+	t.Setenv("SWARMOPS_IMAGE_PREFIXES", "registry.internal/team/")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_SOURCE_IMAGE_PREFIX") {
+		t.Fatalf("Load() error = %v, want source image-prefix policy failure", err)
+	}
+
+	t.Setenv("SWARMOPS_IMAGE_PREFIXES", "ghcr.io/acme/")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.SourceEnabled || cfg.SourceImagePrefix != "ghcr.io/acme" {
+		t.Fatalf("source config = enabled:%v prefix:%q", cfg.SourceEnabled, cfg.SourceImagePrefix)
 	}
 }
 

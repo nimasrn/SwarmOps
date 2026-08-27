@@ -1,8 +1,0 @@
-.git
-.github
-**/node_modules
-web/dist
-deploy/hosts/*.env
-!deploy/hosts/example.env
-deploy/ansible/inventory.yml
-docs/*.inspect.ndjson

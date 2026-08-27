@@ -329,7 +329,7 @@ function attentionItems(nodes: Node[], services: Service[], observability: Obser
 function platformSignals(observability: ObservabilityStatus, traefik: TraefikStatus): PlatformSignal[] {
   return [
     observability.coreInstalled
-      ? { icon: 'chart', subtitle: observability.coreHealthy ? 'The reviewed Grafana, Prometheus, Alertmanager, and Jaeger stack is healthy.' : 'The reviewed observability stack is installed but degraded.', title: 'Core monitoring', tone: observability.coreHealthy ? 'success' : 'danger', value: observability.coreHealthy ? 'Healthy' : 'Degraded' }
+      ? { icon: 'chart', subtitle: observability.coreHealthy ? 'The reviewed Prometheus, Alertmanager, and Jaeger stack is healthy.' : 'The reviewed observability stack is installed but degraded.', title: 'Core monitoring', tone: observability.coreHealthy ? 'success' : 'danger', value: observability.coreHealthy ? 'Healthy' : 'Degraded' }
       : { icon: 'chart', subtitle: 'The reviewed observability stack is not installed on this cluster.', title: 'Core monitoring', tone: 'neutral', value: 'Not installed' },
     observability.agentInstalled
       ? { icon: 'server', subtitle: observability.agentHealthy ? 'Read-only host inventory is installed and healthy.' : 'The read-only host inventory stack is installed but degraded.', title: 'Node inventory', tone: observability.agentHealthy ? 'success' : 'danger', value: observability.agentHealthy ? 'Healthy' : 'Degraded' }

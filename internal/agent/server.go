@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,23 +13,28 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 )
 
 const (
-	commandOutputLimit  = 256 << 10
-	commandTimeout      = 10 * time.Minute
-	buildTimeout        = 30 * time.Minute
-	registryConfigLimit = 64 << 10
+	commandOutputLimit   = 256 << 10
+	commandTimeout       = 10 * time.Minute
+	buildTimeout         = 30 * time.Minute
+	registryConfigLimit  = 64 << 10
+	agentProtocolVersion = 2
 )
 
 type Server struct {
-	config     Config
-	enrollment *enrollment
-	managed    *managementState
-	token      []byte
+	busyMu         sync.Mutex
+	busyOperations uint
+	config         Config
+	diagnosticsLog *diagnosticRecorder
+	enrollment     *enrollment
+	startedAt      time.Time
+	token          []byte
 }
 
 func NewServer(config Config, token []byte) (*Server, error) {
@@ -43,24 +47,17 @@ func NewServer(config Config, token []byte) (*Server, error) {
 	if config.RemoteControlEnabled && (config.BuildMaxBytes < 0 || config.BuildMaxCPUs < 0 || config.BuildMaxMemoryMiB < 0) {
 		return nil, fmt.Errorf("remote-control build limits cannot be negative")
 	}
-	if (config.BootstrapEnabled || config.MobilityEnabled) && strings.TrimSpace(config.ManagedStateFile) == "" {
-		return nil, fmt.Errorf("managed bootstrap and mobility require a durable managed-state file")
+	if err := validateUpdateConfiguration(config); err != nil {
+		return nil, err
 	}
 	pending, err := newEnrollment(config.EnrollmentSecret, config.EnrollmentSecretFile)
 	if err != nil {
 		return nil, err
 	}
-	managed, err := newManagementState(config.ManagedStateFile)
-	if err != nil {
-		return nil, err
-	}
-	if config.BootstrapEnabled && config.Bootstrapper == nil {
-		config.Bootstrapper = systemBootstrapper{hostOS: config.HostOS}
-	}
-	if config.MobilityEnabled && config.VolumeTransfer == nil {
-		config.VolumeTransfer = newSystemVolumeTransfer(config.Docker, config.MobilityTransferDir, config.MobilityTransferMaxBytes)
-	}
-	return &Server{config: config, enrollment: pending, managed: managed, token: append([]byte(nil), token...)}, nil
+	startedAt := time.Now().UTC()
+	diagnosticsLog := newDiagnosticRecorder()
+	diagnosticsLog.record(startedAt, "agent_started", "info", "The SwarmOps machine agent started")
+	return &Server{config: config, diagnosticsLog: diagnosticsLog, enrollment: pending, startedAt: startedAt, token: append([]byte(nil), token...)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -68,8 +65,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /v1/status", s.status)
+	mux.HandleFunc("GET /v1/diagnostics", s.diagnostics)
+	mux.HandleFunc("POST /v1/agent/update", s.requestAgentUpdate)
 	mux.HandleFunc("GET /v1/snapshot", s.snapshot)
-	mux.HandleFunc("GET /v1/fleet-runs/{id}", s.fleetRun)
 	if s.enrollment != nil {
 		// One-time, single-use exchange of the installer's enrollment secret
 		// for the machine API key. It closes permanently after first use.
@@ -79,25 +77,73 @@ func (s *Server) Handler() http.Handler {
 		// These are fixed, authenticated operations backed by the local Docker
 		// client. They are not a Docker-socket or arbitrary-command proxy.
 		mux.HandleFunc("GET /v1/engine/_ping", s.enginePing)
+		mux.HandleFunc("GET /v1/provisioning/status", s.provisioningReadiness)
+		mux.HandleFunc("POST /v1/provisioning", s.provisioningApply)
 		mux.HandleFunc("GET /v1/engine/info", s.engineInfo)
 		mux.HandleFunc("GET /v1/engine/version", s.engineVersion)
 		mux.HandleFunc("GET /v1/engine/nodes", s.engineNodes)
 		mux.HandleFunc("GET /v1/engine/services", s.engineServices)
 		mux.HandleFunc("GET /v1/engine/tasks", s.engineTasks)
-		mux.HandleFunc("GET /v1/engine/containers/{id}/health", s.engineContainerHealth)
+		mux.HandleFunc("GET /v1/engine/tasks/{id}", s.engineTask)
+		mux.HandleFunc("GET /v1/engine/services/{id}", s.engineService)
+		mux.HandleFunc("GET /v1/engine/containers/json", s.engineContainers)
+		mux.HandleFunc("GET /v1/engine/containers/{id}/json", s.engineContainer)
+		mux.HandleFunc("GET /v1/engine/containers/{id}/stats", s.engineContainerStats)
+		mux.HandleFunc("GET /v1/engine/images/json", s.engineImages)
+		mux.HandleFunc("GET /v1/engine/images/{id}/json", s.engineImage)
+		mux.HandleFunc("GET /v1/engine/volumes", s.engineVolumes)
+		mux.HandleFunc("GET /v1/engine/volumes/{name}", s.engineVolume)
+		mux.HandleFunc("GET /v1/engine/networks", s.engineNetworks)
+		mux.HandleFunc("GET /v1/engine/networks/{id}", s.engineNetwork)
+		mux.HandleFunc("GET /v1/engine/secrets", s.engineSecrets)
+		mux.HandleFunc("GET /v1/engine/configs", s.engineConfigs)
+		mux.HandleFunc("GET /v1/engine/swarm", s.engineSwarm)
+		mux.HandleFunc("GET /v1/engine/system/df", s.engineDiskUsage)
+		mux.HandleFunc("GET /v1/engine/events", s.engineEvents)
 		mux.HandleFunc("POST /v1/engine/build", s.engineBuild)
 		mux.HandleFunc("POST /v1/commands", s.command)
-		if s.config.BootstrapEnabled {
-			mux.HandleFunc("POST /v1/bootstrap", s.bootstrap)
-			mux.HandleFunc("POST /v1/bootstrap/join-token", s.managerJoinToken)
-		}
-		if s.config.MobilityEnabled {
-			mux.HandleFunc("GET /v1/mobility/volumes/{name}/archive", s.volumeArchive)
-			mux.HandleFunc("POST /v1/mobility/volumes/{name}/restore", s.volumeRestore)
-			mux.HandleFunc("DELETE /v1/mobility/volumes/{name}", s.volumeRemove)
-		}
+		mux.HandleFunc("POST /v1/routing/reconcile", s.routingReconcile)
+		mux.HandleFunc("POST /v1/routing/network", s.routingNetwork)
+		mux.HandleFunc("POST /v1/routing/bind", s.routingBind)
+		mux.HandleFunc("GET /v1/traefik/runtime", s.traefikRuntime)
+		mux.HandleFunc("POST /v1/traefik/logs", s.traefikLogs)
+		mux.HandleFunc("GET /v1/traefik/prometheus", s.traefikPrometheus)
 	}
-	return mux
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		release := s.markUpdateBusy(request)
+		defer release()
+		mux.ServeHTTP(response, request)
+	})
+}
+
+func (s *Server) provisioningReadiness(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(response, s.provisioningStatus(request.Context()))
+}
+
+func (s *Server) provisioningApply(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, provisioningRequestLimit)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	var input agentcontrol.ProvisioningRequest
+	if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF || input.Validate() != nil {
+		http.Error(response, "invalid provisioning request", http.StatusBadRequest)
+		return
+	}
+	operationContext, cancel := context.WithTimeout(request.Context(), provisioningTimeout)
+	defer cancel()
+	if err := s.provision(operationContext, input); err != nil {
+		http.Error(response, "machine provisioning did not complete", http.StatusBadGateway)
+		return
+	}
+	writeJSON(response, map[string]string{"status": "ok"})
 }
 
 func (s *Server) health(response http.ResponseWriter, _ *http.Request) {
@@ -125,98 +171,7 @@ func (s *Server) status(response http.ResponseWriter, request *http.Request) {
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	value := Status{BootstrapAvailable: s.config.BootstrapEnabled && s.managed.Managed(), DockerAvailable: false, Managed: s.managed.Managed(), MobilityAvailable: s.config.MobilityEnabled && s.managed.Managed(), NodeName: s.config.NodeName, RemoteControlEnabled: s.config.RemoteControlEnabled, Version: s.config.Version}
-	if value.NodeName == "" {
-		value.NodeName = "agent"
-	}
-	if s.config.Docker != nil && s.config.Docker.Ping(request.Context()) == nil {
-		value.DockerAvailable = true
-		if version, err := s.config.Docker.Version(request.Context()); err == nil {
-			value.DockerVersion = version.Version
-		}
-		if info, err := s.config.Docker.Info(request.Context()); err == nil {
-			value.SwarmControlAvailable = info.Swarm.ControlAvailable
-			value.SwarmState = info.Swarm.LocalNodeState
-		}
-	}
-	writeJSON(response, value)
-}
-
-func (s *Server) bootstrap(response http.ResponseWriter, request *http.Request) {
-	if !s.authorized(request) {
-		http.Error(response, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if !s.managed.Managed() {
-		http.Error(response, "agent is not managed by a control plane", http.StatusConflict)
-		return
-	}
-	if s.config.Bootstrapper == nil {
-		http.Error(response, "managed host bootstrap is disabled", http.StatusForbidden)
-		return
-	}
-	request.Body = http.MaxBytesReader(response, request.Body, 4096)
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
-	var input agentcontrol.BootstrapRequest
-	if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		http.Error(response, "invalid managed bootstrap request", http.StatusBadRequest)
-		return
-	}
-	if err := agentcontrol.ValidateBootstrapRequest(input); err != nil {
-		http.Error(response, "invalid managed bootstrap request", http.StatusBadRequest)
-		return
-	}
-	output, err := s.config.Bootstrapper.Bootstrap(request.Context(), input)
-	if err != nil {
-		http.Error(response, "managed host bootstrap failed", http.StatusBadGateway)
-		return
-	}
-	writeJSON(response, map[string]string{"output": output, "status": "ok"})
-}
-
-// managerJoinToken is a controller-to-agent endpoint. It is deliberately not
-// exposed through the public SwarmOps API: the browser requests a named
-// destination only, and the controller relays this short-lived token directly
-// to the enrolled destination agent for its fixed `docker swarm join` action.
-func (s *Server) managerJoinToken(response http.ResponseWriter, request *http.Request) {
-	if !s.authorized(request) {
-		http.Error(response, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if !s.managed.Managed() {
-		http.Error(response, "agent is not managed by a control plane", http.StatusConflict)
-		return
-	}
-	provider, ok := s.config.Bootstrapper.(ManagerJoinTokenProvider)
-	if !ok {
-		http.Error(response, "managed Swarm join is disabled", http.StatusForbidden)
-		return
-	}
-	token, err := provider.ManagerJoinToken(request.Context())
-	if err != nil {
-		http.Error(response, "managed Swarm join token is unavailable", http.StatusBadGateway)
-		return
-	}
-	defer func() { token = "" }()
-	writeJSON(response, map[string]string{"token": token})
-}
-
-func (s *Server) fleetRun(response http.ResponseWriter, request *http.Request) {
-	if !s.authorized(request) {
-		http.Error(response, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	value, err := ReadRunStatus(s.config, request.PathValue("id"))
-	if errors.Is(err, ErrRunNotFound) {
-		http.Error(response, "not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(response, "fleet status unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	writeJSON(response, value)
+	writeJSON(response, s.currentStatus(request.Context()))
 }
 
 func (s *Server) metrics(response http.ResponseWriter, request *http.Request) {
@@ -339,24 +294,6 @@ func (s *Server) engineTasks(response http.ResponseWriter, request *http.Request
 	writeJSON(response, value)
 }
 
-func (s *Server) engineContainerHealth(response http.ResponseWriter, request *http.Request) {
-	if !s.authorized(request) {
-		http.Error(response, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	id := request.PathValue("id")
-	if !agentReference(id) {
-		http.Error(response, "invalid container identifier", http.StatusBadRequest)
-		return
-	}
-	value, err := s.config.Docker.ContainerHealth(request.Context(), id)
-	if err != nil {
-		http.Error(response, "container health unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	writeJSON(response, value)
-}
-
 func (s *Server) engineBuild(response http.ResponseWriter, request *http.Request) {
 	if !s.authorized(request) {
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
@@ -406,14 +343,12 @@ func (s *Server) command(response http.ResponseWriter, request *http.Request) {
 		http.Error(response, "machine command failed", http.StatusBadGateway)
 		return
 	}
-	// The controller uses bounded command output as encrypted command evidence.
-	// This response is never copied into the audit trail. Service logs remain a
-	// separate on-demand read endpoint and are not queued command evidence.
-	value := map[string]string{"status": "ok"}
-	if output != "" {
-		value["output"] = output
+	switch input.Operation {
+	case agentcontrol.OperationServiceLogs, agentcontrol.OperationSecretList, agentcontrol.OperationConfigList:
+		writeJSON(response, map[string]string{"output": output})
+		return
 	}
-	writeJSON(response, value)
+	writeJSON(response, map[string]string{"status": "ok"})
 }
 
 func engineTaskFilters(query url.Values) (map[string][]string, error) {
@@ -583,16 +518,25 @@ func writeJSON(response http.ResponseWriter, value any) {
 // Status is intentionally compact: it proves the authenticated agent and
 // current Docker/Swarm readiness without exposing Docker's full host metadata.
 type Status struct {
-	BootstrapAvailable    bool   `json:"bootstrapAvailable"`
-	DockerAvailable       bool   `json:"dockerAvailable"`
-	DockerVersion         string `json:"dockerVersion,omitempty"`
-	Managed               bool   `json:"managed"`
-	MobilityAvailable     bool   `json:"mobilityAvailable"`
-	NodeName              string `json:"nodeName"`
-	RemoteControlEnabled  bool   `json:"remoteControlEnabled"`
-	SwarmControlAvailable bool   `json:"swarmControlAvailable"`
-	SwarmState            string `json:"swarmState,omitempty"`
-	Version               string `json:"version"`
+	DockerAvailable       bool      `json:"dockerAvailable"`
+	DockerVersion         string    `json:"dockerVersion,omitempty"`
+	NodeName              string    `json:"nodeName"`
+	ProtocolVersion       uint      `json:"protocolVersion,omitempty"`
+	RemoteControlEnabled  bool      `json:"remoteControlEnabled"`
+	StartedAt             time.Time `json:"startedAt,omitempty"`
+	SwarmControlAvailable bool      `json:"swarmControlAvailable"`
+	SwarmState            string    `json:"swarmState,omitempty"`
+	UptimeSeconds         uint64    `json:"uptimeSeconds,omitempty"`
+	Version               string    `json:"version"`
+}
+
+// CurrentStatus exposes the same safe handshake projection used by /v1/status
+// to the outbound pull client without opening a local listener.
+func (s *Server) CurrentStatus(ctx context.Context) Status {
+	if s == nil {
+		return Status{}
+	}
+	return s.currentStatus(ctx)
 }
 
 var jsonEncoder = func(response http.ResponseWriter, value any) error {

@@ -46,6 +46,13 @@ type Platform struct {
 type Service struct {
 	CreatedAt time.Time `json:"CreatedAt"`
 	ID        string    `json:"ID"`
+	Endpoint  struct {
+		Ports []struct {
+			Protocol      string `json:"Protocol"`
+			PublishedPort uint16 `json:"PublishedPort"`
+			TargetPort    uint16 `json:"TargetPort"`
+		} `json:"Ports"`
+	} `json:"Endpoint"`
 	Spec      struct {
 		Labels map[string]string `json:"Labels"`
 		Mode   struct {
@@ -55,13 +62,21 @@ type Service struct {
 			} `json:"Replicated"`
 		} `json:"Mode"`
 		Name         string `json:"Name"`
+		EndpointSpec struct {
+			Ports []struct {
+				Protocol      string `json:"Protocol"`
+				PublishedPort uint16 `json:"PublishedPort"`
+				TargetPort    uint16 `json:"TargetPort"`
+			} `json:"Ports"`
+		} `json:"EndpointSpec"`
 		TaskTemplate struct {
+			Networks []struct {
+				Aliases []string `json:"Aliases"`
+				Target  string   `json:"Target"`
+			} `json:"Networks"`
 			ContainerSpec struct {
 				Image string `json:"Image"`
 			} `json:"ContainerSpec"`
-			Placement struct {
-				Constraints []string `json:"Constraints"`
-			} `json:"Placement"`
 		} `json:"TaskTemplate"`
 	} `json:"Spec"`
 	UpdateStatus *struct {
@@ -119,21 +134,4 @@ type Version struct {
 	APIVersion    string `json:"ApiVersion"`
 	MinAPIVersion string `json:"MinAPIVersion"`
 	Version       string `json:"Version"`
-}
-
-// Volume contains only the Docker volume facts required for the machine
-// agent's reviewed migration path. It is never returned to a browser.
-type Volume struct {
-	Driver     string `json:"Driver"`
-	Mountpoint string `json:"Mountpoint"`
-	Name       string `json:"Name"`
-}
-
-// ContainerHealth is the reduced, non-sensitive subset of an inspect result
-// needed to keep a migrated local-volume service under observation. It omits
-// environment, mounts, labels, network addresses, and all log content.
-type ContainerHealth struct {
-	Health  string `json:"health,omitempty"`
-	Running bool   `json:"running"`
-	Status  string `json:"status,omitempty"`
 }

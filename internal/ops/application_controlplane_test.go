@@ -38,7 +38,7 @@ func newApplicationControlPlane(t *testing.T, runner *recordingRunner) *ControlP
 	})
 }
 
-func TestPlanApplicationCreatesOnlyStackScopedConnectionSecrets(t *testing.T) {
+func TestPlanApplicationReferencesStackScopedSecretsWithoutMutatingTheCluster(t *testing.T) {
 	runner := &recordingRunner{}
 	control := newApplicationControlPlane(t, runner)
 	if err := control.Credentials.Put(DatabaseMongo, "mongodb://swarmops:pw@swarmops-mongo_mongo:27017/swarmops?authSource=admin"); err != nil {
@@ -60,21 +60,19 @@ func TestPlanApplicationCreatesOnlyStackScopedConnectionSecrets(t *testing.T) {
 			created[call[2]] = true
 		}
 	}
-	if !created["production-vlora-backend_mongo_uri_v1"] || !created["production-vlora-backend_redis_uri_v1"] {
-		t.Fatalf("scoped connection secrets were not created: %v", runner.calls)
-	}
-	for name := range created {
-		if !strings.HasPrefix(name, "production-vlora-backend_") {
-			t.Fatalf("created a secret outside the application namespace: %q", name)
-		}
+	if len(created) != 0 {
+		t.Fatalf("read-only planning created secrets: %v", runner.calls)
 	}
 }
 
-func TestPlanApplicationRefusesADatabaseThatIsNotDeployed(t *testing.T) {
+func TestPlanApplicationCanPreviewPendingManagedDatabaseSecret(t *testing.T) {
 	control := newApplicationControlPlane(t, &recordingRunner{})
-	_, err := control.PlanApplication(context.Background(), vloraBackendSpec())
-	if err == nil || !strings.Contains(err.Error(), "not deployed") {
-		t.Fatalf("expected an undeployed-database error, got %v", err)
+	rendered, err := control.PlanApplication(context.Background(), vloraBackendSpec())
+	if err != nil {
+		t.Fatalf("pending managed database preview: %v", err)
+	}
+	if !strings.Contains(string(rendered), "production-vlora-backend_mongo_uri_v1") || strings.Contains(string(rendered), "managed://pending") {
+		t.Fatalf("pending secret preview is unsafe or incomplete:\n%s", rendered)
 	}
 }
 
@@ -108,7 +106,7 @@ func TestMetricsDiscoveryListsOnlyApplicationsThatPublishMetrics(t *testing.T) {
 	if len(targets) != 1 {
 		t.Fatalf("expected only the metrics-enabled application, got %#v", targets)
 	}
-	if targets[0].Targets[0] != "tasks.production-vlora-backend_app:8080" {
+	if targets[0].Targets[0] != "production-vlora-backend-app.swarmops.internal:8081" {
 		t.Fatalf("unexpected discovery target %q", targets[0].Targets[0])
 	}
 	if targets[0].Labels["__metrics_path__"] != "/metrics" || targets[0].Labels["application"] != "vlora-backend" {
@@ -133,6 +131,22 @@ func TestSealedApplicationsSurviveARestart(t *testing.T) {
 	spec, found := reloaded.Get("vlora-backend")
 	if !found || spec.Domain != "api.vlora.ir" || len(spec.Databases) != 2 {
 		t.Fatalf("application did not survive a restart: %#v", spec)
+	}
+}
+
+func TestApplicationStoreRejectsDuplicateDomain(t *testing.T) {
+	directory := t.TempDir()
+	store, err := NewApplicationStore(directory, bytes.Repeat([]byte{19}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := ApplicationSpec{Name: "first", Image: "ghcr.io/acme/first:2026.08.25", Port: 8080, Domain: "app.example.com", Resolver: "le"}
+	second := ApplicationSpec{Name: "second", Image: "ghcr.io/acme/second:2026.08.25", Port: 8080, Domain: "app.example.com", Resolver: "le"}
+	if err := store.Put(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(second); err == nil || !strings.Contains(err.Error(), "already assigned") {
+		t.Fatalf("duplicate domain error = %v", err)
 	}
 }
 

@@ -60,9 +60,6 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 		"rm":         {"1"},
 		"t":          {request.Image},
 	}
-	if request.Push {
-		query.Set("push", "1")
-	}
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/x-tar")
 	if request.Push {
@@ -76,6 +73,25 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 	}
 	if buildLogReportsError(log) {
 		return domain.BuildResult{}, fmt.Errorf("Docker reported a build error")
+	}
+	if request.Push {
+		repository, tag, err := splitImage(request.Image)
+		if err != nil {
+			return domain.BuildResult{}, err
+		}
+		authHeader, err := registryAuthHeader(s.RegistryAuth, repository)
+		if err != nil {
+			return domain.BuildResult{}, err
+		}
+		pushContext, pushCancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer pushCancel()
+		pushLog, err := s.Docker.PushImage(pushContext, repository, tag, authHeader)
+		if err != nil {
+			return domain.BuildResult{}, fmt.Errorf("push built image: %w", err)
+		}
+		if buildLogReportsError(pushLog) {
+			return domain.BuildResult{}, fmt.Errorf("Docker reported an image push error")
+		}
 	}
 	return domain.BuildResult{Image: request.Image, Log: log, Pushed: request.Push, RequestID: requestID}, nil
 }
@@ -122,6 +138,50 @@ func allowedPrefix(image string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+func splitImage(image string) (repository, tag string, err error) {
+	lastSlash := strings.LastIndex(image, "/")
+	separator := strings.LastIndex(image, ":")
+	if separator <= lastSlash || separator == len(image)-1 {
+		return "", "", fmt.Errorf("image must contain a repository and tag")
+	}
+	return image[:separator], image[separator+1:], nil
+}
+
+func registryAuthHeader(configuration []byte, repository string) (string, error) {
+	var dockerConfig struct {
+		Auths map[string]json.RawMessage `json:"auths"`
+	}
+	if err := json.Unmarshal(configuration, &dockerConfig); err != nil || len(dockerConfig.Auths) == 0 {
+		return "", fmt.Errorf("registry push requires a valid Docker auth configuration")
+	}
+	registry := strings.SplitN(repository, "/", 2)[0]
+	candidates := []string{registry, "https://" + registry, "http://" + registry}
+	if !strings.ContainsAny(registry, ".:") && registry != "localhost" {
+		registry = "https://index.docker.io/v1/"
+		candidates = []string{registry, "index.docker.io", "docker.io"}
+	}
+	var raw json.RawMessage
+	for _, candidate := range candidates {
+		if value, found := dockerConfig.Auths[candidate]; found {
+			raw = value
+			break
+		}
+	}
+	if len(raw) == 0 {
+		return "", fmt.Errorf("registry push credential is not configured for %q", registry)
+	}
+	var auth map[string]any
+	if err := json.Unmarshal(raw, &auth); err != nil || auth == nil {
+		return "", fmt.Errorf("registry push credential is invalid")
+	}
+	auth["serveraddress"] = registry
+	encoded, err := json.Marshal(auth)
+	if err != nil {
+		return "", fmt.Errorf("encode registry push credential")
+	}
+	return base64.URLEncoding.EncodeToString(encoded), nil
 }
 
 // buildLogReportsError decodes the Docker Engine build stream, whose entries

@@ -35,9 +35,18 @@ function isLoopback(hostname: string) {
   return ['127.0.0.1', '::1', '[::1]', 'localhost'].includes(hostname.toLowerCase())
 }
 
+function resolveWebPort(value?: string) {
+  const port = Number(value?.trim() || '5284')
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('SWARMOPS_WEB_PORT must be a port between 1 and 65535')
+  }
+  return port
+}
+
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, process.cwd(), 'SWARMOPS_')
   const apiTarget = resolveAPIProxyTarget(process.env.SWARMOPS_API_URL ?? environment.SWARMOPS_API_URL)
+  const webPort = resolveWebPort(process.env.SWARMOPS_WEB_PORT ?? environment.SWARMOPS_WEB_PORT)
   const proxy = { target: apiTarget, changeOrigin: true, secure: true }
 
   return {
@@ -53,7 +62,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '127.0.0.1',
-      port: 5284,
+      port: webPort,
       proxy: {
         '/api': proxy,
         '/healthz': proxy,

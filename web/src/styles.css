@@ -49,50 +49,9 @@ body {
   box-shadow: var(--nim-shadow-lg);
 }
 
-.swarmops-mark {
-  display: grid;
-  place-items: center;
-  inline-size: var(--nim-size-avatar-lg);
-  block-size: var(--nim-size-avatar-lg);
-  border-radius: var(--nim-radius-md);
-  background: var(--nim-accent);
-  box-shadow: var(--nim-shadow-sm);
-  color: var(--nim-on-accent);
-  font-family: var(--nim-type-display-family);
-  font-size: var(--nim-type-title-lg-size);
-  font-weight: var(--nim-type-display-weight);
-}
-
-.swarmops-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--nim-space-3);
-  min-inline-size: 0;
-}
-
-.swarmops-brand .swarmops-mark {
-  inline-size: var(--nim-control-lg);
-  block-size: var(--nim-control-lg);
-  flex: none;
-  font-size: var(--nim-type-title-md-size);
-}
-
-.swarmops-brand > span:last-child {
-  display: grid;
-  gap: var(--nim-space-1);
-  min-inline-size: 0;
-}
-
-.swarmops-brand strong {
-  color: var(--nim-ink);
-  font-size: var(--nim-type-body-size);
-  letter-spacing: var(--nim-label-tracking);
-}
-
-.swarmops-brand small {
-  overflow: hidden;
-  color: var(--nim-ink-tertiary);
-  font-size: var(--nim-type-label-size);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* The one line of identity this app keeps: the malachite accent, handed to the
+   kit's brand lockup for the second run of the wordmark. Everything else about
+   the lockup — the gap, the type, the tracking, the tagline — is `Brand`. */
+.nim-brand {
+  --nim-brand-accent: var(--nim-accent);
 }

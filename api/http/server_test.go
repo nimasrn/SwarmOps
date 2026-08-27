@@ -3,6 +3,7 @@ package apihttp
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,11 +12,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agent"
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/audit"
+	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
@@ -25,6 +31,24 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/remote"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type fakeProvisioner struct {
+	last   agentcontrol.ProvisioningRequest
+	status agentcontrol.ProvisioningStatus
+}
+
+func (f *fakeProvisioner) Provision(_ context.Context, input agentcontrol.ProvisioningRequest) error {
+	f.last = input
+	return nil
+}
+
+func (f *fakeProvisioner) ProvisioningStatus(context.Context) (agentcontrol.ProvisioningStatus, error) {
+	return f.status, nil
+}
+
+type fakeHostInspector struct{ snapshot agent.Snapshot }
+
+func (f fakeHostInspector) Snapshot(context.Context) (agent.Snapshot, error) { return f.snapshot, nil }
 
 func TestConnectionErrorReturnsSafeDiagnostic(t *testing.T) {
 	t.Parallel()
@@ -77,6 +101,37 @@ func TestOperationErrorExplainsWhenDockerBootstrapIsRequired(t *testing.T) {
 	}
 }
 
+func TestRemoteMutationAdmissionIsDisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	server := &Server{config: config.Config{MutationEnabled: false}}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/networks", nil)
+	response := httptest.NewRecorder()
+
+	_, _, accepted := server.commandSubmissionContext(response, request)
+	if accepted {
+		t.Fatal("disabled remote mutation was admitted to the command ledger")
+	}
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Error != "Remote mutations are disabled on this control plane" {
+		t.Fatalf("error = %q", payload.Error)
+	}
+
+	retryResponse := httptest.NewRecorder()
+	server.commandRetry(retryResponse, httptest.NewRequest(http.MethodPost, "/api/v1/commands/cmd-1/retry", nil), auth.Claims{Username: "operator"})
+	if retryResponse.Code != http.StatusForbidden {
+		t.Fatalf("retry status = %d, want %d", retryResponse.Code, http.StatusForbidden)
+	}
+}
+
 func TestLoginMeAndCSRFProtection(t *testing.T) {
 	t.Parallel()
 	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
@@ -106,6 +161,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 		BuildMaxBytes:     1 << 20,
 		DataDir:           t.TempDir(),
 		DataEncryptionKey: dataEncryptionKey,
+		MutationEnabled:   true,
 		SecureCookies:     false,
 		SessionKey:        []byte("01234567890123456789012345678901"),
 		SessionTTL:        time.Hour,
@@ -156,6 +212,135 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 	}
 }
 
+func TestServerReadinessUsesPathTargetAndDurableQueue(t *testing.T) {
+	t.Parallel()
+	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataEncryptionKey := bytes.Repeat([]byte{11}, 32)
+	auditStore, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machineKey := "test-machine-api-key"
+	machine := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer "+machineKey {
+			http.Error(response, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if request.URL.Path != "/v1/status" {
+			http.NotFound(response, request)
+			return
+		}
+		_, _ = io.WriteString(response, `{"nodeName":"bootstrap-1","remoteControlEnabled":true}`)
+	}))
+	defer machine.Close()
+	parsed, err := url.Parse(machine.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.ParseUint(parsed.Port(), 10, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := sha256.Sum256(machine.Certificate().Raw)
+	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := servers.Add(context.Background(), remote.AddInput{
+		APIKey:                    machineKey,
+		APIURL:                    parsed.Scheme + "://" + parsed.Hostname(),
+		Name:                      "bootstrap-1",
+		Port:                      uint16(port),
+		TLSCertificateFingerprint: fmt.Sprintf("SHA256:%X", fingerprint),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provisioner := &fakeProvisioner{status: agentcontrol.ProvisioningStatus{
+		Capabilities: agentcontrol.ProvisioningCapabilities{InstallDocker: true},
+		OS:           agentcontrol.ProvisioningOS{ID: "ubuntu", Name: "Ubuntu", Supported: true},
+	}}
+	hostSnapshot := agent.Snapshot{
+		CollectedAt: time.Date(2026, time.August, 27, 12, 0, 0, 0, time.UTC),
+		Disk:        agent.Disk{AvailableBytes: 75 << 30, TotalBytes: 100 << 30, UsedBytes: 25 << 30},
+		Hardware:    agent.Hardware{CPUCores: 8, MemoryAvailable: 12 << 30, MemoryTotal: 16 << 30, UptimeSeconds: 86400},
+		NodeName:    "bootstrap-1",
+		OS:          agent.OS{Architecture: "amd64", Kernel: "6.8.0", Name: "Ubuntu 24.04 LTS"},
+		Version:     "0.5.0",
+	}
+	cfg := config.Config{
+		AdminPasswordHash: hash,
+		AdminUsername:     "operator",
+		DataDir:           t.TempDir(),
+		DataEncryptionKey: dataEncryptionKey,
+		MutationEnabled:   true,
+		SecureCookies:     false,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+	}
+	server, err := New(cfg, TargetResolverFunc(func(id string) (Target, error) {
+		if id != profile.ID {
+			return Target{}, fmt.Errorf("unexpected target %q", id)
+		}
+		return Target{Host: fakeHostInspector{snapshot: hostSnapshot}, Provisioner: provisioner}, nil
+	}), servers, auditStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"operator","password":"test-password"}`))
+	login.Header.Set("Content-Type", "application/json")
+	loginResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(loginResponse, login)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("login = %d: %s", loginResponse.Code, loginResponse.Body.String())
+	}
+	var session struct {
+		CSRFToken string `json:"csrfToken"`
+	}
+	if err := json.NewDecoder(loginResponse.Body).Decode(&session); err != nil {
+		t.Fatal(err)
+	}
+	cookie := loginResponse.Result().Cookies()[0]
+	readiness := httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+profile.ID+"/readiness", nil)
+	readiness.AddCookie(cookie)
+	readinessResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(readinessResponse, readiness)
+	if readinessResponse.Code != http.StatusOK {
+		t.Fatalf("readiness = %d: %s", readinessResponse.Code, readinessResponse.Body.String())
+	}
+	var readinessPayload serverReadinessResponse
+	if err := json.NewDecoder(readinessResponse.Body).Decode(&readinessPayload); err != nil {
+		t.Fatal(err)
+	}
+	if readinessPayload.Host == nil || readinessPayload.Host.NodeName != "bootstrap-1" || readinessPayload.Host.Hardware.CPUCores != 8 {
+		t.Fatalf("readiness host snapshot = %#v", readinessPayload.Host)
+	}
+	queueRequest := httptest.NewRequest(http.MethodPost, "/api/v1/servers/"+profile.ID+"/readiness", strings.NewReader(`{"confirmation":"PREPARE_SERVER","installDocker":true}`))
+	queueRequest.AddCookie(cookie)
+	queueRequest.Header.Set("Content-Type", "application/json")
+	queueRequest.Header.Set("Idempotency-Key", "server-readiness-1")
+	queueRequest.Header.Set("X-SwarmOps-Cluster-ID", "default")
+	queueRequest.Header.Set("X-CSRF-Token", session.CSRFToken)
+	queueResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(queueResponse, queueRequest)
+	if queueResponse.Code != http.StatusAccepted {
+		t.Fatalf("queue readiness = %d: %s", queueResponse.Code, queueResponse.Body.String())
+	}
+	record, found, err := server.CommandStore().ClaimDue()
+	if err != nil || !found || record.Command.Action != commandServerReadiness || record.Command.ServerID != profile.ID {
+		t.Fatalf("queued record = %#v found=%t err=%v", record, found, err)
+	}
+	if err := server.ExecuteCommand(context.Background(), record); err != nil {
+		t.Fatal(err)
+	}
+	if !provisioner.last.InstallDocker || provisioner.last.Confirmation != agentcontrol.ProvisionConfirmation {
+		t.Fatalf("provisioning request = %#v", provisioner.last)
+	}
+}
+
 func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 	t.Parallel()
 
@@ -192,6 +377,7 @@ func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 		AdminUsername:     "operator",
 		DataDir:           t.TempDir(),
 		DataEncryptionKey: dataEncryptionKey,
+		MutationEnabled:   true,
 		SecureCookies:     false,
 		SessionKey:        []byte("01234567890123456789012345678901"),
 		SessionTTL:        time.Hour,
@@ -244,6 +430,161 @@ func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 	if overview.Summary.Services != 1 || overview.Summary.RunningTasks != 2 || len(overview.Services) != 1 || overview.Services[0].Name != "demo_web" {
 		t.Fatalf("service summary = %#v services=%#v", overview.Summary, overview.Services)
 	}
+}
+
+func TestCoreTopologyIsSeparateFromManagedServers(t *testing.T) {
+	t.Parallel()
+	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataEncryptionKey := bytes.Repeat([]byte{13}, 32)
+	dataDir := t.TempDir()
+	auditStore, err := audit.Open(dataDir, dataEncryptionKey, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(config.Config{
+		AdminPasswordHash: hash,
+		AdminUsername:     "operator",
+		CoreEndpoint:      "https://core-primary.example.test",
+		CoreID:            "core-primary",
+		CoreMode:          "active",
+		CoreName:          "Primary control plane",
+		DataDir:           dataDir,
+		DataEncryptionKey: dataEncryptionKey,
+		SecureCookies:     false,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+	}, TargetResolverFunc(func(string) (Target, error) { return Target{}, fmt.Errorf("no managed server") }), servers, auditStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	cookie, csrf := authenticatedSession(t, handler)
+
+	coreRequest := httptest.NewRequest(http.MethodGet, "/api/v1/core", nil)
+	coreRequest.AddCookie(cookie)
+	coreResponse := httptest.NewRecorder()
+	handler.ServeHTTP(coreResponse, coreRequest)
+	if coreResponse.Code != http.StatusOK {
+		t.Fatalf("core status = %d: %s", coreResponse.Code, coreResponse.Body.String())
+	}
+	var topology domain.CoreTopology
+	if err := json.NewDecoder(coreResponse.Body).Decode(&topology); err != nil {
+		t.Fatal(err)
+	}
+	if topology.LocalID != "core-primary" || !topology.ControlEnabled || len(topology.Members) != 1 {
+		t.Fatalf("core topology = %#v", topology)
+	}
+
+	addReplica := httptest.NewRequest(http.MethodPost, "/api/v1/core/replicas", strings.NewReader(`{"confirmation":"PREPARE_CORE_REPLICA","endpoint":"https://core-standby.example.test","id":"core-standby","name":"Standby control plane"}`))
+	addReplica.AddCookie(cookie)
+	addReplica.Header.Set("Content-Type", "application/json")
+	addReplica.Header.Set("X-CSRF-Token", csrf)
+	addReplicaResponse := httptest.NewRecorder()
+	handler.ServeHTTP(addReplicaResponse, addReplica)
+	if addReplicaResponse.Code != http.StatusCreated {
+		t.Fatalf("add core replica = %d: %s", addReplicaResponse.Code, addReplicaResponse.Body.String())
+	}
+
+	serversRequest := httptest.NewRequest(http.MethodGet, "/api/v1/servers", nil)
+	serversRequest.AddCookie(cookie)
+	serversResponse := httptest.NewRecorder()
+	handler.ServeHTTP(serversResponse, serversRequest)
+	if serversResponse.Code != http.StatusOK {
+		t.Fatalf("servers = %d: %s", serversResponse.Code, serversResponse.Body.String())
+	}
+	var profiles []domain.Server
+	if err := json.NewDecoder(serversResponse.Body).Decode(&profiles); err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 0 {
+		t.Fatalf("core members leaked into managed servers: %#v", profiles)
+	}
+}
+
+func TestStandbyBlocksAgentOperationsUntilExplicitPromotion(t *testing.T) {
+	t.Parallel()
+	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataEncryptionKey := bytes.Repeat([]byte{14}, 32)
+	dataDir := t.TempDir()
+	auditStore, err := audit.Open(dataDir, dataEncryptionKey, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(config.Config{
+		AdminPasswordHash: hash,
+		AdminUsername:     "operator",
+		CoreID:            "core-standby",
+		CoreMode:          "standby",
+		DataDir:           dataDir,
+		DataEncryptionKey: dataEncryptionKey,
+		SecureCookies:     false,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+	}, TargetResolverFunc(func(string) (Target, error) { return Target{}, fmt.Errorf("no managed server") }), servers, auditStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	cookie, csrf := authenticatedSession(t, handler)
+
+	blocked := httptest.NewRequest(http.MethodPost, "/api/v1/servers", strings.NewReader(`{}`))
+	blocked.AddCookie(cookie)
+	blocked.Header.Set("Content-Type", "application/json")
+	blocked.Header.Set("X-CSRF-Token", csrf)
+	blockedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(blockedResponse, blocked)
+	if blockedResponse.Code != http.StatusConflict {
+		t.Fatalf("standby server mutation = %d: %s", blockedResponse.Code, blockedResponse.Body.String())
+	}
+
+	promote := httptest.NewRequest(http.MethodPost, "/api/v1/core/promote", strings.NewReader(`{"confirmation":"PROMOTE_CORE:core-standby","primaryConfirmedStopped":true}`))
+	promote.AddCookie(cookie)
+	promote.Header.Set("Content-Type", "application/json")
+	promote.Header.Set("X-CSRF-Token", csrf)
+	promoteResponse := httptest.NewRecorder()
+	handler.ServeHTTP(promoteResponse, promote)
+	if promoteResponse.Code != http.StatusOK {
+		t.Fatalf("emergency promote = %d: %s", promoteResponse.Code, promoteResponse.Body.String())
+	}
+	if !server.CanExecuteCommands() {
+		t.Fatal("promoted core cannot execute commands")
+	}
+}
+
+func authenticatedSession(t *testing.T, handler http.Handler) (*http.Cookie, string) {
+	t.Helper()
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"operator","password":"test-password"}`))
+	login.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, login)
+	if response.Code != http.StatusOK {
+		t.Fatalf("login = %d: %s", response.Code, response.Body.String())
+	}
+	var session struct {
+		CSRFToken string `json:"csrfToken"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&session); err != nil {
+		t.Fatal(err)
+	}
+	cookies := response.Result().Cookies()
+	if len(cookies) != 1 || session.CSRFToken == "" {
+		t.Fatalf("login session = cookies:%#v csrf:%q", cookies, session.CSRFToken)
+	}
+	return cookies[0], session.CSRFToken
 }
 
 func TestHandlerRestrictsDirectTLSClientNetworks(t *testing.T) {

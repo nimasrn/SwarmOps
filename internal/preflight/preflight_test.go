@@ -33,7 +33,7 @@ func validManifest() Manifest {
 			{Name: "postgres", Profile: "postgres-primary-replica", Replicas: 2},
 			{Name: "redis", Profile: "redis-sentinel", Replicas: 3},
 			{Name: "jitsi", Profile: "jitsi", Replicas: 1, Domain: "meet.example.com", Resolver: "le", AdvertiseIP: "198.51.100.10", ObjectStorageProvider: "primary"},
-			{Name: "observability", Profile: "observability", Replicas: 1, Domain: "grafana.example.com", Resolver: "arvan"},
+			{Name: "observability", Profile: "observability", Replicas: 1},
 		},
 	}
 }
@@ -57,6 +57,32 @@ func TestCheckRejectsDuplicateDomainAcrossOneNamespace(t *testing.T) {
 	report := Check(manifest)
 	if report.Valid() || !hasCode(report, "domain-duplicate") {
 		t.Fatalf("expected duplicate-domain rejection, got %#v", report.Findings)
+	}
+}
+
+func TestCheckAcceptsReviewedOptionalApplicationDomainSuffix(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	manifest.Workloads = append(manifest.Workloads, Workload{
+		Name: "apps", Profile: "application", Replicas: 1, Resolver: "le",
+		DomainOptional: true, DomainSuffixes: []string{"apps.example.com"},
+	})
+	report := Check(manifest)
+	if !report.Valid() {
+		t.Fatalf("optional application domain policy was rejected: %#v", report.Findings)
+	}
+}
+
+func TestCheckRejectsOverlappingDomainPolicies(t *testing.T) {
+	t.Parallel()
+	manifest := validManifest()
+	manifest.Workloads = append(manifest.Workloads,
+		Workload{Name: "apps-a", Profile: "application", Replicas: 1, Resolver: "le", DomainOptional: true, DomainSuffixes: []string{"apps.example.com"}},
+		Workload{Name: "apps-b", Profile: "application", Replicas: 1, Resolver: "le", DomainOptional: true, DomainSuffixes: []string{"team.apps.example.com"}},
+	)
+	report := Check(manifest)
+	if report.Valid() || !hasCode(report, "domain-policy-overlap") {
+		t.Fatalf("expected overlapping domain-policy rejection, got %#v", report.Findings)
 	}
 }
 

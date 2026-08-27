@@ -19,8 +19,8 @@ type MetricsTarget struct {
 }
 
 // MetricsTargets renders the discovery document for every stored application
-// that publishes metrics. `tasks.<service>` resolves to the individual task
-// IPs, so each replica is scraped rather than one load-balanced endpoint.
+// that publishes metrics. The target is the service's typed Traefik alias;
+// Prometheus never joins an application overlay or reaches a backend directly.
 func (c *ControlPlane) MetricsTargets() []MetricsTarget {
 	namespace := ""
 	if c.Admission != nil {
@@ -40,6 +40,7 @@ func MetricsTargetsFor(apps *ApplicationStore, namespace string) []MetricsTarget
 			continue
 		}
 		service := spec.ServiceDNSName(namespace)
+		route := applicationRouteSpec(spec, spec.StackName(namespace))
 		targets = append(targets, MetricsTarget{
 			Labels: map[string]string{
 				"__metrics_path__": spec.MetricsPath,
@@ -49,7 +50,7 @@ func MetricsTargetsFor(apps *ApplicationStore, namespace string) []MetricsTarget
 				"namespace":        namespace,
 				"swarm_service":    service,
 			},
-			Targets: []string{fmt.Sprintf("tasks.%s:%d", service, spec.MetricsPort)},
+			Targets: []string{fmt.Sprintf("%s.swarmops.internal:8081", route.Key)},
 		})
 	}
 	sort.Slice(targets, func(left, right int) bool { return targets[left].Targets[0] < targets[right].Targets[0] })

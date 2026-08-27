@@ -8,8 +8,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/nimasrn/SwarmOps/internal/mobility"
 )
 
 const MaxComposeBytes = 1 << 20
@@ -19,13 +17,15 @@ const (
 	OperationServiceRestart   = "service_restart"
 	OperationServiceRollback  = "service_rollback"
 	OperationServiceScale     = "service_scale"
-	OperationServiceMove      = "service_move"
 	OperationServiceLogs      = "service_logs"
 	OperationStackConfig      = "stack_config"
 	OperationStackDeploy      = "stack_deploy"
 	OperationStackRemove      = "stack_remove"
 	OperationSecretCreate     = "secret_create"
 	OperationSecretList       = "secret_list"
+	OperationSecretRemove     = "secret_remove"
+	OperationConfigCreate     = "config_create"
+	OperationConfigList       = "config_list"
 )
 
 // MaxSecretBytes bounds the generated credential a managed stateful stack
@@ -38,24 +38,36 @@ var (
 	stackNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 	// Only SwarmOps' own generated credentials may be created through this
 	// vocabulary, so the name is confined to the swarmops_ prefix.
-	managedSecretPattern = regexp.MustCompile(`^swarmops_[a-z0-9][a-z0-9_]{0,54}$`)
+	managedSecretPattern = regexp.MustCompile(`^(swarmops_[a-z0-9][a-z0-9_]{0,54}|traefik_dns_[a-z0-9][a-z0-9_]{0,72}_v[1-9][0-9]*)$`)
+	removableDNSSecret   = regexp.MustCompile(`^traefik_dns_(cloudflare|arvan)_[a-z0-9][a-z0-9_]{0,62}_v[1-9][0-9]*$`)
+	managedConfigPattern = regexp.MustCompile(`^swarmops_traefik_static_v1_[a-f0-9]{16}$`)
 	secretValuePattern   = regexp.MustCompile(`^[A-Za-z0-9+/=_.:@?&-]{16,512}$`)
 )
 
 // Request is intentionally structured rather than an argv pass-through. The
 // agent validates it again before it invokes the local Docker CLI.
 type Request struct {
+	All                 bool   `json:"all,omitempty"`
+	Attachable          bool   `json:"attachable,omitempty"`
 	Availability        string `json:"availability,omitempty"`
+	CPULimit            string `json:"cpuLimit,omitempty"`
+	Driver              string `json:"driver,omitempty"`
+	Image               string `json:"image,omitempty"`
+	Internal            bool   `json:"internal,omitempty"`
+	Key                 string `json:"key,omitempty"`
+	Limit               uint64 `json:"limit,omitempty"`
+	MemoryLimit         string `json:"memoryLimit,omitempty"`
+	Role                string `json:"role,omitempty"`
+	Value               string `json:"value,omitempty"`
 	Compose             string `json:"compose,omitempty"`
+	Config              string `json:"config,omitempty"`
 	Name                string `json:"name,omitempty"`
 	Operation           string `json:"operation"`
 	Replicas            uint64 `json:"replicas,omitempty"`
 	ResolveImageChanged bool   `json:"resolveImageChanged,omitempty"`
-	PriorNodeID         string `json:"priorNodeId,omitempty"`
 	Secret              string `json:"secret,omitempty"`
 	ServiceID           string `json:"serviceId,omitempty"`
 	Tail                uint64 `json:"tail,omitempty"`
-	TargetNodeID        string `json:"targetNodeId,omitempty"`
 	WithRegistryAuth    bool   `json:"withRegistryAuth,omitempty"`
 }
 
@@ -72,6 +84,10 @@ func FromDockerCLI(name string, args []string, input []byte) (Request, error) {
 		return Request{}, fmt.Errorf("agent command is required")
 	}
 
+	if request, owned, err := resourceRequest(args, input); owned {
+		return request, err
+	}
+
 	switch args[0] {
 	case "node":
 		if len(input) == 0 && len(args) == 5 && args[1] == "update" && args[2] == "--availability" {
@@ -83,8 +99,20 @@ func FromDockerCLI(name string, args []string, input []byte) (Request, error) {
 		return stackRequest(args, input)
 	case "secret":
 		return secretRequest(args, input)
+	case "config":
+		return configRequest(args, input)
 	}
 	return Request{}, fmt.Errorf("unsupported agent Docker operation")
+}
+
+func configRequest(args []string, input []byte) (Request, error) {
+	if len(args) == 4 && args[1] == "create" && args[3] == "-" {
+		return Request{Config: string(input), Name: args[2], Operation: OperationConfigCreate}, nil
+	}
+	if len(args) == 4 && args[1] == "ls" && args[2] == "--format" && args[3] == "{{.Name}}" && len(input) == 0 {
+		return Request{Operation: OperationConfigList}, nil
+	}
+	return Request{}, fmt.Errorf("unsupported agent config operation")
 }
 
 func serviceRequest(args []string, input []byte) (Request, error) {
@@ -92,19 +120,6 @@ func serviceRequest(args []string, input []byte) (Request, error) {
 		return Request{}, fmt.Errorf("service operations do not accept input")
 	}
 	switch {
-	case len(args) == 6 && args[1] == "update" && args[2] == "--detach=false" && args[3] == "--constraint-add":
-		target, found := strings.CutPrefix(args[4], "node.id==")
-		if !found || !validReference(target) || !movableService(args[5]) {
-			return Request{}, fmt.Errorf("invalid managed service move")
-		}
-		return Request{Operation: OperationServiceMove, ServiceID: args[5], TargetNodeID: target}, nil
-	case len(args) == 8 && args[1] == "update" && args[2] == "--detach=false" && args[3] == "--constraint-rm" && args[5] == "--constraint-add":
-		prior, priorFound := strings.CutPrefix(args[4], "node.id==")
-		target, targetFound := strings.CutPrefix(args[6], "node.id==")
-		if !priorFound || !targetFound || !validReference(prior) || !validReference(target) || prior == target || !movableService(args[7]) {
-			return Request{}, fmt.Errorf("invalid managed service move")
-		}
-		return Request{Operation: OperationServiceMove, PriorNodeID: prior, ServiceID: args[7], TargetNodeID: target}, nil
 	case len(args) == 4 && args[1] == "update" && args[2] == "--force":
 		return Request{Operation: OperationServiceRestart, ServiceID: args[3]}, nil
 	case len(args) == 3 && args[1] == "rollback":
@@ -130,15 +145,17 @@ func serviceRequest(args []string, input []byte) (Request, error) {
 	}
 }
 
-// secretRequest covers only the two shapes SwarmOps produces when it ensures a
-// managed stateful stack has its generated password: list the existing secret
-// names, and create one missing secret from stdin.
+// secretRequest covers only immutable SwarmOps secret creation/listing and the
+// separately confirmed removal of an old Traefik DNS credential version.
 func secretRequest(args []string, input []byte) (Request, error) {
 	if len(args) == 4 && args[1] == "create" && args[3] == "-" {
 		return Request{Name: args[2], Operation: OperationSecretCreate, Secret: string(input)}, nil
 	}
 	if len(args) == 4 && args[1] == "ls" && args[2] == "--format" && args[3] == "{{.Name}}" && len(input) == 0 {
 		return Request{Operation: OperationSecretList}, nil
+	}
+	if len(args) == 3 && args[1] == "rm" && len(input) == 0 {
+		return Request{Name: args[2], Operation: OperationSecretRemove}, nil
 	}
 	return Request{}, fmt.Errorf("unsupported agent secret operation")
 }
@@ -207,16 +224,6 @@ func DockerArgs(request Request) ([]string, []byte, error) {
 			return nil, nil, fmt.Errorf("invalid service scale operation")
 		}
 		return []string{"service", "scale", fmt.Sprintf("%s=%d", request.ServiceID, request.Replicas)}, nil, nil
-	case OperationServiceMove:
-		if !movableService(request.ServiceID) || !validReference(request.TargetNodeID) || (request.PriorNodeID != "" && (!validReference(request.PriorNodeID) || request.PriorNodeID == request.TargetNodeID)) {
-			return nil, nil, fmt.Errorf("invalid managed service move")
-		}
-		args := []string{"service", "update", "--detach=false"}
-		if request.PriorNodeID != "" {
-			args = append(args, "--constraint-rm", "node.id=="+request.PriorNodeID)
-		}
-		args = append(args, "--constraint-add", "node.id=="+request.TargetNodeID, request.ServiceID)
-		return args, nil, nil
 	case OperationServiceLogs:
 		if !validReference(request.ServiceID) || request.Tail == 0 || request.Tail > 1000 {
 			return nil, nil, fmt.Errorf("invalid service logs operation")
@@ -252,13 +259,32 @@ func DockerArgs(request Request) ([]string, []byte, error) {
 		return []string{"secret", "create", request.Name, "-"}, []byte(request.Secret), nil
 	case OperationSecretList:
 		return []string{"secret", "ls", "--format", "{{.Name}}"}, nil, nil
+	case OperationSecretRemove:
+		if !removableDNSSecret.MatchString(request.Name) {
+			return nil, nil, fmt.Errorf("invalid removable DNS secret")
+		}
+		return []string{"secret", "rm", request.Name}, nil, nil
+	case OperationConfigCreate:
+		if !managedConfigPattern.MatchString(request.Name) || request.Config == "" || len(request.Config) > 64<<10 || strings.ContainsRune(request.Config, 0) {
+			return nil, nil, fmt.Errorf("invalid managed config operation")
+		}
+		return []string{"config", "create", request.Name, "-"}, []byte(request.Config), nil
+	case OperationConfigList:
+		return []string{"config", "ls", "--format", "{{.Name}}"}, nil, nil
 	case OperationStackRemove:
-		if !oneOf(request.Name, "swarmops-agent", "swarmops-logs", "swarmops-observability", "swarmops-postgres", "swarmops-mongo", "swarmops-redis") {
-			return nil, nil, fmt.Errorf("unsupported stack removal")
+		// Stack removal is no longer confined to the platform's own stacks:
+		// the console deletes operator stacks too. The name is still a strict
+		// pattern, and the audited command ledger remains the gate.
+		if !stackNamePattern.MatchString(request.Name) {
+			return nil, nil, fmt.Errorf("invalid stack name")
 		}
 		return []string{"stack", "rm", request.Name}, nil, nil
 	default:
-		return nil, nil, fmt.Errorf("unsupported agent operation")
+		args, input, owned, err := resourceArgs(request)
+		if !owned {
+			return nil, nil, fmt.Errorf("unsupported agent operation")
+		}
+		return args, input, err
 	}
 }
 
@@ -271,11 +297,6 @@ func validCompose(value string) ([]byte, error) {
 
 func validReference(value string) bool {
 	return referencePattern.MatchString(value)
-}
-
-func movableService(value string) bool {
-	_, found := mobility.ComponentForService(value)
-	return found
 }
 
 func oneOf(value string, choices ...string) bool {

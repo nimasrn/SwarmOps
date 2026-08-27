@@ -1,28 +1,67 @@
 import type {
+	AgentEnrollmentToken,
+	AgentClaimApproval,
   ApplicationSpec,
+	AgentHealth,
+  CommandDefinition,
+  ContainerDetail,
+  ContainerStats,
+  ContainerSummary,
+  DiskUsage,
+  EngineEvent,
+  ImageDetail,
+  ImageSummary,
+  Insights,
+  InsightsSample,
+  NetworkDetail,
+  NetworkSummary,
+  PruneResource,
+  SwarmObjectMeta,
+  SwarmSettings,
+  VolumeSummary,
   ApplicationStatus,
   ApprovedWorkload,
   AuditEvent,
   Command,
-  CommandLogEntry,
   ComposePlan,
   DatabaseStatus,
-  FleetRun,
   Node,
-  ManagedBootstrapRequest,
-	MobilityMigration,
-	MobilityStatus,
   ObservabilityStatus,
   Overview,
   Service,
   Server,
   ServerCredentials,
   ServerInput,
-  ServerReconnectInput,
+  ServerReadiness,
+  ServerReadinessRequest,
   Session,
+  SourceConnection,
+  SourceConnectionInput,
+  SourceDiscoverRequest,
+  SourcePlan,
+  SourceRepository,
+  SourceSelection,
+  SourceStatus,
   Stack,
   Task,
   TraefikStatus,
+  CertificateStatus,
+  CoreReplicaInput,
+  CoreTopology,
+  CutoverPlan,
+  DependencyBinding,
+  DNSPropagationStatus,
+  DNSRecordPreview,
+  DNSRecordSpec,
+  PrometheusStatus,
+  RouteInventoryRow,
+  RoutePlan,
+  RouteProtocol,
+  RouteSpec,
+  RoutingState,
+  ServiceRouteRole,
+  TraefikLogRecord,
+  TraefikSettings,
 } from './types'
 
 export class APIError extends Error {
@@ -61,6 +100,50 @@ export class SwarmOpsAPI {
   }
 
   servers() { return this.request<Server[]>('/api/v1/servers') }
+	createAgentEnrollment(name: string) {
+		return this.request<AgentEnrollmentToken>('/api/v1/agents/enrollment-tokens', { method: 'POST', body: JSON.stringify({ name }) })
+	}
+	approveAgentClaim(code: string) {
+		return this.request<AgentClaimApproval>('/api/v1/agents/claims/approve', { method: 'POST', body: JSON.stringify({ code }) })
+	}
+
+  coreTopology() { return this.request<CoreTopology>('/api/v1/core') }
+
+  addCoreReplica(input: CoreReplicaInput) {
+    return this.request<CoreTopology>('/api/v1/core/replicas', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, confirmation: 'PREPARE_CORE_REPLICA' }),
+    })
+  }
+
+  verifyCoreReplica(id: string) {
+    return this.request<CoreTopology>(`/api/v1/core/replicas/${encodeURIComponent(id)}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmation: 'VERIFY_CORE_REPLICA' }),
+    })
+  }
+
+  prepareCoreHandoff(targetId: string) {
+    return this.request<CoreTopology>('/api/v1/core/handoff', {
+      method: 'POST',
+      body: JSON.stringify({ confirmation: `PREPARE_CORE_HANDOFF:${targetId}`, targetId }),
+    })
+  }
+
+  fenceCoreHandoff(targetId: string) {
+    return this.request<CoreTopology>(`/api/v1/core/handoff/${encodeURIComponent(targetId)}/fence`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmation: `FENCE_CORE:${targetId}` }),
+    })
+  }
+
+  promoteCore(primaryConfirmedStopped: boolean) {
+    const topology = this.request<CoreTopology>('/api/v1/core')
+    return topology.then(({ localId }) => this.request<CoreTopology>('/api/v1/core/promote', {
+      method: 'POST',
+      body: JSON.stringify({ confirmation: `PROMOTE_CORE:${localId}`, primaryConfirmedStopped }),
+    }))
+  }
 
   enrollServer(token: string, name: string) {
     return this.request<Server>('/api/v1/servers/enroll', {
@@ -76,24 +159,10 @@ export class SwarmOpsAPI {
     })
   }
 
-  connectServer(id: string, credentials: ServerReconnectInput) {
+  connectServer(id: string, credentials: ServerCredentials) {
     return this.request<Server>(`/api/v1/servers/${encodeURIComponent(id)}/connect`, {
       method: 'POST',
       body: JSON.stringify(credentials),
-    })
-  }
-
-  bootstrapServer(id: string, input: ManagedBootstrapRequest) {
-    return this.commandRequest<Command>(`/api/v1/servers/${encodeURIComponent(id)}/bootstrap`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    })
-  }
-
-  joinServerSwarm(id: string) {
-    return this.commandRequest<Command>(`/api/v1/servers/${encodeURIComponent(id)}/join-swarm`, {
-      method: 'POST',
-      body: JSON.stringify({}),
     })
   }
 
@@ -105,32 +174,218 @@ export class SwarmOpsAPI {
     return this.request<void>(`/api/v1/servers/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
+  serverReadiness(id: string) {
+	return this.request<ServerReadiness>(`/api/v1/servers/${encodeURIComponent(id)}/readiness`)
+  }
+
+  agentDiagnostics(id: string) {
+	return this.request<AgentHealth>(`/api/v1/servers/${encodeURIComponent(id)}/diagnostics`)
+  }
+
+  requestAgentUpdate(id: string) {
+	return this.request<AgentHealth>(`/api/v1/servers/${encodeURIComponent(id)}/agent-update`, { method: 'POST' })
+  }
+
+  prepareServer(id: string, input: ServerReadinessRequest) {
+    return this.commandRequest<Command>(`/api/v1/servers/${encodeURIComponent(id)}/readiness`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
   overview() { return this.request<Overview>('/api/v1/overview') }
   nodes() { return this.request<Node[]>('/api/v1/nodes') }
   node(id: string) { return this.request<Node>(`/api/v1/nodes/${encodeURIComponent(id)}`) }
   nodeTasks(id: string) { return this.request<Task[]>(`/api/v1/nodes/${encodeURIComponent(id)}/tasks`) }
-  fleetRun(id: string) { return this.request<FleetRun>(`/api/v1/fleet/runs/${encodeURIComponent(id)}`) }
   stacks() { return this.request<Stack[]>('/api/v1/stacks') }
   services() { return this.request<Service[]>('/api/v1/services') }
   auditEvents() { return this.request<AuditEvent[]>('/api/v1/audit-events?limit=100') }
+
+  // The Docker and Swarm inventory. Every entry here is a read; the console
+  // never reaches the Engine except through these projections.
+  insights() { return this.request<Insights>('/api/v1/insights') }
+  diskUsage() { return this.request<DiskUsage>('/api/v1/system/df') }
+  events(minutes = 60) { return this.request<EngineEvent[]>(`/api/v1/events?minutes=${minutes}`) }
+  swarm() { return this.request<SwarmSettings>('/api/v1/swarm') }
+  containers() { return this.request<ContainerSummary[]>('/api/v1/containers') }
+  container(id: string) { return this.request<ContainerDetail>(`/api/v1/containers/${encodeURIComponent(id)}`) }
+  containerStats(id: string) { return this.request<ContainerStats>(`/api/v1/containers/${encodeURIComponent(id)}/stats`) }
+  images() { return this.request<ImageSummary[]>('/api/v1/images') }
+  image(id: string) { return this.request<ImageDetail>(`/api/v1/images/${encodeURIComponent(id)}`) }
+  volumes() { return this.request<VolumeSummary[]>('/api/v1/volumes') }
+  volume(name: string) { return this.request<VolumeSummary>(`/api/v1/volumes/${encodeURIComponent(name)}`) }
+  networks() { return this.request<NetworkSummary[]>('/api/v1/networks') }
+  network(id: string) { return this.request<NetworkDetail>(`/api/v1/networks/${encodeURIComponent(id)}`) }
+  secrets() { return this.request<SwarmObjectMeta[]>('/api/v1/secrets') }
+  configs() { return this.request<SwarmObjectMeta[]>('/api/v1/configs') }
+  commandCatalogue() { return this.request<CommandDefinition[]>('/api/v1/commands/catalogue') }
+  insightsHistory() { return this.request<InsightsSample[]>('/api/v1/insights/history') }
+
+  // runCatalogued executes one catalogue entry from the values an operator
+  // typed into its generated form. It builds the request from the definition
+  // alone — the same closed vocabulary the server serves — so the console
+  // gains no route the catalogue does not already describe.
+  async runCatalogued(definition: CommandDefinition, values: Record<string, boolean | number | string>, serverID: string): Promise<unknown> {
+    if (!serverID) throw new APIError('Choose the server to run this on', 422)
+    const [method, template] = definition.endpoint.split(' ')
+    const body: Record<string, boolean | number | string> = {}
+    const query = new URLSearchParams()
+    let path = template
+    for (const parameter of definition.parameters ?? []) {
+      const value = values[parameter.name]
+      if (parameter.in === 'path') {
+        const supplied = String(value ?? '').trim()
+        if (!supplied) throw new APIError(`${parameter.label} is required`, 422)
+        path = path.replace(`{${parameter.name}}`, encodeURIComponent(supplied))
+        continue
+      }
+      if (parameter.in === 'query') {
+        if (value !== undefined && value !== '') query.set(parameter.name, String(value))
+        continue
+      }
+      if (value === undefined || value === '') {
+        if (parameter.required) throw new APIError(`${parameter.label} is required`, 422)
+        continue
+      }
+      body[parameter.name] = parameter.kind === 'number' ? Number(value) : value
+    }
+    const url = query.toString() ? `${path}?${query.toString()}` : path
+    // The target travels with the request, so a read runs against the chosen
+    // server and a mutation is queued for it in the ledger.
+    const headers = new Headers({ 'X-SwarmOps-Server-ID': serverID })
+    if (method === 'GET') return this.request<unknown>(url, { headers })
+    return this.commandRequest<unknown>(url, { method: 'POST', body: JSON.stringify(body), headers })
+  }
+
+  // Resource mutations. Each returns the queued command rather than a result:
+  // the ledger owns the outcome, exactly as it does for every other write.
+  setNodeRole(id: string, role: 'demote' | 'promote') {
+    return this.commandRequest<Command>(`/api/v1/nodes/${encodeURIComponent(id)}/role`, { method: 'POST', body: JSON.stringify({ role }) })
+  }
+
+  setNodeLabel(id: string, key: string, value: string) {
+    return this.commandRequest<Command>(`/api/v1/nodes/${encodeURIComponent(id)}/labels`, { method: 'POST', body: JSON.stringify({ key, value }) })
+  }
+
+  removeNode(id: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/nodes/${encodeURIComponent(id)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  updateServiceImage(id: string, image: string) {
+    return this.commandRequest<Command>(`/api/v1/services/${encodeURIComponent(id)}/image`, { method: 'POST', body: JSON.stringify({ image }) })
+  }
+
+  updateServiceLimits(id: string, cpus: string, memory: string) {
+    return this.commandRequest<Command>(`/api/v1/services/${encodeURIComponent(id)}/limits`, { method: 'POST', body: JSON.stringify({ cpus, memory }) })
+  }
+
+  removeService(id: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/services/${encodeURIComponent(id)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  removeStack(name: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/stacks/${encodeURIComponent(name)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  containerAction(id: string, action: 'remove' | 'restart' | 'start' | 'stop', confirmation?: string) {
+    return this.commandRequest<Command>(`/api/v1/containers/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify({ action, confirmation }) })
+  }
+
+  pullImage(image: string) {
+    return this.commandRequest<Command>('/api/v1/images/pull', { method: 'POST', body: JSON.stringify({ image }) })
+  }
+
+  removeImage(image: string) {
+    return this.commandRequest<Command>('/api/v1/images/remove', { method: 'POST', body: JSON.stringify({ image }) })
+  }
+
+  createNetwork(input: { attachable: boolean; driver: string; internal: boolean; name: string }) {
+    return this.commandRequest<Command>('/api/v1/networks', { method: 'POST', body: JSON.stringify(input) })
+  }
+
+  removeNetwork(name: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/networks/${encodeURIComponent(name)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  createVolume(name: string) {
+    return this.commandRequest<Command>('/api/v1/volumes', { method: 'POST', body: JSON.stringify({ name }) })
+  }
+
+  removeVolume(name: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/volumes/${encodeURIComponent(name)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  removeConfig(name: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/configs/${encodeURIComponent(name)}/remove`, { method: 'POST', body: JSON.stringify({ confirmation }) })
+  }
+
+  prune(resource: PruneResource, confirmation: string, all = false) {
+    return this.commandRequest<Command>(`/api/v1/prune/${encodeURIComponent(resource)}`, { method: 'POST', body: JSON.stringify({ all, confirmation }) })
+  }
+
+  rotateJoinToken(role: 'manager' | 'worker', confirmation: string) {
+    return this.commandRequest<Command>('/api/v1/swarm/join-token', { method: 'POST', body: JSON.stringify({ confirmation, role }) })
+  }
+
+  updateSwarm(taskHistoryLimit: number) {
+    return this.commandRequest<Command>('/api/v1/swarm', { method: 'POST', body: JSON.stringify({ taskHistoryLimit }) })
+  }
   commands() { return this.request<Command[]>('/api/v1/commands?limit=100') }
   command(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}`) }
-  async commandLogs(id: string): Promise<CommandLogEntry[]> {
-    // A pre-v0.5 controller can return no retained log array for historical
-    // commands. Keep the new command-evidence panel usable while a control
-    // plane is being upgraded instead of letting an absent optional field
-    // crash the queue view.
-    const result = await this.request<CommandLogEntry[] | { logs?: CommandLogEntry[] } | null>(`/api/v1/commands/${encodeURIComponent(id)}/logs?limit=200`)
-    if (Array.isArray(result)) return result
-    return Array.isArray(result?.logs) ? result.logs : []
+  async waitForCommand(id: string, timeoutMs = 8000) {
+    const terminal = new Set<Command['state']>(['succeeded', 'failed', 'needs_attention', 'superseded', 'cancelled'])
+    const deadline = Date.now() + timeoutMs
+    let command = await this.command(id)
+    while (!terminal.has(command.state) && Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 200))
+      command = await this.command(id)
+    }
+    return command
   }
   retryCommand(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}/retry`, { method: 'POST' }) }
   traefik() { return this.request<TraefikStatus>('/api/v1/traefik/status') }
   observability() { return this.request<ObservabilityStatus>('/api/v1/observability/status') }
   databases() { return this.request<DatabaseStatus[]>('/api/v1/databases') }
-  mobility() { return this.request<MobilityStatus>('/api/v1/mobility') }
   applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
   approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
+  sourceStatus() { return this.request<SourceStatus>('/api/v1/sources/status') }
+  sourceConnections() { return this.request<SourceConnection[]>('/api/v1/sources/connections') }
+
+  createSourceConnection(input: SourceConnectionInput) {
+    return this.request<SourceConnection>('/api/v1/sources/connections', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
+  updateSourceConnection(id: string, input: SourceConnectionInput) {
+    return this.request<SourceConnection>(`/api/v1/sources/connections/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  }
+
+  removeSourceConnection(id: string) {
+    return this.request<void>(`/api/v1/sources/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  sourceRepositories(connectionID: string) {
+    return this.request<SourceRepository[]>(`/api/v1/sources/connections/${encodeURIComponent(connectionID)}/repositories`)
+  }
+
+  discoverSource(input: SourceDiscoverRequest) {
+    return this.request<SourcePlan>('/api/v1/sources/discover', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  }
+
+  deploySource(selection: SourceSelection, application: ApplicationSpec) {
+    return this.commandRequest<Command>('/api/v1/sources/deploy', {
+      method: 'POST',
+      body: JSON.stringify({ application, selection }),
+    })
+  }
 
   planApplication(spec: ApplicationSpec) {
     return this.request<{ compose: string }>('/api/v1/applications/plan', {
@@ -153,28 +408,17 @@ export class SwarmOpsAPI {
     })
   }
 
+  setApplicationDomain(name: string, domain: string, resolver: string, confirmation = '') {
+    return this.commandRequest<Command>(`/api/v1/applications/${encodeURIComponent(name)}/domain`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmation, domain, resolver }),
+    })
+  }
+
   setDatabase(engine: string, enabled: boolean, confirmation = '') {
     return this.commandRequest<Command>(`/api/v1/databases/${encodeURIComponent(engine)}`, {
       method: 'POST',
       body: JSON.stringify({ enabled, confirmation }),
-    })
-  }
-
-  moveResource(resource: string, targetServerId: string) {
-    return this.commandRequest<Command>(`/api/v1/mobility/${encodeURIComponent(resource)}`, {
-      method: 'POST',
-      body: JSON.stringify({ targetServerId }),
-    })
-  }
-
-  retireMigration(id: string) {
-    return this.commandRequest<Command>(`/api/v1/mobility/${encodeURIComponent(id)}/retire`, { method: 'POST' })
-  }
-
-  abandonMigration(id: string, confirmation: string) {
-    return this.request<MobilityMigration>(`/api/v1/mobility/${encodeURIComponent(id)}/abandon`, {
-      method: 'POST',
-      body: JSON.stringify({ confirmation }),
     })
   }
 
@@ -183,6 +427,81 @@ export class SwarmOpsAPI {
       method: 'POST',
       body: JSON.stringify({ confirmation }),
     })
+  }
+
+  traefikRoutingState(refresh = false) {
+    return this.request<RoutingState>(`/api/v1/traefik/state?refresh=${String(refresh)}`)
+  }
+
+  traefikRoutes() { return this.request<RouteInventoryRow[]>('/api/v1/traefik/routes') }
+
+  planTraefikRoute(route: RouteSpec) {
+    return this.request<RoutePlan>('/api/v1/traefik/routes/plan', { method: 'POST', body: JSON.stringify(route) })
+  }
+
+  applyTraefikRoute(route: RouteSpec, confirmation = '') {
+    return this.commandRequest<Command>('/api/v1/traefik/routes', { method: 'POST', body: JSON.stringify({ confirmation, route }) })
+  }
+
+  declareTraefikServiceRole(service: string, role: ServiceRouteRole, reason = '') {
+    return this.commandRequest<Command>(`/api/v1/traefik/services/${encodeURIComponent(service)}/role`, {
+      method: 'POST', body: JSON.stringify({ reason, role }),
+    })
+  }
+
+  applyTraefikBinding(binding: DependencyBinding) {
+    return this.commandRequest<Command>('/api/v1/traefik/bindings', { method: 'POST', body: JSON.stringify(binding) })
+  }
+
+  applyTraefikSettings(settings: TraefikSettings, confirmation: string) {
+    return this.commandRequest<Command>('/api/v1/traefik/settings', { method: 'POST', body: JSON.stringify({ confirmation, settings }) })
+  }
+
+  uploadDNSCredential(id: string, name: string, provider: 'cloudflare' | 'arvan', value: string) {
+    const query = new URLSearchParams({ id, name, provider })
+    const headers = new Headers({ 'Content-Type': 'text/plain' })
+    return this.commandRequest<Command>(`/api/v1/traefik/dns/credentials?${query}`, { method: 'POST', body: value, headers })
+  }
+
+  previewDNSRecord(record: DNSRecordSpec, protocol: RouteProtocol) {
+    return this.request<DNSRecordPreview>('/api/v1/traefik/dns/records/preview', { method: 'POST', body: JSON.stringify({ protocol, record }) })
+  }
+
+  applyDNSRecord(record: DNSRecordSpec, protocol: RouteProtocol) {
+    return this.commandRequest<Command>('/api/v1/traefik/dns/records', { method: 'POST', body: JSON.stringify({ protocol, record }) })
+  }
+
+  removeDNSCredentialVersion(id: string, version: number, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/traefik/dns/credentials/${encodeURIComponent(id)}/versions/${version}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmation, id, version }),
+    })
+  }
+
+  deleteDNSRecord(id: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/traefik/dns/records/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ confirmation }) })
+  }
+
+  verifyDNSRecord(id: string) {
+    return this.request<DNSPropagationStatus>(`/api/v1/traefik/dns/records/${encodeURIComponent(id)}/verify`)
+  }
+
+  traefikCertificates() { return this.request<CertificateStatus[]>('/api/v1/traefik/certificates') }
+
+  retryTraefikCertificate(route: string) {
+    return this.commandRequest<Command>(`/api/v1/traefik/certificates/${encodeURIComponent(route)}/retry`, { method: 'POST' })
+  }
+
+  traefikLogs(input: { from?: string; level?: string; limit?: number; live?: boolean; requestId?: string; router?: string; service?: string; to?: string } = {}) {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(input)) if (value !== undefined && value !== '') query.set(key, String(value))
+    return this.request<TraefikLogRecord[]>(`/api/v1/traefik/logs?${query}`)
+  }
+
+  traefikPrometheus() { return this.request<PrometheusStatus>('/api/v1/traefik/prometheus') }
+  traefikCutoverPlan() { return this.request<CutoverPlan>('/api/v1/traefik/cutover/plan') }
+  applyTraefikCutover(confirmation: string) {
+    return this.commandRequest<Command>('/api/v1/traefik/cutover', { method: 'POST', body: JSON.stringify({ confirmation }) })
   }
 
   validateStack(name: string, compose: string, targetNodeId: string) {
@@ -253,6 +572,7 @@ export class SwarmOpsAPI {
   private async commandRequest<T>(path: string, init: RequestInit): Promise<T> {
     const headers = new Headers(init.headers)
     headers.set('Idempotency-Key', newCommandKey())
+	headers.set('X-SwarmOps-Cluster-ID', 'default')
     let lastError: unknown
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -268,7 +588,10 @@ export class SwarmOpsAPI {
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers)
-    if (this.serverID && path.startsWith('/api/v1/') && !path.startsWith('/api/v1/auth/')) {
+    // A caller may name the target explicitly — the command runner does, so an
+    // operator can execute against a server other than the one the shell has
+    // selected. Only fall back to the shell's selection when it has not.
+    if (this.serverID && !headers.has('X-SwarmOps-Server-ID') && path.startsWith('/api/v1/') && !path.startsWith('/api/v1/auth/')) {
       headers.set('X-SwarmOps-Server-ID', this.serverID)
     }
     if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')

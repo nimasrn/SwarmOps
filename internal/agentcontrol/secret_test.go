@@ -42,22 +42,35 @@ func TestSecretListIsTheOnlyReadShape(t *testing.T) {
 	if _, err := FromDockerCLI("docker", []string{"secret", "inspect", "swarmops_redis_password_v1"}, nil); err == nil {
 		t.Fatal("secret inspection was accepted")
 	}
-	if _, err := FromDockerCLI("docker", []string{"secret", "rm", "swarmops_redis_password_v1"}, nil); err == nil {
-		t.Fatal("secret removal was accepted")
+	if _, _, err := DockerArgs(Request{Name: "swarmops_redis_password_v1", Operation: OperationSecretRemove}); err == nil {
+		t.Fatal("managed database secret removal was accepted")
 	}
-	request, err := FromDockerCLI("docker", []string{"secret", "ls", "--format", "{{.Name}}"}, nil)
+	request, err := FromDockerCLI("docker", []string{"secret", "rm", "traefik_dns_cloudflare_production_v1"}, nil)
+	if err != nil {
+		t.Fatalf("old provider secret removal conversion failed: %v", err)
+	}
+	args, _, err := DockerArgs(request)
+	if err != nil || strings.Join(args, " ") != "secret rm traefik_dns_cloudflare_production_v1" {
+		t.Fatalf("old provider secret removal render = %q, %v", strings.Join(args, " "), err)
+	}
+	request, err = FromDockerCLI("docker", []string{"secret", "ls", "--format", "{{.Name}}"}, nil)
 	if err != nil || request.Operation != OperationSecretList {
 		t.Fatalf("secret listing conversion failed: %v", err)
 	}
 }
 
-func TestDatabaseStackRemovalIsAllowListed(t *testing.T) {
-	for _, name := range []string{"swarmops-postgres", "swarmops-mongo", "swarmops-redis"} {
+// Stack removal is name-shaped rather than allow-listed: the console removes
+// application stacks as well as the platform's own, and an application stack
+// name is not knowable to the agent. The audited command ledger is the gate.
+func TestStackRemovalRequiresAValidStackName(t *testing.T) {
+	for _, name := range []string{"swarmops-postgres", "swarmops-mongo", "swarmops-redis", "production-api"} {
 		if _, _, err := DockerArgs(Request{Name: name, Operation: OperationStackRemove}); err != nil {
 			t.Fatalf("removal of %s was refused: %v", name, err)
 		}
 	}
-	if _, _, err := DockerArgs(Request{Name: "production-api", Operation: OperationStackRemove}); err == nil {
-		t.Fatal("an application stack removal was accepted")
+	for _, name := range []string{"", "Production API", "../etc", "a;rm -rf /"} {
+		if _, _, err := DockerArgs(Request{Name: name, Operation: OperationStackRemove}); err == nil {
+			t.Fatalf("stack removal accepted invalid name %q", name)
+		}
 	}
 }

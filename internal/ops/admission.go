@@ -21,19 +21,6 @@ type PlatformAdmission struct {
 	workloads map[string]preflight.Workload
 }
 
-// sharedExternalNetworks is the closed set of cluster networks a
-// browser-originated or SwarmOps-rendered stack may join.
-var sharedExternalNetworks = map[string]bool{"traefik": true, "swarmops-data": true}
-
-func sortedSharedNetworks() []string {
-	names := make([]string, 0, len(sharedExternalNetworks))
-	for name := range sharedExternalNetworks {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 var (
 	memoryQuantityPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([kKmMgGtT]i?[bB]?|[bB])?$`)
 	routerRulePattern     = regexp.MustCompile(`^Host\(\s*[` + "`'\"" + `]?([^` + "`'\"" + `)\s]+)[` + "`'\"" + `]?\s*\)$`)
@@ -69,6 +56,17 @@ func (a *PlatformAdmission) Namespace() string {
 		return ""
 	}
 	return a.manifest.Namespace
+}
+
+func (a *PlatformAdmission) ValidateApplicationImage(image string) error {
+	if a == nil {
+		return fmt.Errorf("application image requires a reviewed platform manifest")
+	}
+	prefix := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(a.manifest.Registry.Host)), "/") + "/" + strings.Trim(strings.ToLower(strings.TrimSpace(a.manifest.Registry.Namespace)), "/") + "/"
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(image)), prefix) {
+		return fmt.Errorf("application image must use reviewed registry namespace %q", strings.TrimSuffix(prefix, "/"))
+	}
+	return nil
 }
 
 // ValidateStack checks that a custom browser stack names an approved workload
@@ -141,6 +139,7 @@ type approvedRouter struct {
 	rule        string
 	resolver    string
 	servicePort string
+	service     string
 }
 
 // validateWorkloadRoutes accepts only the small, namespaced HTTP/TLS label
@@ -152,8 +151,9 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 	if !ok || len(services) == 0 {
 		return fmt.Errorf("compose must declare at least one service")
 	}
-	domain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), "."))
+	defaultDomain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), "."))
 	anyRoutedService := false
+	claimedDomain := ""
 	for serviceName, rawService := range services {
 		service, ok := asMap(rawService)
 		if !ok {
@@ -164,6 +164,7 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 			return fmt.Errorf("service %q labels: %w", serviceName, err)
 		}
 		routers := map[string]*approvedRouter{}
+		servicePorts := map[string]string{}
 		hasTraefikLabel := false
 		for key, value := range labels {
 			if !strings.HasPrefix(key, "traefik.") {
@@ -171,7 +172,7 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 			}
 			hasTraefikLabel = true
 			switch key {
-			case "traefik.enable", "traefik.docker.network":
+			case "traefik.enable", "traefik.swarm.network":
 				continue
 			}
 			if router, field, found := splitTraefikLabel(key, "traefik.http.routers."); found {
@@ -190,6 +191,12 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 					entry.resolver = value
 				case "entrypoints":
 					entry.entrypoints = value
+				case "service":
+					entry.service = value
+				case "observability.metrics", "observability.accesslogs", "tls":
+					if value != "true" && value != "false" {
+						return fmt.Errorf("service %q uses an invalid boolean Traefik router setting %q", serviceName, field)
+					}
 				default:
 					return fmt.Errorf("service %q uses unsupported Traefik router setting %q", serviceName, field)
 				}
@@ -202,12 +209,7 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 				if field != "loadbalancer.server.port" {
 					return fmt.Errorf("service %q uses unsupported Traefik service setting %q", serviceName, field)
 				}
-				entry := routers[router]
-				if entry == nil {
-					entry = &approvedRouter{}
-					routers[router] = entry
-				}
-				entry.servicePort = value
+				servicePorts[router] = value
 				continue
 			}
 			return fmt.Errorf("service %q uses unsupported Traefik label %q", serviceName, key)
@@ -215,28 +217,51 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 		if !hasTraefikLabel {
 			continue
 		}
-		if domain == "" {
-			return fmt.Errorf("service %q defines Traefik labels but workload %q has no approved domain", serviceName, workload.Name)
-		}
-		if labels["traefik.enable"] != "true" || labels["traefik.docker.network"] != "traefik" {
-			return fmt.Errorf("service %q must explicitly enable Traefik on the traefik network", serviceName)
+		expectedNetwork := RouteNetworkName(stack + "_" + serviceName)
+		if (labels["traefik.enable"] != "true" && labels["traefik.enable"] != "false") || labels["traefik.swarm.network"] != expectedNetwork {
+			return fmt.Errorf("service %q must explicitly declare Traefik on its dedicated route network", serviceName)
 		}
 		if len(routers) == 0 {
 			return fmt.Errorf("service %q must declare an approved Traefik router", serviceName)
 		}
 		for router, entry := range routers {
-			if entry.rule == "" || entry.resolver == "" || entry.entrypoints == "" {
-				return fmt.Errorf("service %q must route only %q through websecure with resolver %q", serviceName, domain, workload.Resolver)
+			internal := strings.HasSuffix(router, "-internal")
+			if entry.rule == "" || entry.entrypoints == "" {
+				return fmt.Errorf("service %q has an incomplete Traefik router", serviceName)
 			}
 			match := routerRulePattern.FindStringSubmatch(strings.TrimSpace(entry.rule))
-			if len(match) != 2 || !strings.EqualFold(match[1], domain) {
+			if len(match) != 2 {
 				return fmt.Errorf("service %q has an unapproved Traefik rule", serviceName)
 			}
+			domain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(match[1]), "."))
+			if internal {
+				expected := defaultRouteKey(stack+"_"+serviceName) + ".swarmops.internal"
+				if domain != expected || entry.entrypoints != "internal-http" || entry.resolver != "" {
+					return fmt.Errorf("service %q internal router must use its derived SwarmOps hostname and internal-http entrypoint", serviceName)
+				}
+				continue
+			}
+			if defaultDomain == "" && len(workload.DomainSuffixes) == 0 {
+				return fmt.Errorf("service %q defines a public Traefik router but workload %q has no approved domain", serviceName, workload.Name)
+			}
+			if !workloadAllowsDomain(workload, domain) {
+				return fmt.Errorf("service %q claims domain %q outside its reviewed policy", serviceName, domain)
+			}
+			if claimedDomain != "" && claimedDomain != domain {
+				return fmt.Errorf("workload %q may claim only one domain", workload.Name)
+			}
+			claimedDomain = domain
 			if entry.resolver != workload.Resolver || entry.entrypoints != "websecure" {
 				return fmt.Errorf("service %q must route only %q through websecure with resolver %q", serviceName, domain, workload.Resolver)
 			}
-			if entry.servicePort != "" {
-				port, err := strconv.Atoi(entry.servicePort)
+			servicePort := servicePorts[entry.service]
+			if servicePort == "" && len(servicePorts) == 1 {
+				for _, value := range servicePorts {
+					servicePort = value
+				}
+			}
+			if servicePort != "" {
+				port, err := strconv.Atoi(servicePort)
 				if err != nil || port < 1 || port > 65535 {
 					return fmt.Errorf("service %q router %q has an invalid Traefik service port", serviceName, router)
 				}
@@ -244,10 +269,28 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 		}
 		anyRoutedService = true
 	}
-	if domain != "" && !anyRoutedService {
-		return fmt.Errorf("workload %q requires at least one approved Traefik router for %q", workload.Name, domain)
+	if defaultDomain != "" && !workload.DomainOptional && !anyRoutedService {
+		return fmt.Errorf("workload %q requires at least one approved Traefik router for %q", workload.Name, defaultDomain)
 	}
 	return nil
+}
+
+func workloadAllowsDomain(workload preflight.Workload, domain string) bool {
+	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	if domain == "" {
+		return false
+	}
+	approved := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), "."))
+	if approved != "" && domain == approved {
+		return true
+	}
+	for _, rawSuffix := range workload.DomainSuffixes {
+		suffix := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(rawSuffix), "."))
+		if domain == suffix || strings.HasSuffix(domain, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func splitTraefikLabel(key, prefix string) (string, string, bool) {
@@ -258,7 +301,7 @@ func splitTraefikLabel(key, prefix string) (string, string, bool) {
 	if remainder == "" {
 		return "", "", false
 	}
-	for _, field := range []string{"tls.certresolver", "loadbalancer.server.port", "entrypoints", "rule"} {
+	for _, field := range []string{"observability.accesslogs", "observability.metrics", "tls.certresolver", "loadbalancer.server.port", "entrypoints", "service", "rule", "tls"} {
 		suffix := "." + field
 		if strings.HasSuffix(remainder, suffix) {
 			router := strings.TrimSuffix(remainder, suffix)
@@ -274,7 +317,7 @@ func validateWorkloadExternalResources(root map[string]any, stack string) error 
 			return err
 		}
 	}
-	return validateExternalNetworks(root)
+	return validateExternalNetworks(root, stack)
 }
 
 // validateWorkloadCapacity binds the browser document to the capacity that was
@@ -436,7 +479,7 @@ func validateScopedExternalResources(root map[string]any, stack, kind string) er
 	return nil
 }
 
-func validateExternalNetworks(root map[string]any) error {
+func validateExternalNetworks(root map[string]any, stack string) error {
 	rawNetworks, found := root["networks"]
 	if !found || rawNetworks == nil {
 		return nil
@@ -444,6 +487,14 @@ func validateExternalNetworks(root map[string]any) error {
 	networks, ok := asMap(rawNetworks)
 	if !ok {
 		return fmt.Errorf("top-level networks must be a map")
+	}
+	services, ok := asMap(root["services"])
+	if !ok || len(services) == 0 {
+		return fmt.Errorf("compose must declare at least one service")
+	}
+	expectedRouteNetworks := make(map[string]bool, len(services))
+	for serviceName := range services {
+		expectedRouteNetworks[RouteNetworkName(stack+"_"+serviceName)] = true
 	}
 	for logicalName, rawNetwork := range networks {
 		network, ok := asMap(rawNetwork)
@@ -457,13 +508,13 @@ func validateExternalNetworks(root map[string]any) error {
 			continue
 		}
 		physicalName, _ := network["name"].(string)
-		// Two shared networks are available: the edge network Traefik routes
-		// on, and the internal data plane that carries traffic to SwarmOps'
-		// managed databases. Both are created and owned by SwarmOps itself.
-		// Everything else stays a reviewed Git manifest decision.
-		if logicalName != strings.TrimSpace(physicalName) || !sharedExternalNetworks[logicalName] {
-			return fmt.Errorf("only the external %s networks are available to browser deployments", strings.Join(sortedSharedNetworks(), " and "))
+		// Browser-originated applications receive only their derived route
+		// overlay. Platform-management exceptions are trusted stacks and never
+		// pass through this admission path.
+		if (logicalName == "traefik-route" || strings.HasPrefix(logicalName, "route-")) && expectedRouteNetworks[strings.TrimSpace(physicalName)] {
+			continue
 		}
+		return fmt.Errorf("browser deployments may use only their dedicated external Traefik route network")
 	}
 	return nil
 }
@@ -527,19 +578,21 @@ func summarizeFindings(report preflight.Report) string {
 // input, so an operator picks an approved name, domain, and resolver and
 // cannot invent one that another workload owns.
 type ApprovedWorkload struct {
-	CPUCores  float64 `json:"cpuCores"`
-	Domain    string  `json:"domain,omitempty"`
-	MemoryMiB uint64  `json:"memoryMiB"`
-	Name      string  `json:"name"`
-	Replicas  int     `json:"replicas"`
-	Resolver  string  `json:"resolver,omitempty"`
+	CPUCores       float64  `json:"cpuCores"`
+	Domain         string   `json:"domain,omitempty"`
+	DomainOptional bool     `json:"domainOptional"`
+	DomainSuffixes []string `json:"domainSuffixes,omitempty"`
+	MemoryMiB      uint64   `json:"memoryMiB"`
+	Name           string   `json:"name"`
+	Replicas       int      `json:"replicas"`
+	Resolver       string   `json:"resolver,omitempty"`
 }
 
 // ApprovedApplications lists the manifest's application-profile workloads with
 // the resource ceiling admission will enforce for each.
 func (a *PlatformAdmission) ApprovedApplications() []ApprovedWorkload {
 	if a == nil {
-		return nil
+		return []ApprovedWorkload{}
 	}
 	approved := make([]ApprovedWorkload, 0, len(a.workloads))
 	for _, workload := range a.manifest.Workloads {
@@ -548,14 +601,30 @@ func (a *PlatformAdmission) ApprovedApplications() []ApprovedWorkload {
 		}
 		budget := applicationResourceBudget(workload)
 		approved = append(approved, ApprovedWorkload{
-			CPUCores:  budget.CPUCores,
-			Domain:    strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), ".")),
-			MemoryMiB: budget.MemoryMiB,
-			Name:      workload.Name,
-			Replicas:  workload.Replicas,
-			Resolver:  workload.Resolver,
+			CPUCores:       budget.CPUCores,
+			Domain:         strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), ".")),
+			DomainOptional: workload.DomainOptional,
+			DomainSuffixes: normalizeDomainSuffixes(workload.DomainSuffixes),
+			MemoryMiB:      budget.MemoryMiB,
+			Name:           workload.Name,
+			Replicas:       workload.Replicas,
+			Resolver:       workload.Resolver,
 		})
 	}
 	sort.Slice(approved, func(left, right int) bool { return approved[left].Name < approved[right].Name })
 	return approved
+}
+
+func normalizeDomainSuffixes(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(value), "."))
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+	return result
 }

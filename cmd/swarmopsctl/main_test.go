@@ -3,9 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"golang.org/x/crypto/bcrypt"
@@ -128,28 +125,6 @@ func TestHashPasswordUsesBcrypt(t *testing.T) {
 	}
 }
 
-func TestRetryFleetSubmissionUsesBoundedExponentialBackoff(t *testing.T) {
-	t.Parallel()
-	attempts := 0
-	var delays []time.Duration
-	err := retryFleetSubmission(context.Background(), func(context.Context) error {
-		attempts++
-		if attempts < 4 {
-			return errors.New("SSH transport unavailable")
-		}
-		return nil
-	}, func(_ context.Context, delay time.Duration) error {
-		delays = append(delays, delay)
-		return nil
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if attempts != 4 || len(delays) != 3 || delays[0] != 2*time.Second || delays[1] != 4*time.Second || delays[2] != 8*time.Second {
-		t.Fatalf("attempts=%d delays=%v", attempts, delays)
-	}
-}
-
 func TestNewCommandIdempotencyKey(t *testing.T) {
 	t.Parallel()
 	first, err := newCommandIdempotencyKey()
@@ -183,6 +158,9 @@ func TestBuildQueuesAnIdempotentCommand(t *testing.T) {
 			}
 			if got := request.Header.Get("X-SwarmOps-Server-ID"); got != "server-test" {
 				t.Errorf("server header = %q", got)
+			}
+			if got := request.Header.Get("X-SwarmOps-Cluster-ID"); got != "default" {
+				t.Errorf("cluster header = %q", got)
 			}
 			key := request.Header.Get("Idempotency-Key")
 			if !strings.HasPrefix(key, "build-") || len(key) != len("build-")+32 {
@@ -219,6 +197,7 @@ func TestBuildQueuesAnIdempotentCommand(t *testing.T) {
 	err = build([]string{
 		"--url", server.URL,
 		"--username", "operator",
+		"--cluster-id", "default",
 		"--server-id", "server-test",
 		"--context", contextDir,
 		"--image", "ghcr.io/nimasrn/demo:2026.08.24",

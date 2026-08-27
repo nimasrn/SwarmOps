@@ -14,18 +14,15 @@ const (
 	defaultStoreRetryDelay    = time.Second
 )
 
-// ErrExecutorHandoff is returned only by a reviewed executor that has moved
-// the controller's own durable state to a replacement process. The worker
-// must not write a completion or failure transition afterward: either write
-// would make the source state newer than the archive the replacement starts
-// from. The replacement recovers the in-flight command as operator-visible
-// attention evidence after it has opened the transferred ledger.
-var ErrExecutorHandoff = errors.New("command executor handed off to replacement")
-
 type ExecuteFunc func(context.Context, Record) error
 type TransitionFunc func(domain.Command, string)
 
 type Worker struct {
+	// CanExecute is checked before a command is claimed. SwarmOps uses it to
+	// keep a restored standby replica from touching a managed machine before an
+	// explicit promotion. A command already running is never interrupted here:
+	// its remote effect may already exist and must remain auditable.
+	CanExecute       func() bool
 	Execute          ExecuteFunc
 	ExecutionTimeout func(domain.Command) time.Duration
 	OnTransition     TransitionFunc
@@ -50,6 +47,14 @@ func (w Worker) Run(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil
+		}
+		if w.CanExecute != nil && !w.CanExecute() {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(poll):
+			}
+			continue
 		}
 		var record Record
 		var found bool
@@ -81,11 +86,6 @@ func (w Worker) Run(ctx context.Context) error {
 		err := w.Execute(executionContext, record)
 		executionErr := executionContext.Err()
 		cancel()
-		if errors.Is(err, ErrExecutorHandoff) {
-			// A handoff has already durably fenced the source and activated a
-			// replacement. Returning immediately avoids a stale source write.
-			return ErrExecutorHandoff
-		}
 		// A controller shutdown or execution deadline leaves the remote effect
 		// unknowable. Never turn that uncertainty into an automatic replay,
 		// even for a normally reconcilable command. This is intentionally based

@@ -121,6 +121,8 @@ type ObservedNode struct {
 type Workload struct {
 	AdvertiseIP           string    `yaml:"advertiseIP" json:"advertiseIP"`
 	Domain                string    `yaml:"domain" json:"domain"`
+	DomainOptional        bool      `yaml:"domainOptional" json:"domainOptional"`
+	DomainSuffixes        []string  `yaml:"domainSuffixes" json:"domainSuffixes"`
 	Name                  string    `yaml:"name" json:"name"`
 	ObjectStorageProvider string    `yaml:"objectStorageProvider" json:"objectStorageProvider"`
 	Profile               string    `yaml:"profile" json:"profile"`
@@ -555,6 +557,7 @@ func checkBuild(build Build, nodes []Node, errorf func(string, string, string, .
 func checkWorkloads(manifest Manifest, nodes []Node, storage map[string]ObjectStorageProvider, resolvers map[string]CertificateResolver, report *Report, errorf, warnf func(string, string, string, ...any)) {
 	seenNames := map[string]struct{}{}
 	seenDomains := map[string]string{}
+	seenDomainSuffixes := map[string]string{}
 	profileCounts := map[string]int{}
 	for _, workload := range manifest.Workloads {
 		subject := "workload/" + workload.Name
@@ -587,7 +590,7 @@ func checkWorkloads(manifest Manifest, nodes []Node, storage map[string]ObjectSt
 		report.Totals.Requested.MemoryMiB += resources.MemoryMiB * uint64(max(workload.Replicas, 0))
 		report.Totals.Requested.DiskGiB += resources.DiskGiB * uint64(max(workload.Replicas, 0))
 		checkPlacement(workload, rule, resources, nodes, errorf)
-		checkDomain(workload, rule, resolvers, manifest.Ingress, seenDomains, errorf)
+		checkDomain(workload, rule, resolvers, manifest.Ingress, seenDomains, seenDomainSuffixes, errorf)
 		if workload.ObjectStorageProvider != "" {
 			if _, exists := storage[workload.ObjectStorageProvider]; !exists {
 				errorf("workload-storage", subject, "objectStorageProvider %q is not declared", workload.ObjectStorageProvider)
@@ -648,8 +651,11 @@ func checkPlacement(workload Workload, rule profileRule, resources Resources, no
 	}
 }
 
-func checkDomain(workload Workload, rule profileRule, resolvers map[string]CertificateResolver, ingress Ingress, seen map[string]string, errorf func(string, string, string, ...any)) {
+func checkDomain(workload Workload, rule profileRule, resolvers map[string]CertificateResolver, ingress Ingress, seen, seenSuffixes map[string]string, errorf func(string, string, string, ...any)) {
 	subject := "workload/" + workload.Name
+	if (workload.DomainOptional || len(workload.DomainSuffixes) > 0) && workload.Profile != "application" {
+		errorf("domain-policy-profile", subject, "dynamic domain policy is available only to application workloads")
+	}
 	if rule.requiresIngress {
 		if net.ParseIP(workload.AdvertiseIP) == nil {
 			errorf("jitsi-advertise-ip", subject, "Jitsi requires a valid advertiseIP")
@@ -657,21 +663,50 @@ func checkDomain(workload Workload, rule profileRule, resolvers map[string]Certi
 			errorf("jitsi-ingress-ip", subject, "Jitsi advertiseIP must match a configured ingress public IP")
 		}
 	}
-	if workload.Domain == "" {
+	if workload.Domain == "" && len(workload.DomainSuffixes) == 0 {
 		if rule.requiresIngress {
 			errorf("jitsi-domain", subject, "Jitsi requires a domain routed through the ingress")
 		}
 		return
 	}
 	domain := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(workload.Domain), "."))
-	if !validDomain(domain) {
-		errorf("domain", subject, "domain must be a valid lowercase hostname")
-		return
+	if domain != "" {
+		if !validDomain(domain) {
+			errorf("domain", subject, "domain must be a valid lowercase hostname")
+		} else if previous, exists := seen[domain]; exists {
+			errorf("domain-duplicate", subject, "domain %q already belongs to %s", domain, previous)
+		} else {
+			for suffix, owner := range seenSuffixes {
+				if domainWithinSuffix(domain, suffix) && owner != subject {
+					errorf("domain-policy-overlap", subject, "domain %q overlaps suffix %q owned by %s", domain, suffix, owner)
+				}
+			}
+			seen[domain] = subject
+		}
 	}
-	if previous, exists := seen[domain]; exists {
-		errorf("domain-duplicate", subject, "domain %q already belongs to %s", domain, previous)
-	} else {
-		seen[domain] = subject
+	localSuffixes := map[string]bool{}
+	for _, rawSuffix := range workload.DomainSuffixes {
+		suffix := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(rawSuffix), "."))
+		if !validDomain(suffix) {
+			errorf("domain-suffix", subject, "domain suffix %q must be a valid lowercase hostname", rawSuffix)
+			continue
+		}
+		if localSuffixes[suffix] {
+			errorf("domain-suffix-duplicate", subject, "domain suffix %q is duplicated", suffix)
+			continue
+		}
+		localSuffixes[suffix] = true
+		for existing, owner := range seenSuffixes {
+			if domainWithinSuffix(suffix, existing) || domainWithinSuffix(existing, suffix) {
+				errorf("domain-policy-overlap", subject, "domain suffix %q overlaps %q owned by %s", suffix, existing, owner)
+			}
+		}
+		for existing, owner := range seen {
+			if domainWithinSuffix(existing, suffix) && owner != subject {
+				errorf("domain-policy-overlap", subject, "domain suffix %q overlaps domain %q owned by %s", suffix, existing, owner)
+			}
+		}
+		seenSuffixes[suffix] = subject
 	}
 	resolver, exists := resolvers[workload.Resolver]
 	if !exists {
@@ -679,6 +714,12 @@ func checkDomain(workload Workload, rule profileRule, resolvers map[string]Certi
 	} else if resolver.Challenge == "http" && !hasPublicIP(ingress.PublicIPs) {
 		errorf("domain-http-ingress", subject, "HTTP resolver needs a valid ingress public IP")
 	}
+}
+
+func domainWithinSuffix(domain, suffix string) bool {
+	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	suffix = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(suffix), "."))
+	return domain == suffix || strings.HasSuffix(domain, "."+suffix)
 }
 
 func mergeResources(defaults, requested Resources) Resources {

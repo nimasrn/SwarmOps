@@ -108,6 +108,43 @@ func TestRenderedApplicationWiresDatabasesByFileAndByEnvironment(t *testing.T) {
 	}
 }
 
+func TestRenderedApplicationUsesOnlyItsDedicatedRouteNetworkAndRoutedTracing(t *testing.T) {
+	spec := vloraBackendSpec()
+	spec.Tracing = true
+	rendered, err := RenderApplication(ApplicationRenderInput{
+		DatabaseURIs: map[string]string{DatabaseMongo: "mongodb://a", DatabaseRedis: "redis://b"},
+		Namespace:    "production",
+		Spec:         spec,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Networks map[string]any `yaml:"networks"`
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+			Networks    []string          `yaml:"networks"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(rendered, &document); err != nil {
+		t.Fatal(err)
+	}
+	service := document.Services[ApplicationServiceName]
+	if len(service.Networks) != 1 || service.Networks[0] != "traefik-route" || len(document.Networks) != 1 || document.Networks["traefik-route"] == nil {
+		t.Fatalf("application escaped its dedicated route network: %#v", document)
+	}
+	if got := service.Environment["OTEL_EXPORTER_OTLP_ENDPOINT"]; got != "http://swarmops-jaeger-otlp.swarmops.internal:8081" {
+		t.Fatalf("OTEL endpoint = %q", got)
+	}
+	admission, err := NewPlatformAdmission(routedApplicationManifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admission.ValidateStack("production-vlora-backend", rendered); err != nil {
+		t.Fatalf("isolated routed application was refused: %v", err)
+	}
+}
+
 func TestRenderedFrontendPointsAtItsBackend(t *testing.T) {
 	spec := ApplicationSpec{
 		Backend:   "vlora-backend",
@@ -129,7 +166,7 @@ func TestRenderedFrontendPointsAtItsBackend(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	environment := renderedEnvironment(t, rendered)
-	if environment["BACKEND_INTERNAL_URL"] != "http://production-vlora-backend_app:8080" {
+	if environment["BACKEND_INTERNAL_URL"] != "http://production-vlora-backend-app.swarmops.internal:8081" {
 		t.Fatalf("frontend was not wired to its backend: %#v", environment)
 	}
 	if environment["BACKEND_PUBLIC_URL"] != "https://api.vlora.ir" {
@@ -209,4 +246,13 @@ func renderedEnvironment(t *testing.T, rendered []byte) map[string]string {
 		t.Fatalf("parse rendered compose: %v", err)
 	}
 	return document.Services[ApplicationServiceName].Environment
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

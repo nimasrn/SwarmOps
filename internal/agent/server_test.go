@@ -3,8 +3,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
@@ -51,7 +55,7 @@ func TestRemoteControlEndpointsAreAuthenticatedAndFixed(t *testing.T) {
 	}
 
 	arbitraryResponse := httptest.NewRecorder()
-	handler.ServeHTTP(arbitraryResponse, authenticatedRequest(http.MethodGet, "/v1/engine/containers/json"))
+	handler.ServeHTTP(arbitraryResponse, authenticatedRequest(http.MethodGet, "/v1/engine/containers/abc/exec"))
 	if arbitraryResponse.Code != http.StatusNotFound {
 		t.Fatalf("arbitrary engine endpoint = %d, want %d", arbitraryResponse.Code, http.StatusNotFound)
 	}
@@ -61,6 +65,88 @@ func TestNewServerRejectsRemoteControlWithoutDocker(t *testing.T) {
 	t.Parallel()
 	if _, err := NewServer(Config{RemoteControlEnabled: true}, []byte("test-machine-api-key")); err == nil {
 		t.Fatal("remote control without Docker was accepted")
+	}
+}
+
+func TestDiagnosticsAndFixedUpdateRequestAreAuthenticated(t *testing.T) {
+	t.Parallel()
+	temporary := t.TempDir()
+	requestFile := filepath.Join(temporary, "update.request")
+	server, err := NewServer(Config{
+		AutomaticUpdates:     true,
+		Docker:               newTestDockerClient(t),
+		NodeName:             "manager-1",
+		RemoteControlEnabled: true,
+		UpdateBusyFile:       filepath.Join(temporary, "update.busy"),
+		UpdateRequestFile:    requestFile,
+		UpdateStatusFile:     filepath.Join(temporary, "update-status.json"),
+		Version:              "test",
+	}, []byte("test-machine-api-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/v1/diagnostics", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized diagnostics = %d", unauthorized.Code)
+	}
+
+	diagnostics := httptest.NewRecorder()
+	handler.ServeHTTP(diagnostics, authenticatedRequest(http.MethodGet, "/v1/diagnostics"))
+	if diagnostics.Code != http.StatusOK {
+		t.Fatalf("diagnostics = %d: %s", diagnostics.Code, diagnostics.Body.String())
+	}
+	var value Diagnostics
+	if err := json.NewDecoder(diagnostics.Body).Decode(&value); err != nil {
+		t.Fatal(err)
+	}
+	if !value.Update.Automatic || value.Status.ProtocolVersion != agentProtocolVersion || len(value.Events) == 0 || value.Events[0].Code != "agent_started" {
+		t.Fatalf("diagnostics = %#v", value)
+	}
+
+	update := httptest.NewRecorder()
+	handler.ServeHTTP(update, authenticatedRequest(http.MethodPost, "/v1/agent/update"))
+	if update.Code != http.StatusOK {
+		t.Fatalf("update request = %d: %s", update.Code, update.Body.String())
+	}
+	request, err := os.ReadFile(requestFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(request) != "check\n" {
+		t.Fatalf("update request = %q", request)
+	}
+}
+
+func TestProvisioningEndpointIsAuthenticatedAndNeverFallsBackToShell(t *testing.T) {
+	t.Parallel()
+	docker := newTestDockerClient(t)
+	server, err := NewServer(Config{Docker: docker, NodeName: "manager-1", RemoteControlEnabled: true, Version: "test"}, []byte("test-machine-api-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.Handler()
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/v1/provisioning/status", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized readiness = %d", unauthorized.Code)
+	}
+	status := httptest.NewRecorder()
+	handler.ServeHTTP(status, authenticatedRequest(http.MethodGet, "/v1/provisioning/status"))
+	if status.Code != http.StatusOK {
+		t.Fatalf("readiness status = %d: %s", status.Code, status.Body.String())
+	}
+	// A configured helper is required. The agent must not silently execute an
+	// arbitrary local fallback when the narrow privileged boundary is absent.
+	apply := authenticatedRequest(http.MethodPost, "/v1/provisioning")
+	apply.Header.Set("Content-Type", "application/json")
+	apply.Body = io.NopCloser(strings.NewReader(`{"confirmation":"PREPARE_SERVER","installDocker":true}`))
+	applyResponse := httptest.NewRecorder()
+	handler.ServeHTTP(applyResponse, apply)
+	if applyResponse.Code != http.StatusBadGateway {
+		t.Fatalf("unconfigured helper apply = %d: %s", applyResponse.Code, applyResponse.Body.String())
 	}
 }
 

@@ -13,21 +13,26 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
 	"github.com/nimasrn/SwarmOps/internal/config"
+	"github.com/nimasrn/SwarmOps/internal/coretopology"
 	"github.com/nimasrn/SwarmOps/internal/domain"
-	"github.com/nimasrn/SwarmOps/internal/mobility"
+	"github.com/nimasrn/SwarmOps/internal/insights"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
+	"github.com/nimasrn/SwarmOps/internal/source"
 	"github.com/nimasrn/SwarmOps/internal/web"
 )
 
@@ -37,8 +42,25 @@ const sessionCookie = "swarmops_session"
 // selected server. The resolver owns the machine API key; HTTP handlers never
 // see it and cannot pick a raw Docker endpoint.
 type Target struct {
-	Build   build.Service
-	Control *ops.ControlPlane
+	Build       build.Service
+	Control     *ops.ControlPlane
+	Host        HostInspector
+	Provisioner Provisioner
+}
+
+// HostInspector exposes only the agent's bounded host snapshot. Keeping this
+// separate from Provisioner lets an older agent retain readiness controls even
+// when it cannot yet report the newer inventory projection.
+type HostInspector interface {
+	Snapshot(context.Context) (agent.Snapshot, error)
+}
+
+// Provisioner is intentionally narrower than ops.Runner: it exposes only the
+// agent's reviewed server-readiness plan and no shell, Docker socket, or file
+// access. It remains usable before a host has Docker or joined a Swarm.
+type Provisioner interface {
+	Provision(context.Context, agentcontrol.ProvisioningRequest) error
+	ProvisioningStatus(context.Context) (agentcontrol.ProvisioningStatus, error)
 }
 
 type TargetResolver interface {
@@ -50,18 +72,22 @@ type TargetResolverFunc func(id string) (Target, error)
 func (f TargetResolverFunc) Resolve(id string) (Target, error) { return f(id) }
 
 type Server struct {
-	audit        *audit.Store
-	auth         *auth.Service
-	config       config.Config
-	commands     *queue.Store
-	loginLimiter *auth.LoginLimiter
-	logger       *slog.Logger
-	mobility     *mobility.Store
-	requestTotal atomic.Uint64
-	servers      *remote.Manager
-	apps         *ops.ApplicationStore
-	namespace    string
-	targets      TargetResolver
+	audit         *audit.Store
+	auth          *auth.Service
+	config        config.Config
+	commands      *queue.Store
+	core          *coretopology.Store
+	history       *insights.History
+	loginLimiter  *auth.LoginLimiter
+	logger        *slog.Logger
+	requestTotal  atomic.Uint64
+	servers       *remote.Manager
+	sources       *source.Service
+	apps          *ops.ApplicationStore
+	agentBroker   *agentpull.Broker
+	agentRegistry *agentpull.Registry
+	namespace     string
+	targets       TargetResolver
 }
 
 func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, auditStore *audit.Store, logger *slog.Logger) (*Server, error) {
@@ -79,9 +105,6 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if cfg.CommandHistoryLimit < 1 {
 		cfg.CommandHistoryLimit = config.DefaultCommandHistoryLimit
 	}
-	if cfg.MobilityHealthyFor <= 0 {
-		cfg.MobilityHealthyFor = 10 * time.Minute
-	}
 	authService, err := auth.New(cfg.AdminUsername, cfg.AdminPasswordHash, cfg.SessionKey, cfg.SessionTTL)
 	if err != nil {
 		return nil, err
@@ -90,11 +113,20 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	mobilityStore, err := mobility.Open(cfg.DataDir, cfg.DataEncryptionKey)
+	core, err := coretopology.Open(cfg.DataDir, cfg.DataEncryptionKey, coretopology.Config{
+		Endpoint: cfg.CoreEndpoint,
+		ID:       cfg.CoreID,
+		Mode:     domain.CoreRole(cfg.CoreMode),
+		Name:     cfg.CoreName,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &Server{audit: auditStore, auth: authService, commands: commandStore, config: cfg, loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, mobility: mobilityStore, servers: servers, targets: targets}, nil
+	registry, err := agentpull.OpenRegistry(cfg.DataDir, cfg.DataEncryptionKey, core.AuthorityEpoch())
+	if err != nil {
+		return nil, err
+	}
+	return &Server{audit: auditStore, agentBroker: agentpull.NewBroker(core.AuthorityEpoch()), agentRegistry: registry, auth: authService, commands: commandStore, config: cfg, core: core, history: insights.NewHistory(insights.DefaultLimit), loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -110,58 +142,130 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("GET /api/v1/auth/me", s.withAuth(false, s.me))
 	mux.HandleFunc("POST /api/v1/auth/logout", s.withAuth(true, s.logout))
+	mux.HandleFunc("POST /api/v1/agents/enrollment-tokens", s.withActiveAuth(s.agentEnrollmentToken))
+	mux.HandleFunc("POST /api/v1/agents/claims/approve", s.withActiveAuth(s.agentClaimApprove))
+	mux.HandleFunc("POST /agent/v1/enroll", s.agentEnrollPull)
+	mux.HandleFunc("POST /agent/v1/claims", s.agentClaimStart)
+	mux.HandleFunc("POST /agent/v1/claims/redeem", s.agentClaimRedeem)
+	mux.HandleFunc("POST /agent/v1/poll", s.agentPoll)
+	mux.HandleFunc("POST /agent/v1/responses", s.agentResponse)
+	mux.HandleFunc("POST /agent/v1/certificates/renew", s.agentCertificateRenew)
+	mux.HandleFunc("GET /api/v1/core", s.withAuth(false, s.coreStatus))
+	mux.HandleFunc("POST /api/v1/core/replicas", s.withActiveAuth(s.coreReplicaAdd))
+	mux.HandleFunc("POST /api/v1/core/replicas/{id}/verify", s.withActiveAuth(s.coreReplicaVerify))
+	mux.HandleFunc("POST /api/v1/core/handoff", s.withActiveAuth(s.coreHandoffPrepare))
+	mux.HandleFunc("POST /api/v1/core/handoff/{id}/fence", s.withActiveAuth(s.coreHandoffFence))
+	mux.HandleFunc("POST /api/v1/core/promote", s.withAuth(true, s.corePromote))
 	mux.HandleFunc("GET /api/v1/servers", s.withAuth(false, s.serversList))
-	mux.HandleFunc("POST /api/v1/servers", s.withAuth(true, s.serverAdd))
-	mux.HandleFunc("POST /api/v1/servers/enroll", s.withAuth(true, s.serverEnroll))
-	mux.HandleFunc("POST /api/v1/servers/{id}/connect", s.withAuth(true, s.serverConnect))
-	mux.HandleFunc("POST /api/v1/servers/{id}/bootstrap", s.withAuth(true, s.serverBootstrap))
-	mux.HandleFunc("POST /api/v1/servers/{id}/join-swarm", s.withAuth(true, s.serverJoinSwarm))
-	mux.HandleFunc("POST /api/v1/servers/{id}/disconnect", s.withAuth(true, s.serverDisconnect))
-	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withAuth(true, s.serverRemove))
+	mux.HandleFunc("POST /api/v1/servers", s.withActiveAuth(s.serverAdd))
+	mux.HandleFunc("POST /api/v1/servers/enroll", s.withActiveAuth(s.serverEnroll))
+	mux.HandleFunc("POST /api/v1/servers/{id}/connect", s.withActiveAuth(s.serverConnect))
+	mux.HandleFunc("POST /api/v1/servers/{id}/disconnect", s.withActiveAuth(s.serverDisconnect))
+	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withActiveAuth(s.serverRemove))
+	mux.HandleFunc("GET /api/v1/servers/{id}/diagnostics", s.withAuth(false, s.serverDiagnostics))
+	mux.HandleFunc("POST /api/v1/servers/{id}/agent-update", s.withActiveAuth(s.serverUpdate))
+	mux.HandleFunc("GET /api/v1/servers/{id}/readiness", s.withAuth(false, s.serverReadiness))
+	mux.HandleFunc("POST /api/v1/servers/{id}/readiness", s.withActiveAuth(s.serverReadinessQueue))
 	mux.HandleFunc("GET /api/v1/overview", s.withAuth(false, s.overview))
 	mux.HandleFunc("GET /api/v1/nodes", s.withAuth(false, s.nodes))
 	mux.HandleFunc("GET /api/v1/nodes/{id}", s.withAuth(false, s.node))
 	mux.HandleFunc("GET /api/v1/nodes/{id}/tasks", s.withAuth(false, s.nodeTasks))
-	mux.HandleFunc("POST /api/v1/nodes/{id}/availability", s.withAuth(true, s.nodeAvailability))
-	mux.HandleFunc("GET /api/v1/fleet/runs/{id}", s.withAuth(false, s.fleetRun))
+	mux.HandleFunc("POST /api/v1/nodes/{id}/availability", s.withActiveAuth(s.nodeAvailability))
 	mux.HandleFunc("GET /api/v1/stacks", s.withAuth(false, s.stacks))
-	mux.HandleFunc("POST /api/v1/stacks/validate", s.withAuth(true, s.stackValidate))
-	mux.HandleFunc("POST /api/v1/stacks/deploy", s.withAuth(true, s.stackDeploy))
+	mux.HandleFunc("POST /api/v1/stacks/validate", s.withActiveAuth(s.stackValidate))
+	mux.HandleFunc("POST /api/v1/stacks/deploy", s.withActiveAuth(s.stackDeploy))
 	mux.HandleFunc("GET /api/v1/services", s.withAuth(false, s.services))
 	mux.HandleFunc("GET /api/v1/services/{id}/logs", s.withAuth(false, s.serviceLogs))
-	mux.HandleFunc("POST /api/v1/services/{id}/actions", s.withAuth(true, s.serviceAction))
-	mux.HandleFunc("POST /api/v1/builds", s.withAuth(true, s.buildImage))
+	mux.HandleFunc("POST /api/v1/services/{id}/actions", s.withActiveAuth(s.serviceAction))
+	mux.HandleFunc("POST /api/v1/builds", s.withActiveAuth(s.buildImage))
 	mux.HandleFunc("GET /api/v1/traefik/status", s.withAuth(false, s.traefikStatus))
-	mux.HandleFunc("POST /api/v1/traefik/reconcile", s.withAuth(true, s.traefikReconcile))
+	mux.HandleFunc("POST /api/v1/traefik/reconcile", s.withActiveAuth(s.traefikReconcile))
+	mux.HandleFunc("GET /api/v1/traefik/state", s.withAuth(false, s.traefikRoutingState))
+	mux.HandleFunc("GET /api/v1/traefik/routes", s.withAuth(false, s.traefikRoutes))
+	mux.HandleFunc("POST /api/v1/traefik/routes/plan", s.withActiveAuth(s.traefikRoutePlan))
+	mux.HandleFunc("POST /api/v1/traefik/routes", s.withActiveAuth(s.traefikRouteApply))
+	mux.HandleFunc("POST /api/v1/traefik/services/{service}/role", s.withActiveAuth(s.traefikServiceRole))
+	mux.HandleFunc("POST /api/v1/traefik/bindings", s.withActiveAuth(s.traefikBindingApply))
+	mux.HandleFunc("POST /api/v1/traefik/settings", s.withActiveAuth(s.traefikSettingsApply))
+	mux.HandleFunc("POST /api/v1/traefik/dns/credentials", s.withActiveAuth(s.traefikDNSCredential))
+	mux.HandleFunc("DELETE /api/v1/traefik/dns/credentials/{id}/versions/{version}", s.withActiveAuth(s.traefikDNSCredentialRemove))
+	mux.HandleFunc("POST /api/v1/traefik/dns/records/preview", s.withActiveAuth(s.traefikDNSRecordPreview))
+	mux.HandleFunc("POST /api/v1/traefik/dns/records", s.withActiveAuth(s.traefikDNSRecordApply))
+	mux.HandleFunc("DELETE /api/v1/traefik/dns/records/{id}", s.withActiveAuth(s.traefikDNSRecordDelete))
+	mux.HandleFunc("GET /api/v1/traefik/dns/records/{id}/verify", s.withAuth(false, s.traefikDNSVerify))
+	mux.HandleFunc("GET /api/v1/traefik/runtime", s.withAuth(false, s.traefikRuntime))
+	mux.HandleFunc("GET /api/v1/traefik/certificates", s.withAuth(false, s.traefikCertificates))
+	mux.HandleFunc("POST /api/v1/traefik/certificates/{route}/retry", s.withActiveAuth(s.traefikCertificateRetry))
+	mux.HandleFunc("GET /api/v1/traefik/logs", s.withAuth(false, s.traefikLogs))
+	mux.HandleFunc("GET /api/v1/traefik/prometheus", s.withAuth(false, s.traefikPrometheus))
+	mux.HandleFunc("GET /api/v1/traefik/cutover/plan", s.withAuth(false, s.traefikCutoverPlan))
+	mux.HandleFunc("POST /api/v1/traefik/cutover", s.withActiveAuth(s.traefikCutover))
 	mux.HandleFunc("GET /api/v1/observability/status", s.withAuth(false, s.observabilityStatus))
-	mux.HandleFunc("POST /api/v1/observability/node-agent", s.withAuth(true, s.nodeAgentCollection))
-	mux.HandleFunc("POST /api/v1/observability/core", s.withAuth(true, s.coreObservability))
-	mux.HandleFunc("POST /api/v1/observability/logs", s.withAuth(true, s.logsCollection))
+	mux.HandleFunc("POST /api/v1/observability/node-agent", s.withActiveAuth(s.nodeAgentCollection))
+	mux.HandleFunc("POST /api/v1/observability/core", s.withActiveAuth(s.coreObservability))
+	mux.HandleFunc("POST /api/v1/observability/logs", s.withActiveAuth(s.logsCollection))
 	mux.HandleFunc("GET /api/v1/applications", s.withAuth(false, s.applications))
 	mux.HandleFunc("GET /api/v1/applications/approved", s.withAuth(false, s.approvedApplications))
-	mux.HandleFunc("POST /api/v1/applications/plan", s.withAuth(true, s.applicationPlan))
-	mux.HandleFunc("POST /api/v1/applications", s.withAuth(true, s.applicationDeploy))
-	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withAuth(true, s.applicationRemove))
+	mux.HandleFunc("POST /api/v1/applications/plan", s.withActiveAuth(s.applicationPlan))
+	mux.HandleFunc("POST /api/v1/applications", s.withActiveAuth(s.applicationDeploy))
+	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withActiveAuth(s.applicationRemove))
+	mux.HandleFunc("POST /api/v1/applications/{name}/domain", s.withActiveAuth(s.applicationDomain))
+	mux.HandleFunc("GET /api/v1/sources/status", s.withAuth(false, s.sourceStatus))
+	mux.HandleFunc("GET /api/v1/sources/connections", s.withAuth(false, s.sourceConnections))
+	mux.HandleFunc("POST /api/v1/sources/connections", s.withActiveAuth(s.sourceConnectionCreate))
+	mux.HandleFunc("PUT /api/v1/sources/connections/{id}", s.withActiveAuth(s.sourceConnectionUpdate))
+	mux.HandleFunc("DELETE /api/v1/sources/connections/{id}", s.withActiveAuth(s.sourceConnectionRemove))
+	mux.HandleFunc("GET /api/v1/sources/connections/{id}/repositories", s.withAuth(false, s.sourceRepositories))
+	mux.HandleFunc("POST /api/v1/sources/discover", s.withActiveAuth(s.sourceDiscover))
+	mux.HandleFunc("POST /api/v1/sources/deploy", s.withActiveAuth(s.sourceDeploy))
 	mux.HandleFunc("GET /api/v1/databases", s.withAuth(false, s.databases))
-	mux.HandleFunc("POST /api/v1/databases/{engine}", s.withAuth(true, s.databaseSet))
-	mux.HandleFunc("GET /api/v1/mobility", s.withAuth(false, s.mobilityStatus))
-	mux.HandleFunc("POST /api/v1/mobility/{resource}", s.withAuth(true, s.mobilityMove))
-	mux.HandleFunc("POST /api/v1/mobility/{id}/retire", s.withAuth(true, s.mobilityRetire))
-	mux.HandleFunc("POST /api/v1/mobility/{id}/abandon", s.withAuth(true, s.mobilityAbandon))
+	mux.HandleFunc("POST /api/v1/databases/{engine}", s.withActiveAuth(s.databaseSet))
+	mux.HandleFunc("GET /api/v1/insights", s.withAuth(false, s.insights))
+	mux.HandleFunc("GET /api/v1/insights/history", s.withAuth(false, s.insightsHistory))
+	mux.HandleFunc("GET /api/v1/events", s.withAuth(false, s.events))
+	mux.HandleFunc("GET /api/v1/system/df", s.withAuth(false, s.diskUsage))
+	mux.HandleFunc("GET /api/v1/swarm", s.withAuth(false, s.swarm))
+	mux.HandleFunc("POST /api/v1/swarm", s.withActiveAuth(s.swarmUpdate))
+	mux.HandleFunc("POST /api/v1/swarm/join-token", s.withActiveAuth(s.swarmTokenRotate))
+	mux.HandleFunc("GET /api/v1/services/{id}", s.withAuth(false, s.serviceDetail))
+	mux.HandleFunc("POST /api/v1/services/{id}/image", s.withActiveAuth(s.serviceImage))
+	mux.HandleFunc("POST /api/v1/services/{id}/limits", s.withActiveAuth(s.serviceLimits))
+	mux.HandleFunc("POST /api/v1/services/{id}/remove", s.withActiveAuth(s.serviceRemove))
+	mux.HandleFunc("GET /api/v1/tasks/{id}", s.withAuth(false, s.task))
+	mux.HandleFunc("POST /api/v1/nodes/{id}/role", s.withActiveAuth(s.nodeRole))
+	mux.HandleFunc("POST /api/v1/nodes/{id}/labels", s.withActiveAuth(s.nodeLabel))
+	mux.HandleFunc("POST /api/v1/nodes/{id}/remove", s.withActiveAuth(s.nodeRemove))
+	mux.HandleFunc("POST /api/v1/stacks/{name}/remove", s.withActiveAuth(s.stackRemove))
+	mux.HandleFunc("GET /api/v1/containers", s.withAuth(false, s.containers))
+	mux.HandleFunc("GET /api/v1/containers/{id}", s.withAuth(false, s.container))
+	mux.HandleFunc("GET /api/v1/containers/{id}/stats", s.withAuth(false, s.containerStats))
+	mux.HandleFunc("POST /api/v1/containers/{id}/actions", s.withActiveAuth(s.containerAction))
+	mux.HandleFunc("GET /api/v1/images", s.withAuth(false, s.images))
+	mux.HandleFunc("GET /api/v1/images/{id}", s.withAuth(false, s.image))
+	mux.HandleFunc("POST /api/v1/images/pull", s.withActiveAuth(s.imagePull))
+	mux.HandleFunc("POST /api/v1/images/remove", s.withActiveAuth(s.imageRemove))
+	mux.HandleFunc("GET /api/v1/volumes", s.withAuth(false, s.volumes))
+	mux.HandleFunc("POST /api/v1/volumes", s.withActiveAuth(s.volumeCreate))
+	mux.HandleFunc("GET /api/v1/volumes/{name}", s.withAuth(false, s.volume))
+	mux.HandleFunc("POST /api/v1/volumes/{name}/remove", s.withActiveAuth(s.volumeRemove))
+	mux.HandleFunc("GET /api/v1/networks", s.withAuth(false, s.networks))
+	mux.HandleFunc("POST /api/v1/networks", s.withActiveAuth(s.networkCreate))
+	mux.HandleFunc("GET /api/v1/networks/{id}", s.withAuth(false, s.network))
+	mux.HandleFunc("POST /api/v1/networks/{name}/remove", s.withActiveAuth(s.networkRemove))
+	mux.HandleFunc("GET /api/v1/secrets", s.withAuth(false, s.secrets))
+	mux.HandleFunc("GET /api/v1/configs", s.withAuth(false, s.configs))
+	mux.HandleFunc("POST /api/v1/configs/{name}/remove", s.withActiveAuth(s.configRemove))
+	mux.HandleFunc("POST /api/v1/prune/{resource}", s.withActiveAuth(s.prune))
+	mux.HandleFunc("GET /api/v1/commands/catalogue", s.withAuth(false, s.commandCatalogue))
 	mux.HandleFunc("GET /api/v1/audit-events", s.withAuth(false, s.auditEvents))
 	mux.HandleFunc("GET /api/v1/commands", s.withAuth(false, s.commandsList))
-	mux.HandleFunc("GET /api/v1/commands/{id}/logs", s.withAuth(false, s.commandLogs))
 	mux.HandleFunc("GET /api/v1/commands/{id}", s.withAuth(false, s.commandGet))
-	mux.HandleFunc("POST /api/v1/commands/{id}/retry", s.withAuth(true, s.commandRetry))
+	mux.HandleFunc("POST /api/v1/commands/{id}/retry", s.withActiveAuth(s.commandRetry))
 	mux.Handle("/", web.Handler())
 	return s.middleware(mux)
 }
 
 func (s *Server) health(response http.ResponseWriter, _ *http.Request) {
-	if err := s.observeControlPlaneHandover(); err != nil {
-		writeError(response, http.StatusServiceUnavailable, "SwarmOps handover state is unavailable")
-		return
-	}
 	writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -235,8 +339,7 @@ func (s *Server) serversList(response http.ResponseWriter, _ *http.Request, _ au
 
 // serverEnroll is the one-paste path: the operator supplies only the token the
 // installer printed. The controller performs the one-time secret exchange and
-// never shows the machine API key it receives; the manager may retain only an
-// encrypted copy so the host can reconnect after a controller restart.
+// never shows or stores the machine API key it receives.
 func (s *Server) serverEnroll(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	var input struct {
 		Name  string `json:"name"`
@@ -305,12 +408,11 @@ func (s *Server) serverAdd(response http.ResponseWriter, request *http.Request, 
 
 func (s *Server) serverConnect(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	var input struct {
-		APIKey                    string `json:"apiKey"`
-		Authentication            string `json:"authentication"`
-		Password                  string `json:"password"`
-		PrivateKey                string `json:"privateKey"`
-		PrivateKeyPassword        string `json:"privateKeyPassphrase"`
-		TLSCertificateFingerprint string `json:"tlsCertificateFingerprint"`
+		APIKey             string `json:"apiKey"`
+		Authentication     string `json:"authentication"`
+		Password           string `json:"password"`
+		PrivateKey         string `json:"privateKey"`
+		PrivateKeyPassword string `json:"privateKeyPassphrase"`
 	}
 	if !decodeJSON(response, request, &input) {
 		return
@@ -323,12 +425,11 @@ func (s *Server) serverConnect(response http.ResponseWriter, request *http.Reque
 	}()
 	id := request.PathValue("id")
 	server, err := s.servers.Connect(request.Context(), id, remote.Credentials{
-		APIKey:                    input.APIKey,
-		Authentication:            input.Authentication,
-		Password:                  input.Password,
-		PrivateKey:                input.PrivateKey,
-		PrivateKeyPassword:        input.PrivateKeyPassword,
-		TLSCertificateFingerprint: input.TLSCertificateFingerprint,
+		APIKey:             input.APIKey,
+		Authentication:     input.Authentication,
+		Password:           input.Password,
+		PrivateKey:         input.PrivateKey,
+		PrivateKeyPassword: input.PrivateKeyPassword,
 	})
 	if err != nil {
 		s.record(claims.Username, requestID(request), "server.reconnect", "server/"+id, err, nil)
@@ -337,25 +438,6 @@ func (s *Server) serverConnect(response http.ResponseWriter, request *http.Reque
 	}
 	s.record(claims.Username, requestID(request), "server.reconnect", "server/"+server.ID, nil, nil)
 	writeJSON(response, http.StatusOK, server)
-}
-
-func (s *Server) serverBootstrap(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	var input agentcontrol.BootstrapRequest
-	if !decodeJSON(response, request, &input) {
-		return
-	}
-	s.submitHostBootstrap(response, request, claims, request.PathValue("id"), input)
-}
-
-func (s *Server) serverJoinSwarm(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	// Accept exactly an empty JSON object. A browser must not supply a Docker
-	// join token; the worker obtains one directly from the selected manager at
-	// execution time and sends it only to the enrolled destination agent.
-	var input struct{}
-	if !decodeJSON(response, request, &input) {
-		return
-	}
-	s.submitManagedSwarmJoin(response, request, claims, request.PathValue("id"))
 }
 
 func connectionType(apiURL string) string {
@@ -393,6 +475,9 @@ func (s *Server) serverRemove(response http.ResponseWriter, request *http.Reques
 }
 
 func (s *Server) targetFor(response http.ResponseWriter, request *http.Request) (Target, bool) {
+	if !s.requireActiveControl(response) {
+		return Target{}, false
+	}
 	target, err := s.targets.Resolve(strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID")))
 	if err != nil {
 		s.operationError(response, request, err)
@@ -450,19 +535,6 @@ func (s *Server) nodeTasks(response http.ResponseWriter, request *http.Request, 
 		return
 	}
 	value, err := target.Control.TasksForNode(request.Context(), request.PathValue("id"))
-	if err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	writeJSON(response, http.StatusOK, value)
-}
-
-func (s *Server) fleetRun(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
-	target, ok := s.targetFor(response, request)
-	if !ok {
-		return
-	}
-	value, err := target.Control.FleetRun(request.Context(), request.PathValue("id"))
 	if err != nil {
 		s.operationError(response, request, err)
 		return
@@ -615,6 +687,141 @@ func (s *Server) SetApplicationDiscovery(apps *ops.ApplicationStore, namespace s
 	s.namespace = namespace
 }
 
+// SetSourceService enables the optional sealed Git-provider boundary. Keeping
+// it out of New preserves the default-off posture for existing deployments.
+func (s *Server) SetSourceService(service *source.Service) {
+	s.sources = service
+}
+
+func (s *Server) sourceStatus(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	writeJSON(response, http.StatusOK, map[string]any{
+		"buildEnabled":           s.config.BuildEnabled,
+		"enabled":                s.config.SourceEnabled && s.sources != nil,
+		"imagePrefixConfigured":  strings.TrimSpace(s.config.SourceImagePrefix) != "",
+		"privateHostsConfigured": len(s.config.SourceAllowedHosts) > 0,
+	})
+}
+
+func (s *Server) sourceConnections(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	writeJSON(response, http.StatusOK, s.sources.Connections())
+}
+
+func (s *Server) sourceConnectionCreate(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	var input source.ConnectionInput
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	defer func() { input.Token = "" }()
+	connection, err := s.sources.CreateConnection(request.Context(), input)
+	if err != nil {
+		s.record(claims.Username, requestID(request), "source.connection-created", "source-connection/new", err, map[string]string{"provider": string(input.Kind)})
+		s.sourceRequestError(response, err)
+		return
+	}
+	s.record(claims.Username, requestID(request), "source.connection-created", "source-connection/"+connection.ID, nil, map[string]string{"provider": string(connection.Kind)})
+	writeJSON(response, http.StatusCreated, connection)
+}
+
+func (s *Server) sourceConnectionUpdate(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	var input source.ConnectionInput
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	defer func() { input.Token = "" }()
+	connection, err := s.sources.UpdateConnection(request.Context(), request.PathValue("id"), input)
+	if err != nil {
+		s.record(claims.Username, requestID(request), "source.connection-updated", "source-connection/"+request.PathValue("id"), err, map[string]string{"provider": string(input.Kind)})
+		s.sourceRequestError(response, err)
+		return
+	}
+	s.record(claims.Username, requestID(request), "source.connection-updated", "source-connection/"+connection.ID, nil, map[string]string{"provider": string(connection.Kind)})
+	writeJSON(response, http.StatusOK, connection)
+}
+
+func (s *Server) sourceConnectionRemove(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	id := request.PathValue("id")
+	if err := s.sources.RemoveConnection(id); err != nil {
+		s.sourceRequestError(response, err)
+		return
+	}
+	s.record(claims.Username, requestID(request), "source.connection-removed", "source-connection/"+id, nil, nil)
+	response.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) sourceRepositories(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	repositories, err := s.sources.Repositories(request.Context(), request.PathValue("id"))
+	if err != nil {
+		s.sourceRequestError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, repositories)
+}
+
+func (s *Server) sourceDiscover(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if !s.requireSource(response) {
+		return
+	}
+	var input source.DiscoverRequest
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	plan, err := s.sources.Discover(request.Context(), input)
+	if err != nil {
+		s.record(claims.Username, requestID(request), "source.discover", "repository/unknown", err, nil)
+		s.sourceRequestError(response, err)
+		return
+	}
+	s.record(claims.Username, requestID(request), "source.discover", "repository/"+plan.Repository.ID, nil, map[string]string{"plan_id": plan.ID, "revision": plan.Revision.SHA, "scanner": plan.Scanner})
+	writeJSON(response, http.StatusOK, plan)
+}
+
+func (s *Server) sourceDeploy(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input struct {
+		Application ops.ApplicationSpec `json:"application"`
+		Selection   source.Selection    `json:"selection"`
+	}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitSourceDeploy(response, request, claims, input.Selection, input.Application)
+}
+
+func (s *Server) requireSource(response http.ResponseWriter) bool {
+	if !s.config.SourceEnabled || s.sources == nil {
+		writeError(response, http.StatusServiceUnavailable, "Source deployment is disabled; set SWARMOPS_SOURCE_ENABLED=true")
+		return false
+	}
+	return true
+}
+
+func (s *Server) sourceRequestError(response http.ResponseWriter, err error) {
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(response, http.StatusNotFound, "Source connection was not found")
+		return
+	}
+	message := err.Error()
+	if strings.Contains(message, "provider request failed") || strings.Contains(message, "provider archive") {
+		writeError(response, http.StatusBadGateway, message)
+		return
+	}
+	writeError(response, http.StatusUnprocessableEntity, message)
+}
+
 func (s *Server) applications(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	target, ok := s.targetFor(response, request)
 	if !ok {
@@ -674,6 +881,23 @@ func (s *Server) applicationRemove(response http.ResponseWriter, request *http.R
 		return
 	}
 	s.submitApplicationRemove(response, request, claims, request.PathValue("name"), input.Confirmation)
+}
+
+func (s *Server) applicationDomain(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input struct {
+		Confirmation string `json:"confirmation"`
+		Domain       string `json:"domain"`
+		Resolver     string `json:"resolver"`
+	}
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	s.submitApplicationDomain(response, request, claims, applicationDomainCommand{
+		Confirmation: input.Confirmation,
+		Domain:       input.Domain,
+		Name:         request.PathValue("name"),
+		Resolver:     input.Resolver,
+	})
 }
 
 // databases lists the reviewed managed engines and whether each is running.
@@ -801,10 +1025,6 @@ func (s *Server) withAuth(csrf bool, handler protectedHandler) http.HandlerFunc 
 			writeError(response, http.StatusForbidden, "Invalid request token")
 			return
 		}
-		if csrf && request.URL.Path != "/api/v1/auth/logout" && !strings.HasPrefix(request.URL.Path, "/api/v1/mobility") && s.controlPlaneHandoverActive() {
-			writeError(response, http.StatusConflict, "Control-plane handover is in progress. Monitor or retire that handover before queuing other changes.")
-			return
-		}
 		handler(response, request, claims)
 	}
 }
@@ -854,6 +1074,7 @@ func (s *Server) clientAllowed(request *http.Request) bool {
 }
 
 func (s *Server) operationError(response http.ResponseWriter, request *http.Request, err error) {
+	s.observeAgentFailure(request, err)
 	s.logger.Error("SwarmOps operation failed", "request_id", requestID(request), "method", request.Method, "path", request.URL.Path, "error", err)
 	if strings.Contains(err.Error(), "server not found") {
 		writeError(response, http.StatusNotFound, "Server was not found")
@@ -875,11 +1096,31 @@ func (s *Server) operationError(response http.ResponseWriter, request *http.Requ
 		writeError(response, http.StatusUnprocessableEntity, "Docker is not ready on the selected server. Open Provisioning to prepare it before running cluster operations.")
 		return
 	}
+	if message, detail, ok := remote.ConnectionErrorDetails(err); ok {
+		writeErrorDetail(response, http.StatusBadGateway, message, detail, requestID(request))
+		return
+	}
 	if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "must") || strings.Contains(err.Error(), "disabled") || strings.Contains(err.Error(), "requires") || strings.Contains(err.Error(), "not a remote Swarm manager") || strings.Contains(err.Error(), "exceed") {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	writeError(response, http.StatusBadGateway, "The cluster operation could not be completed")
+}
+
+func (s *Server) observeAgentFailure(request *http.Request, err error) {
+	if s.servers == nil || err == nil {
+		return
+	}
+	id := strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
+	if id == "" {
+		id = strings.TrimSpace(request.PathValue("id"))
+	}
+	if id == "" {
+		return
+	}
+	if observeErr := s.servers.ObserveFailure(id, err); observeErr != nil {
+		s.logger.Error("record machine-agent health failure", "request_id", requestID(request), "server_id", id, "error", observeErr)
+	}
 }
 
 func (s *Server) connectionError(response http.ResponseWriter, request *http.Request, err error) {

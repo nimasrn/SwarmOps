@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,11 +16,10 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
-	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
-	"github.com/nimasrn/SwarmOps/internal/remote"
+	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
 const (
@@ -35,9 +35,10 @@ const (
 	commandObservability     = "observability.core"
 	commandDatabase          = "database.set"
 	commandApplicationDeploy = "application.deploy"
+	commandApplicationDomain = "application.domain"
 	commandApplicationRemove = "application.remove"
-	commandHostBootstrap     = "server.bootstrap"
-	commandHostSwarmJoin     = "server.swarm-join"
+	commandSourceDeploy      = "source.deploy"
+	commandServerReadiness   = "server.readiness"
 
 	maxAutomaticAttempts = 8
 )
@@ -83,25 +84,25 @@ type applicationRemoveCommand struct {
 	Name         string `json:"name"`
 }
 
+type applicationDomainCommand struct {
+	Confirmation string `json:"confirmation,omitempty"`
+	Domain       string `json:"domain,omitempty"`
+	Name         string `json:"name"`
+	Resolver     string `json:"resolver,omitempty"`
+}
+
+type sourceDeployCommand struct {
+	Build        *build.Request      `json:"build,omitempty"`
+	PlanID       string              `json:"planId"`
+	RepositoryID string              `json:"repositoryId"`
+	Revision     string              `json:"revision"`
+	Service      string              `json:"service"`
+	SharedStacks []string            `json:"sharedStacks,omitempty"`
+	Spec         ops.ApplicationSpec `json:"spec"`
+}
+
 type traefikCommand struct {
 	Confirmation string `json:"confirmation"`
-}
-
-type hostBootstrapCommand struct {
-	Action        string `json:"action"`
-	AdvertiseAddr string `json:"advertiseAddr,omitempty"`
-}
-
-func (c hostBootstrapCommand) request() agentcontrol.BootstrapRequest {
-	return agentcontrol.BootstrapRequest{Action: c.Action, AdvertiseAddr: c.AdvertiseAddr}
-}
-
-// hostSwarmJoinCommand contains only stable server identifiers. The manager
-// join token is fetched at execution time and stays out of the sealed command
-// payload, browser request, audit event, and command-log evidence.
-type hostSwarmJoinCommand struct {
-	DestinationServerID string `json:"destinationServerId"`
-	ManagerServerID     string `json:"managerServerId"`
 }
 
 func (s *Server) commandsList(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
@@ -130,25 +131,11 @@ func (s *Server) commandGet(response http.ResponseWriter, request *http.Request,
 	writeJSON(response, http.StatusOK, command)
 }
 
-func (s *Server) commandLogs(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
-	limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
-	if limit == 0 {
-		limit = 200
-	}
-	logs, err := s.commands.Logs(request.PathValue("id"), limit)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			writeError(response, http.StatusNotFound, "Command was not found")
-			return
-		}
-		s.commandStoreError(response, request, err)
+func (s *Server) commandRetry(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if !s.remoteMutationsEnabled(response) {
 		return
 	}
-	writeJSON(response, http.StatusOK, logs)
-}
-
-func (s *Server) commandRetry(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	command, err := s.commands.RetryNow(request.PathValue("id"))
+	command, err := s.commands.RetryNow(request.PathValue("id"), s.core.AuthorityEpoch())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeError(response, http.StatusNotFound, "Command was not found")
@@ -229,10 +216,12 @@ func (s *Server) submitBuild(response http.ResponseWriter, request *http.Request
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, s.config.BuildMaxBytes)
 	defer request.Body.Close()
-	command, created, err := s.commands.SubmitArtifact(queue.SubmitInput{
+	submission, err := s.commands.SubmitArtifactWithResult(queue.SubmitInput{
 		Action:           commandImageBuild,
 		Actor:            claims.Username,
+		AuthorityEpoch:   s.core.AuthorityEpoch(),
 		AutoRetry:        false,
+		ClusterID:        "default",
 		IdempotencyKey:   idempotencyKey,
 		MaxArtifactBytes: s.config.BuildMaxBytes,
 		MaxAttempts:      1,
@@ -245,17 +234,15 @@ func (s *Server) submitBuild(response http.ResponseWriter, request *http.Request
 		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
 		return
 	}
-	if err != nil && command.ID == "" {
+	if err != nil && submission.Command.ID == "" {
 		s.commandStoreError(response, request, err)
 		return
 	}
-	if created {
-		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
-	}
+	s.recordCommandSubmission(claims, request, submission)
 	// A streaming source failure still leaves a durable, visible attention
 	// record. Do not replace it with an opaque error response: the operator
 	// must be able to see that no build ran and submit a new archive safely.
-	writeJSON(response, http.StatusAccepted, command)
+	writeJSON(response, http.StatusAccepted, submission.Command)
 }
 
 func (s *Server) submitTraefik(response http.ResponseWriter, request *http.Request, claims auth.Claims, confirmation string) {
@@ -308,136 +295,6 @@ func (s *Server) submitDatabase(response http.ResponseWriter, request *http.Requ
 	s.submitCommand(response, request, claims, commandDatabase, "stack/"+definition.Stack, input, true)
 }
 
-func (s *Server) submitHostBootstrap(response http.ResponseWriter, request *http.Request, claims auth.Claims, serverID string, input agentcontrol.BootstrapRequest) {
-	if input.Action == agentcontrol.BootstrapSwarmJoin {
-		writeError(response, http.StatusUnprocessableEntity, "Join the selected Swarm through the dedicated managed action")
-		return
-	}
-	if err := agentcontrol.ValidateBootstrapRequest(input); err != nil {
-		writeError(response, http.StatusUnprocessableEntity, "Invalid managed bootstrap action")
-		return
-	}
-	if _, err := s.servers.Resolve(serverID); err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	if err := s.commands.Writable(); err != nil {
-		s.commandStoreError(response, request, err)
-		return
-	}
-	if err := s.audit.Writable(); err != nil {
-		s.commandStoreError(response, request, err)
-		return
-	}
-	payload, err := json.Marshal(hostBootstrapCommand{Action: input.Action, AdvertiseAddr: input.AdvertiseAddr})
-	if err != nil {
-		writeError(response, http.StatusInternalServerError, "Command could not be queued")
-		return
-	}
-	command, created, err := s.commands.Submit(queue.SubmitInput{
-		Action:         commandHostBootstrap,
-		Actor:          claims.Username,
-		AutoRetry:      false,
-		IdempotencyKey: request.Header.Get("Idempotency-Key"),
-		MaxAttempts:    1,
-		Payload:        payload,
-		RequestID:      requestID(request),
-		ServerID:       serverID,
-		Target:         "server/" + serverID,
-	})
-	if errors.Is(err, queue.ErrIdempotencyConflict) {
-		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
-		return
-	}
-	if err != nil {
-		s.commandStoreError(response, request, err)
-		return
-	}
-	if created {
-		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
-	}
-	writeJSON(response, http.StatusAccepted, command)
-}
-
-// submitManagedSwarmJoin queues a fixed join after ensuring both endpoints
-// are already enrolled and connected. The selected active manager supplies a
-// transient token only when the worker executes; the browser never receives
-// it and no durable command payload contains it.
-func (s *Server) submitManagedSwarmJoin(response http.ResponseWriter, request *http.Request, claims auth.Claims, destinationServerID string) {
-	managerServerID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
-	if !ok {
-		return
-	}
-	destinationServerID = strings.TrimSpace(destinationServerID)
-	if destinationServerID == "" || destinationServerID == managerServerID {
-		writeError(response, http.StatusUnprocessableEntity, "Select a different enrolled server to join this Swarm")
-		return
-	}
-	target, err := s.targets.Resolve(managerServerID)
-	if err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	if target.Control == nil || target.Control.Docker == nil {
-		writeError(response, http.StatusConflict, "Select a connected Swarm manager before joining another server")
-		return
-	}
-	manager, err := s.servers.Resolve(managerServerID)
-	if err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	if !manager.Profile.Managed || !manager.Profile.SwarmControlAvailable || manager.Docker == nil {
-		writeError(response, http.StatusConflict, "The selected server is not a managed active Swarm manager")
-		return
-	}
-	if _, ok := manager.Runner.(remote.SwarmJoinTokenProvider); !ok {
-		writeError(response, http.StatusConflict, "The selected manager cannot provide a managed join credential")
-		return
-	}
-	destination, err := s.servers.Resolve(destinationServerID)
-	if err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	if !destination.Profile.Managed || !destination.Profile.BootstrapAvailable || !destination.Profile.DockerAvailable {
-		writeError(response, http.StatusConflict, "The destination must be an enrolled managed server with Docker ready")
-		return
-	}
-	if _, ok := destination.Runner.(remote.HostBootstrapper); !ok {
-		writeError(response, http.StatusConflict, "The destination does not support managed Swarm setup")
-		return
-	}
-	payload, err := json.Marshal(hostSwarmJoinCommand{DestinationServerID: destinationServerID, ManagerServerID: managerServerID})
-	if err != nil {
-		writeError(response, http.StatusInternalServerError, "Managed Swarm join could not be queued")
-		return
-	}
-	command, created, err := s.commands.Submit(queue.SubmitInput{
-		Action:         commandHostSwarmJoin,
-		Actor:          claims.Username,
-		AutoRetry:      false,
-		IdempotencyKey: idempotencyKey,
-		MaxAttempts:    1,
-		Payload:        payload,
-		RequestID:      requestID(request),
-		ServerID:       managerServerID,
-		Target:         "server/" + destinationServerID + "/join-swarm",
-	})
-	if errors.Is(err, queue.ErrIdempotencyConflict) {
-		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
-		return
-	}
-	if err != nil {
-		s.commandStoreError(response, request, err)
-		return
-	}
-	if created {
-		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
-	}
-	writeJSON(response, http.StatusAccepted, command)
-}
-
 // submitApplicationDeploy validates and renders once before queueing, so a
 // spec that cannot become an admissible stack is refused with a useful message
 // instead of becoming a command that will need operator attention later.
@@ -462,6 +319,162 @@ func (s *Server) submitApplicationRemove(response http.ResponseWriter, request *
 	s.submitCommand(response, request, claims, commandApplicationRemove, "application/"+name, applicationRemoveCommand{Confirmation: confirmation, Name: name}, false)
 }
 
+func (s *Server) submitApplicationDomain(response http.ResponseWriter, request *http.Request, claims auth.Claims, input applicationDomainCommand) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	current, found := target.Control.Apps.Get(input.Name)
+	if !found {
+		writeError(response, http.StatusNotFound, "Application was not found")
+		return
+	}
+	input.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(input.Domain), "."))
+	input.Resolver = strings.TrimSpace(input.Resolver)
+	if input.Domain == "" {
+		if input.Confirmation != ops.ApplicationDomainRemovalConfirmation(current.Name) {
+			writeError(response, http.StatusUnprocessableEntity, "domain removal requires confirmation "+ops.ApplicationDomainRemovalConfirmation(current.Name))
+			return
+		}
+		input.Resolver = ""
+	}
+	updated := current
+	updated.Domain = input.Domain
+	updated.Resolver = input.Resolver
+	if _, err := target.Control.PlanApplication(request.Context(), updated); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	s.submitCommand(response, request, claims, commandApplicationDomain, "application/"+current.Name+"/domain", input, true)
+}
+
+func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.Request, claims auth.Claims, selection source.Selection, requested ops.ApplicationSpec) {
+	if !s.requireSource(response) {
+		return
+	}
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	serverID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
+	if !ok {
+		return
+	}
+	plan, candidate, contextReader, err := s.sources.PrepareDeployment(request.Context(), selection)
+	if err != nil {
+		s.sourceRequestError(response, err)
+		return
+	}
+	if contextReader != nil {
+		defer contextReader.Close()
+	}
+	spec, sharedStacks := sourceApplicationSpec(requested, candidate)
+	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	commandInput := sourceDeployCommand{
+		PlanID:       plan.ID,
+		RepositoryID: plan.Repository.ID,
+		Revision:     plan.Revision.SHA,
+		Service:      candidate.Service,
+		SharedStacks: sharedStacks,
+		Spec:         spec,
+	}
+	if candidate.Build != nil && candidate.Build.Required {
+		validation := build.Service{
+			Enabled:       s.config.BuildEnabled,
+			ImagePrefixes: s.config.ImagePrefixes,
+			MaxCPUs:       s.config.BuildMaxCPUs,
+			MaxMemoryMiB:  s.config.BuildMaxMemoryMiB,
+			RegistryAuth:  s.config.RegistryAuth,
+		}
+		buildRequest, err := validation.Validate(build.Request{
+			CPUs:       spec.CPUs,
+			Dockerfile: candidate.Build.DockerfilePath,
+			Image:      candidate.Build.Image,
+			MemoryMiB:  spec.MemoryMiB,
+			Push:       true,
+		})
+		if err != nil {
+			writeError(response, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		commandInput.Build = &buildRequest
+	}
+	payload, err := json.Marshal(commandInput)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Command could not be queued")
+		return
+	}
+	submit := queue.SubmitInput{
+		Action:         commandSourceDeploy,
+		Actor:          claims.Username,
+		AuthorityEpoch: s.core.AuthorityEpoch(),
+		AutoRetry:      false,
+		ClusterID:      "default",
+		IdempotencyKey: idempotencyKey,
+		MaxAttempts:    1,
+		Payload:        payload,
+		RequestID:      requestID(request),
+		ServerID:       serverID,
+		Target:         "application/" + spec.Name,
+	}
+	var submission queue.Submission
+	if commandInput.Build != nil {
+		submission, err = s.commands.SubmitArtifactWithResult(queue.SubmitInput{
+			Action:           submit.Action,
+			Actor:            submit.Actor,
+			AuthorityEpoch:   submit.AuthorityEpoch,
+			AutoRetry:        submit.AutoRetry,
+			ClusterID:        submit.ClusterID,
+			IdempotencyKey:   submit.IdempotencyKey,
+			MaxArtifactBytes: s.config.BuildMaxBytes,
+			MaxAttempts:      submit.MaxAttempts,
+			Payload:          submit.Payload,
+			RequestID:        submit.RequestID,
+			ServerID:         submit.ServerID,
+			Target:           submit.Target,
+		}, contextReader)
+	} else {
+		submission, err = s.commands.SubmitWithResult(submit)
+	}
+	if errors.Is(err, queue.ErrIdempotencyConflict) {
+		writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
+		return
+	}
+	if err != nil && submission.Command.ID == "" {
+		s.commandStoreError(response, request, err)
+		return
+	}
+	s.recordCommandSubmission(claims, request, submission)
+	writeJSON(response, http.StatusAccepted, submission.Command)
+}
+
+func sourceApplicationSpec(requested ops.ApplicationSpec, candidate source.ServicePlan) (ops.ApplicationSpec, []string) {
+	spec := requested
+	if spec.Name == "" {
+		spec.Name = candidate.Name
+	}
+	spec.Image = candidate.Image
+	spec.Databases = append([]string(nil), candidate.Databases...)
+	spec.DatabaseDelivery = ops.DeliverySecret
+	spec.Metrics = candidate.Metrics
+	spec.Tracing = candidate.Tracing
+	if candidate.Port != 0 {
+		spec.Port = candidate.Port
+	}
+	if spec.HealthPath == "" {
+		spec.HealthPath = candidate.HealthPath
+	}
+	spec = spec.Normalize()
+	sharedStacks := append([]string(nil), candidate.SharedStacks...)
+	if spec.Metrics || spec.Tracing {
+		sharedStacks = append(sharedStacks, "swarmops-observability")
+	}
+	return spec, sortedCommandStrings(sharedStacks)
+}
+
 func (s *Server) submitCommand(response http.ResponseWriter, request *http.Request, claims auth.Claims, action, target string, payload any, autoRetry bool) {
 	serverID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
 	if !ok {
@@ -476,10 +489,12 @@ func (s *Server) submitCommand(response http.ResponseWriter, request *http.Reque
 	if autoRetry {
 		maxAttempts = maxAutomaticAttempts
 	}
-	command, created, err := s.commands.Submit(queue.SubmitInput{
+	submission, err := s.commands.SubmitWithResult(queue.SubmitInput{
 		Action:         action,
 		Actor:          claims.Username,
+		AuthorityEpoch: s.core.AuthorityEpoch(),
 		AutoRetry:      autoRetry,
+		ClusterID:      "default",
 		IdempotencyKey: idempotencyKey,
 		MaxAttempts:    maxAttempts,
 		Payload:        encoded,
@@ -495,13 +510,14 @@ func (s *Server) submitCommand(response http.ResponseWriter, request *http.Reque
 		s.commandStoreError(response, request, err)
 		return
 	}
-	if created {
-		s.record(claims.Username, requestID(request), "command.queued", "command/"+command.ID, nil, commandAuditDetail(command))
-	}
-	writeJSON(response, http.StatusAccepted, command)
+	s.recordCommandSubmission(claims, request, submission)
+	writeJSON(response, http.StatusAccepted, submission.Command)
 }
 
 func (s *Server) commandSubmissionContext(response http.ResponseWriter, request *http.Request) (string, string, bool) {
+	if !s.remoteMutationsEnabled(response) {
+		return "", "", false
+	}
 	if s.commands == nil {
 		writeError(response, http.StatusServiceUnavailable, "SwarmOps command storage is unavailable")
 		return "", "", false
@@ -519,6 +535,10 @@ func (s *Server) commandSubmissionContext(response http.ResponseWriter, request 
 		writeError(response, http.StatusBadRequest, "Idempotency-Key is required for every command")
 		return "", "", false
 	}
+	if strings.TrimSpace(request.Header.Get("X-SwarmOps-Cluster-ID")) != "default" {
+		writeError(response, http.StatusConflict, "X-SwarmOps-Cluster-ID must explicitly select the v1 cluster as default")
+		return "", "", false
+	}
 	serverID := strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
 	if serverID == "" {
 		writeError(response, http.StatusConflict, "Select a saved server before queuing a command")
@@ -533,203 +553,54 @@ func (s *Server) commandSubmissionContext(response http.ResponseWriter, request 
 	return "", "", false
 }
 
+// remoteMutationsEnabled is the admission boundary for every command that can
+// reach a machine agent. Commands must not be written to the durable ledger
+// while remote mutation is disabled: a later configuration change must never
+// turn previously rejected browser intent into executable work.
+func (s *Server) remoteMutationsEnabled(response http.ResponseWriter) bool {
+	if s.config.MutationEnabled {
+		return true
+	}
+	writeError(response, http.StatusForbidden, "Remote mutations are disabled on this control plane")
+	return false
+}
+
+func (s *Server) recordCommandSubmission(claims auth.Claims, request *http.Request, submission queue.Submission) {
+	if submission.Created {
+		s.record(claims.Username, requestID(request), "command.queued", "command/"+submission.Command.ID, nil, commandAuditDetail(submission.Command))
+	}
+	for _, superseded := range submission.Superseded {
+		s.record(claims.Username, requestID(request), "command.superseded", "command/"+superseded.ID, nil, commandAuditDetail(superseded))
+	}
+}
+
 // ExecuteCommand is called only by the singleton worker. Payload decoding and
 // target resolution occur after durable claiming, so an API restart cannot
-// lose a command that was acknowledged to the browser. Command events are
-// persisted in the encrypted command store, never in the audit trail.
+// lose a command that was acknowledged to the browser.
 func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error {
-	if err := s.appendCommandLog(record.Command, "controller", "info", "Command claimed by the singleton controller."); err != nil {
-		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
-	}
-	if record.Command.Action == commandHostBootstrap {
-		return s.finishCommandExecution(record.Command, s.executeHostBootstrap(ctx, record))
-	}
-	if record.Command.Action == commandHostSwarmJoin {
-		return s.finishCommandExecution(record.Command, s.executeManagedSwarmJoin(ctx, record))
-	}
-	if record.Command.Action == commandMobilityMove {
-		err := s.executeMobilityMove(ctx, record)
-		if errors.Is(err, queue.ErrExecutorHandoff) {
-			return err
-		}
-		return s.finishCommandExecution(record.Command, err)
-	}
-	if record.Command.Action == commandMobilityRetire {
-		return s.finishCommandExecution(record.Command, s.executeMobilityRetire(ctx, record))
+	if !s.CanExecuteCommands() {
+		return queue.PermanentError(fmt.Errorf("control-plane replica is standby before command execution"))
 	}
 	target, err := s.targets.Resolve(record.Command.ServerID)
 	if err != nil {
-		_ = s.appendCommandLog(record.Command, "controller", "error", "The selected server could not be resolved. No mutation was started.")
 		return err
+	}
+	if record.Command.Action == commandServerReadiness {
+		var input agentcontrol.ProvisioningRequest
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		if err := input.Validate(); err != nil {
+			return queue.PermanentError(err)
+		}
+		if target.Provisioner == nil {
+			return queue.PermanentError(fmt.Errorf("selected server has no machine provisioning agent"))
+		}
+		return queue.PermanentError(target.Provisioner.Provision(ctx, input))
 	}
 	if target.Control == nil {
-		_ = s.appendCommandLog(record.Command, "controller", "error", "The selected server has no compatible control-plane capability.")
 		return queue.PermanentError(fmt.Errorf("selected server has no control plane"))
 	}
-	var logErr error
-	target.Control.SetCommandOutput(func(output string) {
-		if logErr != nil {
-			return
-		}
-		logErr = s.appendCommandLog(record.Command, "machine", "info", output)
-	})
-	if err := s.appendCommandLog(record.Command, "controller", "info", "Connected target resolved; starting the fixed reviewed operation."); err != nil {
-		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
-	}
-	err = s.executeCommand(ctx, record, target)
-	if logErr != nil {
-		// The remote effect may have completed, but the evidence could not be
-		// retained. Treat it as uncertain rather than reporting success.
-		return queue.PermanentError(fmt.Errorf("persist machine command output: %w", logErr))
-	}
-	return s.finishCommandExecution(record.Command, err)
-}
-
-func (s *Server) executeHostBootstrap(ctx context.Context, record queue.Record) error {
-	var input hostBootstrapCommand
-	if err := decodeCommandPayload(record.Payload, &input); err != nil {
-		return queue.PermanentError(err)
-	}
-	connection, err := s.servers.Resolve(record.Command.ServerID)
-	if err != nil {
-		return err
-	}
-	bootstrapper, ok := connection.Runner.(remote.HostBootstrapper)
-	if !ok {
-		return queue.PermanentError(fmt.Errorf("selected server does not support managed bootstrap"))
-	}
-	if err := s.appendCommandLog(record.Command, "controller", "info", "Managed host bootstrap was authorised after enrollment; starting the fixed action."); err != nil {
-		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
-	}
-	output, err := bootstrapper.Bootstrap(ctx, input.request())
-	if output != "" {
-		if logErr := s.appendCommandLog(record.Command, "machine", "info", output); logErr != nil {
-			return queue.PermanentError(fmt.Errorf("persist machine bootstrap output: %w", logErr))
-		}
-	}
-	if err == nil {
-		if refreshErr := s.refreshManagedServerStatus(ctx, record.Command, record.Command.ServerID); refreshErr != nil {
-			return refreshErr
-		}
-	}
-	return classifyCommandError(err)
-}
-
-func (s *Server) executeManagedSwarmJoin(ctx context.Context, record queue.Record) error {
-	var input hostSwarmJoinCommand
-	if err := decodeCommandPayload(record.Payload, &input); err != nil {
-		return queue.PermanentError(err)
-	}
-	if strings.TrimSpace(input.ManagerServerID) == "" || input.ManagerServerID != record.Command.ServerID || strings.TrimSpace(input.DestinationServerID) == "" || input.DestinationServerID == input.ManagerServerID {
-		return queue.PermanentError(fmt.Errorf("managed Swarm join payload is invalid"))
-	}
-	manager, err := s.servers.Resolve(input.ManagerServerID)
-	if err != nil {
-		return err
-	}
-	if !manager.Profile.Managed || manager.Docker == nil {
-		return queue.PermanentError(fmt.Errorf("selected manager is not an enrolled active Swarm manager"))
-	}
-	provider, ok := manager.Runner.(remote.SwarmJoinTokenProvider)
-	if !ok {
-		return queue.PermanentError(fmt.Errorf("selected manager does not support managed Swarm join"))
-	}
-	managerAddress, err := managedSwarmManagerAddress(ctx, manager.Docker)
-	if err != nil {
-		return classifyCommandError(err)
-	}
-	destination, err := s.servers.Resolve(input.DestinationServerID)
-	if err != nil {
-		return err
-	}
-	if !destination.Profile.Managed || !destination.Profile.BootstrapAvailable || !destination.Profile.DockerAvailable {
-		return queue.PermanentError(fmt.Errorf("destination is not ready for managed Swarm join"))
-	}
-	bootstrapper, ok := destination.Runner.(remote.HostBootstrapper)
-	if !ok {
-		return queue.PermanentError(fmt.Errorf("destination does not support managed Swarm setup"))
-	}
-	if err := s.appendCommandLog(record.Command, "controller", "info", "The selected manager is issuing a short-lived join credential directly to the enrolled destination agent."); err != nil {
-		return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
-	}
-	token, err := provider.ManagerJoinToken(ctx)
-	if err != nil {
-		return classifyCommandError(err)
-	}
-	defer func() { token = "" }()
-	output, err := bootstrapper.Bootstrap(ctx, agentcontrol.BootstrapRequest{Action: agentcontrol.BootstrapSwarmJoin, JoinToken: token, ManagerAddr: managerAddress})
-	if output != "" {
-		if logErr := s.appendCommandLog(record.Command, "machine", "info", output); logErr != nil {
-			return queue.PermanentError(fmt.Errorf("persist managed Swarm join output: %w", logErr))
-		}
-	}
-	if err == nil {
-		if refreshErr := s.refreshManagedServerStatus(ctx, record.Command, input.DestinationServerID); refreshErr != nil {
-			return refreshErr
-		}
-	}
-	return classifyCommandError(err)
-}
-
-// refreshManagedServerStatus updates the persisted card after a fixed host
-// action. A status refresh failure does not change the completed host action;
-// the encrypted command evidence instead tells the operator to use the normal
-// Servers refresh if the agent has not yet observed Docker or Swarm readiness.
-func (s *Server) refreshManagedServerStatus(ctx context.Context, command domain.Command, serverID string) error {
-	if _, err := s.servers.Refresh(ctx, serverID); err != nil {
-		if logErr := s.appendCommandLog(command, "controller", "warning", "The host action completed, but its current Docker or Swarm status could not be refreshed. Use Servers refresh after the host is ready."); logErr != nil {
-			return queue.PermanentError(fmt.Errorf("persist host refresh warning: %w", logErr))
-		}
-		return nil
-	}
-	if err := s.appendCommandLog(command, "controller", "info", "The managed server status was refreshed after the fixed host action."); err != nil {
-		return queue.PermanentError(fmt.Errorf("persist host refresh evidence: %w", err))
-	}
-	return nil
-}
-
-func managedSwarmManagerAddress(ctx context.Context, docker *dockerapi.Client) (string, error) {
-	if docker == nil {
-		return "", fmt.Errorf("selected manager Docker Engine is unavailable")
-	}
-	info, err := docker.Info(ctx)
-	if err != nil {
-		return "", fmt.Errorf("read selected manager Swarm identity: %w", err)
-	}
-	if !info.Swarm.ControlAvailable || !strings.EqualFold(info.Swarm.LocalNodeState, "active") || strings.TrimSpace(info.Swarm.NodeID) == "" {
-		return "", fmt.Errorf("selected server is not an active Swarm manager")
-	}
-	nodes, err := docker.ListNodes(ctx)
-	if err != nil {
-		return "", fmt.Errorf("read selected manager node: %w", err)
-	}
-	for _, node := range nodes {
-		if node.ID != info.Swarm.NodeID || node.ManagerStatus == nil || strings.TrimSpace(node.ManagerStatus.Addr) == "" {
-			continue
-		}
-		candidate := strings.TrimSpace(node.ManagerStatus.Addr)
-		if err := agentcontrol.ValidateBootstrapRequest(agentcontrol.BootstrapRequest{Action: agentcontrol.BootstrapSwarmJoin, JoinToken: "SWMTKN-1-abcdefgh-abcdefghijklmnop", ManagerAddr: candidate}); err != nil {
-			return "", fmt.Errorf("selected manager has an invalid Swarm advertise address")
-		}
-		return candidate, nil
-	}
-	return "", fmt.Errorf("selected manager has no reachable Swarm manager address")
-}
-
-func (s *Server) finishCommandExecution(command domain.Command, err error) error {
-	if err != nil {
-		if logErr := s.appendCommandLog(command, "controller", "error", "The operation did not complete. SwarmOps preserved this command for operator review."); logErr != nil {
-			return queue.PermanentError(fmt.Errorf("persist command log: %w", logErr))
-		}
-		return err
-	}
-	if logErr := s.appendCommandLog(command, "controller", "info", "The reviewed operation returned successfully."); logErr != nil {
-		return queue.PermanentError(fmt.Errorf("persist command log: %w", logErr))
-	}
-	return nil
-}
-
-func (s *Server) executeCommand(ctx context.Context, record queue.Record, target Target) error {
 	switch record.Command.Action {
 	case commandNodeAvailability:
 		var input nodeAvailabilityCommand
@@ -760,9 +631,6 @@ func (s *Server) executeCommand(ctx context.Context, record queue.Record, target
 			return queue.PermanentError(fmt.Errorf("build source input is unavailable"))
 		}
 		defer artifact.Close()
-		if err := s.appendCommandLog(record.Command, "controller", "info", "Build input is streaming to the selected Docker API; raw build output is intentionally not retained."); err != nil {
-			return queue.PermanentError(fmt.Errorf("persist command log: %w", err))
-		}
 		_, err = target.Build.Run(ctx, input.Request, artifact, record.Command.RequestID)
 		return classifyCommandError(err)
 	case commandTraefikReconcile:
@@ -771,6 +639,182 @@ func (s *Server) executeCommand(ctx context.Context, record queue.Record, target
 			return queue.PermanentError(err)
 		}
 		return classifyCommandError(target.Control.ReconcileTraefik(ctx, record.Command.Actor, record.Command.RequestID, input.Confirmation))
+	case commandTraefikRouteApply:
+		var input traefikRouteCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.ApplyRoute(ctx, record.Command.Actor, record.Command.RequestID, input.Route, input.Confirmation))
+	case commandTraefikServiceRole:
+		var input traefikServiceRoleCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.DeclareServiceRouteRole(record.Command.Actor, record.Command.RequestID, input.Declaration))
+	case commandTraefikBindingApply:
+		var input traefikBindingCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.ApplyDependencyBinding(ctx, record.Command.Actor, record.Command.RequestID, input.Binding))
+	case commandTraefikSettingsApply:
+		var input traefikSettingsCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.ApplyTraefikSettings(ctx, record.Command.Actor, record.Command.RequestID, input.Settings, input.Confirmation))
+	case commandTraefikDNSCredential:
+		var input traefikDNSCredentialCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		artifact, err := s.commands.Artifact(record.Command.ID)
+		if err != nil {
+			return queue.PermanentError(fmt.Errorf("DNS credential input is unavailable"))
+		}
+		defer artifact.Close()
+		_, err = target.Control.InstallDNSCredential(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Name, input.Provider, artifact)
+		return classifyCommandError(err)
+	case commandTraefikDNSCredentialRemove:
+		var input traefikDNSCredentialRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveDNSCredentialVersion(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Version, input.Confirmation))
+	case commandTraefikDNSRecordApply:
+		var input traefikDNSRecordCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		_, err := target.Control.ApplyDNSRecord(ctx, record.Command.Actor, record.Command.RequestID, input.Record, input.Protocol)
+		return classifyCommandError(err)
+	case commandTraefikDNSRecordDelete:
+		var input traefikDNSRecordDeleteCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.DeleteDNSRecord(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Confirmation))
+	case commandTraefikCertificateRetry:
+		var input traefikCertificateRetryCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		_, err := target.Control.RetryCertificate(ctx, record.Command.Actor, record.Command.RequestID, input.RouteKey)
+		return classifyCommandError(err)
+	case commandTraefikCutover:
+		var input traefikCutoverCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.ApplyClusterCutover(ctx, record.Command.Actor, record.Command.RequestID, input.Confirmation))
+	case commandNodeRole:
+		var input nodeRoleCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.SetNodeRole(ctx, record.Command.Actor, record.Command.RequestID, input.NodeID, input.Role))
+	case commandNodeLabel:
+		var input nodeLabelCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.SetNodeLabel(ctx, record.Command.Actor, record.Command.RequestID, input.NodeID, input.Key, input.Value))
+	case commandNodeRemove:
+		var input nodeRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveNode(ctx, record.Command.Actor, record.Command.RequestID, input.NodeID, input.Confirmation))
+	case commandServiceImage:
+		var input serviceImageCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.UpdateServiceImage(ctx, record.Command.Actor, record.Command.RequestID, input.ServiceID, input.Image))
+	case commandServiceLimits:
+		var input serviceLimitsCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.UpdateServiceLimits(ctx, record.Command.Actor, record.Command.RequestID, input.ServiceID, input.CPUs, input.Memory))
+	case commandServiceRemove:
+		var input serviceRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveService(ctx, record.Command.Actor, record.Command.RequestID, input.ServiceID, input.Confirmation))
+	case commandStackRemove:
+		var input stackRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveStack(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
+	case commandContainerAction:
+		var input containerActionCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.ContainerAction(ctx, record.Command.Actor, record.Command.RequestID, input.ContainerID, input.Action, input.Confirmation))
+	case commandImagePull:
+		var input imageCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.PullImage(ctx, record.Command.Actor, record.Command.RequestID, input.Image))
+	case commandImageRemove:
+		var input imageCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveImage(ctx, record.Command.Actor, record.Command.RequestID, input.Image))
+	case commandNetworkCreate:
+		var input networkCreateCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.CreateNetwork(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Driver, input.Attachable, input.Internal))
+	case commandNetworkRemove:
+		var input namedRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveNetwork(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
+	case commandVolumeCreate:
+		var input namedRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.CreateVolume(ctx, record.Command.Actor, record.Command.RequestID, input.Name))
+	case commandVolumeRemove:
+		var input namedRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveVolume(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
+	case commandConfigRemove:
+		var input namedRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveConfig(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
+	case commandPrune:
+		var input pruneCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.Prune(ctx, record.Command.Actor, record.Command.RequestID, input.Resource, input.Confirmation, input.All))
+	case commandSwarmTokenRotate:
+		var input swarmTokenCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RotateJoinToken(ctx, record.Command.Actor, record.Command.RequestID, input.Role, input.Confirmation))
+	case commandSwarmUpdate:
+		var input swarmUpdateCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.UpdateSwarm(ctx, record.Command.Actor, record.Command.RequestID, input.TaskHistoryLimit))
 	case commandNodeAgent:
 		var input confirmationCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
@@ -807,32 +851,82 @@ func (s *Server) executeCommand(ctx context.Context, record queue.Record, target
 			return queue.PermanentError(err)
 		}
 		return classifyCommandError(target.Control.RemoveApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Confirmation))
+	case commandApplicationDomain:
+		var input applicationDomainCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.SetApplicationDomain(ctx, record.Command.Actor, record.Command.RequestID, input.Name, input.Domain, input.Resolver, input.Confirmation))
+	case commandSourceDeploy:
+		var input sourceDeployCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		for _, engine := range input.Spec.Databases {
+			if err := target.Control.SetDatabase(ctx, record.Command.Actor, record.Command.RequestID, engine, true, ""); err != nil {
+				return classifyCommandError(err)
+			}
+		}
+		for _, stack := range input.SharedStacks {
+			var err error
+			switch stack {
+			case "swarmops-agent":
+				err = target.Control.NodeAgentCollection(ctx, record.Command.Actor, record.Command.RequestID, true, "INSTALL_NODE_AGENT")
+			case "swarmops-logs":
+				err = target.Control.LogsCollection(ctx, record.Command.Actor, record.Command.RequestID, true, "")
+			case "swarmops-observability":
+				err = target.Control.CoreObservability(ctx, record.Command.Actor, record.Command.RequestID, true, "")
+			default:
+				return queue.PermanentError(fmt.Errorf("unsupported shared source stack"))
+			}
+			if err != nil {
+				return classifyCommandError(err)
+			}
+		}
+		if input.Build != nil {
+			artifact, err := s.commands.Artifact(record.Command.ID)
+			if err != nil {
+				return queue.PermanentError(fmt.Errorf("source build input is unavailable"))
+			}
+			defer artifact.Close()
+			if _, err := target.Build.Run(ctx, *input.Build, artifact, record.Command.RequestID); err != nil {
+				return classifyCommandError(err)
+			}
+		}
+		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec))
 	default:
 		return queue.PermanentError(fmt.Errorf("unsupported queued command"))
 	}
-}
-
-func (s *Server) appendCommandLog(command domain.Command, source, level, message string) error {
-	_, err := s.commands.AppendLog(command.ID, queue.LogInput{
-		Attempt: command.Attempt,
-		Level:   level,
-		Message: message,
-		Source:  source,
-	})
-	return err
 }
 
 // CommandExecutionTimeout keeps source builds bounded while giving the
 // Docker API its documented 30-minute build window. All other fixed-shape
 // cluster mutations retain the worker's short default timeout.
 func (s *Server) CommandExecutionTimeout(command domain.Command) time.Duration {
+	if command.Action == commandServerReadiness {
+		return 50 * time.Minute
+	}
+	if command.Action == commandSourceDeploy {
+		return 50 * time.Minute
+	}
 	if command.Action == commandImageBuild {
 		return 35 * time.Minute
 	}
-	if command.Action == commandMobilityMove || command.Action == commandMobilityRetire {
-		return 4 * time.Hour
-	}
 	return 10 * time.Minute
+}
+
+func sortedCommandStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 // RecordCommandTransition writes safe lifecycle evidence without ever placing

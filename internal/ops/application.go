@@ -66,6 +66,7 @@ type ApplicationSpec struct {
 	Port          uint16   `json:"port"`
 	Replicas      uint64   `json:"replicas"`
 	Resolver      string   `json:"resolver,omitempty"`
+	Tracing       bool     `json:"tracing"`
 }
 
 // StackName is the Swarm stack this application deploys as. The namespace
@@ -160,6 +161,9 @@ func (s ApplicationSpec) Validate() error {
 		if s.MetricsPort == 0 {
 			return fmt.Errorf("metrics port is required when metrics are enabled")
 		}
+		if s.MetricsPort != s.Port {
+			return fmt.Errorf("application metrics must use the routed application port")
+		}
 	}
 	if s.Replicas > 1000 {
 		return fmt.Errorf("replicas must be 1000 or fewer")
@@ -231,6 +235,7 @@ type ApplicationRenderInput struct {
 	// DatabaseURIs maps engine name to the sealed connection URI.
 	DatabaseURIs map[string]string
 	Namespace    string
+	Route        *RouteSpec
 	Spec         ApplicationSpec
 }
 
@@ -281,24 +286,34 @@ func RenderApplication(input ApplicationRenderInput) ([]byte, error) {
 	}
 
 	if spec.Backend != "" {
-		environment["BACKEND_INTERNAL_URL"] = fmt.Sprintf("http://%s-%s_%s:%d", input.Namespace, spec.Backend, ApplicationServiceName, input.BackendPort)
+		backendService := input.Namespace + "-" + spec.Backend + "_" + ApplicationServiceName
+		environment["BACKEND_INTERNAL_URL"] = "http://" + defaultRouteKey(backendService) + ".swarmops.internal:8081"
 		if input.BackendDomain != "" {
 			environment["BACKEND_PUBLIC_URL"] = "https://" + input.BackendDomain
 		}
 	}
+	if spec.Tracing {
+		environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = "http://swarmops-jaeger-otlp.swarmops.internal:8081"
+		environment["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+		environment["OTEL_SERVICE_NAME"] = stack
+	}
 
-	networks := []string{"swarmops-data"}
-	topNetworks := map[string]any{"swarmops-data": map[string]any{"external": true, "name": "swarmops-data"}}
-	if spec.Domain != "" {
-		networks = append([]string{"traefik"}, networks...)
-		topNetworks["traefik"] = map[string]any{"external": true, "name": "traefik"}
+	serviceKey := spec.ServiceDNSName(input.Namespace)
+	routeNetwork := RouteNetworkName(serviceKey)
+	// A generated application joins only its own encrypted route overlay. For
+	// every declared dependency SwarmOps gives Traefik a derived alias on this
+	// same overlay, so databases, backends, telemetry, and metrics remain routed
+	// without putting otherwise unrelated services on a shared network.
+	networks := []string{"traefik-route"}
+	topNetworks := map[string]any{
+		"traefik-route": map[string]any{"external": true, "name": routeNetwork},
 	}
 
 	service := map[string]any{
 		"image":       spec.Image,
 		"environment": environment,
 		"networks":    networks,
-		"deploy":      applicationDeploy(spec, stack),
+		"deploy":      applicationDeploy(spec, stack, input.Route),
 	}
 	if probe := applicationHealthcheck(spec); probe != nil {
 		service["healthcheck"] = probe
@@ -345,7 +360,7 @@ func applicationHealthcheck(spec ApplicationSpec) map[string]any {
 	}
 }
 
-func applicationDeploy(spec ApplicationSpec, stack string) map[string]any {
+func applicationDeploy(spec ApplicationSpec, stack string, requested *RouteSpec) map[string]any {
 	deploy := map[string]any{
 		"replicas": spec.Replicas,
 		"update_config": map[string]any{
@@ -361,7 +376,7 @@ func applicationDeploy(spec ApplicationSpec, stack string) map[string]any {
 			"limits":       map[string]any{"cpus": formatCPUs(spec.CPUs), "memory": fmt.Sprintf("%dM", spec.MemoryMiB)},
 		},
 	}
-	if labels := applicationLabels(spec, stack); len(labels) > 0 {
+	if labels := applicationLabels(spec, stack, requested); len(labels) > 0 {
 		deploy["labels"] = labels
 	}
 	return deploy
@@ -372,19 +387,45 @@ func applicationDeploy(spec ApplicationSpec, stack string) map[string]any {
 // service port. The HTTP-to-HTTPS redirect is handled by Traefik's own
 // entrypoint configuration rather than per-application middleware labels,
 // which admission does not allow a browser-originated stack to define.
-func applicationLabels(spec ApplicationSpec, stack string) map[string]string {
-	if spec.Domain == "" {
-		return nil
+func applicationLabels(spec ApplicationSpec, stack string, requested *RouteSpec) map[string]string {
+	route := applicationRouteSpec(spec, stack)
+	if requested != nil {
+		route = requested.Normalize()
 	}
-	router := stack + "-web"
-	return map[string]string{
-		"traefik.enable":                                                "true",
-		"traefik.docker.network":                                        "traefik",
-		"traefik.http.routers." + router + ".rule":                      "Host(`" + spec.Domain + "`)",
-		"traefik.http.routers." + router + ".entrypoints":               "websecure",
-		"traefik.http.routers." + router + ".tls.certresolver":          spec.Resolver,
-		"traefik.http.services." + router + ".loadbalancer.server.port": strconv.Itoa(int(spec.Port)),
+	labels, err := RenderRouteLabels(route, RouteNetworkName(route.ServiceKey))
+	if err != nil {
+		return map[string]string{"traefik.enable": "false"}
 	}
+	return labels
+}
+
+func applicationRouteSpec(spec ApplicationSpec, stack string) RouteSpec {
+	serviceKey := stack + "_" + ApplicationServiceName
+	host := spec.Domain
+	if host == "" {
+		host = spec.Name + ".swarmops.internal"
+	}
+	healthPath := spec.HealthPath
+	if healthPath == "" {
+		healthPath = "/"
+	}
+	return RouteSpec{
+		AccessLogs:  true,
+		Enabled:     true,
+		Health:      RouteHealthProof{Kind: "response", Path: healthPath, TimeoutSeconds: 5},
+		Key:         defaultRouteKey(serviceKey),
+		Managed:     true,
+		Match:       RouteMatch{Hosts: []string{host}, PathPrefix: "/"},
+		Metrics:     true,
+		Protocol:    RouteHTTP,
+		PublicAllow: spec.Domain != "",
+		Resolver:    "",
+		Scope:       RouteInternal,
+		ServiceKey:  serviceKey,
+		TLS:         RouteTLSOff,
+		TargetPort:  spec.Port,
+		Version:     RoutingSchemaVersion,
+	}.Normalize()
 }
 
 func formatCPUs(value float64) string {

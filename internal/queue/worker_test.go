@@ -2,8 +2,8 @@ package queue
 
 import (
 	"context"
-	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -62,30 +62,6 @@ func TestWorkerMarksTimedOutExecutionForAttentionRatherThanReplay(t *testing.T) 
 	}
 }
 
-func TestWorkerLeavesDurableRecordUntouchedForExplicitExecutorHandoff(t *testing.T) {
-	store := newTestStore(t)
-	command, _, err := store.Submit(testInput())
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = (Worker{
-		Store: store,
-		Execute: func(context.Context, Record) error {
-			return ErrExecutorHandoff
-		},
-	}).Run(context.Background())
-	if !errors.Is(err, ErrExecutorHandoff) {
-		t.Fatalf("worker error = %v", err)
-	}
-	stored, err := store.Get(command.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stored.State != domain.CommandRunning || stored.Attempt != 1 {
-		t.Fatalf("handoff changed the source command record: %#v", stored)
-	}
-}
-
 func TestWorkerFailsStoppedAfterExhaustingStoreRetries(t *testing.T) {
 	store := newTestStore(t)
 	command, _, err := store.Submit(testInput())
@@ -124,5 +100,56 @@ func TestWorkerFailsStoppedAfterExhaustingStoreRetries(t *testing.T) {
 	}
 	if stored.State != domain.CommandQueued || stored.Attempt != 0 {
 		t.Fatalf("command after failed claims = %#v", stored)
+	}
+}
+
+func TestWorkerDoesNotClaimCommandsWhileExecutionIsGated(t *testing.T) {
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var enabled atomic.Bool
+	executed := make(chan struct{}, 1)
+	completed := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		finished <- (Worker{
+			CanExecute: enabled.Load,
+			Execute:    func(context.Context, Record) error { executed <- struct{}{}; return nil },
+			OnTransition: func(updated domain.Command, _ string) {
+				if updated.ID == command.ID && updated.State == domain.CommandSucceeded {
+					completed <- struct{}{}
+				}
+			},
+			PollInterval: time.Millisecond,
+			Store:        store,
+		}).Run(ctx)
+	}()
+
+	select {
+	case <-executed:
+		t.Fatal("worker executed a command while the control plane was standby")
+	case <-time.After(25 * time.Millisecond):
+	}
+	stored, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != domain.CommandQueued || stored.Attempt != 0 {
+		t.Fatalf("command while gated = %#v", stored)
+	}
+
+	enabled.Store(true)
+	select {
+	case <-completed:
+		cancel()
+		if err := <-finished; err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not execute after the core became active")
 	}
 }

@@ -1,43 +1,46 @@
 # syntax=docker/dockerfile:1.7
 
-ARG GO_VERSION=1.26.5
+ARG GO_VERSION=1.26.6
 ARG NODE_VERSION=24
 ARG ALPINE_VERSION=3.23
 
-# The open-source release is self-contained: the Apache-2.0 nim UI kit used by
-# the React console is vendored beside the web package for reliable type lookup.
+# SwarmOps is deliberately built with the monorepo root as its context so the
+# console consumes the same local UI kit as the other applications.
 FROM node:${NODE_VERSION}-bookworm-slim AS web-build
 WORKDIR /src
-COPY web ./web
-RUN npm --prefix web ci \
-    && npm --prefix web run build
+COPY nim-ui/package.json nim-ui/package-lock.json ./nim-ui/
+COPY apps/swarmops/web/package.json apps/swarmops/web/package-lock.json ./apps/swarmops/web/
+COPY nim-ui ./nim-ui
+COPY apps/swarmops/web ./apps/swarmops/web
+RUN --mount=type=cache,target=/root/.npm npm --prefix nim-ui ci \
+    && npm --prefix apps/swarmops/web ci \
+    && npm --prefix apps/swarmops/web run build
 
 FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS go-build
-ARG APP_VERSION=dev
-WORKDIR /src
-COPY go.mod go.sum ./
+WORKDIR /src/apps/swarmops
+COPY apps/swarmops/go.mod apps/swarmops/go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY . .
-COPY --from=web-build /src/internal/web/static ./internal/web/static
+COPY apps/swarmops ./
+COPY --from=web-build /src/apps/swarmops/internal/web/static ./internal/web/static
 ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags="-s -w -X main.version=${APP_VERSION}" -o /out/swarmops-api ./cmd/api
+    go build -trimpath -ldflags='-s -w' -o /out/swarmops-core ./cmd/api
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags="-s -w -X main.version=${APP_VERSION}" -o /out/swarmops-agent ./cmd/agent
+    go build -trimpath -ldflags='-s -w' -o /out/swarmops-agent ./cmd/agent
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags='-s -w' -o /out/swarmopsctl ./cmd/swarmopsctl
+    go build -trimpath -ldflags='-s -w' -o /out/swarmops ./cmd/swarmopsctl
 
 FROM alpine:${ALPINE_VERSION} AS api
-RUN apk add --no-cache ca-certificates docker-cli tzdata \
+RUN apk add --no-cache ca-certificates tzdata \
     && mkdir -p /opt/swarmops /opt/traefik
 WORKDIR /app
-COPY --from=go-build /out/swarmops-api /app/swarmops-api
+COPY --from=go-build /out/swarmops-core /usr/local/bin/swarmops-core
 EXPOSE 8084
-ENTRYPOINT ["/app/swarmops-api"]
+ENTRYPOINT ["/usr/local/bin/swarmops-core"]
 
 FROM alpine:${ALPINE_VERSION} AS agent
 RUN apk add --no-cache ca-certificates tzdata
@@ -49,5 +52,5 @@ ENTRYPOINT ["/app/swarmops-agent"]
 FROM alpine:${ALPINE_VERSION} AS cli
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-COPY --from=go-build /out/swarmopsctl /app/swarmopsctl
-ENTRYPOINT ["/app/swarmopsctl"]
+COPY --from=go-build /out/swarmops /usr/local/bin/swarmops
+ENTRYPOINT ["/usr/local/bin/swarmops"]

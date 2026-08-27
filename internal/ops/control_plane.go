@@ -3,19 +3,16 @@ package ops
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
-	"github.com/nimasrn/SwarmOps/internal/mobility"
 )
 
 type ControlPlane struct {
@@ -28,14 +25,19 @@ type ControlPlane struct {
 	CLI                    DockerCLI
 	Credentials            *CredentialStore
 	DatabaseSettings       DatabaseSettings
+	DNSProviders           DNSProviderService
+	DNSVerifier            DNSPropagationVerifier
 	Docker                 *dockerapi.Client
 	LogsStackFile          string
 	Mutations              bool
 	ObservabilityStackFile string
+	Routing                *RoutingStore
+	ServerID               string
 	StackDeployer          StackDeployer
 	TraefikStackFile       string
 	TraefikSettings        TraefikStackSettings
 	TrustedStackSettings   TrustedStackSettings
+	TLSInspector           TLSCertificateInspector
 	now                    func() time.Time
 }
 
@@ -48,15 +50,32 @@ type ControlPlaneOptions struct {
 	Credentials            *CredentialStore
 	DatabaseSettings       DatabaseSettings
 	DataDir                string
+	DNSProviders           DNSProviderService
+	DNSVerifier            DNSPropagationVerifier
 	LogsStackFile          string
 	Mutations              bool
 	ObservabilityStackFile string
+	Routing                *RoutingStore
+	ServerID               string
 	TraefikSettings        TraefikStackSettings
 	TraefikStackFile       string
 	TrustedStackSettings   TrustedStackSettings
+	TLSInspector           TLSCertificateInspector
 }
 
 func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.Store, options ControlPlaneOptions) *ControlPlane {
+	dnsProviders := options.DNSProviders
+	if dnsProviders == nil {
+		dnsProviders = NewHTTPDNSProviderService(nil)
+	}
+	dnsVerifier := options.DNSVerifier
+	if dnsVerifier == nil {
+		dnsVerifier = NetDNSPropagationVerifier{}
+	}
+	tlsInspector := options.TLSInspector
+	if tlsInspector == nil {
+		tlsInspector = NetTLSCertificateInspector{}
+	}
 	return &ControlPlane{
 		Agent:                  options.Agent,
 		AgentService:           options.AgentService,
@@ -67,27 +86,21 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		CLI:                    cli,
 		Credentials:            options.Credentials,
 		DatabaseSettings:       options.DatabaseSettings,
+		DNSProviders:           dnsProviders,
+		DNSVerifier:            dnsVerifier,
 		Docker:                 docker,
 		LogsStackFile:          options.LogsStackFile,
 		Mutations:              options.Mutations,
 		ObservabilityStackFile: options.ObservabilityStackFile,
+		Routing:                options.Routing,
+		ServerID:               options.ServerID,
 		StackDeployer:          StackDeployer{CLI: cli, DataDir: options.DataDir, Enabled: options.Mutations},
 		TraefikSettings:        options.TraefikSettings,
 		TraefikStackFile:       options.TraefikStackFile,
 		TrustedStackSettings:   options.TrustedStackSettings,
+		TLSInspector:           tlsInspector,
 		now:                    time.Now,
 	}
-}
-
-// SetCommandOutput directs bounded, non-audit Docker operation output to the
-// active durable command record. A target is constructed per queued execution,
-// so this hook never crosses commands or controller requests.
-func (c *ControlPlane) SetCommandOutput(output func(string)) {
-	if c == nil {
-		return
-	}
-	c.CLI.Output = output
-	c.StackDeployer.CLI.Output = output
 }
 
 // ReconcileTraefik deploys only the checked-in Traefik stack asset. It does
@@ -107,7 +120,11 @@ func (c *ControlPlane) ReconcileTraefik(ctx context.Context, actor, requestID, c
 	}
 	raw, err := os.ReadFile(c.TraefikStackFile)
 	if err == nil {
-		raw, err = RenderTraefikStack(raw, c.TraefikSettings)
+		settings := c.TraefikSettings
+		settings, err = c.prepareTypedTraefikSettings(ctx)
+		if err == nil {
+			raw, err = RenderTraefikStack(raw, settings)
+		}
 	}
 	if err == nil {
 		err = c.deployTrustedContent(ctx, raw, "traefik")
@@ -170,68 +187,6 @@ func (c *ControlPlane) Node(ctx context.Context, id string) (domain.Node, error)
 	return domain.Node{}, fmt.Errorf("node not found")
 }
 
-// FleetRun reads the tiny, fixed status record written by a reviewed Ansible
-// systemd operation on each node. It neither starts jobs nor returns their
-// output; initiation remains a trusted-workstation Ansible workflow.
-func (c *ControlPlane) FleetRun(ctx context.Context, id string) (domain.FleetRun, error) {
-	if !agent.ValidRunID(id) {
-		return domain.FleetRun{}, fmt.Errorf("invalid fleet run id")
-	}
-	if c.Agent == nil || strings.TrimSpace(c.AgentService) == "" {
-		return domain.FleetRun{}, fmt.Errorf("fleet status requires a configured host probe; use swarmopsctl fleet status with its SSH inventory")
-	}
-	rawNodes, err := c.Docker.ListNodes(ctx)
-	if err != nil {
-		return domain.FleetRun{}, err
-	}
-	addresses := c.agentAddresses(ctx)
-	result := domain.FleetRun{ID: id, Nodes: make([]domain.FleetRunNode, len(rawNodes))}
-	workers := make(chan struct{}, 8)
-	var group sync.WaitGroup
-	for index, raw := range rawNodes {
-		index, raw := index, raw
-		result.Nodes[index] = domain.FleetRunNode{Hostname: raw.Description.Hostname, NodeID: raw.ID, State: "unavailable"}
-		address, found := addresses[raw.ID]
-		if !found || c.Agent == nil {
-			result.Nodes[index].Error = "agent status unavailable"
-			continue
-		}
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			select {
-			case workers <- struct{}{}:
-				defer func() { <-workers }()
-			case <-ctx.Done():
-				result.Nodes[index].Error = "status request cancelled"
-				return
-			}
-			requestContext, cancel := context.WithTimeout(ctx, 4*time.Second)
-			defer cancel()
-			status, err := c.Agent.RunStatus(requestContext, address, id)
-			if errors.Is(err, agent.ErrRunNotFound) {
-				result.Nodes[index].State = "pending"
-				return
-			}
-			if err != nil {
-				result.Nodes[index].Error = "agent status unavailable"
-				return
-			}
-			result.Nodes[index].ExitCode = status.ExitCode
-			result.Nodes[index].FinishedAt = status.FinishedAt
-			result.Nodes[index].Attempt = status.Attempt
-			result.Nodes[index].MaxAttempts = status.MaxAttempts
-			result.Nodes[index].NextAttemptAt = status.NextAttemptAt
-			result.Nodes[index].Operation = status.Operation
-			result.Nodes[index].StartedAt = status.StartedAt
-			result.Nodes[index].State = status.State
-		}()
-	}
-	group.Wait()
-	sort.Slice(result.Nodes, func(left, right int) bool { return result.Nodes[left].Hostname < result.Nodes[right].Hostname })
-	return result, nil
-}
-
 func (c *ControlPlane) Services(ctx context.Context) ([]domain.Service, error) {
 	rawNodes, err := c.Docker.ListNodes(ctx)
 	if err != nil {
@@ -256,87 +211,6 @@ func (c *ControlPlane) Services(ctx context.Context) ([]domain.Service, error) {
 	}
 	sort.Slice(services, func(left, right int) bool { return services[left].Name < services[right].Name })
 	return services, nil
-}
-
-// MoveManagedService applies an exact node-id placement constraint to one
-// reviewed durable SwarmOps service. It never accepts an arbitrary service or
-// constraint from the browser. The caller must have quiesced and copied the
-// component's local volume before invoking it.
-func (c *ControlPlane) MoveManagedService(ctx context.Context, service, targetNodeID string) error {
-	if !c.Mutations {
-		return fmt.Errorf("cluster mutations are disabled")
-	}
-	if _, found := mobility.ComponentForService(service); !found {
-		return fmt.Errorf("unsupported managed service relocation")
-	}
-	if strings.TrimSpace(targetNodeID) == "" || strings.ContainsAny(targetNodeID, " \t\r\n\x00") {
-		return fmt.Errorf("invalid managed service target")
-	}
-	services, err := c.Docker.ListServices(ctx)
-	if err != nil {
-		return fmt.Errorf("read managed service: %w", err)
-	}
-	var current *dockerapi.Service
-	for index := range services {
-		if services[index].Spec.Name == service {
-			current = &services[index]
-			break
-		}
-	}
-	if current == nil {
-		return fmt.Errorf("managed service is not installed")
-	}
-	prior, err := managedServiceNodeConstraint(current.Spec.TaskTemplate.Placement.Constraints)
-	if err != nil {
-		return err
-	}
-	if prior == targetNodeID {
-		return nil
-	}
-	args := []string{"service", "update", "--detach=false"}
-	if prior != "" {
-		args = append(args, "--constraint-rm", "node.id=="+prior)
-	}
-	args = append(args, "--constraint-add", "node.id=="+targetNodeID, service)
-	if _, err := c.CLI.Run(ctx, args...); err != nil {
-		return fmt.Errorf("move managed service: %w", err)
-	}
-	return nil
-}
-
-// ScaleManagedService limits quiescing and restart to the durable services in
-// the mobility catalog. It avoids routing a browser-selected service through
-// the generic service-scale command during a volume handover.
-func (c *ControlPlane) ScaleManagedService(ctx context.Context, service string, replicas uint64) error {
-	if !c.Mutations {
-		return fmt.Errorf("cluster mutations are disabled")
-	}
-	if _, found := mobility.ComponentForService(service); !found || replicas > 1 {
-		return fmt.Errorf("unsupported managed service scale")
-	}
-	if _, err := c.CLI.Run(ctx, "service", "scale", fmt.Sprintf("%s=%d", service, replicas)); err != nil {
-		return fmt.Errorf("scale managed service: %w", err)
-	}
-	return nil
-}
-
-func managedServiceNodeConstraint(constraints []string) (string, error) {
-	var nodeID string
-	for _, constraint := range constraints {
-		compact := strings.ReplaceAll(strings.TrimSpace(constraint), " ", "")
-		value, found := strings.CutPrefix(compact, "node.id==")
-		if !found {
-			continue
-		}
-		if value == "" || strings.ContainsAny(value, "\t\r\n\x00") {
-			return "", fmt.Errorf("managed service has an invalid node placement constraint")
-		}
-		if nodeID != "" && nodeID != value {
-			return "", fmt.Errorf("managed service has conflicting node placement constraints")
-		}
-		nodeID = value
-	}
-	return nodeID, nil
 }
 
 func (c *ControlPlane) Stacks(ctx context.Context) ([]domain.Stack, error) {
@@ -512,7 +386,23 @@ func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID stri
 		if strings.TrimSpace(c.LogsStackFile) == "" {
 			return fmt.Errorf("logs stack file is not configured")
 		}
-		err = c.deployTrustedStack(ctx, c.LogsStackFile, "swarmops-logs")
+		routes, routeErr := trustedStackRouteTemplates("swarmops-logs")
+		if routeErr == nil {
+			routeErr = c.prepareManagedRouteNetworks(ctx, routes)
+		}
+		if routeErr == nil {
+			routeErr = c.deployTrustedStack(ctx, c.LogsStackFile, "swarmops-logs")
+		}
+		if routeErr == nil {
+			routeErr = c.activateManagedRoutes(ctx, routes, map[string]bool{"alloy": true})
+		}
+		if routeErr == nil {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-logs_alloy", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+		}
+		if routeErr == nil && serviceExists(ctx, c.Docker, "swarmops-agent_agent") {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+		}
+		err = routeErr
 	} else {
 		if confirmation != "DISABLE_LOG_COLLECTION" {
 			return fmt.Errorf("disable requires confirmation DISABLE_LOG_COLLECTION")
@@ -542,6 +432,12 @@ func (c *ControlPlane) NodeAgentCollection(ctx context.Context, actor, requestID
 			return fmt.Errorf("node agent stack file is not configured")
 		}
 		err = c.deployTrustedStack(ctx, c.AgentStackFile, "swarmops-agent")
+		if err == nil && c.Routing != nil && serviceExists(ctx, c.Docker, "swarmops-logs_loki") {
+			err = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+		}
+		if err == nil && c.Routing != nil && serviceExists(ctx, c.Docker, "swarmops-observability_prometheus") {
+			err = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-prometheus", Version: RoutingSchemaVersion})
+		}
 	} else {
 		if confirmation != "REMOVE_NODE_AGENT" {
 			return fmt.Errorf("removal requires confirmation REMOVE_NODE_AGENT")
@@ -552,7 +448,7 @@ func (c *ControlPlane) NodeAgentCollection(ctx context.Context, actor, requestID
 	return err
 }
 
-// CoreObservability deploys the one shared Grafana, Prometheus, and Jaeger
+// CoreObservability deploys the internal Prometheus, Alertmanager, and Jaeger
 // stack. Removing it is separately confirmed because it removes the cluster's
 // primary monitoring surface.
 func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID string, enabled bool, confirmation string) error {
@@ -567,7 +463,40 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 		if strings.TrimSpace(c.ObservabilityStackFile) == "" {
 			return fmt.Errorf("observability stack file is not configured")
 		}
-		err = c.deployTrustedStack(ctx, c.ObservabilityStackFile, "swarmops-observability")
+		routes, routeErr := trustedStackRouteTemplates("swarmops-observability")
+		if routeErr == nil {
+			routeErr = c.prepareManagedRouteNetworks(ctx, routes)
+		}
+		if routeErr == nil {
+			routeErr = c.deployTrustedStack(ctx, c.ObservabilityStackFile, "swarmops-observability")
+		}
+		if routeErr == nil {
+			routeErr = c.activateManagedRoutes(ctx, routes, nil)
+		}
+		if routeErr == nil {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: "swarmops-alertmanager", Version: RoutingSchemaVersion})
+		}
+		if routeErr == nil {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: platformSwarmOpsMetricsRoute, Version: RoutingSchemaVersion})
+		}
+		if routeErr == nil {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: platformTraefikMetricsRoute, Version: RoutingSchemaVersion})
+		}
+		if routeErr == nil && serviceExists(ctx, c.Docker, "swarmops-agent_agent") {
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-prometheus", Version: RoutingSchemaVersion})
+		}
+		if routeErr == nil && c.Apps != nil && c.Admission != nil {
+			for _, application := range c.Apps.List() {
+				if !application.Metrics {
+					continue
+				}
+				targetRoute := defaultRouteKey(application.ServiceDNSName(c.Admission.Namespace()))
+				if routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: targetRoute, Version: RoutingSchemaVersion}); routeErr != nil {
+					break
+				}
+			}
+		}
+		err = routeErr
 	} else {
 		if confirmation != "REMOVE_OBSERVABILITY_CORE" {
 			return fmt.Errorf("removal requires confirmation REMOVE_OBSERVABILITY_CORE")

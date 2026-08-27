@@ -5,7 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"net/http"
+	"errors"
+	"net"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
@@ -18,34 +19,26 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/remote"
 )
 
-func TestConnectDevMachineAPIAddsAndReconnectsLoopbackAgent(t *testing.T) {
+func TestConnectDevMachineAPIConnectsHostAgentWithoutDocker(t *testing.T) {
 	const apiKey = "local-development-machine-key"
-	dockerBackend := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/_ping":
-			_, _ = response.Write([]byte("OK"))
-		case "/version":
-			_, _ = response.Write([]byte(`{"Version":"27.0.0"}`))
-		case "/info":
-			_, _ = response.Write([]byte(`{"Swarm":{"ControlAvailable":true,"LocalNodeState":"active"}}`))
-		case "/nodes", "/services", "/tasks":
-			_, _ = response.Write([]byte(`[]`))
-		default:
-			http.NotFound(response, request)
-		}
-	}))
-	defer dockerBackend.Close()
-	docker, err := dockerapi.NewForURL(dockerBackend.URL, dockerBackend.Client())
+	docker, err := dockerapi.NewWithDial(func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("Docker is not running")
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentServer, err := agent.NewServer(agent.Config{Docker: docker, RemoteControlEnabled: true}, []byte(apiKey))
+	agentServer, err := agent.NewServer(agent.Config{
+		Docker:               docker,
+		NodeName:             "Local machine",
+		RemoteControlEnabled: true,
+		Version:              "test",
+	}, []byte(apiKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	machineServer := httptest.NewTLSServer(agentServer.Handler())
-	defer machineServer.Close()
-	endpoint, err := url.Parse(machineServer.URL)
+	httpsServer := httptest.NewTLSServer(agentServer.Handler())
+	t.Cleanup(httpsServer.Close)
+	endpoint, err := url.Parse(httpsServer.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +46,7 @@ func TestConnectDevMachineAPIAddsAndReconnectsLoopbackAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint := sha256.Sum256(machineServer.Certificate().Raw)
+	fingerprint := sha256.Sum256(httpsServer.Certificate().Raw)
 	machine := &config.DevMachineAPI{
 		APIKey:                    []byte(apiKey),
 		APIURL:                    endpoint.Scheme + "://" + endpoint.Hostname(),
@@ -61,24 +54,27 @@ func TestConnectDevMachineAPIAddsAndReconnectsLoopbackAgent(t *testing.T) {
 		Port:                      uint16(port),
 		TLSCertificateFingerprint: "SHA256:" + strings.ToUpper(hex.EncodeToString(fingerprint[:])),
 	}
-	manager, err := remote.NewManager(t.TempDir(), bytes.Repeat([]byte{7}, 32))
+	servers, err := remote.NewManager(t.TempDir(), bytes.Repeat([]byte{7}, 32))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := connectDevMachineAPI(context.Background(), machine, manager); err != nil {
-		t.Fatalf("connect development machine API: %v", err)
+	if err := connectDevMachineAPI(context.Background(), machine, servers); err != nil {
+		t.Fatalf("connect local machine API: %v", err)
 	}
-	profiles := manager.List()
-	if len(profiles) != 1 || profiles[0].ConnectionState != "connected" || !profiles[0].DockerAvailable || !profiles[0].SwarmControlAvailable {
-		t.Fatalf("profiles = %#v", profiles)
+	profiles := servers.List()
+	if len(profiles) != 1 {
+		t.Fatalf("profiles = %#v, want one", profiles)
 	}
-	if err := manager.Disconnect(profiles[0].ID); err != nil {
+	if profiles[0].ConnectionState != "connected" || profiles[0].DockerAvailable {
+		t.Fatalf("profile = %#v, want connected host agent with Docker unavailable", profiles[0])
+	}
+	if err := servers.Disconnect(profiles[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := connectDevMachineAPI(context.Background(), machine, manager); err != nil {
-		t.Fatalf("reconnect development machine API: %v", err)
+	if err := connectDevMachineAPI(context.Background(), machine, servers); err != nil {
+		t.Fatalf("reconnect local machine API: %v", err)
 	}
-	if got := manager.List(); len(got) != 1 || got[0].ConnectionState != "connected" {
-		t.Fatalf("reconnected profiles = %#v", got)
+	if got := len(servers.List()); got != 1 {
+		t.Fatalf("profiles after reconnect = %d, want one", got)
 	}
 }

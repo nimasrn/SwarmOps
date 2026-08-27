@@ -10,11 +10,17 @@ import "time"
 type CommandState string
 
 const (
+	CommandUploading      CommandState = "uploading"
 	CommandQueued         CommandState = "queued"
+	CommandLeased         CommandState = "leased"
+	CommandPreparing      CommandState = "preparing"
 	CommandRunning        CommandState = "running"
 	CommandRetryScheduled CommandState = "retry_scheduled"
 	CommandSucceeded      CommandState = "succeeded"
+	CommandFailed         CommandState = "failed"
 	CommandNeedsAttention CommandState = "needs_attention"
+	CommandSuperseded     CommandState = "superseded"
+	CommandCancelled      CommandState = "cancelled"
 )
 
 type Health string
@@ -41,29 +47,69 @@ type NodeAgent struct {
 	Version     string    `json:"version,omitempty"`
 }
 
+// AgentEvent is a bounded, intentionally sanitised diagnostic record. It is
+// safe to retain on the control plane: it never contains command output,
+// Docker responses, credentials, paths supplied by an operator, or service
+// logs. Source distinguishes a controller observation from an event emitted
+// by the native machine agent itself.
+type AgentEvent struct {
+	Code       string    `json:"code"`
+	Level      string    `json:"level"`
+	Message    string    `json:"message"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Source     string    `json:"source"`
+}
+
+// AgentUpdateStatus reports the fixed native-agent updater. The updater only
+// follows its trusted local Git configuration; these fields are status facts,
+// never a remote source, command, or executable supplied by the controller.
+type AgentUpdateStatus struct {
+	Automatic     bool      `json:"automatic"`
+	CheckedAt     time.Time `json:"checkedAt,omitempty"`
+	LastUpdatedAt time.Time `json:"lastUpdatedAt,omitempty"`
+	RequestedAt   time.Time `json:"requestedAt,omitempty"`
+	Revision      string    `json:"revision,omitempty"`
+	State         string    `json:"state,omitempty"`
+}
+
+// AgentHealth is the controller's last safe observation of a native machine
+// agent. State reflects an authenticated probe, not merely whether an old
+// HTTP client happens to be cached in memory.
+type AgentHealth struct {
+	AgentVersion    string            `json:"agentVersion,omitempty"`
+	CheckedAt       time.Time         `json:"checkedAt,omitempty"`
+	Detail          string            `json:"detail,omitempty"`
+	Events          []AgentEvent      `json:"events,omitempty"`
+	LastFailureAt   time.Time         `json:"lastFailureAt,omitempty"`
+	LastReachableAt time.Time         `json:"lastReachableAt,omitempty"`
+	ProtocolVersion uint              `json:"protocolVersion,omitempty"`
+	State           Health            `json:"state,omitempty"`
+	Summary         string            `json:"summary,omitempty"`
+	Update          AgentUpdateStatus `json:"update,omitempty"`
+	UptimeSeconds   uint64            `json:"uptimeSeconds,omitempty"`
+}
+
 // Server is a non-secret remote target profile. Its API key remains only in
 // memory by the transport layer, so a server can be listed after restart but
 // must be explicitly reconnected with that key.
 type Server struct {
-	APIURL                    string    `json:"apiUrl,omitempty"`
-	Authentication            string    `json:"authentication"`
-	BootstrapAvailable        bool      `json:"bootstrapAvailable"`
-	ConnectionState           string    `json:"connectionState"`
-	ConnectionType            string    `json:"connectionType,omitempty"`
-	DockerAvailable           bool      `json:"dockerAvailable"`
-	DockerVersion             string    `json:"dockerVersion,omitempty"`
-	Host                      string    `json:"host"`
-	HostKeyFingerprint        string    `json:"hostKeyFingerprint"`
-	ID                        string    `json:"id"`
-	LastConnectedAt           time.Time `json:"lastConnectedAt,omitempty"`
-	Managed                   bool      `json:"managed"`
-	MobilityAvailable         bool      `json:"mobilityAvailable"`
-	Name                      string    `json:"name"`
-	Port                      uint16    `json:"port"`
-	SwarmControlAvailable     bool      `json:"swarmControlAvailable"`
-	SwarmState                string    `json:"swarmState,omitempty"`
-	TLSCertificateFingerprint string    `json:"tlsCertificateFingerprint,omitempty"`
-	Username                  string    `json:"username"`
+	APIURL                    string      `json:"apiUrl,omitempty"`
+	AgentHealth               AgentHealth `json:"agentHealth,omitempty"`
+	Authentication            string      `json:"authentication"`
+	ConnectionState           string      `json:"connectionState"`
+	ConnectionType            string      `json:"connectionType,omitempty"`
+	DockerAvailable           bool        `json:"dockerAvailable"`
+	DockerVersion             string      `json:"dockerVersion,omitempty"`
+	Host                      string      `json:"host"`
+	HostKeyFingerprint        string      `json:"hostKeyFingerprint"`
+	ID                        string      `json:"id"`
+	LastConnectedAt           time.Time   `json:"lastConnectedAt,omitempty"`
+	Name                      string      `json:"name"`
+	Port                      uint16      `json:"port"`
+	SwarmControlAvailable     bool        `json:"swarmControlAvailable"`
+	SwarmState                string      `json:"swarmState,omitempty"`
+	TLSCertificateFingerprint string      `json:"tlsCertificateFingerprint,omitempty"`
+	Username                  string      `json:"username"`
 }
 
 type Node struct {
@@ -190,54 +236,34 @@ type BuildResult struct {
 // execution payload is intentionally held only by the controller's private
 // queue store and is never returned from the API, audit log, or browser.
 type Command struct {
-	Action        string       `json:"action"`
-	Actor         string       `json:"actor"`
-	Attempt       uint         `json:"attempt"`
-	AutoRetry     bool         `json:"autoRetry"`
-	CreatedAt     time.Time    `json:"createdAt"`
-	ID            string       `json:"id"`
-	LastAttemptAt *time.Time   `json:"lastAttemptAt,omitempty"`
-	LastError     string       `json:"lastError,omitempty"`
-	LastLogAt     *time.Time   `json:"lastLogAt,omitempty"`
-	LogCount      uint         `json:"logCount"`
-	MaxAttempts   uint         `json:"maxAttempts"`
-	NextAttemptAt *time.Time   `json:"nextAttemptAt,omitempty"`
-	RequestID     string       `json:"requestId,omitempty"`
-	ServerID      string       `json:"serverId"`
-	State         CommandState `json:"state"`
-	Target        string       `json:"target"`
-	UpdatedAt     time.Time    `json:"updatedAt"`
+	Action         string       `json:"action"`
+	Actor          string       `json:"actor"`
+	Attempt        uint         `json:"attempt"`
+	AuthorityEpoch uint64       `json:"authorityEpoch"`
+	AutoRetry      bool         `json:"autoRetry"`
+	ClusterID      string       `json:"clusterId"`
+	CreatedAt      time.Time    `json:"createdAt"`
+	ID             string       `json:"id"`
+	LastAttemptAt  *time.Time   `json:"lastAttemptAt,omitempty"`
+	LastError      string       `json:"lastError,omitempty"`
+	LeaseExpiresAt *time.Time   `json:"leaseExpiresAt,omitempty"`
+	MaxAttempts    uint         `json:"maxAttempts"`
+	NextAttemptAt  *time.Time   `json:"nextAttemptAt,omitempty"`
+	NodeID         string       `json:"nodeId"`
+	RequestID      string       `json:"requestId,omitempty"`
+	ServerID       string       `json:"serverId"`
+	State          CommandState `json:"state"`
+	Target         string       `json:"target"`
+	UpdatedAt      time.Time    `json:"updatedAt"`
 }
 
-// CommandLogEntry is a bounded, redacted operational event emitted while a
-// queued mutation is running. It is retained only in the encrypted command
-// store, never in the audit trail. Raw service and build output intentionally
-// remain outside this contract because either may contain operator data.
-type CommandLogEntry struct {
-	Attempt    uint      `json:"attempt"`
-	OccurredAt time.Time `json:"occurredAt"`
-	Level      string    `json:"level"`
-	Message    string    `json:"message"`
-	Source     string    `json:"source"`
-}
-
-// FleetRun reports durable, reviewed Ansible operations. It contains status
-// only; output stays on the host and is never streamed through the API.
-type FleetRun struct {
-	ID    string         `json:"id"`
-	Nodes []FleetRunNode `json:"nodes"`
-}
-
-type FleetRunNode struct {
-	Attempt       uint       `json:"attempt,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	ExitCode      *int       `json:"exitCode,omitempty"`
-	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
-	Hostname      string     `json:"hostname"`
-	MaxAttempts   uint       `json:"maxAttempts,omitempty"`
-	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
-	NodeID        string     `json:"nodeId"`
-	Operation     string     `json:"operation,omitempty"`
-	StartedAt     time.Time  `json:"startedAt,omitempty"`
-	State         string     `json:"state"`
+// CommandEvent is an ordered, non-secret lifecycle observation supplied by a
+// pull-connected agent. Evidence is a bounded diagnostic code or summary; it
+// must never contain command output, service logs, credentials, or stdin.
+type CommandEvent struct {
+	CommandID  string       `json:"commandId"`
+	Evidence   string       `json:"evidence,omitempty"`
+	OccurredAt time.Time    `json:"occurredAt"`
+	Sequence   uint64       `json:"sequence"`
+	State      CommandState `json:"state"`
 }

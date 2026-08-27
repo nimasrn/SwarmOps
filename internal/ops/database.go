@@ -32,8 +32,9 @@ var databaseCatalog = []DatabaseDefinition{
 		DisplayName: "PostgreSQL",
 		Stack:       "swarmops-postgres",
 		Service:     "swarmops-postgres_postgres",
-		Host:        "swarmops-postgres_postgres",
-		Port:        5432,
+		Host:        "swarmops-postgres-postgres.swarmops.internal",
+		Port:        15432,
+		TargetPort:  5432,
 		Username:    "swarmops",
 		Database:    "swarmops",
 		Volume:      "swarmops-postgres_swarmops_postgres_data",
@@ -43,8 +44,9 @@ var databaseCatalog = []DatabaseDefinition{
 		DisplayName: "MongoDB",
 		Stack:       "swarmops-mongo",
 		Service:     "swarmops-mongo_mongo",
-		Host:        "swarmops-mongo_mongo",
-		Port:        27017,
+		Host:        "swarmops-mongo-mongo.swarmops.internal",
+		Port:        17017,
+		TargetPort:  27017,
 		Username:    "swarmops",
 		Database:    "swarmops",
 		Volume:      "swarmops-mongo_swarmops_mongo_data",
@@ -54,8 +56,9 @@ var databaseCatalog = []DatabaseDefinition{
 		DisplayName: "Redis",
 		Stack:       "swarmops-redis",
 		Service:     "swarmops-redis_redis",
-		Host:        "swarmops-redis_redis",
-		Port:        6379,
+		Host:        "swarmops-redis-redis.swarmops.internal",
+		Port:        16379,
+		TargetPort:  6379,
 		Volume:      "swarmops-redis_swarmops_redis_data",
 	},
 }
@@ -70,6 +73,7 @@ type DatabaseDefinition struct {
 	Port        uint16
 	Service     string
 	Stack       string
+	TargetPort  uint16
 	Username    string
 	Volume      string
 }
@@ -244,6 +248,7 @@ func (c *ControlPlane) Databases(ctx context.Context) ([]DatabaseStatus, error) 
 			Image:        image,
 			Installed:    installed,
 			Port:         definition.Port,
+			TargetPort:   definition.TargetPort,
 			RunningTasks: tasks,
 			Service:      definition.Service,
 			Stack:        definition.Stack,
@@ -291,14 +296,16 @@ func RenderDatabaseStack(engine string, source []byte, settings DatabaseSettings
 		return nil, err
 	}
 	upper := strings.ToUpper(definition.Engine)
+	routeNetwork := RouteNetworkName(definition.Service)
 	rendered := strings.NewReplacer(
 		"${"+upper+"_IMAGE:-"+databaseDefaultImage[definition.Engine]+"}", image,
 		"${SWARMOPS_"+upper+"_PASSWORD_SECRET:-swarmops_"+definition.Engine+"_password_v1}", secret,
+		"${SWARMOPS_"+upper+"_ROUTE_NETWORK:-"+databaseDefaultRouteNetwork[definition.Engine]+"}", routeNetwork,
 	).Replace(string(source))
 	if strings.Contains(rendered, "${") {
 		return nil, fmt.Errorf("managed %s stack has an unresolved template expression", definition.Engine)
 	}
-	return []byte(rendered), nil
+	return renderManagedRouteTemplates([]byte(rendered), map[string]RouteSpec{definition.Engine: managedDatabaseRoute(definition)})
 }
 
 // databaseDefaultImage mirrors the default written into each checked-in asset.
@@ -307,6 +314,12 @@ var databaseDefaultImage = map[string]string{
 	DatabaseMongo:    "mongo:8.2.3",
 	DatabasePostgres: "postgres:18.2-alpine",
 	DatabaseRedis:    "redis:8.4-alpine",
+}
+
+var databaseDefaultRouteNetwork = map[string]string{
+	DatabaseMongo:    "swarmops-route-swarmops-mongo-mongo-d5664c78",
+	DatabasePostgres: "swarmops-route-swarmops-postgres-postgres-75a65713",
+	DatabaseRedis:    "swarmops-route-swarmops-redis-redis-aeec253a",
 }
 
 // DatabaseStatus is the browser-safe view of one managed engine.
@@ -318,6 +331,7 @@ type DatabaseStatus struct {
 	Image        string `json:"image"`
 	Installed    bool   `json:"installed"`
 	Port         uint16 `json:"port"`
+	TargetPort   uint16 `json:"targetPort"`
 	RunningTasks uint64 `json:"runningTasks"`
 	Service      string `json:"service"`
 	Stack        string `json:"stack"`
@@ -337,6 +351,9 @@ func (c *ControlPlane) SetDatabase(ctx context.Context, actor, requestID, engine
 	if err := c.requireAudit(); err != nil {
 		return err
 	}
+	if err := c.requireRouting(); err != nil {
+		return err
+	}
 	definition, err := DatabaseDefinitionFor(engine)
 	if err != nil {
 		return err
@@ -349,14 +366,46 @@ func (c *ControlPlane) SetDatabase(ctx context.Context, actor, requestID, engine
 		if strings.TrimSpace(file) == "" {
 			return fmt.Errorf("%s stack file is not configured", definition.DisplayName)
 		}
-		if err = c.ensureManagedCredentials(ctx, definition, secret, DatabaseURISecretName(definition.Engine)); err == nil {
+		routes := map[string]RouteSpec{definition.Engine: managedDatabaseRoute(definition)}
+		if err = c.prepareManagedRouteNetworks(ctx, routes); err == nil {
+			err = c.ensureManagedCredentials(ctx, definition, secret, DatabaseURISecretName(definition.Engine))
+		}
+		if err == nil {
 			err = c.deployDatabaseStack(ctx, definition, file)
+		}
+		if err == nil {
+			err = c.activateManagedRoutes(ctx, routes, nil)
 		}
 	} else {
 		if confirmation != DatabaseRemovalConfirmation(definition.Engine) {
 			return fmt.Errorf("removal requires confirmation %s", DatabaseRemovalConfirmation(definition.Engine))
 		}
+		state, stateErr := c.Routing.Snapshot(c.ServerID)
+		if stateErr != nil {
+			return stateErr
+		}
+		route := managedDatabaseRoute(definition)
+		for _, binding := range state.Bindings {
+			if binding.TargetRoute == route.Key {
+				return fmt.Errorf("managed %s remains referenced by %s", definition.Engine, binding.CallerService)
+			}
+		}
+		for _, existing := range state.Routes {
+			if existing.Key == route.Key {
+				existing.Enabled = false
+				plan, planErr := c.PlanRoute(ctx, existing)
+				if planErr == nil {
+					planErr = c.applyRoutePlan(ctx, plan)
+				}
+				if planErr != nil {
+					return planErr
+				}
+			}
+		}
 		_, err = c.CLI.Run(ctx, "stack", "rm", definition.Stack)
+		if err == nil {
+			err = c.Routing.RemoveRoute(c.ServerID, route.Key)
+		}
 		if err == nil {
 			// The Swarm secrets survive removal so an operator can inspect or
 			// reattach the volume, but the controller stops holding a

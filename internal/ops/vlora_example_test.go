@@ -18,7 +18,7 @@ import (
 // admitted. It does not prove that a cluster accepted them, that DNS resolved,
 // or that a certificate was issued.
 func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
-	root := filepath.Join("..", "..", "deploy", "swarmops")
+	root := filepath.Join("..", "..", "..", "..", "deploy", "swarmops")
 	manifest, err := preflight.LoadFile(filepath.Join(root, "platform.example.yml"))
 	if err != nil {
 		t.Fatalf("load example platform manifest: %v", err)
@@ -76,14 +76,16 @@ func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
 			}
 
 			document := string(rendered)
-			if spec.Domain != "" && !strings.Contains(document, "Host(`"+spec.Domain+"`)") {
-				t.Fatalf("%s is not routed to its approved domain", spec.Name)
+			serviceKey := spec.ServiceDNSName(manifest.Namespace)
+			internalHost := defaultRouteKey(serviceKey) + ".swarmops.internal"
+			if !strings.Contains(document, "Host(`"+internalHost+"`)") {
+				t.Fatalf("%s has no fail-closed internal route", spec.Name)
 			}
 			if !strings.Contains(document, "healthcheck") {
 				t.Fatalf("%s has no health probe", spec.Name)
 			}
-			if !strings.Contains(document, "swarmops-data") {
-				t.Fatalf("%s is not attached to the managed data network", spec.Name)
+			if !strings.Contains(document, RouteNetworkName(serviceKey)) || strings.Contains(document, "swarmops-data") || strings.Contains(document, "name: swarmops\n") {
+				t.Fatalf("%s is not isolated on its dedicated Traefik route network", spec.Name)
 			}
 			for _, engine := range spec.Databases {
 				if !strings.Contains(document, stack+"_"+engine+"_uri_v1") {

@@ -55,12 +55,8 @@ func runCommand(ctx context.Context, input io.Reader, name string, args ...strin
 type DockerCLI struct {
 	Binary    string
 	ConfigDir string
-	// Output receives bounded Docker CLI output for the active durable command.
-	// The caller owns redaction and encrypted retention; the audit stream never
-	// receives it. It is intentionally not used for service-log reads.
-	Output func(string)
-	Runner Runner
-	Socket string
+	Runner    Runner
+	Socket    string
 }
 
 func (d DockerCLI) Run(ctx context.Context, args ...string) (string, error) {
@@ -79,9 +75,7 @@ func (d DockerCLI) Run(ctx context.Context, args ...string) (string, error) {
 		base = append(base, "--host", "unix://"+d.Socket)
 	}
 	base = append(base, args...)
-	output, err := d.Runner.Run(ctx, binary, base...)
-	d.emit(args, output)
-	return output, err
+	return d.Runner.Run(ctx, binary, base...)
 }
 
 // RunInput runs the same bounded Docker CLI path while feeding a reviewed
@@ -108,22 +102,7 @@ func (d DockerCLI) RunInput(ctx context.Context, input io.Reader, args ...string
 		base = append(base, "--host", "unix://"+d.Socket)
 	}
 	base = append(base, args...)
-	output, err := runner.RunInput(ctx, binary, input, base...)
-	d.emit(args, output)
-	return output, err
-}
-
-func (d DockerCLI) emit(args []string, output string) {
-	// Service-log reads are returned only to the requesting authenticated
-	// browser session. They can contain tenant data, so they must never be
-	// copied into durable command evidence even if a reused control-plane
-	// object still has an output hook installed.
-	if len(args) >= 2 && args[0] == "service" && args[1] == "logs" {
-		return
-	}
-	if d.Output != nil && output != "" {
-		d.Output(output)
-	}
+	return runner.RunInput(ctx, binary, input, base...)
 }
 
 type limitedBuffer struct {

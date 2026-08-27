@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,69 +59,6 @@ func TestSubmitIsEncryptedDurableAndIdempotent(t *testing.T) {
 	}
 }
 
-func TestCommandLogsAreEncryptedDurableAndRedacted(t *testing.T) {
-	t.Parallel()
-	store := newTestStore(t)
-	command, _, err := store.Submit(testInput())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, found, err := store.ClaimDue(); err != nil || !found {
-		t.Fatalf("claim command: found=%t err=%v", found, err)
-	}
-	entry, err := store.AppendLog(command.ID, LogInput{
-		Level:   "info",
-		Message: "Docker completed with API_KEY=private-command-value",
-		Source:  "machine",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if entry.Message != "Docker completed with API_KEY=[REDACTED]" || entry.Attempt != 1 {
-		t.Fatalf("log entry = %#v", entry)
-	}
-	visible, err := store.Get(command.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if visible.LogCount != 1 || visible.LastLogAt == nil {
-		t.Fatalf("command log summary = %#v", visible)
-	}
-	ciphertext, err := os.ReadFile(store.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(ciphertext, []byte("private-command-value")) || bytes.Contains(ciphertext, []byte("Docker completed")) {
-		t.Fatal("command logs were not encrypted")
-	}
-	if _, err := store.Complete(command.ID); err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	logs, err := reloaded.Logs(command.ID, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(logs) != 1 || logs[0].Message != entry.Message {
-		t.Fatalf("reloaded logs = %#v", logs)
-	}
-}
-
-func TestCommandLogsRequireARunningCommand(t *testing.T) {
-	t.Parallel()
-	store := newTestStore(t)
-	command, _, err := store.Submit(testInput())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.AppendLog(command.ID, LogInput{Level: "info", Message: "not yet", Source: "controller"}); err == nil {
-		t.Fatal("queued command accepted a log entry")
-	}
-}
-
 func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
@@ -159,12 +97,116 @@ func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 		t.Fatalf("bounded failure = %#v, event=%q", failed, event)
 	}
 	current = current.Add(time.Second)
-	retried, err := store.RetryNow(command.ID)
+	retried, err := store.RetryNow(command.ID, command.AuthorityEpoch)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if retried.State != domain.CommandQueued || retried.Attempt != 0 || retried.NextAttemptAt == nil || !retried.NextAttemptAt.Equal(current) {
 		t.Fatalf("manual retry = %#v", retried)
+	}
+}
+
+func TestPullLeaseLifecycleRequiresCapabilityAndPersistsAgentStates(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	current := time.Date(2026, 8, 27, 8, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return current }
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, found, err := store.LeaseDue(command.ServerID, 7, 30*time.Second)
+	if err != nil || !found {
+		t.Fatalf("lease due: found=%t err=%v", found, err)
+	}
+	if lease.LeaseID == "" || lease.Record.Command.State != domain.CommandLeased || lease.Record.Command.AuthorityEpoch != 7 || lease.Record.Command.LeaseExpiresAt == nil {
+		t.Fatalf("lease = %#v", lease)
+	}
+	if _, err := store.AdvanceLease(command.ID, "wrong-lease", domain.CommandPreparing); err == nil {
+		t.Fatal("wrong lease capability advanced the command")
+	}
+	if prepared, err := store.AdvanceLease(command.ID, lease.LeaseID, domain.CommandPreparing); err != nil || prepared.State != domain.CommandPreparing {
+		t.Fatalf("prepare = %#v err=%v", prepared, err)
+	}
+	if running, err := store.AdvanceLease(command.ID, lease.LeaseID, domain.CommandRunning); err != nil || running.State != domain.CommandRunning {
+		t.Fatalf("running = %#v err=%v", running, err)
+	}
+	current = current.Add(5 * time.Second)
+	if renewed, err := store.RenewLease(command.ID, lease.LeaseID, time.Minute); err != nil || renewed.LeaseExpiresAt == nil || !renewed.LeaseExpiresAt.Equal(current.Add(time.Minute)) {
+		t.Fatalf("renewed = %#v err=%v", renewed, err)
+	}
+	completed, err := store.CompleteLease(command.ID, lease.LeaseID)
+	if err != nil || completed.State != domain.CommandSucceeded || completed.LeaseExpiresAt != nil {
+		t.Fatalf("completed = %#v err=%v", completed, err)
+	}
+}
+
+func TestFenceAuthorityRetainsUnfinishedCommandsForReview(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	input := testInput()
+	input.AuthorityEpoch = 7
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FenceAuthority(8); err != nil {
+		t.Fatal(err)
+	}
+	fenced, err := store.Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fenced.State != domain.CommandNeedsAttention || !strings.Contains(fenced.LastError, "authority changed") {
+		t.Fatalf("fenced command = %#v", fenced)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || found {
+		t.Fatalf("fenced command remained claimable: found=%v err=%v", found, err)
+	}
+	retried, err := store.RetryNow(command.ID, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.State != domain.CommandQueued || retried.AuthorityEpoch != 8 {
+		t.Fatalf("retried command did not adopt the new authority: %#v", retried)
+	}
+}
+
+func TestExpiredPullLeaseBecomesRetryOrAttention(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	current := time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return current }
+	input := testInput()
+	input.AutoRetry = true
+	input.MaxAttempts = 2
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.LeaseDue(command.ServerID, 3, 5*time.Second); err != nil || !found {
+		t.Fatalf("first lease found=%t err=%v", found, err)
+	}
+	current = current.Add(6 * time.Second)
+	if _, _, err := store.LeaseDue(command.ServerID, 3, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	retrying, err := store.Get(command.ID)
+	if err != nil || retrying.State != domain.CommandRetryScheduled || retrying.NextAttemptAt == nil {
+		t.Fatalf("retrying = %#v err=%v", retrying, err)
+	}
+	current = retrying.NextAttemptAt.Add(time.Second)
+	second, found, err := store.LeaseDue(command.ServerID, 3, 5*time.Second)
+	if err != nil || !found {
+		t.Fatalf("second lease found=%t err=%v", found, err)
+	}
+	current = current.Add(6 * time.Second)
+	if _, _, err := store.LeaseDue(command.ServerID, 3, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	attention, err := store.Get(command.ID)
+	if err != nil || attention.State != domain.CommandNeedsAttention || attention.LeaseExpiresAt != nil || second.LeaseID == "" {
+		t.Fatalf("attention = %#v err=%v", attention, err)
 	}
 }
 
@@ -178,6 +220,111 @@ func TestIdempotencyKeyCannotBeReusedForAnotherCommand(t *testing.T) {
 	input.Target = "stack/other"
 	if _, _, err := store.Submit(input); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflicting idempotency key error = %v", err)
+	}
+}
+
+func TestSubmitSupersedesOlderPendingCommandForSameServerActionAndTarget(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	first := testInput()
+	first.IdempotencyKey = "first-intent"
+	first.Payload = []byte(`{"name":"example","replicas":1}`)
+	older, _, err := store.Submit(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.IdempotencyKey = "latest-intent"
+	second.Payload = []byte(`{"name":"example","replicas":3}`)
+	submission, err := store.SubmitWithResult(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !submission.Created || submission.Command.ID == older.ID || len(submission.Superseded) != 1 || submission.Superseded[0].ID != older.ID {
+		t.Fatalf("submission = %#v", submission)
+	}
+	commands, err := store.List(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].ID != submission.Command.ID || commands[0].State != domain.CommandQueued {
+		t.Fatalf("commands = %#v", commands)
+	}
+}
+
+func TestSubmitKeepsRunningAndNeedsAttentionCommandsVisible(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	first := testInput()
+	first.IdempotencyKey = "running-intent"
+	running, _, err := store.Submit(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim running command: found=%t err=%v", found, err)
+	}
+	second := first
+	second.IdempotencyKey = "newer-running-intent"
+	submission, err := store.SubmitWithResult(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(submission.Superseded) != 0 {
+		t.Fatalf("running command was superseded: %#v", submission.Superseded)
+	}
+	queuedID := submission.Command.ID
+	if _, _, err := store.Fail(running.ID, PermanentError(errors.New("unknown remote outcome"))); err != nil {
+		t.Fatal(err)
+	}
+	third := first
+	third.IdempotencyKey = "newer-attention-intent"
+	submission, err = store.SubmitWithResult(third)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The queued second command may be superseded, but the explicit
+	// needs-attention record must remain in the ledger for review.
+	if len(submission.Superseded) != 1 || submission.Superseded[0].ID != queuedID {
+		t.Fatalf("unexpected supersession result: %#v", submission.Superseded)
+	}
+	listed, err := store.List(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 2 {
+		t.Fatalf("ledger lost running attention record: %#v", listed)
+	}
+	foundAttention := false
+	for _, command := range listed {
+		if command.ID == running.ID && command.State == domain.CommandNeedsAttention {
+			foundAttention = true
+		}
+	}
+	if !foundAttention {
+		t.Fatalf("needs-attention command was removed: %#v", listed)
+	}
+}
+
+func TestSubmitDoesNotSupersedeDifferentActionOrTarget(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	first := testInput()
+	first.IdempotencyKey = "original"
+	if _, _, err := store.Submit(first); err != nil {
+		t.Fatal(err)
+	}
+	differentTarget := first
+	differentTarget.IdempotencyKey = "different-target"
+	differentTarget.Target = "stack/other"
+	if result, err := store.SubmitWithResult(differentTarget); err != nil || len(result.Superseded) != 0 {
+		t.Fatalf("different target result=%#v err=%v", result, err)
+	}
+	differentAction := first
+	differentAction.IdempotencyKey = "different-action"
+	differentAction.Action = "stack.remove"
+	if result, err := store.SubmitWithResult(differentAction); err != nil || len(result.Superseded) != 0 {
+		t.Fatalf("different action result=%#v err=%v", result, err)
 	}
 }
 
@@ -197,7 +344,7 @@ func TestManualRetryDoesNotSkipAutomaticBackoff(t *testing.T) {
 	if _, event, err := store.Fail(command.ID, errors.New("transport unavailable")); err != nil || event != "retry_scheduled" {
 		t.Fatalf("schedule retry: event=%q err=%v", event, err)
 	}
-	if _, err := store.RetryNow(command.ID); err == nil {
+	if _, err := store.RetryNow(command.ID, command.AuthorityEpoch); err == nil {
 		t.Fatal("manual retry unexpectedly skipped the scheduled backoff")
 	}
 }
@@ -267,6 +414,42 @@ func TestArtifactIsPrivateAndRemovedAfterSuccess(t *testing.T) {
 	}
 	if _, err := os.Stat(store.artifactPath(command.ID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("completed artifact remains: %v", err)
+	}
+}
+
+func TestSubmitArtifactSupersedesOlderQueuedArtifact(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	first := testInput()
+	first.IdempotencyKey = "first-build-intent"
+	first.MaxArtifactBytes = 1024
+	older, _, err := store.SubmitArtifact(first, stringsReader("old-private-context"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.IdempotencyKey = "latest-build-intent"
+	submission, err := store.SubmitArtifactWithResult(second, stringsReader("latest-private-context"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(submission.Superseded) != 1 || submission.Superseded[0].ID != older.ID {
+		t.Fatalf("artifact supersession = %#v", submission)
+	}
+	if _, err := store.Get(older.ID); err == nil {
+		t.Fatal("older artifact command remained in the ledger")
+	}
+	if _, err := os.Stat(store.artifactPath(older.ID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("older artifact was retained: %v", err)
+	}
+	artifact, err := store.Artifact(submission.Command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, readErr := io.ReadAll(artifact)
+	_ = artifact.Close()
+	if readErr != nil || string(data) != "latest-private-context" {
+		t.Fatalf("latest artifact = %q, err=%v", data, readErr)
 	}
 }
 

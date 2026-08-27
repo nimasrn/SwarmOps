@@ -1,8 +1,8 @@
 // Package remote owns the credential-safe machine-API boundary for remote
-// Docker servers. It seals target metadata and, when retention is enabled,
-// machine API keys on the controller; keys are never returned to callers or
-// written to audit events. It retains the legacy SSH transport only to
-// reconnect pre-existing saved profiles during migration.
+// Docker servers. It stores only non-secret target metadata on disk; API keys
+// live in process memory until disconnect or restart and are never returned to
+// callers. It retains the legacy SSH transport only to reconnect pre-existing
+// saved profiles during migration.
 package remote
 
 import (
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
@@ -32,9 +34,11 @@ import (
 
 const (
 	AuthenticationAPIKey     = "api_key"
+	AuthenticationMTLS       = "mutual_tls"
 	AuthenticationPassword   = "password"
 	AuthenticationPrivateKey = "private_key"
 	ConnectionAgentAPI       = "agent_api"
+	ConnectionAgentPull      = "agent_pull"
 	ConnectionSSH            = "ssh"
 
 	connectedState    = "connected"
@@ -75,10 +79,13 @@ func ConnectionErrorDetails(err error) (message, detail string, ok bool) {
 		return "Machine API certificate fingerprint mismatch", "Verify the SHA256 TLS certificate fingerprint from the machine's trusted console, then update this saved profile only after the endpoint and port are confirmed.", true
 	}
 	if errors.Is(err, ErrAgentAPIUnauthorized) {
-		return "Machine API key was rejected", "Verify the API key configured on the machine. The key is never returned or written to the audit trail; enrollment-based installations keep only an encrypted controller copy.", true
+		return "Machine API key was rejected", "Verify the API key configured on the machine. The key is never saved in the controller profile or audit trail.", true
 	}
 	if errors.Is(err, ErrAgentAPIDisabled) {
 		return "Machine API remote control is disabled", "Install or reconfigure the machine agent with SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true and TLS before reconnecting.", true
+	}
+	if failure, found := classifyAgentFailure(err); found {
+		return failure.summary, failure.detail, true
 	}
 	var mismatch *HostKeyMismatchError
 	if errors.As(err, &mismatch) && fingerprintPattern.MatchString(mismatch.Actual) && fingerprintPattern.MatchString(mismatch.Expected) {
@@ -166,9 +173,8 @@ type profileFile struct {
 	Version int             `json:"version"`
 }
 
-// Manager persists sealed target metadata and can retain sealed machine API
-// keys while keeping active authentication in memory. It is safe for
-// concurrent HTTP requests.
+// Manager persists safe target metadata and holds active authentication
+// material only in memory. It is safe for concurrent HTTP requests.
 type Manager struct {
 	connections map[string]*Connection
 	keys        map[string]string
@@ -176,6 +182,7 @@ type Manager struct {
 	legacyPath  string
 	path        string
 	profiles    map[string]domain.Server
+	probeMu     sync.Mutex
 	retainKeys  bool
 	store       *securestore.Sealer
 	mu          sync.RWMutex
@@ -300,6 +307,69 @@ func (m *Manager) List() []domain.Server {
 	return profiles
 }
 
+// AttachPull makes an authenticated outbound agent available through the same
+// fixed-shape Runner and Docker facade as a directly addressed agent. No
+// machine endpoint, socket, or reusable bearer key is introduced at Core.
+func (m *Manager) AttachPull(agentID, name string, status agentpull.Status, transport http.RoundTripper) (domain.Server, error) {
+	agentID = strings.TrimSpace(agentID)
+	name = strings.TrimSpace(name)
+	if agentID == "" || len(agentID) > 64 || transport == nil {
+		return domain.Server{}, fmt.Errorf("outbound agent identity and transport are required")
+	}
+	if name == "" {
+		name = strings.TrimSpace(status.NodeName)
+	}
+	if name == "" || len(name) > 96 || strings.ContainsAny(name, "\r\n\x00") {
+		return domain.Server{}, fmt.Errorf("outbound agent name is invalid")
+	}
+	if !status.RemoteControlEnabled {
+		return domain.Server{}, ErrAgentAPIDisabled
+	}
+	now := time.Now().UTC()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	profile := m.profiles[agentID]
+	profile.Authentication = AuthenticationMTLS
+	profile.ConnectionState = connectedState
+	profile.ConnectionType = ConnectionAgentPull
+	profile.DockerAvailable = status.DockerAvailable
+	profile.DockerVersion = status.DockerVersion
+	profile.Host = strings.TrimSpace(status.NodeName)
+	profile.ID = agentID
+	profile.LastConnectedAt = now
+	profile.Name = name
+	profile.Port = 0
+	profile.SwarmControlAvailable = status.SwarmControlAvailable
+	profile.SwarmState = status.SwarmState
+	profile.AgentHealth.AgentVersion = status.Version
+	profile.AgentHealth.CheckedAt = now
+	profile.AgentHealth.LastReachableAt = now
+	profile.AgentHealth.ProtocolVersion = agentpull.ProtocolVersion
+	profile.AgentHealth.State = domain.HealthHealthy
+	profile.AgentHealth.Summary = "Outbound agent is connected"
+	if existing := m.connections[agentID]; existing != nil {
+		existing.Profile = profile
+		m.profiles[agentID] = profile
+		if err := m.saveLocked(); err != nil {
+			return domain.Server{}, err
+		}
+		return profile, nil
+	}
+	connection, err := newPullConnection(profile, transport)
+	if err != nil {
+		return domain.Server{}, err
+	}
+	m.profiles[agentID] = profile
+	m.connections[agentID] = connection
+	if err := m.saveLocked(); err != nil {
+		delete(m.profiles, agentID)
+		delete(m.connections, agentID)
+		connection.close()
+		return domain.Server{}, err
+	}
+	return profile, nil
+}
+
 func (m *Manager) Add(ctx context.Context, input AddInput) (domain.Server, error) {
 	profile, credentials, err := profileFromInput(input)
 	if err != nil {
@@ -331,8 +401,8 @@ func (m *Manager) Add(ctx context.Context, input AddInput) (domain.Server, error
 }
 
 // Connect rehydrates a saved non-secret profile. The credential is checked
-// against the profile's declared authentication method, then optionally sealed
-// for restart recovery when machine-key retention is enabled.
+// against the profile's declared authentication method, then held only while
+// the process remains alive.
 func (m *Manager) Connect(ctx context.Context, id string, credentials Credentials) (domain.Server, error) {
 	m.mu.RLock()
 	profile, found := m.profiles[id]
@@ -385,72 +455,36 @@ func (m *Manager) Connect(ctx context.Context, id string, credentials Credential
 	return profile, nil
 }
 
-// Refresh re-probes an already connected machine agent using only the API key
-// held inside its current pinned transport. It is used after a reviewed host
-// setup action so the console can move from Docker installation to Swarm setup
-// without asking an operator to paste, reveal, or retain a second credential.
-// It never works for legacy SSH profiles and never returns the key.
-func (m *Manager) Refresh(ctx context.Context, id string) (domain.Server, error) {
-	id = strings.TrimSpace(id)
-	m.mu.RLock()
-	profile, found := m.profiles[id]
-	current := m.connections[id]
-	if !found || current == nil || profile.ConnectionType != ConnectionAgentAPI {
-		m.mu.RUnlock()
-		return domain.Server{}, fmt.Errorf("connected machine agent is required")
-	}
-	runner, ok := current.Runner.(*AgentRunner)
-	if !ok || runner.client == nil || len(runner.client.key) < 16 {
-		m.mu.RUnlock()
-		return domain.Server{}, fmt.Errorf("machine agent refresh is unavailable")
-	}
-	key := append([]byte(nil), runner.client.key...)
-	m.mu.RUnlock()
-
-	credentials := Credentials{APIKey: string(key), Authentication: AuthenticationAPIKey}
-	connection, refreshed, err := establishAgentAPI(ctx, profile, credentials)
-	scrubCredentials(&credentials)
-	for index := range key {
-		key[index] = 0
-	}
-	if err != nil {
-		return domain.Server{}, err
-	}
-
-	m.mu.Lock()
-	if m.connections[id] != current {
-		m.mu.Unlock()
-		connection.close()
-		return domain.Server{}, fmt.Errorf("server connection changed while refreshing")
-	}
-	previousProfile := m.profiles[id]
-	m.profiles[id] = refreshed
-	m.connections[id] = connection
-	if err := m.saveLocked(); err != nil {
-		m.profiles[id] = previousProfile
-		m.connections[id] = current
-		m.mu.Unlock()
-		connection.close()
-		return domain.Server{}, err
-	}
-	m.mu.Unlock()
-	current.close()
-	return refreshed, nil
-}
-
 func (m *Manager) Disconnect(id string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, found := m.profiles[id]; !found {
+	profile, found := m.profiles[id]
+	if !found {
+		m.mu.Unlock()
 		return fmt.Errorf("server not found")
 	}
-	if connection := m.connections[id]; connection != nil {
-		connection.close()
+	connection := m.connections[id]
+	if profile.ConnectionType == ConnectionAgentAPI {
+		previousProfile := profile
+		now := time.Now().UTC()
+		profile.AgentHealth.State = domain.HealthUnknown
+		profile.AgentHealth.Summary = "Machine agent was disconnected by the operator"
+		profile.AgentHealth.Detail = "Reconnect this saved machine API target when it should be managed again."
+		profile.AgentHealth.Events = appendAgentEvent(profile.AgentHealth.Events, domain.AgentEvent{Code: "agent_disconnected", Level: "info", Message: "The machine agent was disconnected by the operator", OccurredAt: now, Source: "core"})
+		m.profiles[id] = profile
+		if err := m.saveLocked(); err != nil {
+			m.profiles[id] = previousProfile
+			m.mu.Unlock()
+			return err
+		}
 	}
 	delete(m.connections, id)
 	// An explicit disconnect is the operator asking SwarmOps to stop holding
 	// this credential, so the sealed copy goes with the live one.
 	m.forgetKeyLocked(id)
+	m.mu.Unlock()
+	if connection != nil {
+		connection.close()
+	}
 	return nil
 }
 
@@ -492,58 +526,6 @@ func (m *Manager) Resolve(id string) (*Connection, error) {
 		return nil, fmt.Errorf("server is not connected; reconnect with its machine API key")
 	}
 	return connection, nil
-}
-
-// NodeIdentity resolves a connected agent profile to its local Swarm node.
-// It is used only by the fixed mobility workflow; callers receive no Docker
-// socket, raw inspection result, or credential material.
-func (m *Manager) NodeIdentity(ctx context.Context, id string) (nodeID, clusterID string, err error) {
-	connection, err := m.Resolve(id)
-	if err != nil {
-		return "", "", err
-	}
-	if connection.Docker == nil {
-		return "", "", fmt.Errorf("server Docker Engine is unavailable")
-	}
-	info, err := connection.Docker.Info(ctx)
-	if err != nil {
-		return "", "", fmt.Errorf("read server Swarm identity: %w", err)
-	}
-	if strings.TrimSpace(info.Swarm.NodeID) == "" || strings.TrimSpace(info.Swarm.Cluster.ID) == "" {
-		return "", "", fmt.Errorf("server is not an active Swarm node")
-	}
-	return info.Swarm.NodeID, info.Swarm.Cluster.ID, nil
-}
-
-// ResolveNode finds a connected enrolled agent on an exact Swarm node. A
-// stateful transfer cannot fall back to SSH because the archive endpoint is a
-// deliberately constrained machine-agent capability.
-func (m *Manager) ResolveNode(ctx context.Context, nodeID string) (*Connection, domain.Server, error) {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return nil, domain.Server{}, fmt.Errorf("Swarm node identifier is required")
-	}
-	m.mu.RLock()
-	connections := make(map[string]*Connection, len(m.connections))
-	profiles := make(map[string]domain.Server, len(m.profiles))
-	for id, connection := range m.connections {
-		connections[id] = connection
-	}
-	for id, profile := range m.profiles {
-		profiles[id] = profile
-	}
-	m.mu.RUnlock()
-	for id, connection := range connections {
-		if connection == nil || connection.Docker == nil || connection.Profile.ConnectionType != ConnectionAgentAPI || !connection.Profile.MobilityAvailable {
-			continue
-		}
-		info, err := connection.Docker.Info(ctx)
-		if err != nil || info.Swarm.NodeID != nodeID {
-			continue
-		}
-		return connection, profiles[id], nil
-	}
-	return nil, domain.Server{}, fmt.Errorf("no connected enrolled agent is available on the source Swarm node")
 }
 
 func (m *Manager) saveLocked() error {
@@ -598,6 +580,12 @@ func profileFromInput(input AddInput) (domain.Server, Credentials, error) {
 }
 
 func validateProfile(profile domain.Server) error {
+	if profile.ConnectionType == ConnectionAgentPull {
+		if strings.TrimSpace(profile.ID) == "" || len(profile.ID) > 64 || profile.Authentication != AuthenticationMTLS || strings.TrimSpace(profile.Name) == "" {
+			return fmt.Errorf("invalid outbound agent profile")
+		}
+		return nil
+	}
 	if profile.ConnectionType == ConnectionAgentAPI {
 		return validateAgentProfile(profile)
 	}

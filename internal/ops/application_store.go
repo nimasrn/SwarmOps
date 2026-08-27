@@ -103,6 +103,13 @@ func (s *ApplicationStore) Put(spec ApplicationSpec) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if normalized.Domain != "" {
+		for name, existing := range s.specs {
+			if name != normalized.Name && existing.Domain == normalized.Domain {
+				return fmt.Errorf("domain %q is already assigned to application %q", normalized.Domain, name)
+			}
+		}
+	}
 	previous, existed := s.specs[normalized.Name]
 	s.specs[normalized.Name] = normalized
 	if err := s.saveLocked(); err != nil {
@@ -112,6 +119,28 @@ func (s *ApplicationStore) Put(spec ApplicationSpec) error {
 			delete(s.specs, normalized.Name)
 		}
 		return err
+	}
+	return nil
+}
+
+// DomainAvailable enforces controller-wide uniqueness before a deploy mutates
+// Traefik. The store repeats the check in Put so a concurrent plan cannot win
+// after another application has already claimed the hostname.
+func (s *ApplicationStore) DomainAvailable(application, domain string) error {
+	if s == nil {
+		return fmt.Errorf("sealed applications are not configured")
+	}
+	application = strings.ToLower(strings.TrimSpace(application))
+	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	if domain == "" {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for name, spec := range s.specs {
+		if name != application && spec.Domain == domain {
+			return fmt.Errorf("domain %q is already assigned to application %q", domain, name)
+		}
 	}
 	return nil
 }

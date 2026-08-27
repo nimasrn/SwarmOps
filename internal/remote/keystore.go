@@ -141,6 +141,7 @@ func (m *Manager) Resume(ctx context.Context) []error {
 		scrubCredentials(&credentials)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("resume %s: %w", pending[id].Name, err))
+			_, _ = m.recordAgentFailure(id, err)
 			continue
 		}
 		m.mu.Lock()
@@ -150,8 +151,21 @@ func (m *Manager) Resume(ctx context.Context) []error {
 			continue
 		}
 		previous := m.connections[id]
+		previousProfile := m.profiles[id]
 		m.profiles[id] = profile
 		m.connections[id] = connection
+		if err := m.saveLocked(); err != nil {
+			m.profiles[id] = previousProfile
+			if previous == nil {
+				delete(m.connections, id)
+			} else {
+				m.connections[id] = previous
+			}
+			m.mu.Unlock()
+			connection.close()
+			failures = append(failures, fmt.Errorf("resume %s: save health observation: %w", pending[id].Name, err))
+			continue
+		}
 		m.mu.Unlock()
 		if previous != nil {
 			previous.close()

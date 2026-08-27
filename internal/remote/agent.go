@@ -29,37 +29,59 @@ var (
 	ErrAgentAPIUnauthorized = errors.New("machine API key was rejected")
 	ErrAgentAPIDisabled     = errors.New("machine API remote control is disabled")
 	ErrAgentAPIFingerprint  = errors.New("machine API TLS certificate fingerprint mismatch")
+	ErrAgentAPIIncompatible = errors.New("machine agent protocol is incompatible with this control plane")
 
 	certificateFingerprintPattern = regexp.MustCompile(`^SHA256:[A-Fa-f0-9]{64}$`)
 )
+
+// AgentHTTPError retains only a response class. It deliberately does not
+// retain response bodies, which belong to an untrusted remote process and may
+// contain output that must never enter controller state or the browser.
+type AgentHTTPError struct{ StatusCode int }
+
+func (err *AgentHTTPError) Error() string {
+	if err == nil || err.StatusCode == 0 {
+		return "machine API returned an unsuccessful response"
+	}
+	return fmt.Sprintf("machine API returned HTTP %d", err.StatusCode)
+}
 
 // AgentRunner is the controller-side adapter for the machine agent's fixed
 // command API. It intentionally converts exact Docker CLI shapes to structured
 // operations and cannot send an arbitrary executable or argument vector.
 type AgentRunner struct{ client *agentClient }
 
-// HostBootstrapper is the only controller-side extension beyond the reviewed
-// Docker vocabulary. The agent accepts it only after its single-use enrollment
-// exchange has durably marked the host as managed.
-type HostBootstrapper interface {
-	Bootstrap(context.Context, agentcontrol.BootstrapRequest) (string, error)
+func (r *AgentRunner) Status(ctx context.Context) (agent.Status, error) {
+	if r == nil || r.client == nil {
+		return agent.Status{}, fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.Status(ctx)
 }
 
-// SwarmJoinTokenProvider returns a short-lived manager token only to the
-// controller's fixed join workflow. It is intentionally distinct from the
-// browser-facing API and must never be included in a queued payload or audit
-// event.
-type SwarmJoinTokenProvider interface {
-	ManagerJoinToken(context.Context) (string, error)
+// Snapshot returns the agent's bounded host inventory projection. It contains
+// capacity and operating-system metadata only; no file, process, environment,
+// package list, command output, or credential can cross this boundary.
+func (r *AgentRunner) Snapshot(ctx context.Context) (agent.Snapshot, error) {
+	if r == nil || r.client == nil {
+		return agent.Snapshot{}, fmt.Errorf("machine API client is not configured")
+	}
+	var output agent.Snapshot
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/snapshot", nil, &output)
+	return output, err
 }
 
-// VolumeMover transports only reviewed SwarmOps local volumes between two
-// enrolled machine agents. It never exposes a filesystem path or a generic
-// archive endpoint to the controller.
-type VolumeMover interface {
-	ExportVolume(context.Context, string) (io.ReadCloser, error)
-	ImportVolume(context.Context, string, string, io.Reader) (agent.VolumeReceipt, error)
-	RemoveVolume(context.Context, string) error
+func (r *AgentRunner) Diagnostics(ctx context.Context) (agent.Diagnostics, error) {
+	if r == nil || r.client == nil {
+		return agent.Diagnostics{}, fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.Diagnostics(ctx)
+}
+
+func (r *AgentRunner) RequestUpdate(ctx context.Context) error {
+	if r == nil || r.client == nil {
+		return fmt.Errorf("machine API client is not configured")
+	}
+	return r.client.RequestUpdate(ctx)
 }
 
 func (r *AgentRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
@@ -88,39 +110,51 @@ func (r *AgentRunner) RunInput(ctx context.Context, name string, input io.Reader
 	return r.client.Command(ctx, request)
 }
 
-func (r *AgentRunner) Bootstrap(ctx context.Context, request agentcontrol.BootstrapRequest) (string, error) {
-	if r == nil || r.client == nil {
-		return "", fmt.Errorf("machine API client is not configured")
-	}
-	return r.client.Bootstrap(ctx, request)
+func (r *AgentRunner) ReconcileRouting(ctx context.Context, input agentcontrol.RoutingReconcileRequest) error {
+	return r.client.postTyped(ctx, "/v1/routing/reconcile", input, nil)
 }
 
-func (r *AgentRunner) ManagerJoinToken(ctx context.Context) (string, error) {
-	if r == nil || r.client == nil {
-		return "", fmt.Errorf("machine API client is not configured")
-	}
-	return r.client.ManagerJoinToken(ctx)
+func (r *AgentRunner) PrepareRoutingNetwork(ctx context.Context, input agentcontrol.RoutingNetworkRequest) error {
+	return r.client.postTyped(ctx, "/v1/routing/network", input, nil)
 }
 
-func (r *AgentRunner) ExportVolume(ctx context.Context, volume string) (io.ReadCloser, error) {
-	if r == nil || r.client == nil {
-		return nil, fmt.Errorf("machine API client is not configured")
-	}
-	return r.client.ExportVolume(ctx, volume)
+func (r *AgentRunner) BindRouting(ctx context.Context, input agentcontrol.RoutingBindingRequest) error {
+	return r.client.postTyped(ctx, "/v1/routing/bind", input, nil)
 }
 
-func (r *AgentRunner) ImportVolume(ctx context.Context, volume, migrationID string, input io.Reader) (agent.VolumeReceipt, error) {
-	if r == nil || r.client == nil {
-		return agent.VolumeReceipt{}, fmt.Errorf("machine API client is not configured")
-	}
-	return r.client.ImportVolume(ctx, volume, migrationID, input)
+func (r *AgentRunner) TraefikRuntime(ctx context.Context) (agentcontrol.TraefikRuntimeSnapshot, error) {
+	var output agentcontrol.TraefikRuntimeSnapshot
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/traefik/runtime", nil, &output)
+	return output, err
 }
 
-func (r *AgentRunner) RemoveVolume(ctx context.Context, volume string) error {
-	if r == nil || r.client == nil {
-		return fmt.Errorf("machine API client is not configured")
+func (r *AgentRunner) TraefikLogs(ctx context.Context, input agentcontrol.TraefikLogQuery) ([]agentcontrol.TraefikLogEntry, error) {
+	var output []agentcontrol.TraefikLogEntry
+	err := r.client.postTyped(ctx, "/v1/traefik/logs", input, &output)
+	return output, err
+}
+
+func (r *AgentRunner) PrometheusTraefik(ctx context.Context) (agentcontrol.PrometheusSnapshot, error) {
+	var output agentcontrol.PrometheusSnapshot
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/traefik/prometheus", nil, &output)
+	return output, err
+}
+
+// ProvisioningStatus and Provision are the only host-bootstrap operations the
+// controller can request. They are typed, authenticated calls to the pinned
+// machine agent; AgentRunner still cannot carry an executable, shell, or file
+// path selected by a browser request.
+func (r *AgentRunner) ProvisioningStatus(ctx context.Context) (agentcontrol.ProvisioningStatus, error) {
+	var output agentcontrol.ProvisioningStatus
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/provisioning/status", nil, &output)
+	return output, err
+}
+
+func (r *AgentRunner) Provision(ctx context.Context, input agentcontrol.ProvisioningRequest) error {
+	if err := input.Validate(); err != nil {
+		return err
 	}
-	return r.client.RemoveVolume(ctx, volume)
+	return r.client.postTyped(ctx, "/v1/provisioning", input, nil)
 }
 
 func (r *AgentRunner) Close() {
@@ -219,15 +253,8 @@ func establishAgentAPI(ctx context.Context, profile domain.Server, credentials C
 		return nil, domain.Server{}, ErrAgentAPIDisabled
 	}
 
-	profile.ConnectionState = connectedState
+	profile = profileFromAgentStatus(profile, status, time.Now().UTC())
 	profile.LastConnectedAt = time.Now().UTC()
-	profile.DockerAvailable = status.DockerAvailable
-	profile.DockerVersion = status.DockerVersion
-	profile.BootstrapAvailable = status.BootstrapAvailable
-	profile.Managed = status.Managed
-	profile.MobilityAvailable = status.MobilityAvailable
-	profile.SwarmControlAvailable = status.SwarmControlAvailable
-	profile.SwarmState = status.SwarmState
 	connection := &Connection{Profile: profile, Runner: &AgentRunner{client: client}}
 	if !status.DockerAvailable {
 		return connection, profile, nil
@@ -240,7 +267,10 @@ func establishAgentAPI(ctx context.Context, profile domain.Server, credentials C
 	if err := docker.Ping(probeContext); err != nil {
 		docker.CloseIdleConnections()
 		client.Close()
-		return nil, domain.Server{}, fmt.Errorf("machine API Docker Engine is unavailable")
+		if isAgentRouteMissing(err) {
+			return nil, domain.Server{}, ErrAgentAPIIncompatible
+		}
+		return nil, domain.Server{}, ErrDockerUnavailable
 	}
 	connection.Docker = docker
 	return connection, profile, nil
@@ -290,6 +320,32 @@ func newAgentClient(profile domain.Server, key string) (*agentClient, error) {
 	}, nil
 }
 
+func newPullConnection(profile domain.Server, transport http.RoundTripper) (*Connection, error) {
+	if transport == nil {
+		return nil, fmt.Errorf("outbound agent transport is required")
+	}
+	client := &agentClient{
+		baseURL:  "http://agent.pull",
+		http:     &http.Client{Transport: transport, Timeout: 20 * time.Second},
+		longHTTP: &http.Client{Transport: transport},
+		// This is used only by the local request builder. Authorization is not
+		// included in pull envelopes; the agent supplies its protected local API
+		// token before dispatching through its own reviewed handler.
+		key: []byte("outbound-agent-transport"),
+	}
+	connection := &Connection{Profile: profile, Runner: &AgentRunner{client: client}}
+	if !profile.DockerAvailable {
+		return connection, nil
+	}
+	docker, err := dockerapi.NewForURLWithBuildClient(client.baseURL+"/v1/engine", client.http, client.longHTTP)
+	if err != nil {
+		client.Close()
+		return nil, err
+	}
+	connection.Docker = docker
+	return connection, nil
+}
+
 // agentAuthTransport supplies the key to the constrained Engine facade too;
 // dockerapi.Client uses its own HTTP request builder and therefore cannot add
 // this header itself. It does not alter the destination or any request path.
@@ -322,6 +378,30 @@ func (c *agentClient) Status(ctx context.Context) (agent.Status, error) {
 	return value, nil
 }
 
+func (c *agentClient) Diagnostics(ctx context.Context) (agent.Diagnostics, error) {
+	var value agent.Diagnostics
+	if err := c.requestJSON(ctx, http.MethodGet, "/v1/diagnostics", nil, &value); err != nil {
+		return agent.Diagnostics{}, err
+	}
+	return value, nil
+}
+
+func (c *agentClient) RequestUpdate(ctx context.Context) error {
+	response, err := c.request(ctx, http.MethodPost, "/v1/agent/update", nil)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return ErrAgentAPIUnauthorized
+	}
+	if response.StatusCode != http.StatusOK {
+		return &AgentHTTPError{StatusCode: response.StatusCode}
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 32<<10))
+	return nil
+}
+
 func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (string, error) {
 	body, err := json.Marshal(input)
 	if err != nil {
@@ -336,7 +416,7 @@ func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (
 		return "", ErrAgentAPIUnauthorized
 	}
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("machine API command failed")
+		return "", &AgentHTTPError{StatusCode: response.StatusCode}
 	}
 	var output struct {
 		Output string `json:"output"`
@@ -347,101 +427,12 @@ func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (
 	return output.Output, nil
 }
 
-func (c *agentClient) Bootstrap(ctx context.Context, input agentcontrol.BootstrapRequest) (string, error) {
-	if err := agentcontrol.ValidateBootstrapRequest(input); err != nil {
-		return "", err
-	}
+func (c *agentClient) postTyped(ctx context.Context, endpoint string, input, output any) error {
 	body, err := json.Marshal(input)
 	if err != nil {
-		return "", fmt.Errorf("encode managed bootstrap request: %w", err)
+		return fmt.Errorf("encode typed machine request: %w", err)
 	}
-	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/bootstrap", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusUnauthorized {
-		return "", ErrAgentAPIUnauthorized
-	}
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("managed machine bootstrap failed")
-	}
-	var output struct {
-		Output string `json:"output"`
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&output); err != nil {
-		return "", fmt.Errorf("decode managed bootstrap response: %w", err)
-	}
-	return output.Output, nil
-}
-
-func (c *agentClient) ManagerJoinToken(ctx context.Context) (string, error) {
-	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, "/v1/bootstrap/join-token", nil)
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusUnauthorized {
-		return "", ErrAgentAPIUnauthorized
-	}
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("managed Swarm join token is unavailable")
-	}
-	var payload struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&payload); err != nil {
-		return "", fmt.Errorf("decode managed Swarm join token: %w", err)
-	}
-	if !agentcontrol.ValidSwarmJoinToken(payload.Token) {
-		return "", fmt.Errorf("managed Swarm join token is invalid")
-	}
-	return payload.Token, nil
-}
-
-func (c *agentClient) ExportVolume(ctx context.Context, volume string) (io.ReadCloser, error) {
-	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodGet, "/v1/mobility/volumes/"+url.PathEscape(volume)+"/archive", nil)
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode == http.StatusUnauthorized {
-		_ = response.Body.Close()
-		return nil, ErrAgentAPIUnauthorized
-	}
-	if response.StatusCode != http.StatusOK {
-		_ = response.Body.Close()
-		return nil, fmt.Errorf("managed volume export failed")
-	}
-	return response.Body, nil
-}
-
-func (c *agentClient) ImportVolume(ctx context.Context, volume, migrationID string, input io.Reader) (agent.VolumeReceipt, error) {
-	if input == nil {
-		return agent.VolumeReceipt{}, fmt.Errorf("managed volume archive is required")
-	}
-	headers := make(http.Header)
-	headers.Set("Content-Type", "application/gzip")
-	headers.Set("X-SwarmOps-Migration-ID", migrationID)
-	response, err := c.requestWithClientHeaders(ctx, c.longHTTP, http.MethodPost, "/v1/mobility/volumes/"+url.PathEscape(volume)+"/restore", input, headers)
-	if err != nil {
-		return agent.VolumeReceipt{}, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode == http.StatusUnauthorized {
-		return agent.VolumeReceipt{}, ErrAgentAPIUnauthorized
-	}
-	if response.StatusCode != http.StatusOK {
-		return agent.VolumeReceipt{}, fmt.Errorf("managed volume restore failed")
-	}
-	receipt, err := agent.DecodeVolumeReceipt(response.Body)
-	if err != nil {
-		return agent.VolumeReceipt{}, fmt.Errorf("decode managed volume restore receipt: %w", err)
-	}
-	return receipt, nil
-}
-
-func (c *agentClient) RemoveVolume(ctx context.Context, volume string) error {
-	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodDelete, "/v1/mobility/volumes/"+url.PathEscape(volume), nil)
+	response, err := c.requestWithClient(ctx, c.longHTTP, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -449,8 +440,15 @@ func (c *agentClient) RemoveVolume(ctx context.Context, volume string) error {
 	if response.StatusCode == http.StatusUnauthorized {
 		return ErrAgentAPIUnauthorized
 	}
-	if response.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("managed source cleanup failed")
+	if response.StatusCode != http.StatusOK {
+		return &AgentHTTPError{StatusCode: response.StatusCode}
+	}
+	if output == nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 32<<10))
+		return nil
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(output); err != nil {
+		return fmt.Errorf("decode typed machine response: %w", err)
 	}
 	return nil
 }
@@ -465,7 +463,7 @@ func (c *agentClient) requestJSON(ctx context.Context, method, endpoint string, 
 		return ErrAgentAPIUnauthorized
 	}
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("machine API request failed")
+		return &AgentHTTPError{StatusCode: response.StatusCode}
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(output); err != nil {
 		return fmt.Errorf("decode machine API response: %w", err)
@@ -481,10 +479,6 @@ func (c *agentClient) request(ctx context.Context, method, endpoint string, body
 }
 
 func (c *agentClient) requestWithClient(ctx context.Context, client *http.Client, method, endpoint string, body io.Reader) (*http.Response, error) {
-	return c.requestWithClientHeaders(ctx, client, method, endpoint, body, nil)
-}
-
-func (c *agentClient) requestWithClientHeaders(ctx context.Context, client *http.Client, method, endpoint string, body io.Reader, headers http.Header) (*http.Response, error) {
 	if c == nil || client == nil || len(c.key) == 0 {
 		return nil, fmt.Errorf("machine API client is not configured")
 	}
@@ -493,15 +487,8 @@ func (c *agentClient) requestWithClientHeaders(ctx context.Context, client *http
 		return nil, fmt.Errorf("create machine API request: %w", err)
 	}
 	request.Header.Set("Authorization", "Bearer "+string(c.key))
-	for key, values := range headers {
-		for _, value := range values {
-			request.Header.Add(key, value)
-		}
-	}
 	if body != nil {
-		if request.Header.Get("Content-Type") == "" {
-			request.Header.Set("Content-Type", "application/json")
-		}
+		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := client.Do(request)
 	if err != nil {

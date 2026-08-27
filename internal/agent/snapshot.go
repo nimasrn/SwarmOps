@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,36 +22,40 @@ import (
 
 type Config struct {
 	AllowedImagePrefixes []string
-	BootstrapEnabled     bool
-	Bootstrapper         Bootstrapper
 	BuildEnabled         bool
 	BuildMaxBytes        int64
 	BuildMaxCPUs         float64
 	BuildMaxMemoryMiB    int64
 	Docker               *dockerapi.Client
+	// InternalHTTP reaches only the fixed Traefik, Loki, and Prometheus
+	// adapters below. Their base URLs come from the agent's trusted startup
+	// configuration, never from an API request.
+	InternalHTTP      *http.Client
+	LokiBaseURL       string
+	PrometheusBaseURL string
+	TraefikAPIBaseURL string
 	// EnrollmentSecret is the installer's one-time secret. When present the
 	// agent serves a single enrollment exchange that hands the controller the
 	// machine API key; EnrollmentSecretFile is removed once it is spent.
 	EnrollmentSecret     []byte
 	EnrollmentSecretFile string
-	// ManagedStateFile is written only after a successful one-time enrollment
-	// exchange. It gates privileged fixed host bootstrap actions.
-	ManagedStateFile string
-	// MobilityEnabled enables the reviewed local-volume handover endpoints only
-	// after this agent's one-time enrollment has marked it managed. It is false
-	// by default so a standalone installer never gains data-transfer authority.
-	MobilityEnabled bool
-	// MobilityTransferDir holds short-lived, validated archive staging files.
-	// It is never selected by a request and is removed after each transfer.
-	MobilityTransferDir      string
-	MobilityTransferMaxBytes int64
-	VolumeTransfer           VolumeTransfer
 	// HostRoot is an optional read-only mount of the node root. The agent uses
 	// it solely for filesystem capacity; it never exposes arbitrary files.
-	HostRoot             string
-	HostOS               string
-	HostProc             string
-	NodeName             string
+	HostRoot string
+	HostOS   string
+	HostProc string
+	NodeName string
+	// AutomaticUpdates is configured only by the native installer. The agent
+	// may request the local updater through its marker file, but it never
+	// receives a source URL or executable over the machine API.
+	AutomaticUpdates  bool
+	UpdateBusyFile    string
+	UpdateRequestFile string
+	UpdateStatusFile  string
+	// ProvisionSocket reaches the root-only, local provisioning helper. The
+	// normal machine API remains sandboxed and never executes host package or
+	// firewall changes itself.
+	ProvisionSocket      string
 	RemoteControlEnabled bool
 	Version              string
 }
