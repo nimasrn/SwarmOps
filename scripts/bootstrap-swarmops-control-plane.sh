@@ -341,6 +341,12 @@ validate_allowed_cidr() {
     maximum=32
   fi
   ((prefix >= 0 && prefix <= maximum)) || fail '--allow-cidr prefix length is outside the valid range'
+  if [[ "$address" == 0.0.0.0 && "$prefix" != 0 ]]; then
+    fail '0.0.0.0/32 permits only the unspecified address; use 0.0.0.0/0 for every IPv4 client'
+  fi
+  if [[ "$address" == :: && "$prefix" != 0 ]]; then
+    fail '::/128 permits only the unspecified address; use ::/0 for every IPv6 client'
+  fi
   ip route get "$address" >/dev/null 2>&1 || fail '--allow-cidr must contain a valid IPv4 or IPv6 address'
 }
 
@@ -746,6 +752,7 @@ printf 'Allowed client networks: %s\n' "$operator_cidrs"
 printf '%s\n' 'Verify this fingerprint over your server console before trusting the self-signed certificate in a browser.'
 printf '%s\n' 'The controller has no Docker socket access; mutations and builds remain disabled until you explicitly enable them.'
 printf '%s\n' 'SwarmOps Warden checks published GitHub releases every 12 hours, health-checks locally, rolls back failures, and retains three known-good releases.'
+printf '%s\n' 'Change operator access later with: sudo swarmops-core access set-cidrs <CIDR> [CIDR...]'
 if [[ "$generate_admin_password" == true ]]; then
   printf '\n%s\n' 'Initial administrator credentials (shown once):'
   printf '%s\n' 'Username: operator'

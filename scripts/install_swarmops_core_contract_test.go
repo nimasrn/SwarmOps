@@ -29,6 +29,8 @@ func TestCoreInstallerReportsProgressAndPrintsTheProductionUsername(t *testing.T
 		"Downloading checksum-verified Core release $release_version for Linux/$release_arch.",
 		`os_name="$(uname -s)"`,
 		`[[ "$os_name" == Linux ]]`,
+		`0.0.0.0/32 permits only the unspecified address; use 0.0.0.0/0 for every IPv4 client`,
+		`Change operator access later with: sudo swarmops-core access set-cidrs <CIDR> [CIDR...]`,
 		"Waiting for the local Core readiness check.",
 		"failed during $bootstrap_phase (exit $status); no URL or credentials were printed.",
 		"SWARMOPS_ADMIN_USERNAME=operator",

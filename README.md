@@ -269,6 +269,23 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
 The controller downloads a release binary; it does not need Git, Go, or npm on
 the server.
 
+Change the direct Core access policy with a fixed local command. It validates
+and canonicalizes one or more CIDRs, preserves certificate-IP and loopback
+access, restarts Core, verifies `/readyz`, and restores the previous policy if
+restart or readiness fails:
+
+```bash
+# Allow every IPv4 client:
+sudo swarmops-core access set-cidrs 0.0.0.0/0
+
+# Restrict access to one IPv4 address and one IPv6 network:
+sudo swarmops-core access set-cidrs 198.51.100.8/32 2001:db8:1234::/48
+```
+
+`0.0.0.0/32` is rejected because it matches only the unspecified address; use
+`0.0.0.0/0` for the entire IPv4 internet. Host and cloud firewalls remain a
+separate access layer and must be updated deliberately.
+
 The service account has no Docker-group membership or capabilities, and the
 service gets no Docker socket. Browser mutations and remote builds begin
 disabled. Server profiles, audit history, and command metadata/payload are

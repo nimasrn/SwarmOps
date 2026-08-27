@@ -454,8 +454,8 @@ func parseClientCIDRs(value string) ([]netip.Prefix, error) {
 			continue
 		}
 		prefix, err := netip.ParsePrefix(item)
-		if err != nil || !prefix.IsValid() || prefix.Bits() == 0 {
-			return nil, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS contains an invalid or unrestricted network")
+		if err != nil || !prefix.IsValid() {
+			return nil, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS contains an invalid network")
 		}
 		result = append(result, prefix.Masked())
 	}

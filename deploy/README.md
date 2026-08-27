@@ -214,6 +214,18 @@ platform-admission manifest on that host too and set
 `SWARMOPS_PLATFORM_MANIFEST_FILE` to it when browser deployments are enabled;
 the repository sample is not a production manifest.
 
+Change the native Core client allowlist through its fixed local command rather
+than editing the protected environment file:
+
+```bash
+sudo swarmops-core access set-cidrs 0.0.0.0/0
+sudo swarmops-core access set-cidrs 198.51.100.8/32 2001:db8:1234::/48
+```
+
+The command preserves certificate-IP and loopback access and rolls the file
+back if Core restart or `/readyz` fails. Host and cloud firewall rules remain a
+separate layer and must match the intended exposure.
+
 For CLI calls to the authenticated API, pass that visible server profile ID:
 
 ```bash

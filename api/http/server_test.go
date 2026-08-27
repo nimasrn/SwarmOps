@@ -289,3 +289,17 @@ func TestHandlerRestrictsDirectTLSClientNetworks(t *testing.T) {
 		t.Fatalf("security headers missing from direct response: %q", got)
 	}
 }
+
+func TestHandlerAllowsEveryIPv4ClientForExplicitInternetCIDR(t *testing.T) {
+	t.Parallel()
+	server := &Server{config: config.Config{AllowedClientCIDRs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}}}
+	handler := server.Handler()
+
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.RemoteAddr = "203.0.113.7:443"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("internet client status = %d body=%s", response.Code, response.Body.String())
+	}
+}

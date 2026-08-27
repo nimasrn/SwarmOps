@@ -70,6 +70,20 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
   --generate-admin-password
 ```
 
+After installation, replace the operator CIDR policy without editing the
+protected environment file directly:
+
+```bash
+sudo swarmops-core access set-cidrs 0.0.0.0/0
+sudo swarmops-core access set-cidrs 198.51.100.8/32 2001:db8:1234::/48
+```
+
+The command rejects malformed CIDRs and the common `0.0.0.0/32` mistake,
+preserves the Core certificate IP plus loopback access, atomically replaces the
+environment file, restarts Core, and requires `/readyz` before accepting the
+change. A restart or readiness failure restores the previous file and restarts
+the prior configuration. Firewall and cloud security-group rules are separate.
+
 ## Install Agent on a host
 
 Paste the command for the target operating system:
