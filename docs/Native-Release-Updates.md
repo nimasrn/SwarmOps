@@ -84,19 +84,23 @@ environment file, restarts Core, and requires `/readyz` before accepting the
 change. A restart or readiness failure restores the previous file and restarts
 the prior configuration. Firewall and cloud security-group rules are separate.
 
-Core installations at v0.5.8 or earlier may need one recovery update because
-the original Warden service's restrictive umask could stage a verified binary
-as root-only. Run the same installed Warden once with an explicit non-secret
-release-file umask; it still performs checksum verification, health validation,
-and rollback:
+Core installations at v0.5.9 or earlier need one recovery update because the
+original root-run Warden could stage verified release directories and binaries
+as root-only. Use the published recovery installer. It downloads the immutable
+v0.5.10 Core bundle, verifies its checksum, extracts only the corrected Warden
+into a private temporary directory, and retains normal health validation and
+rollback:
 
 ```bash
-sudo bash -c 'set -a; source /etc/swarmops/warden.env; set +a; umask 022; exec /usr/local/lib/swarmops/releases/current/swarmops-warden update'
+set -o pipefail
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  https://github.com/nimasrn/SwarmOps/releases/latest/download/repair-swarmops-core-updater.sh \
+  | sudo bash
 ```
 
 After that recovery update, use `sudo swarmops-core upgrade` normally. New
-Warden versions explicitly restore reviewed executable and asset modes after
-extraction, independent of the service umask.
+Warden versions explicitly restore reviewed directory, executable, and asset
+modes after extraction, independent of the service umask.
 
 ## Install Agent on a host
 

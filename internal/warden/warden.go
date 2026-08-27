@@ -423,6 +423,12 @@ func extractBundle(bundle []byte, directory, component string) error {
 		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 			return err
 		}
+		// MkdirTemp and MkdirAll also apply the process umask. Every directory
+		// in a reviewed release must remain traversable by the component's
+		// service account even though Warden itself runs as root.
+		if err := os.Chmod(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
 		mode := bundleFileMode(name)
 		file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 		if err != nil {

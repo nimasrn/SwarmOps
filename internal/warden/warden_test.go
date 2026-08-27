@@ -142,6 +142,15 @@ func TestExtractCoreBundleIncludesReviewedAssets(t *testing.T) {
 	if extractErr != nil {
 		t.Fatalf("extractBundle(): %v", extractErr)
 	}
+	for _, name := range []string{directory, filepath.Join(directory, "assets")} {
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatalf("core bundle directory %q: %v", name, err)
+		}
+		if got, want := info.Mode().Perm(), os.FileMode(0o755); got != want {
+			t.Fatalf("core bundle directory %q mode = %04o, want %04o", name, got, want)
+		}
+	}
 	for _, name := range requiredBundleFiles("core") {
 		info, err := os.Stat(filepath.Join(directory, filepath.FromSlash(name)))
 		if err != nil {
