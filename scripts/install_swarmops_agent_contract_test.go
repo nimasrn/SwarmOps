@@ -37,6 +37,63 @@ func TestNativeAgentInstallerLegacyUpgradeContract(t *testing.T) {
 	}
 }
 
+func TestNativeAgentInstallerHelpStartsWithOnlineInstallCommands(t *testing.T) {
+	command := exec.Command("bash", "install-swarmops-agent.sh", "--help")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("read Agent installer help: %v\n%s", err, output)
+	}
+	text := string(output)
+	linux := "curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash"
+	macOS := "curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash"
+	for _, required := range []string{linux, macOS} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Agent installer help is missing canonical online install %q", required)
+		}
+	}
+	if strings.Index(text, linux) > strings.Index(text, "Advanced use:") {
+		t.Fatal("zero-argument online installs must be documented before advanced options")
+	}
+}
+
+func TestNativeAgentInstallerZeroArgumentContract(t *testing.T) {
+	data, err := os.ReadFile("install-swarmops-agent.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		`if [[ "$#" -eq 0 ]]`,
+		`if [[ "$os_name" == Linux ]]`,
+		`install_dependencies=true`,
+		`apt-get update </dev/null`,
+		`apt-get install --yes --no-install-recommends ca-certificates curl openssl </dev/null`,
+		`Waiting for the local Agent health check.`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Agent installer is missing zero-argument contract %q", required)
+		}
+	}
+}
+
+func TestNativeAgentOnlineInstallDocumentation(t *testing.T) {
+	for _, document := range []string{"../README.md", "../docs/Native-Release-Updates.md", "../deploy/README.md"} {
+		data, err := os.ReadFile(document)
+		if err != nil {
+			t.Fatalf("read %s: %v", document, err)
+		}
+		text := string(data)
+		for _, required := range []string{
+			"curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash",
+			"curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash",
+		} {
+			if !strings.Contains(text, required) {
+				t.Fatalf("%s is missing online Agent install %q", document, required)
+			}
+		}
+	}
+}
+
 func TestNativeAgentInstallerAcceptsDefaultLinuxPaths(t *testing.T) {
 	data, err := os.ReadFile("install-swarmops-agent.sh")
 	if err != nil {

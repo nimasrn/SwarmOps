@@ -30,9 +30,10 @@ below uses an `apps/swarmops` path, run it from that monorepo checkout.
 
 Published native installations and their rollback behavior are documented in
 [Native release installation and updates](docs/Native-Release-Updates.md).
-For a fresh Linux Core host, that one-command bootstrap can generate the
-initial `operator` password on-host and print it only after Core is healthy; the
-host retains only its bcrypt hash.
+For a fresh Linux Core host, the zero-argument online bootstrap confirms the
+detected controller IP and operator network in the terminal, generates the
+initial `operator` password on-host, and prints it only after Core is healthy;
+the host retains only its bcrypt hash.
 
 ## What it operates
 
@@ -236,6 +237,25 @@ serves the bundled GUI and API from that host only; it does not install Docker,
 join a Swarm, or contact a cluster.
 
 ```bash
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+The installer reads confirmations from the server terminal rather than the
+pipe: it proposes the IP used by the SSH session (or the first global host IP)
+and the SSH client as a `/32` or `/128` operator CIDR. Press Enter to accept a
+correct value or type the correct controller IP/network. It installs required
+Debian/Ubuntu packages without consuming the streamed script, immediately
+prints safe progress stages, generates the `operator` password plus independent
+session and AES-256-GCM data keys, installs a restricted systemd service, and
+chooses a random high TCP port. It prints the HTTPS URL, SHA-256 certificate
+fingerprint, and generated password only after the health check succeeds.
+Verify the fingerprint from a trusted server console before accepting the
+self-signed IP certificate in a browser.
+
+For unattended automation, retain explicit network policy and pipeline failure
+propagation:
+
+```bash
 set -o pipefail
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
@@ -246,15 +266,6 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
   --generate-admin-password
 ```
 
-The command requires the exact IP already configured on the server and one or
-more trusted operator CIDRs. `pipefail` and curl's visible error mode prevent a
-failed release download from being passed to an empty `bash` process as a false
-success. The installer immediately prints its safe progress stages, generates
-the `operator` password plus independent session and AES-256-GCM data keys,
-installs a restricted systemd service, and chooses a random high TCP port. It
-prints the HTTPS URL, SHA-256 certificate fingerprint, and generated password
-only after the health check succeeds. Verify the fingerprint from a trusted
-server console before accepting the self-signed IP certificate in a browser.
 The controller downloads a release binary; it does not need Git, Go, or npm on
 the server.
 
@@ -279,16 +290,14 @@ The target machine runs a native agent from a published release as a host
 process; it is not the global read-only `swarmops-agent` Swarm service. It can
 start before Docker is installed or running, reports that Docker is unavailable
 until the Engine appears, and needs a ready Docker Engine only for inventory or
-Swarm operations. On Linux, run the installer with `sudo`. On macOS, run it as
-the logged-in user, without `sudo`:
+Swarm operations. Paste the command for the target operating system:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-# Linux:
-sudo bash install-swarmops-agent.sh
-# macOS:
-bash install-swarmops-agent.sh
+# Ubuntu/Debian:
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
+
+# macOS (as the logged-in user, without sudo):
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 The release repository publishes three native programs: `swarmops-core`,
@@ -305,8 +314,10 @@ certificate-pin trust model, and writes its TLS identity to
 Linux, or `$HOME/.config/swarmops-agent/tls/agent.crt` and
 `$HOME/.config/swarmops-agent/tls/agent.key` on macOS. Pass the paired
 `--tls-cert-file` and `--tls-key-file` flags only when an operator deliberately
-uses a different managed certificate. Pass `--install-dependencies` only when
-its documented Debian/Ubuntu or Homebrew package installation is appropriate.
+uses a different managed certificate. The zero-argument Linux installer adds
+its Debian/Ubuntu dependencies automatically while isolating package-manager
+stdin from the streamed script. macOS uses the platform tools already present;
+`--install-dependencies` remains available for an explicit Homebrew-based setup.
 It does not install Docker, change the firewall, create a Swarm, or print the
 generated API key.
 

@@ -35,8 +35,29 @@ not an independently signed provenance statement.
 
 ## Install Core on the controller and data host
 
-For a fresh Linux controller, this non-interactive one-command install creates
-the fixed `operator` account with a server-generated 256-bit password:
+For a fresh Linux controller, paste this online installer. It confirms the
+detected controller IP and trusted operator network through `/dev/tty`, then
+creates the fixed `operator` account with a server-generated 256-bit password:
+
+```bash
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+Core obtains a random high port, direct TLS certificate, independent session
+and data-encryption keys, and a restricted `swarmops-control-plane.service`.
+Its listener uses a wildcard bind so Warden can query its own loopback
+`/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
+operator CIDRs supplied at installation. It does not receive a Docker socket or
+Docker-group membership. The installer reads its two network confirmations
+from the terminal rather than the script pipe, installs required Debian/Ubuntu
+packages with package-manager stdin isolated, and prints safe progress stages
+as it runs. Zero-argument installation generates 32 cryptographically random
+bytes rendered as 64 hexadecimal characters, prints them only after the Core
+health check succeeds, and retains only the bcrypt password hash. Do not
+redirect that installer output or paste the password into chat.
+
+For unattended automation, pass the explicit network policy and preserve the
+pipeline status:
 
 ```bash
 set -o pipefail
@@ -49,32 +70,16 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
   --generate-admin-password
 ```
 
-Core obtains a random high port, direct TLS certificate, independent session
-and data-encryption keys, and a restricted `swarmops-control-plane.service`.
-Its listener uses a wildcard bind so Warden can query its own loopback
-`/readyz`; the direct-TLS CIDR gate still restricts browser/API clients to the
-operator CIDRs supplied at installation. It does not receive a Docker socket or
-Docker-group membership. `set -o pipefail` plus curl's visible error mode make
-a failed release download fail the one-paste command instead of feeding an
-empty script to Bash. The installer prints safe progress stages as it runs.
-`--generate-admin-password` uses 32 cryptographically random bytes rendered as
-64 hexadecimal characters, prints them only after the Core health check
-succeeds, and retains only the bcrypt password hash. Do not redirect that
-installer output or paste the password into chat. Omit the flag to enter an
-administrator password interactively instead.
-
 ## Install Agent on a host
 
-On Linux, download the release installer and run it with `sudo`. On macOS, run
-it as the logged-in user without `sudo`:
+Paste the command for the target operating system:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-# Linux:
-sudo bash install-swarmops-agent.sh
-# macOS:
-bash install-swarmops-agent.sh
+# Ubuntu/Debian:
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
+
+# macOS (as the logged-in user, without sudo):
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 The agent installer defaults to `0.0.0.0:9180` and creates a P-256,
@@ -90,7 +95,9 @@ server with the HTTPS origin (without its port), port, fingerprint, and API key
 through an approved secure channel. The listener must remain reachable only
 from the controller through an explicit firewall rule. Advanced operators may
 provide a certificate only with the paired `--tls-cert-file` and
-`--tls-key-file` flags.
+`--tls-key-file` flags. The zero-argument Linux path installs its required
+Debian/Ubuntu packages with package-manager stdin isolated from the streamed
+installer; macOS uses its existing platform tools.
 
 The agent service starts without a Docker CLI or live Docker socket. It reports
 the host as connected but Docker-unavailable until Docker starts; Core blocks

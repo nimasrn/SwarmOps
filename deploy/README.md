@@ -137,12 +137,11 @@ SwarmOps data directory, Docker dependency, or local API process. Install the
 machine agent on each Linux or macOS Docker host from a GitHub Release:
 
 ```bash
-curl --fail --location --remote-name \
-  https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh
-# Linux:
-sudo bash install-swarmops-agent.sh
-# macOS:
-bash install-swarmops-agent.sh
+# Ubuntu/Debian:
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash
+
+# macOS (as the logged-in user, without sudo):
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash
 ```
 
 The installer downloads checksum-verified `swarmops-agent` and
@@ -153,7 +152,9 @@ at `/etc/swarmops-agent/tls/agent.crt` and
 `$HOME/.config/swarmops-agent/tls/`. It prints the public certificate
 fingerprint and protected file paths, but never prints the key. Warden checks
 releases locally every 12 hours, rolls back an unhealthy candidate, and keeps
-three known-good versions. In **Servers**, add the machine's HTTPS origin
+three known-good versions. The zero-argument Ubuntu/Debian path installs its
+host dependencies with package-manager stdin isolated from the streamed
+installer. In **Servers**, add the machine's HTTPS origin
 without a port, its port, the printed `SHA256:<64-hex>` certificate fingerprint,
 and the API key through an approved secure channel. The key is held only in
 controller memory while connected and is cleared on disconnect or restart; the
@@ -173,6 +174,25 @@ controller must not run Docker or join a cluster, install the native Core
 release on that host instead of deploying the `swarmops` stack:
 
 ```bash
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash
+```
+
+The bootstrap downloads `swarmops-core` and `swarmops-warden`, then serves the
+embedded GUI and API through a generated TLS 1.3 certificate on a random high
+port. It confirms the detected controller IP and SSH client network through the
+terminal, isolates package-manager stdin from the streamed installer, and
+reports safe progress stages. It prints the certificate fingerprint and
+generated `operator` password only after its health check succeeds, creates a
+dedicated service account with no Docker group, enforces the confirmed client
+CIDR in the API, and starts with remote builds and mutations disabled. Core's Warden
+follows the same local health/rollback/three-version policy. The random port is
+not the security boundary: verify the fingerprint and enforce the same operator
+CIDR at the host/cloud firewall.
+
+For unattended provisioning, keep the network policy explicit and propagate a
+failed download through the pipeline:
+
+```bash
 set -o pipefail
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
   https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh \
@@ -182,18 +202,6 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
   --install-dependencies \
   --generate-admin-password
 ```
-
-The bootstrap downloads `swarmops-core` and `swarmops-warden`, then serves the
-embedded GUI and API through a generated TLS 1.3 certificate on a random high
-port. `pipefail` and curl's visible error mode ensure an unavailable installer
-cannot return an empty-script success, while the installer reports safe
-progress stages. It prints the certificate fingerprint and generated
-`operator` password only after its health check succeeds, creates a dedicated
-service account with no Docker group, enforces the supplied client CIDR in the
-API, and starts with remote builds and mutations disabled. Core's Warden
-follows the same local health/rollback/three-version policy. The random port is
-not the security boundary: verify the fingerprint and enforce the same operator
-CIDR at the host/cloud firewall.
 
 Server profiles, audit history, command metadata/payload, and pending build
 contexts are AES-256-GCM sealed in `/var/lib/swarmops`. The unrelated

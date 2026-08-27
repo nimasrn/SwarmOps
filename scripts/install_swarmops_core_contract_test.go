@@ -14,10 +14,21 @@ func TestCoreInstallerReportsProgressAndPrintsTheProductionUsername(t *testing.T
 	}
 	script := string(data)
 	for _, required := range []string{
+		`automatic_setup=false`,
+		`if [[ "$#" -eq 0 ]]`,
+		`configure_automatic_network`,
+		`prompt_value 'Controller IP'`,
+		`prompt_value 'Allowed operator CIDR'`,
+		`install_dependencies=true`,
+		`generate_admin_password=true`,
+		`apt-get update </dev/null`,
+		`apt-get install --yes --no-install-recommends ca-certificates curl iproute2 openssl </dev/null`,
 		`bootstrap_phase="initializing"`,
 		"trap unexpected_failure ERR",
 		"Starting the SwarmOps Core installation; validating controller settings.",
 		"Downloading checksum-verified Core release $release_version for Linux/$release_arch.",
+		`os_name="$(uname -s)"`,
+		`[[ "$os_name" == Linux ]]`,
 		"Waiting for the local Core readiness check.",
 		"failed during $bootstrap_phase (exit $status); no URL or credentials were printed.",
 		"SWARMOPS_ADMIN_USERNAME=operator",
@@ -40,6 +51,22 @@ func TestCoreInstallerReportsProgressAndPrintsTheProductionUsername(t *testing.T
 	}
 }
 
+func TestCoreInstallerHelpStartsWithZeroArgumentOnlineInstall(t *testing.T) {
+	command := exec.Command("bash", "bootstrap-swarmops-control-plane.sh", "--help")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("read Core installer help: %v\n%s", err, output)
+	}
+	text := string(output)
+	canonical := "curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash"
+	if !strings.Contains(text, canonical) {
+		t.Fatalf("Core installer help is missing canonical online install %q", canonical)
+	}
+	if strings.Index(text, canonical) > strings.Index(text, "Automation:") {
+		t.Fatal("zero-argument online install must be documented before advanced automation")
+	}
+}
+
 func TestCoreInstallerOnePasteDocumentationKeepsDownloadFailuresVisible(t *testing.T) {
 	for _, document := range []string{
 		"../README.md",
@@ -52,6 +79,7 @@ func TestCoreInstallerOnePasteDocumentationKeepsDownloadFailuresVisible(t *testi
 		}
 		text := string(data)
 		for _, required := range []string{
+			"curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash",
 			"set -o pipefail",
 			"curl --fail --silent --show-error --location",
 			"--generate-admin-password",

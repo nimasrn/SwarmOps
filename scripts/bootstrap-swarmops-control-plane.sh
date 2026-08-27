@@ -26,10 +26,18 @@ admin_password_confirm=""
 generate_admin_password=false
 generated_admin_password=""
 bootstrap_phase="initializing"
+automatic_setup=false
 
 usage() {
   printf '%s\n' \
     'Usage:' \
+    '  curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash' \
+    '' \
+    'The zero-argument installer detects safe defaults, confirms the controller' \
+    'IP and operator CIDR through the terminal, installs required Debian/Ubuntu' \
+    'packages, and generates the initial operator password.' \
+    '' \
+    'Automation:' \
     "  set -o pipefail; curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \\" \
     '    https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \' \
     '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> --generate-admin-password [--install-dependencies]' \
@@ -84,8 +92,71 @@ require_root() {
 install_host_dependencies() {
   [[ -f /etc/debian_version ]] || fail '--install-dependencies supports Debian and Ubuntu only'
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install --yes --no-install-recommends ca-certificates curl iproute2 openssl
+  apt-get update </dev/null
+  apt-get install --yes --no-install-recommends ca-certificates curl iproute2 openssl </dev/null
+}
+
+prompt_value() {
+  local label="$1"
+  local default_value="$2"
+  local answer=""
+  [[ -r /dev/tty && -w /dev/tty ]] || fail 'the zero-argument installer needs an interactive terminal; use --listen-ip and --allow-cidr for unattended installation'
+  if [[ -n "$default_value" ]]; then
+    printf '%s [%s]: ' "$label" "$default_value" >/dev/tty
+  else
+    printf '%s: ' "$label" >/dev/tty
+  fi
+  IFS= read -r answer </dev/tty || fail "could not read $label from the terminal"
+  printf '%s\n' "${answer:-$default_value}"
+}
+
+ssh_connection_field() {
+  local field="$1"
+  local client_ip="" client_port="" server_ip="" server_port="" remainder=""
+  [[ -n "${SSH_CONNECTION:-}" ]] || return 0
+  read -r client_ip client_port server_ip server_port remainder <<<"$SSH_CONNECTION"
+  [[ -z "$remainder" ]] || return 0
+  case "$field" in
+    client) printf '%s\n' "$client_ip" ;;
+    server) printf '%s\n' "$server_ip" ;;
+  esac
+}
+
+detected_controller_ip() {
+  local candidate=""
+  candidate="$(ssh_connection_field server)"
+  if [[ -n "$candidate" ]] && ip -o addr show | awk '{sub(/\/.*/, "", $4); print $4}' | grep -Fqx -- "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  candidate="$(ip -o -4 addr show scope global | awk 'NR == 1 {sub(/\/.*/, "", $4); print $4}')"
+  if [[ -z "$candidate" ]]; then
+    candidate="$(ip -o -6 addr show scope global | awk 'NR == 1 {sub(/\/.*/, "", $4); print $4}')"
+  fi
+  printf '%s\n' "$candidate"
+}
+
+detected_operator_cidr() {
+  local candidate=""
+  candidate="$(ssh_connection_field client)"
+  [[ -n "$candidate" ]] || return 0
+  if [[ "$candidate" == *:* ]]; then
+    printf '%s/128\n' "$candidate"
+  else
+    printf '%s/32\n' "$candidate"
+  fi
+}
+
+configure_automatic_network() {
+  local detected_listen_ip detected_cidr selected_cidr
+  [[ -r /dev/tty && -w /dev/tty ]] || fail 'the zero-argument installer needs an interactive terminal; use --listen-ip and --allow-cidr for unattended installation'
+  detected_listen_ip="$(detected_controller_ip)"
+  detected_cidr="$(detected_operator_cidr)"
+  printf '\n%s\n' 'SwarmOps needs one controller IP for its TLS identity and one trusted operator network.' >/dev/tty
+  printf '%s\n' 'Press Enter to accept a detected value, or type the correct value.' >/dev/tty
+  listen_ip="$(prompt_value 'Controller IP' "$detected_listen_ip")"
+  selected_cidr="$(prompt_value 'Allowed operator CIDR' "$detected_cidr")"
+  append_allowed_cidr "$selected_cidr"
 }
 
 validate_repository() {
@@ -119,6 +190,8 @@ assert_fresh_controller() {
 }
 
 release_platform() {
+  os_name="$(uname -s)"
+  [[ "$os_name" == Linux ]] || fail "unsupported operating system: $os_name"
   case "$(uname -m)" in
     x86_64|amd64)
       release_arch='amd64'
@@ -254,6 +327,30 @@ append_allowed_cidr() {
   else
     operator_cidrs="$cidr"
   fi
+}
+
+validate_allowed_cidr() {
+  local cidr="$1" address prefix maximum
+  [[ "$cidr" == */* ]] || fail '--allow-cidr must include an IPv4 or IPv6 prefix length'
+  address="${cidr%/*}"
+  prefix="${cidr##*/}"
+  [[ "$prefix" =~ ^[0-9]+$ ]] || fail '--allow-cidr prefix length must be numeric'
+  if [[ "$address" == *:* ]]; then
+    maximum=128
+  else
+    maximum=32
+  fi
+  ((prefix >= 0 && prefix <= maximum)) || fail '--allow-cidr prefix length is outside the valid range'
+  ip route get "$address" >/dev/null 2>&1 || fail '--allow-cidr must contain a valid IPv4 or IPv6 address'
+}
+
+validate_allowed_cidrs() {
+  local cidr
+  local cidrs=()
+  IFS=',' read -r -a cidrs <<<"$operator_cidrs"
+  for cidr in "${cidrs[@]}"; do
+    validate_allowed_cidr "$cidr"
+  done
 }
 
 random_port() {
@@ -529,6 +626,12 @@ wait_for_health() {
   fail 'the control-plane service did not pass its localhost readiness check'
 }
 
+if [[ "$#" -eq 0 ]]; then
+  automatic_setup=true
+  install_dependencies=true
+  generate_admin_password=true
+fi
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --listen-ip)
@@ -572,8 +675,6 @@ done
 bootstrap_phase='validating controller settings'
 info 'Starting the SwarmOps Core installation; validating controller settings.'
 require_root
-[[ -n "$listen_ip" ]] || fail '--listen-ip is required'
-[[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 validate_repository
 validate_release
 if [[ "$install_dependencies" == true ]]; then
@@ -590,7 +691,15 @@ require_command ss
 require_command systemctl
 require_command tar
 command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || fail 'sha256sum or shasum is required'
+if [[ "$automatic_setup" == true ]]; then
+  bootstrap_phase='confirming controller network access'
+  info 'Confirming the controller IP and trusted operator network.'
+  configure_automatic_network
+fi
+[[ -n "$listen_ip" ]] || fail '--listen-ip is required'
+[[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 assert_local_ip "$listen_ip"
+validate_allowed_cidrs
 assert_fresh_controller
 
 bootstrap_phase='preparing protected controller directories'

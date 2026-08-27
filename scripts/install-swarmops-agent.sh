@@ -21,9 +21,15 @@ usage() {
   printf '%s\n' \
     'Usage:' \
     '  Linux:' \
-    '    sudo bash install-swarmops-agent.sh [options]' \
+    '    curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | sudo bash' \
     '  macOS:' \
-    '    bash install-swarmops-agent.sh [options]' \
+    '    curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh | bash' \
+    '' \
+    'The zero-argument installer selects the host platform, installs required' \
+    'Ubuntu/Debian packages, generates the local TLS identity and API key, and' \
+    'starts the native service. Existing installations are upgraded in place.' \
+    '' \
+    'Advanced use: download the script and pass any options below.' \
     '' \
     'Downloads a checksum-verified GitHub Release bundle containing the native' \
     'SwarmOps agent and SwarmOps Warden updater. Warden checks for published' \
@@ -40,6 +46,10 @@ usage() {
     '--install-dependencies             Install curl, CA certificates, and OpenSSL where supported.' \
     '                                   The listener must include loopback or all interfaces so Warden can health-check it locally.' \
     '-h, --help                         Show this help.'
+}
+
+info() {
+  printf 'SwarmOps machine-agent install: %s\n' "$*" >&2
 }
 
 fail() {
@@ -132,8 +142,8 @@ install_host_dependencies() {
     Linux)
       [[ -f /etc/debian_version ]] || fail '--install-dependencies supports Debian and Ubuntu Linux only'
       export DEBIAN_FRONTEND=noninteractive
-      apt-get update
-      apt-get install --yes --no-install-recommends ca-certificates curl openssl
+      apt-get update </dev/null
+      apt-get install --yes --no-install-recommends ca-certificates curl openssl </dev/null
       ;;
     Darwin)
       require_command brew
@@ -638,6 +648,12 @@ certificate_fingerprint() {
   printf 'SHA256:%s\n' "$(printf '%s' "$digest" | tr '[:lower:]' '[:upper:]')"
 }
 
+if [[ "$#" -eq 0 ]]; then
+  if [[ "$os_name" == Linux ]]; then
+    install_dependencies=true
+  fi
+fi
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --listen-addr) [[ "$#" -ge 2 ]] || fail '--listen-addr requires a value'; listen_addr="$2"; shift 2 ;;
@@ -653,6 +669,7 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+info 'Starting the native SwarmOps Agent installation and checking this host.'
 case "$os_name" in
   Linux) [[ "$(id -u)" == 0 ]] || fail 'run this command with sudo on Linux' ;;
   Darwin) [[ "$(id -u)" != 0 ]] || fail 'run this command as the logged-in macOS user, without sudo' ;;
@@ -680,6 +697,7 @@ if [[ "$existing_native_install" == false ]]; then
 fi
 
 if [[ "$install_dependencies" == true ]]; then
+  info 'Installing required host dependencies.'
   install_host_dependencies
 fi
 require_command curl
@@ -698,10 +716,12 @@ done
 install -d -m 0755 "$runtime_dir" "$release_dir"
 release_platform
 resolve_release_version
+info "Downloading checksum-verified Agent release $release_version for $release_os/$release_arch."
 install_release
 set_current_release
 install_command_shim
 if [[ "$existing_native_install" == true ]]; then
+  info 'Restarting the existing Agent with its preserved identity and configuration.'
   restart_existing_native_install
   printf '%s\n' \
     'Upgraded the existing SwarmOps machine agent and preserved its API key, TLS identity, listener, and service configuration.' \
@@ -710,6 +730,7 @@ if [[ "$existing_native_install" == true ]]; then
     'Key rotation: sudo swarmops-agent gen key'
   exit 0
 fi
+info 'Generating the protected Agent identity and service configuration.'
 install_api_key
 install_managed_tls_material
 write_environment_file
@@ -718,6 +739,7 @@ case "$os_name" in
   Linux) write_linux_services ;;
   Darwin) write_macos_services ;;
 esac
+info 'Waiting for the local Agent health check.'
 check_local_health
 
 fingerprint="$(certificate_fingerprint)"
