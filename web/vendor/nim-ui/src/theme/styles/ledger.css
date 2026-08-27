@@ -1,0 +1,124 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLE · LEDGER  —  the nim house style
+
+   A style owns SHAPE, ELEVATION GEOMETRY, TYPE VOICE and PRESS. It owns no
+   colour at all: every value below that looks coloured is a reference to a
+   token the active colourway answers. Swapping the colourway under this style
+   changes the palette and nothing else; swapping the style changes the
+   physics.
+
+   Ledger: square corners, hairline rules, hard offset shadows like a print
+   register mark, mono type for anything machine-shaped, and a press that
+   shifts into the shadow — a key being struck, not a surface being squeezed.
+
+   Selected with `data-nim-style="ledger"`, and used when no style is set.
+   `:where(:root)` contributes no specificity, so the bare-root default never
+   outranks an explicit style set further down the tree.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:where(:root),
+[data-nim-style='ledger'] {
+  /* ─── Shape ──────────────────────────────────────────────────────────
+     Square. Nothing rounds "a little bit"; only genuinely pill-shaped
+     affordances (the status dot, the toggle track) use `pill`. */
+  --nim-radius-xs: 0px;
+  --nim-radius-sm: 0px;
+  --nim-radius-md: 0px;
+  --nim-radius-lg: 0px;
+  --nim-radius-xl: 0px;
+  --nim-radius-pill: 999px;
+
+  /* ─── Elevation ──────────────────────────────────────────────────────
+     Paper does not float. Depth is a hard offset and a control presses into
+     it rather than lifting off it. The offsets are the style's; the colour
+     they are drawn in is the colourway's. */
+  --nim-shadow-sm: 0 1px 0 var(--nim-shadow-tint-sm);
+  --nim-shadow-md: 3px 3px 0 var(--nim-shadow-tint-md);
+  --nim-shadow-lg: 6px 6px 0 var(--nim-shadow-tint-lg);
+
+  /* A ring drawn outside the box, on the canvas, so it reads on any surface.
+     An invalid field focuses in danger, so the ring never contradicts the
+     message printed under it. */
+  --nim-shadow-focus: 0 0 0 2px var(--nim-canvas), 0 0 0 4px var(--nim-accent);
+  --nim-shadow-focus-danger: 0 0 0 2px var(--nim-canvas), 0 0 0 4px var(--nim-danger);
+
+  /* ─── Type ───────────────────────────────────────────────────────────
+     One sans for substance, one mono for anything machine-shaped. An app
+     with its own brand face overrides these two on its provider; the rest of
+     the scale is stated in relative terms and follows. */
+  --nim-font-sans: 'Geist', 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --nim-font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --nim-font-numeric: var(--nim-font-mono);
+
+  --nim-tracking-tight: -0.026em;
+  --nim-tracking-normal: -0.008em;
+  --nim-tracking-wide: 0.12em;
+
+  /* `base` is this style's resting leading; tight and relaxed are stated
+     against it, which is what keeps the three names ordered in every style
+     rather than only in this one. */
+  --nim-leading-base: 1.45;
+  --nim-leading-tight: 1.12;
+  --nim-leading-normal: var(--nim-leading-base);
+  --nim-leading-relaxed: 1.66;
+
+  --nim-type-display-size: clamp(2.25rem, 6vw, 3.25rem);
+  --nim-type-display-line: 1;
+  --nim-type-display-weight: var(--nim-weight-medium);
+  --nim-type-display-tracking: -0.036em;
+  --nim-type-display-family: var(--nim-font-sans);
+
+  /* The editorial pair. `display` is the size a product headline is set at;
+     these two are the sizes an editorial PAGE is set at — a marketing hero,
+     a section that opens a long document. They are separate roles rather than
+     more of the display ramp because type this large is optically a different
+     medium: it needs its own tracking and its own leading, and inheriting
+     display's would leave both loose at 96px and slack at 168px. */
+  --nim-type-display-lg-size: clamp(2.5rem, 1.24rem + 5.28vw, 6rem);
+  --nim-type-display-lg-line: 0.9;
+  --nim-type-display-lg-tracking: -0.045em;
+  --nim-type-display-xl-size: clamp(3.5rem, 0.99rem + 10.57vw, 10.5rem);
+  --nim-type-display-xl-line: 0.84;
+  --nim-type-display-xl-tracking: -0.05em;
+
+  /* How far an indented claim line steps off the reading margin. It scales
+     with the viewport because a fixed 184px indent eats a phone's whole
+     measure, and it is a token because the break is the style's device. */
+  --nim-display-indent: clamp(2.75rem, -0.33rem + 13.15vw, 11.5rem);
+
+  --nim-type-title-lg-size: var(--nim-text-24);
+  --nim-type-title-lg-line: var(--nim-leading-tight);
+  --nim-type-title-lg-weight: var(--nim-weight-medium);
+  --nim-type-title-md-size: var(--nim-text-18);
+  --nim-type-title-md-line: 1.25;
+  --nim-type-title-md-weight: var(--nim-weight-medium);
+
+  --nim-type-body-size: var(--nim-text-16);
+  --nim-type-body-line: var(--nim-leading-relaxed);
+  --nim-type-body-weight: var(--nim-weight-regular);
+  --nim-type-body-sm-size: var(--nim-text-14);
+
+  /* Labels are set as rules: mono, uppercase, wide-tracked. This pair of
+     tokens is most of what makes the style sound like a ledger. */
+  --nim-type-label-size: var(--nim-text-12);
+  --nim-type-label-weight: var(--nim-weight-medium);
+  --nim-type-label-family: var(--nim-font-mono);
+  --nim-label-transform: uppercase;
+  --nim-label-tracking: var(--nim-tracking-wide);
+
+  /* A label is a legend printed beside a thing; a control is a thing you
+     press. Controls do not borrow the label voice. */
+  --nim-type-control-size: var(--nim-text-14);
+  --nim-type-control-family: var(--nim-font-sans);
+  --nim-type-control-weight: var(--nim-weight-medium);
+  --nim-type-control-tracking: var(--nim-tracking-normal);
+  --nim-type-control-transform: none;
+
+  --nim-type-caption-size: var(--nim-text-12);
+  --nim-type-caption-line: 1.5;
+
+  /* ─── Voice ──────────────────────────────────────────────────────────
+     How a control answers a press. */
+  --nim-press-scale: 1;
+  --nim-press-translate: 2px;
+}

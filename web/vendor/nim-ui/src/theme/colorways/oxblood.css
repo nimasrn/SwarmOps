@@ -1,0 +1,31 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · OXBLOOD  —  the same paper, dressed for law
+
+   Deeper than vermilion and shifted toward wine: the wax-seal red of legal
+   tradition. Darker, cooler and lower in chroma, it reads as institutional
+   permanence rather than editorial urgency, while keeping the same role.
+
+   Six declarations, because that is genuinely all that separates it from
+   `vermilion` — the neutral half comes from `paper.css`. Before 0.2 this was
+   a 220-line theme file that duplicated ninety-eight identical tokens to
+   change these six.
+
+   The dark half is a deepened wine, not a rose. Until 0.6.2 it was `#d38691`,
+   which cleared contrast with room to spare (6.2:1) but at that lightness the
+   wine identity was gone and it read soft — the wrong register for a legal
+   surface. It is now darker and slightly higher in chroma at the same hue
+   (350deg), and clears AA on every dark surface — 5.16:1 on `--nim-surface`,
+   4.77:1 on `--nim-surface-raised`, 5.52:1 against `--nim-on-accent` — with the
+   seal-red read intact in both schemes.
+
+   Selected with `data-nim-colorway="oxblood"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='oxblood'] {
+  --nim-accent: light-dark(#6b1f2a, #c67582);
+  --nim-accent-hover: light-dark(#5e1a25, #d0818e);
+  --nim-accent-strong: light-dark(#551722, #da8e9a);
+  --nim-accent-soft: light-dark(#f2e4e4, rgba(198, 117, 130, 0.16));
+  --nim-accent-line: light-dark(rgba(107, 31, 42, 0.34), rgba(198, 117, 130, 0.38));
+  --nim-on-accent: light-dark(#fdf7f5, #17130f);
+}

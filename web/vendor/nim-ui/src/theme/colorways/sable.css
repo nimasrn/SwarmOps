@@ -1,0 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · SABLE  —  the operator palette
+
+   The only colourway here chosen for a CONSTRAINT rather than a mood.
+
+   An operator console is a screen full of status: green ready, amber draining,
+   red failed, on every row. In that context an accent from the same families
+   is not a brand colour, it is a fourth status nobody defined — a warm-red
+   "Deploy" button beside a red "Failed" row is read as part of the failure.
+   Cobalt is the one signal family that cannot be mistaken for any of the
+   three, which is the whole argument for this palette.
+
+   The neutrals are cooled graphite rather than the warm paper of the `paper`
+   set: a console is looked at for eight hours, and the warm cast that makes a
+   consumer app feel like paper makes a table of numbers feel yellow by the
+   afternoon.
+
+   Selected with `data-nim-colorway="sable"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='sable'] {
+  --nim-canvas: light-dark(#f6f7f9, #131619);
+  --nim-canvas-sunken: light-dark(#eceef2, #0d0f12);
+  --nim-surface: light-dark(#ffffff, #1b1f24);
+  --nim-surface-raised: light-dark(#ffffff, #232830);
+  --nim-surface-muted: light-dark(#eef0f4, #232830);
+  --nim-scrim: light-dark(rgba(15, 20, 27, 0.5), rgba(4, 6, 9, 0.66));
+
+  --nim-ink: light-dark(#12151a, #e9edf3);
+  --nim-ink-secondary: light-dark(#414957, rgba(233, 237, 243, 0.78));
+  --nim-ink-tertiary: light-dark(#657084, rgba(233, 237, 243, 0.58));
+  --nim-ink-inverse: light-dark(#f6f7f9, #12151a);
+  --nim-on-accent: light-dark(#ffffff, #06101f);
+
+  --nim-line: light-dark(rgba(18, 25, 38, 0.13), rgba(255, 255, 255, 0.16));
+  --nim-line-soft: light-dark(rgba(18, 25, 38, 0.08), rgba(255, 255, 255, 0.09));
+  --nim-line-strong: light-dark(rgba(18, 25, 38, 0.22), rgba(255, 255, 255, 0.3));
+
+  --nim-accent: light-dark(#2f5bd7, #6f92f0);
+  --nim-accent-hover: light-dark(#2a51c2, #869fef);
+  --nim-accent-strong: light-dark(#22409c, #2f5bd7);
+  --nim-accent-soft: light-dark(rgba(47, 91, 215, 0.1), rgba(111, 146, 240, 0.16));
+  --nim-accent-line: light-dark(rgba(47, 91, 215, 0.24), rgba(111, 146, 240, 0.3));
+
+  /* Status is the reason this palette exists, so it is stated at full
+     saturation rather than tinted toward the neutrals. These three have to be
+     told apart at a glance, at 11px, in a column. */
+  --nim-success: light-dark(#1f7a4d, #4fbe86);
+  --nim-success-soft: light-dark(rgba(31, 122, 77, 0.12), rgba(79, 190, 134, 0.15));
+  --nim-warning: light-dark(#9a6708, #e0a63c);
+  --nim-warning-soft: light-dark(rgba(154, 103, 8, 0.13), rgba(224, 166, 60, 0.15));
+  --nim-danger: light-dark(#bc2f2f, #ef7676);
+  --nim-danger-hover: light-dark(#a52727, #f28c8c);
+  --nim-danger-soft: light-dark(rgba(188, 47, 47, 0.11), rgba(239, 118, 118, 0.15));
+  --nim-info: light-dark(#2f5bd7, #6f92f0);
+  --nim-info-soft: light-dark(rgba(47, 91, 215, 0.1), rgba(111, 146, 240, 0.15));
+
+  --nim-shadow-tint-sm: light-dark(rgba(15, 20, 27, 0.07), rgba(0, 0, 0, 0.46));
+  --nim-shadow-tint-md: light-dark(rgba(15, 20, 27, 0.09), rgba(0, 0, 0, 0.54));
+  --nim-shadow-tint-lg: light-dark(rgba(15, 20, 27, 0.12), rgba(0, 0, 0, 0.62));
+
+  /* ─── Series ───────────────────────────────────────────────────────────
+     The qualitative ramp a chart assigns by position. Series 1 is the
+     colourway's accent, so a single-series chart is of a piece with the rest
+     of the interface; 2–6 are ordered to put the greatest hue distance next
+     to the accent, because adjacent series are the pair a reader has to tell
+     apart most often. These are categories, not a scale: never interpolate
+     between them, and never use one to mean good or bad — that is what the
+     status roles are for. */
+  --nim-series-1: var(--nim-accent);
+  --nim-series-2: light-dark(#9a6a12, #dfae55);
+  --nim-series-3: light-dark(#2f7f79, #62c6bd);
+  --nim-series-4: light-dark(#a34468, #e089a6);
+  --nim-series-5: light-dark(#6a4ea6, #a894e4);
+  --nim-series-6: light-dark(#2f8f5b, #6cc292);
+}

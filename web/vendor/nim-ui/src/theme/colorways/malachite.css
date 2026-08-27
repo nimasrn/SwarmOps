@@ -1,0 +1,69 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · MALACHITE  —  the delivery palette
+
+   `sable` answers a console full of node status, where an accent from the
+   green/amber/red families reads as a fourth status nobody defined. A
+   DELIVERY console is a different screen: its rows are not health, they are
+   decisions — classify, map, approve, deploy — and the one colour it needs to
+   spend is on the thing that has been settled. Here green is that colour, and
+   the three status roles stay legible because the two that matter on this
+   screen are amber and red, which no reading of the accent reaches.
+
+   The neutrals are near-hueless slate: at the surface values a console spends
+   all day inside, any tint at all shows up as a cast across a full-height
+   table, and this palette carries its hue in one place on purpose.
+
+   Selected with `data-nim-colorway="malachite"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='malachite'] {
+  --nim-canvas: light-dark(#f7f9f8, #0d1117);
+  --nim-canvas-sunken: light-dark(#eef2f1, #090d12);
+  --nim-surface: light-dark(#ffffff, #151b23);
+  --nim-surface-raised: light-dark(#ffffff, #1c242e);
+  --nim-surface-muted: light-dark(#eff3f2, #1b232c);
+  --nim-scrim: light-dark(rgba(13, 20, 25, 0.5), rgba(3, 6, 9, 0.66));
+
+  --nim-ink: light-dark(#111820, #e6edf3);
+  --nim-ink-secondary: light-dark(#3f4a55, rgba(230, 237, 243, 0.76));
+  --nim-ink-tertiary: light-dark(#68757f, rgba(230, 237, 243, 0.55));
+  --nim-ink-inverse: light-dark(#f7f9f8, #111820);
+  --nim-on-accent: light-dark(#ffffff, #04241c);
+
+  --nim-line: light-dark(rgba(17, 27, 34, 0.13), rgba(255, 255, 255, 0.14));
+  --nim-line-soft: light-dark(rgba(17, 27, 34, 0.08), rgba(255, 255, 255, 0.08));
+  --nim-line-strong: light-dark(rgba(17, 27, 34, 0.22), rgba(255, 255, 255, 0.28));
+
+  --nim-accent: light-dark(#0f8a63, #2fbf8f);
+  --nim-accent-hover: light-dark(#0c7a58, #46cc9f);
+  --nim-accent-strong: light-dark(#09664a, #0f8a63);
+  --nim-accent-soft: light-dark(rgba(15, 138, 99, 0.11), rgba(47, 191, 143, 0.15));
+  --nim-accent-line: light-dark(rgba(15, 138, 99, 0.26), rgba(47, 191, 143, 0.32));
+
+  /* Success sits a measured step COOLER than the accent rather than equal to
+     it. A settled decision and a healthy service are different claims, and on
+     a screen that makes both they have to be separable without reading the
+     word — but not so far apart that the page looks like it has two greens
+     competing for the same meaning. */
+  --nim-success: light-dark(#1c7f52, #56c98e);
+  --nim-success-soft: light-dark(rgba(28, 127, 82, 0.12), rgba(86, 201, 142, 0.15));
+  --nim-warning: light-dark(#8a6206, #d6a13a);
+  --nim-warning-soft: light-dark(rgba(138, 98, 6, 0.13), rgba(214, 161, 58, 0.15));
+  --nim-danger: light-dark(#c1332c, #f0776d);
+  --nim-danger-hover: light-dark(#a92a24, #f48c83);
+  --nim-danger-soft: light-dark(rgba(193, 51, 44, 0.11), rgba(240, 119, 109, 0.15));
+  --nim-info: light-dark(#2f6ad0, #7aa2ef);
+  --nim-info-soft: light-dark(rgba(47, 106, 208, 0.1), rgba(122, 162, 239, 0.15));
+
+  --nim-shadow-tint-sm: light-dark(rgba(13, 20, 25, 0.07), rgba(0, 0, 0, 0.48));
+  --nim-shadow-tint-md: light-dark(rgba(13, 20, 25, 0.09), rgba(0, 0, 0, 0.56));
+  --nim-shadow-tint-lg: light-dark(rgba(13, 20, 25, 0.12), rgba(0, 0, 0, 0.64));
+
+  /* ─── Series ─────────────────────────────────────────────────────────── */
+  --nim-series-1: var(--nim-accent);
+  --nim-series-2: light-dark(#2f6ad0, #7aa2ef);
+  --nim-series-3: light-dark(#8a6206, #d6a13a);
+  --nim-series-4: light-dark(#a34468, #e089a6);
+  --nim-series-5: light-dark(#6a4ea6, #a894e4);
+  --nim-series-6: light-dark(#2f7f79, #62c6bd);
+}

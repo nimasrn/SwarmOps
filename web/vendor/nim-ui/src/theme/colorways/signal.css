@@ -1,0 +1,28 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · SIGNAL  —  the instrument accent
+
+   Six declarations, because that is all that separates a colourway from its
+   neutrals. The neutral half comes from `plate.css`.
+
+   Unlike every other colourway here, the two halves of this accent are not the
+   same colour lightened and darkened for contrast — they are chosen per ground.
+   #ff5b3a is the identity: it is what the accent looks like on the near-black
+   instrument ground, and it is unusable on bone at 2.6:1. The light half drops
+   to #b8330f, the same hue an order of magnitude deeper, which clears 4.5:1 and
+   still reads as the same signal.
+
+   Do not collapse these to one value. That is the specific bug this split
+   exists to prevent, and it fails silently — the accent stays "visible" on both
+   grounds while being illegible on one of them.
+
+   Selected with `data-nim-colorway="signal"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='signal'] {
+  --nim-accent: light-dark(#b8330f, #ff5b3a);
+  --nim-accent-hover: light-dark(#a12c0c, #ff7355);
+  --nim-accent-strong: light-dark(#8c2609, #ff8a70);
+  --nim-accent-soft: light-dark(#f7ebe6, rgba(255, 91, 58, 0.14));
+  --nim-accent-line: light-dark(rgba(184, 51, 15, 0.34), rgba(255, 91, 58, 0.4));
+  --nim-on-accent: light-dark(#f7f4ee, #0b0c0e);
+}

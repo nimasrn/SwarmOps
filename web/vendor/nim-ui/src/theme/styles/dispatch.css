@@ -1,0 +1,133 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLE · DISPATCH  —  the editorial instrument
+
+   A style owns SHAPE, ELEVATION GEOMETRY, TYPE VOICE and PRESS, and no colour
+   at all. `dispatch` is the fourth, and it exists because the other three each
+   get one half of what an instrument-facing editorial surface needs and not the
+   other half.
+
+   `ledger` is a print register: square, mono labels, hard offset shadows. Right
+   voice, but its shadows are a paper metaphor and they read as grime on a dark
+   ground. `console` is a tool you keep open all day — small radii, type sized
+   DOWN, sentence-cased labels — and it is deliberately quiet in a way that
+   cannot carry a claim. `vlora` is a consumer app and is neither.
+
+   Dispatch is the style of a page that has an argument to make and numbers to
+   back it:
+
+     · Square, without exception. The pill survives only for the status dot,
+       which is a dot and not a container.
+     · No elevation at all. Separation is a hairline plus a surface change; on a
+       near-black ground a shadow is either invisible or dirt. The tokens
+       resolve to `none` rather than being deleted, so a component that asks for
+       one gets a defined answer.
+     · A display face separate from the text face — the only style here that
+       does this. Every claim and every number is set in it; no control, table
+       header or nav item ever is. That split is the whole voice, and it is why
+       `--nim-type-display-family` does not point at `--nim-font-sans`.
+     · Labels are tracked-out caps at 12px. This is the exact opposite of
+       `console`, which sentence-cases them for scanning speed: dispatch is read
+       in bursts rather than for eight hours, and the caps are the register.
+     · A press that does not move. A number that flinches when you click it
+       stops reading as a fact.
+
+   Selected with `data-nim-style="dispatch"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-style='dispatch'] {
+  /* ─── Shape ─────────────────────────────────────────────────────────── */
+  --nim-radius-xs: 0px;
+  --nim-radius-sm: 0px;
+  --nim-radius-md: 0px;
+  --nim-radius-lg: 0px;
+  --nim-radius-xl: 0px;
+  --nim-radius-pill: 999px;
+
+  /* ─── Elevation ─────────────────────────────────────────────────────
+     The focus ring is the one place depth is allowed, and it is a ring rather
+     than a shadow: two rings, canvas then accent, so it stays visible whether
+     the control sits on the canvas or on a raised surface. */
+  --nim-shadow-sm: none;
+  --nim-shadow-md: none;
+  --nim-shadow-lg: none;
+  --nim-shadow-focus: 0 0 0 2px var(--nim-canvas), 0 0 0 4px var(--nim-accent);
+  --nim-shadow-focus-danger: 0 0 0 2px var(--nim-canvas), 0 0 0 4px var(--nim-danger);
+
+  /* ─── Families ──────────────────────────────────────────────────────
+     Vazirmatn carries the Persian text; Bodoni has no Arabic coverage at all,
+     so `persian.css` must repoint the display family for RTL — see the note
+     there. Numerals come from the display face, not the mono face: this style
+     sets figures at size as claims, and mono digits at 76px read as a terminal
+     dump rather than a headline. */
+  --nim-font-sans: 'Space Grotesk', 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --nim-font-mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --nim-font-display: 'Bodoni Moda', Georgia, 'Times New Roman', serif;
+  --nim-font-numeric: var(--nim-font-display);
+
+  /* ─── Tracking and leading ──────────────────────────────────────────── */
+  --nim-tracking-tight: -0.028em;
+  --nim-tracking-normal: -0.01em;
+  --nim-tracking-wide: 0.14em;
+  --nim-leading-base: 1.5;
+  --nim-leading-tight: 1.06;
+  --nim-leading-normal: var(--nim-leading-base);
+  --nim-leading-relaxed: 1.66;
+
+  /* ─── Display ───────────────────────────────────────────────────────
+     Three sizes, each with its own tracking and leading, because type this
+     large is optically a different medium and borrowing the step below leaves
+     it loose. */
+  --nim-type-display-family: var(--nim-font-display);
+  --nim-type-display-weight: var(--nim-weight-regular);
+  --nim-type-display-size: clamp(1.75rem, 1.5rem + 1vw, 2.375rem);
+  --nim-type-display-line: 1.02;
+  --nim-type-display-tracking: -0.024em;
+  --nim-type-display-lg-size: clamp(2.75rem, 2rem + 3.1vw, 4.75rem);
+  --nim-type-display-lg-line: 0.92;
+  --nim-type-display-lg-tracking: -0.03em;
+  --nim-type-display-xl-size: clamp(3.5rem, 2rem + 6.3vw, 7.375rem);
+  --nim-type-display-xl-line: 0.86;
+  --nim-type-display-xl-tracking: -0.032em;
+  --nim-display-indent: clamp(2.5rem, -0.2rem + 11.5vw, 10rem);
+
+  /* ─── Titles ────────────────────────────────────────────────────────
+     Titles are structure, not claims, so they stay in the text face. Only the
+     display steps above and the numerals cross over. */
+  --nim-type-title-lg-size: var(--nim-text-24);
+  --nim-type-title-lg-line: var(--nim-leading-tight);
+  --nim-type-title-lg-weight: var(--nim-weight-medium);
+  --nim-type-title-md-size: var(--nim-text-18);
+  --nim-type-title-md-line: 1.25;
+  --nim-type-title-md-weight: var(--nim-weight-medium);
+
+  /* ─── Body ──────────────────────────────────────────────────────────── */
+  --nim-type-body-size: var(--nim-text-16);
+  --nim-type-body-line: var(--nim-leading-relaxed);
+  --nim-type-body-weight: var(--nim-weight-regular);
+  --nim-type-body-sm-size: var(--nim-text-14);
+
+  /* ─── Labels ────────────────────────────────────────────────────────
+     Mono, 12px, tracked-out caps. Everything machine-shaped wears this:
+     indices, dates, scales, stack names, facet counts, pager positions. */
+  --nim-type-label-size: var(--nim-text-12);
+  --nim-type-label-weight: var(--nim-weight-regular);
+  --nim-type-label-family: var(--nim-font-mono);
+  --nim-label-transform: uppercase;
+  --nim-label-tracking: var(--nim-tracking-wide);
+
+  /* ─── Controls ──────────────────────────────────────────────────────
+     Sentence case and the text face. A button set in tracked caps reads as a
+     label rather than something you can press. */
+  --nim-type-control-size: var(--nim-text-14);
+  --nim-type-control-family: var(--nim-font-sans);
+  --nim-type-control-weight: var(--nim-weight-medium);
+  --nim-type-control-tracking: var(--nim-tracking-normal);
+  --nim-type-control-transform: none;
+
+  --nim-type-caption-size: var(--nim-text-12);
+  --nim-type-caption-line: 1.5;
+
+  /* ─── Press ─────────────────────────────────────────────────────────── */
+  --nim-press-scale: 1;
+  --nim-press-translate: 0px;
+}

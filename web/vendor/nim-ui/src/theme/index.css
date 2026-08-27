@@ -1,0 +1,42 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   nim — stylesheet entry
+
+   Import order is load-bearing:
+     1. the contract   — invariants every component relies on, and the
+                         `color-scheme` switch that resolves `light-dark()`
+     2. styles         — shape, elevation geometry, type voice, press
+     3. colourways     — surfaces, ink, lines, accent, status, shadow tint
+     4. persian        — script corrections that must outrank a style
+     5. reset          — scoped to `.nim-root`, never global
+     6. components     — the only file that draws anything
+
+   Style and colourway are two independent axes. A product that wants one
+   pairing can import `contract.css`, its style, its colourway, `reset.css`
+   and `components.css` directly and skip the rest.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@import './contract.css';
+
+@import './styles/ledger.css';
+@import './styles/vlora.css';
+@import './styles/console.css';
+@import './styles/dispatch.css';
+
+@import './colorways/paper.css';
+@import './colorways/vermilion.css';
+@import './colorways/oxblood.css';
+@import './colorways/coral.css';
+@import './colorways/teal.css';
+@import './colorways/sable.css';
+@import './colorways/malachite.css';
+
+/* `signal` brings its own neutral half — the polarity is the reverse of
+   `paper`, so it cannot share it. */
+@import './colorways/plate.css';
+@import './colorways/signal.css';
+
+/* Script corrections come after the styles so they win on source order. */
+@import './persian.css';
+
+@import './reset.css';
+@import './components.css';

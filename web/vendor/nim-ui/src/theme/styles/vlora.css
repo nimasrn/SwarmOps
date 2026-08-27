@@ -1,0 +1,104 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   STYLE · VLORA  —  soft, rounded, Persian-first
+
+   Ledger's opposite on every axis a style owns: generous radii, soft ambient
+   shadows, sentence-case labels, looser leading, and a press that compresses
+   rather than strikes. Carried over from `vlora-app` so an app on this style
+   keeps its exact feel while moving onto nim's contract.
+
+   Like every style it owns no colour. Pair it with the `coral` colourway for
+   Vlora's palette or `teal` for Fatemifar's.
+
+   Selected with `data-nim-style="vlora"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-style='vlora'] {
+  /* ─── Shape ──────────────────────────────────────────────────────────
+     Rounded and soft. This block is most of what separates the two styles. */
+  --nim-radius-xs: 6px;
+  --nim-radius-sm: 8px;
+  --nim-radius-md: 12px;
+  --nim-radius-lg: 20px;
+  --nim-radius-xl: 24px;
+  --nim-radius-pill: 999px;
+
+  /* ─── Elevation ────────────────────────────────────────────────────── */
+  --nim-shadow-sm: 0 1px 4px var(--nim-shadow-tint-sm);
+  --nim-shadow-md: 0 4px 14px var(--nim-shadow-tint-md);
+  --nim-shadow-lg: 0 8px 28px var(--nim-shadow-tint-lg);
+
+  /* A soft halo rather than a drawn ring, mixed from whatever accent the
+     colourway supplies. */
+  --nim-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--nim-accent) 24%, transparent);
+  --nim-shadow-focus-danger: 0 0 0 3px color-mix(in srgb, var(--nim-danger) 24%, transparent);
+
+  /* ─── Type ───────────────────────────────────────────────────────────
+     Persian-first: Vazirmatn leads. An app with its own face — Fatemifar's
+     YekanBakh, say — overrides these two names on its provider. */
+  --nim-font-sans: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+  --nim-font-mono: 'Vazirmatn', ui-monospace, SFMono-Regular, monospace;
+  --nim-font-numeric: var(--nim-font-sans);
+
+  --nim-tracking-tight: -0.018em;
+  --nim-tracking-normal: -0.012em;
+  --nim-tracking-wide: -0.004em;
+
+  /* Persian needs the room, so every rung sits higher than Ledger's — but the
+     three stay ordered, which they were not before 0.2. */
+  --nim-leading-base: 1.84;
+  --nim-leading-tight: 1.48;
+  --nim-leading-normal: var(--nim-leading-base);
+  --nim-leading-relaxed: 1.96;
+
+  --nim-type-display-size: clamp(2.25rem, 6vw, 3.5rem);
+  --nim-type-display-line: 1.48;
+  --nim-type-display-weight: var(--nim-weight-semibold);
+  --nim-type-display-tracking: -0.03em;
+  --nim-type-display-family: var(--nim-font-sans);
+
+  /* Vlora is a soft, generous voice, so its editorial sizes stop well short
+     of the ledger's: the same roles, answered at this style's own scale
+     rather than borrowed from another's. */
+  --nim-type-display-lg-size: clamp(2.25rem, 1.4rem + 3.6vw, 4rem);
+  --nim-type-display-lg-line: 1.08;
+  --nim-type-display-lg-tracking: -0.032em;
+  --nim-type-display-xl-size: clamp(2.75rem, 1.4rem + 5.7vw, 5.5rem);
+  --nim-type-display-xl-line: 1.02;
+  --nim-type-display-xl-tracking: -0.034em;
+
+  /* Vlora states its claims on the margin; the break is not its device. */
+  --nim-display-indent: 0px;
+
+  --nim-type-title-lg-size: var(--nim-text-24);
+  --nim-type-title-lg-line: 1.76;
+  --nim-type-title-lg-weight: var(--nim-weight-semibold);
+  --nim-type-title-md-size: var(--nim-text-20);
+  --nim-type-title-md-line: 1.84;
+  --nim-type-title-md-weight: var(--nim-weight-semibold);
+
+  --nim-type-body-size: var(--nim-text-16);
+  --nim-type-body-line: var(--nim-leading-relaxed);
+  --nim-type-body-weight: var(--nim-weight-regular);
+  --nim-type-body-sm-size: var(--nim-text-14);
+
+  /* Persian has no case, and letterspacing damages its joined forms, so this
+     style neither uppercases nor tracks its labels. */
+  --nim-type-label-size: var(--nim-text-12);
+  --nim-type-label-weight: var(--nim-weight-medium);
+  --nim-type-label-family: var(--nim-font-sans);
+  --nim-label-transform: none;
+  --nim-label-tracking: var(--nim-tracking-wide);
+
+  --nim-type-control-size: var(--nim-text-15);
+  --nim-type-control-family: var(--nim-font-sans);
+  --nim-type-control-weight: var(--nim-weight-medium);
+  --nim-type-control-tracking: var(--nim-tracking-normal);
+  --nim-type-control-transform: none;
+
+  --nim-type-caption-size: var(--nim-text-13);
+  --nim-type-caption-line: 1.76;
+
+  /* ─── Voice ────────────────────────────────────────────────────────── */
+  --nim-press-scale: 0.97;
+  --nim-press-translate: 0px;
+}

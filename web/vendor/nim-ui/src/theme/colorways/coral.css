@@ -1,0 +1,77 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOURWAY · CORAL  —  warm cream, coral signal
+
+   Vlora's palette, carried over from `vlora-app/src/theme/tokens.css` so an
+   app on it keeps its exact appearance. Its neutral hierarchy is inverted from
+   the paper set's: the canvas is the tinted warm off-white and surfaces are
+   pure white, which is what makes cards read as raised without a heavy border.
+
+   Selected with `data-nim-colorway="coral"`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='coral'] {
+  /* Brand anchors, kept as their own names so the colourway stays readable
+     against the original Vlora token file. */
+  --vlora-coral: #d97757;
+  --vlora-crail: #c15f3c;
+  --vlora-cloudy: #b0aea5;
+  --vlora-slate: #131314;
+
+  --nim-canvas: light-dark(#faf9f6, #1e1d1b);
+  --nim-canvas-sunken: light-dark(#f5f4f0, #131314);
+  --nim-surface: light-dark(#ffffff, #2e2d2b);
+  --nim-surface-raised: light-dark(#ffffff, #43413e);
+  /* Was equal to `surface` in dark, which left a hovered row and a muted card
+     indistinguishable from the card under them. */
+  --nim-surface-muted: light-dark(#f5f4f0, #383634);
+  --nim-scrim: light-dark(rgba(19, 19, 20, 0.52), rgba(19, 19, 20, 0.64));
+
+  --nim-ink: light-dark(#131314, #f4f3ee);
+  --nim-ink-secondary: light-dark(#6b6965, #d4d2ca);
+  --nim-ink-tertiary: light-dark(#b0aea5, #8a8880);
+  --nim-ink-inverse: light-dark(#faf9f5, #131314);
+  --nim-on-accent: light-dark(#ffffff, #ffffff);
+
+  /* Structure here comes from surface and shadow, so borders stay quiet —
+     quieter than the paper set's, by design. */
+  --nim-line: light-dark(rgba(19, 19, 20, 0.1), rgba(255, 255, 255, 0.16));
+  --nim-line-soft: light-dark(rgba(19, 19, 20, 0.06), rgba(255, 255, 255, 0.1));
+  --nim-line-strong: light-dark(rgba(19, 19, 20, 0.18), rgba(255, 255, 255, 0.3));
+
+  --nim-accent: light-dark(#d97757, #e0855f);
+  --nim-accent-hover: light-dark(#cf6a49, #e8906b);
+  --nim-accent-strong: light-dark(#c15f3c, #d97757);
+  --nim-accent-soft: light-dark(rgba(217, 119, 87, 0.12), rgba(224, 133, 95, 0.15));
+  --nim-accent-line: light-dark(rgba(217, 119, 87, 0.24), rgba(224, 133, 95, 0.28));
+
+  --nim-success: light-dark(#2f8f5b, #6cc292);
+  --nim-success-soft: light-dark(rgba(47, 143, 91, 0.12), rgba(108, 194, 146, 0.14));
+  --nim-warning: light-dark(#b07a1f, #d9a94f);
+  --nim-warning-soft: light-dark(rgba(215, 154, 43, 0.14), rgba(217, 169, 79, 0.14));
+  --nim-danger: light-dark(#c0492f, #e0796a);
+  --nim-danger-hover: light-dark(#ab4029, #e88a7c);
+  --nim-danger-soft: light-dark(rgba(216, 92, 69, 0.12), rgba(224, 121, 106, 0.14));
+  --nim-info: light-dark(#4a6b80, #90b2c6);
+  --nim-info-soft: light-dark(rgba(74, 107, 128, 0.1), rgba(144, 178, 198, 0.12));
+
+  /* A soft shadow tinted at 36% of a colour barely darker than the canvas did
+     nothing at all in dark. Dark elevation is true black, and deeper. */
+  --nim-shadow-tint-sm: light-dark(rgba(19, 19, 20, 0.05), rgba(0, 0, 0, 0.44));
+  --nim-shadow-tint-md: light-dark(rgba(19, 19, 20, 0.08), rgba(0, 0, 0, 0.52));
+  --nim-shadow-tint-lg: light-dark(rgba(19, 19, 20, 0.1), rgba(0, 0, 0, 0.6));
+
+  /* ─── Series ───────────────────────────────────────────────────────────
+     The qualitative ramp a chart assigns by position. Series 1 is the
+     colourway's accent, so a single-series chart is of a piece with the rest
+     of the interface; 2–6 are ordered to put the greatest hue distance next
+     to the accent, because adjacent series are the pair a reader has to tell
+     apart most often. These are categories, not a scale: never interpolate
+     between them, and never use one to mean good or bad — that is what the
+     status roles are for. */
+  --nim-series-1: var(--nim-accent);
+  --nim-series-2: light-dark(#2f7f79, #62c6bd);
+  --nim-series-3: light-dark(#3a6ea5, #7fb2e2);
+  --nim-series-4: light-dark(#9a6a12, #dfae55);
+  --nim-series-5: light-dark(#6a4ea6, #a894e4);
+  --nim-series-6: light-dark(#a34468, #e089a6);
+}

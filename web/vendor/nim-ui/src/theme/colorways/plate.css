@@ -1,0 +1,84 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEUTRALS · PLATE  —  the neutral half of the `signal` colourway
+
+   `paper.css` is warm stock read in daylight: its light half is the identity
+   and the dark half is the courtesy. `plate` is the reverse — a near-black
+   instrument ground with bone as its counterpart. The two are not variants of
+   each other; they are opposite polarities, which is why this is a second
+   neutral file rather than six more declarations on top of the first.
+
+   The near-black carries a faint cool bias (#0b0c0e, not #000). Pure black on
+   a display has no depth to give: every surface above it has to be lighter,
+   so the whole stack drifts grey. Starting a few points up leaves room to go
+   both directions.
+
+   Every value is a `light-dark()` pair resolved by the `color-scheme` set in
+   `contract.css` — no duplicated dark block, no media query, no exclusion list
+   to fall behind.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-nim-colorway='signal'] {
+  /* ─── Surfaces ─────────────────────────────────────────────────────── */
+  --nim-canvas: light-dark(#f0ece4, #0b0c0e);
+  --nim-canvas-sunken: light-dark(#e6e1d7, #08090b);
+  --nim-surface: light-dark(#f7f4ee, #101114);
+  --nim-surface-raised: light-dark(#ffffff, #16181c);
+  --nim-surface-muted: light-dark(#eae5db, #0e0f12);
+
+  /* ─── Ink ───────────────────────────────────────────────────────────
+     Labels in this system are set at 12px, which is never "large text", so
+     every level here clears 4.5:1 against `--nim-canvas`. `tertiary` is the
+     floor for anything a reader has to actually read. */
+  --nim-ink: light-dark(#14100e, #f2efe9);
+  --nim-ink-secondary: light-dark(#3b332c, rgba(242, 239, 233, 0.74));
+  --nim-ink-tertiary: light-dark(#6b625a, rgba(242, 239, 233, 0.52));
+  --nim-ink-inverse: light-dark(#f2efe9, #0b0c0e);
+
+  /* ─── Lines ─────────────────────────────────────────────────────────
+     This colourway is usually paired with a style that has no shadows, so the
+     rules carry all of the separating and are weighted accordingly. */
+  --nim-line: light-dark(rgba(20, 16, 14, 0.16), rgba(242, 239, 233, 0.16));
+  --nim-line-soft: light-dark(rgba(20, 16, 14, 0.08), rgba(242, 239, 233, 0.08));
+  --nim-line-strong: light-dark(rgba(20, 16, 14, 0.34), rgba(242, 239, 233, 0.34));
+
+  /* ─── Status ────────────────────────────────────────────────────────
+     Held away from the accent's hue on purpose. The accent is a warm red, and
+     a danger colour sitting next to it would read as "the primary button"
+     rather than "this went wrong". */
+  --nim-success: light-dark(#2f6b46, #6fd39a);
+  --nim-success-soft: light-dark(#e4efe7, rgba(111, 211, 154, 0.14));
+  --nim-warning: light-dark(#8a5a12, #e8bd6a);
+  --nim-warning-soft: light-dark(#f5ece0, rgba(232, 189, 106, 0.14));
+  /* Crimson rather than the scarlet a warm-red palette reaches for first. The
+     first cut used #ff7a63, which sits ~20deg from the accent's #ff5b3a: a
+     destructive button and a primary button rendered as the same colour, which
+     is the one pair in the whole system that must never be confusable. This is
+     pulled toward blue and away from orange so the two read apart at a glance
+     and at small sizes. */
+  --nim-danger: light-dark(#a3201f, #ff6369);
+  --nim-danger-hover: light-dark(#8c1a19, #ff7a80);
+  --nim-danger-soft: light-dark(#f7e4e4, rgba(255, 99, 105, 0.14));
+  --nim-info: light-dark(#2b5878, #7fb4d9);
+  --nim-info-soft: light-dark(#e4edf3, rgba(127, 180, 217, 0.14));
+
+  --nim-scrim: light-dark(rgba(20, 16, 14, 0.44), rgba(4, 5, 6, 0.66));
+
+  /* ─── Shadow tint ───────────────────────────────────────────────────
+     Stated even though `dispatch` draws no shadows: a consumer is free to pair
+     this colourway with `vlora` or `console`, and an unanswered contract token
+     would fall back to whatever loaded last. */
+  --nim-shadow-tint-sm: light-dark(rgba(20, 16, 14, 0.06), rgba(0, 0, 0, 0.4));
+  --nim-shadow-tint-md: light-dark(rgba(20, 16, 14, 0.08), rgba(0, 0, 0, 0.5));
+  --nim-shadow-tint-lg: light-dark(rgba(20, 16, 14, 0.1), rgba(0, 0, 0, 0.6));
+
+  /* ─── Chart series ──────────────────────────────────────────────────
+     Accent first, then hues at roughly constant chroma so no series shouts
+     louder than the data. Series 6 is deliberately neutral: the last band in a
+     stack is usually "everything else" and should recede. */
+  --nim-series-1: light-dark(#b8330f, #ff5b3a);
+  --nim-series-2: light-dark(#8a5a12, #e8bd6a);
+  --nim-series-3: light-dark(#2f6b46, #6fd39a);
+  --nim-series-4: light-dark(#2b5878, #7fb4d9);
+  --nim-series-5: light-dark(#6b4a7a, #b48fc4);
+  --nim-series-6: light-dark(#6b625a, rgba(242, 239, 233, 0.52));
+}

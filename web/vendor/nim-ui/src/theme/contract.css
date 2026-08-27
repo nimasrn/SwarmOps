@@ -1,0 +1,246 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   nim — TOKEN CONTRACT
+
+   This file declares the vocabulary every nim component is allowed to speak.
+   Components reference these names and nothing else; a theme file is the only
+   place a literal colour, radius, shadow, or type value may appear.
+
+   The contract is split in two:
+
+     · Invariants (below) — scale, rhythm, motion, geometry of touch. These are
+       ergonomic facts rather than brand decisions, so they are identical in
+       every theme and are set here once.
+     · Personality (themes/*.css) — colour, shape, elevation, and type voice.
+       A theme MUST define every `--nim-*` name listed in the "required of a
+       theme" block at the bottom of this file, or components will fall back to
+       an unstyled value.
+
+   Naming: `--nim-<role>-<modifier>`. Roles are semantic (canvas, surface, ink,
+   line, accent), never literal (never `--nim-orange`, never `--nim-gray-300`).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCHEME
+
+   Every colour in a colourway is a `light-dark()` pair, and `color-scheme` is
+   what picks a side. Setting it here means a colourway is ONE block: no
+   duplicated dark rule, no `prefers-color-scheme` query per palette, and no
+   hand-maintained exclusion list to fall behind — which is exactly how a theme
+   ended up inheriting another one's dark palette before 0.2.
+
+   Unset follows the OS. `data-nim-scheme` pins it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:where(:root),
+:where(.nim-root) {
+  color-scheme: light dark;
+}
+
+[data-nim-scheme='light'] {
+  color-scheme: light;
+}
+
+[data-nim-scheme='dark'] {
+  color-scheme: dark;
+}
+
+:root {
+  /* ─── Space ────────────────────────────────────────────────────────────
+     A 4px base. Components use steps, never raw pixels, so density can be
+     retuned globally by overriding this scale alone. */
+  --nim-space-0: 0px;
+  --nim-space-1: 4px;
+  --nim-space-2: 8px;
+  --nim-space-3: 12px;
+  --nim-space-4: 16px;
+  --nim-space-5: 20px;
+  --nim-space-6: 24px;
+  --nim-space-7: 32px;
+  --nim-space-8: 40px;
+  --nim-space-9: 48px;
+  --nim-space-10: 64px;
+  --nim-space-11: 80px;
+  --nim-space-12: 104px;
+
+  /* ─── Type scale ───────────────────────────────────────────────────────
+     Absolute sizes, named by their pixel value at the browser default. The
+     composite `--nim-type-*` roles in a theme are built from these. */
+  --nim-text-11: 0.6875rem;
+  --nim-text-12: 0.75rem;
+  --nim-text-13: 0.8125rem;
+  --nim-text-14: 0.875rem;
+  --nim-text-15: 0.9375rem;
+  --nim-text-16: 1rem;
+  --nim-text-18: 1.125rem;
+  --nim-text-20: 1.25rem;
+  --nim-text-24: 1.5rem;
+  --nim-text-28: 1.75rem;
+  --nim-text-32: 2rem;
+  --nim-text-40: 2.5rem;
+
+  --nim-weight-regular: 400;
+  --nim-weight-medium: 500;
+  --nim-weight-semibold: 600;
+  --nim-weight-bold: 700;
+
+  /* ─── Motion ───────────────────────────────────────────────────────────
+     Three durations and three curves is the whole budget. `spring` overshoots
+     and is reserved for elements that enter; `standard` is everything else. */
+  --nim-dur-fast: 140ms;
+  --nim-dur-base: 240ms;
+  --nim-dur-slow: 400ms;
+  --nim-ease-standard: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --nim-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --nim-ease-spring: cubic-bezier(0.34, 1.5, 0.64, 1);
+
+  /* ─── Density ──────────────────────────────────────────────────────────
+     One multiplier retunes the whole interface at once. It scales the control
+     heights below and the block padding of anything row-shaped (list rows,
+     table cells), so a data-dense screen and a mobile flow stay the same
+     system rather than the same components at hand-tuned sizes.
+
+     Set it on any subtree: `style="--nim-density: 0.82"`. It never scales
+     type, and it never scales `--nim-touch-min`, which is a floor.
+
+     The multiplication lives in `components.css`, at each place a height is
+     used — `calc(var(--nim-control-md) * var(--nim-density))` — and not in the
+     control tokens below. A custom property that references another custom
+     property is substituted where it is DECLARED, so folding density into
+     `--nim-control-md` here would freeze it at the root's value and a subtree
+     override would silently do nothing. */
+  --nim-density: 1;
+
+  /* ─── Control geometry ─────────────────────────────────────────────────
+     Heights are shared across every control so a button, an input, and a
+     select line up on the same row without per-component nudging. 44px is the
+     minimum touch target and is never reduced, only visually inset. */
+  --nim-control-sm: 36px;
+  --nim-control-md: 44px;
+  --nim-control-lg: 52px;
+  --nim-touch-min: 44px;
+  --nim-border-width: 1px;
+
+  /* ─── Fixed sizes ──────────────────────────────────────────────────────
+     Geometry that is neither a space step nor a control height: the diameter
+     of a dot, the side of an avatar, the thickness of a track. These lived as
+     literals inside `components.css` until 0.2, which put them outside the
+     contract — a theme could not answer them, so an icon set drawn at a
+     different optical weight had no way in. */
+  --nim-size-dot: 6px;
+  --nim-size-icon-xs: 14px;
+  --nim-size-icon-sm: 16px;
+  --nim-size-icon-md: 20px;
+  --nim-size-icon-lg: 24px;
+  --nim-size-icon-xl: 32px;
+  --nim-size-avatar-sm: 28px;
+  --nim-size-avatar-md: 40px;
+  --nim-size-avatar-lg: 56px;
+  --nim-size-track: 6px;
+  --nim-size-handle: 36px;
+  --nim-size-handle-thickness: 4px;
+  --nim-size-check: 20px;
+  --nim-size-switch-inline: 44px;
+  --nim-size-switch-block: 26px;
+  --nim-size-switch-thumb: 18px;
+  --nim-size-rail: 3px;
+  --nim-size-thumb: 18px;
+  --nim-size-focus-ring: 2px;
+  --nim-size-focus-offset: 2px;
+
+  /* ─── Layout ───────────────────────────────────────────────────────────
+     `frame` is the mobile app frame on a desktop viewport; `content` is a
+     comfortable column; `measure` is the reading measure for prose. */
+  --nim-frame-max: 768px;
+  /* The same app on a laptop: the frame stops pretending to be a phone and
+     the bottom bar becomes a side rail. `--nim-rail-width` is that rail. */
+  --nim-frame-max-wide: 1160px;
+  --nim-rail-width: 14rem;
+  --nim-content-max: 680px;
+  --nim-measure: 34rem;
+  --nim-safe-top: env(safe-area-inset-top, 0px);
+  --nim-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ─── Console geometry ─────────────────────────────────────────────────
+     The measurements an operator console is built out of. They live in the
+     contract rather than in a style because they are ergonomic facts about
+     a two-column tool — a sidebar narrower than 13rem truncates the nav
+     labels it exists to show, a workspace wider than 96rem puts the row
+     actions further from the row identity than the eye will track — and not
+     brand decisions. A product that disagrees overrides them on its
+     provider; a STYLE must not, or the same console would be a different
+     shape in each palette.
+
+     `--nim-workspace-max` is the reading limit for a console page, the
+     counterpart of `--nim-content-max` for prose. `--nim-scroller-max` is
+     how tall a log, a diff, or a JSON payload is allowed to grow before it
+     scrolls inside its own box instead of pushing the page's actions off
+     the bottom of the screen. */
+  --nim-sidebar-width: 15rem;
+  --nim-sidebar-width-drawer: 18rem;
+  --nim-topbar-height: 56px;
+  --nim-workspace-max: 96rem;
+  --nim-aside-width: 22rem;
+  --nim-scroller-max: 26rem;
+
+  /* ─── Z layers ─────────────────────────────────────────────────────────
+     Named so no component invents its own number. */
+  --nim-z-sticky: 20;
+  --nim-z-nav: 40;
+  --nim-z-scrim: 60;
+  --nim-z-sheet: 70;
+  --nim-z-toast: 90;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REQUIRED OF A STYLE · REQUIRED OF A COLOURWAY
+
+   nim has two independent axes, and each answers half of this list. A style
+   owns how the interface is SHAPED; a colourway owns how it is COLOURED. That
+   split is why `oxblood` is six declarations rather than a 220-line theme, and
+   why a new palette cannot accidentally change a radius.
+
+   Both are listed here as documentation — deliberately without values, so a
+   missing token fails loudly in review rather than silently inheriting a
+   neutral grey.
+
+   ── A STYLE must define (`styles/*.css`) ───────────────────────────────
+   Shape      --nim-radius-xs · -sm · -md · -lg · -xl · -pill
+   Elevation  --nim-shadow-sm · -md · -lg   (geometry; drawn in the
+              colourway's --nim-shadow-tint-*)
+              --nim-shadow-focus · --nim-shadow-focus-danger
+   Type       --nim-font-sans · --nim-font-mono · --nim-font-numeric
+              --nim-type-display-* · --nim-type-display-lg-* (size · line ·
+              tracking) · --nim-type-display-xl-* (size · line · tracking)
+              --nim-type-title-* · --nim-type-body-*
+              --nim-type-control-* · --nim-type-label-* · --nim-type-caption-*
+              --nim-display-indent
+              --nim-tracking-tight · -normal · -wide
+              --nim-leading-base · -tight · -normal · -relaxed
+   Voice      --nim-label-transform · --nim-label-tracking
+              --nim-press-scale · --nim-press-translate
+
+   A style may not answer the console geometry in the invariants above:
+   `--nim-sidebar-width` and its siblings are the same in every style, which
+   is what keeps one console one shape across palettes.
+
+   ── A COLOURWAY must define (`colorways/*.css`) ────────────────────────
+   Every value as a `light-dark()` pair.
+
+   Surfaces   --nim-canvas · --nim-canvas-sunken · --nim-surface
+              --nim-surface-raised · --nim-surface-muted · --nim-scrim
+   Ink        --nim-ink · --nim-ink-secondary · --nim-ink-tertiary
+              --nim-ink-inverse · --nim-on-accent
+   Lines      --nim-line · --nim-line-soft · --nim-line-strong
+   Accent     --nim-accent · --nim-accent-hover · --nim-accent-strong
+              --nim-accent-soft · --nim-accent-line
+   Status     --nim-success · --nim-success-soft · --nim-warning
+              --nim-warning-soft · --nim-danger · --nim-danger-hover
+              --nim-danger-soft · --nim-info · --nim-info-soft
+   Series     --nim-series-1 … --nim-series-6   (a qualitative ramp for
+              charts; series 1 is the accent. Categories, never a scale, and
+              never a stand-in for the status roles.)
+   Elevation  --nim-shadow-tint-sm · -md · -lg
+
+   Colourways that share a neutral half state it once under a grouped
+   selector — see `colorways/paper.css`.
+   ═══════════════════════════════════════════════════════════════════════════ */

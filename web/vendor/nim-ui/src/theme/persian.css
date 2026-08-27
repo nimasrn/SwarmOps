@@ -1,0 +1,59 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   nim — PERSIAN / ARABIC SCRIPT CORRECTIONS
+
+   Two of nim's type tokens are actively harmful to Persian, and neither is a
+   style's fault — they are correct for Latin and wrong for a joined script:
+
+     · `--nim-label-tracking` (0.12em on the ledger style) pulls apart letters
+       that must stay connected. Tracking a Persian word does not space it out,
+       it breaks it.
+     · negative tracking on display and title sizes does the same thing more
+       subtly.
+
+   `text-transform: uppercase` is a no-op on Persian glyphs, but it still
+   shouts at any Latin mixed into the same label, so it goes too.
+
+   Scoped to the LANGUAGE, not the direction: `dir="rtl"` says which way the
+   line runs, `lang="fa"` says which script is being set, and only the second
+   one implies these corrections. An RTL page of Latin text wants none of them.
+
+   Unlayered and imported after the styles, so it wins on source order rather
+   than by inflating specificity — a style could otherwise re-break it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:is(:lang(fa), :lang(ar), [lang='fa'], [lang='ar']) {
+  --nim-label-transform: none;
+  --nim-label-tracking: 0;
+  --nim-tracking-tight: 0;
+  --nim-tracking-normal: 0;
+  --nim-tracking-wide: 0;
+  --nim-type-display-tracking: 0;
+  --nim-type-display-lg-tracking: 0;
+  --nim-type-display-xl-tracking: 0;
+  --nim-type-control-tracking: 0;
+  --nim-type-control-transform: none;
+
+  /* `calt` and `kern` shape the joins; `ss01` is Vazirmatn's Persian-preferred
+     forms (the four-dot heh, the Persian kaf and yeh). */
+  font-feature-settings: 'calt' 1, 'kern' 1, 'ss01' 1;
+  word-spacing: normal;
+}
+
+/* Persian text is read at a looser rhythm than Latin at the same size. The
+   ledger style is set for Latin, so a Farsi page on it gets the room the
+   vlora style already builds in. */
+:is(:lang(fa), :lang(ar), [lang='fa'], [lang='ar']):is([data-nim-style='ledger'], :not([data-nim-style])) {
+  --nim-leading-base: 1.7;
+  --nim-leading-tight: 1.35;
+  --nim-leading-relaxed: 1.9;
+
+  /* The editorial sizes need the most correction of anything here. Persian
+     carries a larger x-height and deeper descenders than the Latin face, so a
+     claim set at the Latin size overruns its measure and its descenders
+     collide across 0.84 leading. Both roles step down and are given their
+     leading back. */
+  --nim-type-display-lg-size: clamp(1.75rem, 1.2rem + 2.3vw, 2.75rem);
+  --nim-type-display-lg-line: 1.3;
+  --nim-type-display-xl-size: clamp(2.25rem, 1.4rem + 3.6vw, 4rem);
+  --nim-type-display-xl-line: 1.22;
+}

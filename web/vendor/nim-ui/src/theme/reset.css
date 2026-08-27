@@ -1,0 +1,118 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   nim — RESET
+   Only what the kit depends on. It is deliberately small: nim is meant to drop
+   into an existing app without repainting that app's own markup.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  .nim-root,
+  .nim-root * {
+    margin: 0;
+  }
+
+  /* The scoped root. Applying it to <body> themes the whole app; applying it
+     to a subtree lets nim live beside another design system. */
+  .nim-root {
+    background: var(--nim-canvas);
+    color: var(--nim-ink);
+    font-family: var(--nim-font-sans);
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    letter-spacing: var(--nim-tracking-normal);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Portalled surfaces mount on <body>, outside `.nim-root` — so they inherit
+     the document's default serif rather than the kit's typography. Every
+     component that portals is listed here and given the same ground the root
+     establishes. Missing this is invisible in Latin at a glance and glaring in
+     Persian, where the fallback has no matching face at all. */
+  .nim-sheet__panel,
+  .nim-menu,
+  .nim-popover,
+  .nim-toast-stack {
+    color: var(--nim-ink);
+    font-family: var(--nim-font-sans);
+    font-size: var(--nim-type-body-size);
+    line-height: var(--nim-type-body-line);
+    letter-spacing: var(--nim-tracking-normal);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .nim-sheet__panel :is(input, button, textarea, select),
+  .nim-menu :is(input, button, textarea, select),
+  .nim-popover :is(input, button, textarea, select) {
+    font: inherit;
+    color: inherit;
+  }
+
+  .nim-root img,
+  .nim-root svg,
+  .nim-root video,
+  .nim-root canvas {
+    display: block;
+    max-inline-size: 100%;
+  }
+
+  .nim-root :is(input, button, textarea, select) {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+  }
+
+  .nim-root :is(ul, ol):where([class*='nim-']) {
+    list-style: none;
+    padding: 0;
+  }
+
+  /* One focus treatment for the entire kit, drawn outside the box so it never
+     shifts layout and never gets clipped by an overflow container. */
+  .nim-root :focus-visible {
+    outline: none;
+    box-shadow: var(--nim-shadow-focus);
+  }
+
+  .nim-root ::selection {
+    background: var(--nim-accent);
+    color: var(--nim-on-accent);
+  }
+
+  /* Numerals are tabular wherever nim prints a figure, so columns of values
+     line up and a counting number never reflows its neighbours. */
+  .nim-root :is(.nim-stat__value, .nim-badge, time, [data-nim-numeric]) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nim-root *,
+    .nim-root *::before,
+    .nim-root *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .nim-visually-hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}

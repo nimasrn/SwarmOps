@@ -1,0 +1,83 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEUTRALS · PAPER  —  shared by the `vermilion` and `oxblood` colourways
+
+   A colourway answers the whole colour contract: surfaces, ink, lines, accent,
+   status, and the tint its style's shadows are drawn in. Two of them answer
+   the neutral half identically — warm paper and dense warm ink — and differ
+   only in the signal. Rather than copy ninety-odd values to change six, the
+   shared half is stated once here and each colourway states its accent.
+
+   Every value is a `light-dark()` pair, resolved by the `color-scheme` set in
+   `contract.css`. That is the whole mechanism: no duplicated dark block, no
+   `prefers-color-scheme` query, and no exclusion list to fall behind.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:where(:root),
+[data-nim-colorway='vermilion'],
+[data-nim-colorway='oxblood'] {
+  /* ─── Surfaces ─────────────────────────────────────────────────────── */
+  --nim-canvas: light-dark(#f7f4ee, #14120e);
+  --nim-canvas-sunken: light-dark(#efeae1, #0e0c09);
+  --nim-surface: light-dark(#fffdf9, #1e1a15);
+  --nim-surface-raised: light-dark(#fffdf9, #262119);
+  /* Muted sits below the canvas in light and above the surface in dark.
+     Inverting the light relationship literally made it equal to `surface`,
+     which left a hovered row invisible. */
+  --nim-surface-muted: light-dark(#efeae1, #272219);
+  --nim-scrim: light-dark(rgba(23, 21, 15, 0.42), rgba(8, 7, 5, 0.66));
+
+  /* ─── Ink ────────────────────────────────────────────────────────────
+     Four levels, each clearing AA (4.5:1) on the canvas at 12px — the labels
+     in this palette are small, and small text is never "large text". */
+  --nim-ink: light-dark(#17150f, #f4f0e8);
+  --nim-ink-secondary: light-dark(#3a352b, rgba(244, 240, 232, 0.79));
+  --nim-ink-tertiary: light-dark(#5b5446, rgba(244, 240, 232, 0.61));
+  --nim-ink-inverse: light-dark(#f7f4ee, #14120e);
+
+  /* ─── Lines ──────────────────────────────────────────────────────────
+     Rules carry the structure under the ledger style, so they are
+     load-bearing rather than incidental: `line` divides, `strong` closes,
+     `soft` groups. The dark ramp is set by what stays visible on ink rather
+     than by symmetry with the light values — a hairline on paper is not a
+     hairline on ink. */
+  --nim-line: light-dark(rgba(23, 21, 15, 0.16), rgba(244, 240, 232, 0.24));
+  --nim-line-soft: light-dark(rgba(23, 21, 15, 0.09), rgba(244, 240, 232, 0.13));
+  --nim-line-strong: light-dark(rgba(23, 21, 15, 0.38), rgba(244, 240, 232, 0.46));
+
+  /* ─── Status ─────────────────────────────────────────────────────────
+     Status colours are not the brand's to choose: green means settled and red
+     means wrong in both of these palettes. */
+  --nim-success: light-dark(#1f6b4a, #5fd39a);
+  --nim-success-soft: light-dark(#e2efe8, rgba(95, 211, 154, 0.14));
+  --nim-warning: light-dark(#8a5a12, #e8b25f);
+  --nim-warning-soft: light-dark(#f4ebda, rgba(232, 178, 95, 0.14));
+  --nim-danger: light-dark(#a32a1c, #ff6f5e);
+  --nim-danger-hover: light-dark(#8c2417, #ff8776);
+  --nim-danger-soft: light-dark(#f6e5e2, rgba(255, 111, 94, 0.14));
+  --nim-info: light-dark(#2c5670, #8ab6d0);
+  --nim-info-soft: light-dark(#e3ecf1, rgba(138, 182, 208, 0.14));
+
+  /* ─── Shadow tint ────────────────────────────────────────────────────
+     The colour the active style's offsets are drawn in. In light this is the
+     rule colour, which is what makes the ledger offset read as a register
+     mark; in dark it must be true black, because a tint lighter than the
+     surface reads as a glow instead of depth. */
+  --nim-shadow-tint-sm: light-dark(rgba(23, 21, 15, 0.16), rgba(0, 0, 0, 0.5));
+  --nim-shadow-tint-md: light-dark(rgba(23, 21, 15, 0.09), rgba(0, 0, 0, 0.5));
+  --nim-shadow-tint-lg: light-dark(rgba(23, 21, 15, 0.09), rgba(0, 0, 0, 0.5));
+
+  /* ─── Series ───────────────────────────────────────────────────────────
+     The qualitative ramp a chart assigns by position. Series 1 is the
+     colourway's accent, so a single-series chart is of a piece with the rest
+     of the interface; 2–6 are ordered to put the greatest hue distance next
+     to the accent, because adjacent series are the pair a reader has to tell
+     apart most often. These are categories, not a scale: never interpolate
+     between them, and never use one to mean good or bad — that is what the
+     status roles are for. */
+  --nim-series-1: var(--nim-accent);
+  --nim-series-2: light-dark(#2f7f79, #62c6bd);
+  --nim-series-3: light-dark(#3a6ea5, #7fb2e2);
+  --nim-series-4: light-dark(#9a6a12, #dfae55);
+  --nim-series-5: light-dark(#6a4ea6, #a894e4);
+  --nim-series-6: light-dark(#a34468, #e089a6);
+}
