@@ -22,12 +22,24 @@ listen_address=""
 all_cidrs=""
 admin_password=""
 admin_password_confirm=""
+generate_admin_password=false
+generated_admin_password=""
+bootstrap_phase="initializing"
+automatic_setup=false
 
 usage() {
   printf '%s\n' \
     'Usage:' \
-    '  sudo bash install-swarmops-core.sh \' \
-    '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> [--install-dependencies]' \
+    '  curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash' \
+    '' \
+    'The zero-argument installer detects safe defaults, confirms the controller' \
+    'IP and operator CIDR through the terminal, installs required Debian/Ubuntu' \
+    'packages, and generates the initial operator password.' \
+    '' \
+    'Automation:' \
+    "  set -o pipefail; curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \\" \
+    '    https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-core.sh | sudo bash -s -- \' \
+    '    --listen-ip <server-ip> --allow-cidr <operator-device-cidr> --generate-admin-password [--install-dependencies]' \
     '' \
     'Downloads a checksum-verified SwarmOps Core + Warden release bundle for a' \
     'Docker-free, server-local controller. It generates an IP-SAN TLS' \
@@ -39,8 +51,13 @@ usage() {
     '--allow-cidr <CIDR>         An operator device or trusted network; repeatable.' \
     '--release <tag|latest>      GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
+    '--generate-admin-password   Generate a 256-bit password for the operator account and print it once after a successful install.' \
     '--install-dependencies      Install curl, OpenSSL, and iproute2 on Debian/Ubuntu.' \
     '-h, --help                  Show this help.'
+}
+
+info() {
+  printf 'SwarmOps controller bootstrap: %s\n' "$*" >&2
 }
 
 fail() {
@@ -48,11 +65,20 @@ fail() {
   exit 1
 }
 
+unexpected_failure() {
+  local status="$?"
+  trap - ERR
+  info "failed during $bootstrap_phase (exit $status); no URL or credentials were printed."
+  exit "$status"
+}
+
 cleanup() {
   admin_password=""
   admin_password_confirm=""
+  generated_admin_password=""
 }
 trap cleanup EXIT
+trap unexpected_failure ERR
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
@@ -65,8 +91,71 @@ require_root() {
 install_host_dependencies() {
   [[ -f /etc/debian_version ]] || fail '--install-dependencies supports Debian and Ubuntu only'
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install --yes --no-install-recommends ca-certificates curl iproute2 openssl
+  apt-get update </dev/null
+  apt-get install --yes --no-install-recommends ca-certificates curl iproute2 openssl </dev/null
+}
+
+prompt_value() {
+  local label="$1"
+  local default_value="$2"
+  local answer=""
+  [[ -r /dev/tty && -w /dev/tty ]] || fail 'the zero-argument installer needs an interactive terminal; use --listen-ip and --allow-cidr for unattended installation'
+  if [[ -n "$default_value" ]]; then
+    printf '%s [%s]: ' "$label" "$default_value" >/dev/tty
+  else
+    printf '%s: ' "$label" >/dev/tty
+  fi
+  IFS= read -r answer </dev/tty || fail "could not read $label from the terminal"
+  printf '%s\n' "${answer:-$default_value}"
+}
+
+ssh_connection_field() {
+  local field="$1"
+  local client_ip="" client_port="" server_ip="" server_port="" remainder=""
+  [[ -n "${SSH_CONNECTION:-}" ]] || return 0
+  read -r client_ip client_port server_ip server_port remainder <<<"$SSH_CONNECTION"
+  [[ -z "$remainder" ]] || return 0
+  case "$field" in
+    client) printf '%s\n' "$client_ip" ;;
+    server) printf '%s\n' "$server_ip" ;;
+  esac
+}
+
+detected_controller_ip() {
+  local candidate=""
+  candidate="$(ssh_connection_field server)"
+  if [[ -n "$candidate" ]] && ip -o addr show | awk '{sub(/\/.*/, "", $4); print $4}' | grep -Fqx -- "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  candidate="$(ip -o -4 addr show scope global | awk 'NR == 1 {sub(/\/.*/, "", $4); print $4}')"
+  if [[ -z "$candidate" ]]; then
+    candidate="$(ip -o -6 addr show scope global | awk 'NR == 1 {sub(/\/.*/, "", $4); print $4}')"
+  fi
+  printf '%s\n' "$candidate"
+}
+
+detected_operator_cidr() {
+  local candidate=""
+  candidate="$(ssh_connection_field client)"
+  [[ -n "$candidate" ]] || return 0
+  if [[ "$candidate" == *:* ]]; then
+    printf '%s/128\n' "$candidate"
+  else
+    printf '%s/32\n' "$candidate"
+  fi
+}
+
+configure_automatic_network() {
+  local detected_listen_ip detected_cidr selected_cidr
+  [[ -r /dev/tty && -w /dev/tty ]] || fail 'the zero-argument installer needs an interactive terminal; use --listen-ip and --allow-cidr for unattended installation'
+  detected_listen_ip="$(detected_controller_ip)"
+  detected_cidr="$(detected_operator_cidr)"
+  printf '\n%s\n' 'SwarmOps needs one controller IP for its TLS identity and one trusted operator network.' >/dev/tty
+  printf '%s\n' 'Press Enter to accept a detected value, or type the correct value.' >/dev/tty
+  listen_ip="$(prompt_value 'Controller IP' "$detected_listen_ip")"
+  selected_cidr="$(prompt_value 'Allowed operator CIDR' "$detected_cidr")"
+  append_allowed_cidr "$selected_cidr"
 }
 
 validate_repository() {
@@ -100,6 +189,8 @@ assert_fresh_controller() {
 }
 
 release_platform() {
+  os_name="$(uname -s)"
+  [[ "$os_name" == Linux ]] || fail "unsupported operating system: $os_name"
   case "$(uname -m)" in
     x86_64|amd64)
       release_arch='amd64'
@@ -215,7 +306,16 @@ set_current_release() {
   local temporary_link="$release_dir/.current-next"
   rm -f "$temporary_link"
   ln -s "$release_version" "$temporary_link"
-  mv -f "$temporary_link" "$release_dir/current"
+  case "$os_name" in
+    Linux) mv -Tf "$temporary_link" "$release_dir/current" ;;
+    Darwin) mv -fh "$temporary_link" "$release_dir/current" ;;
+    *) fail "unsupported operating system: $os_name" ;;
+  esac
+}
+
+install_command_shim() {
+  install -d -o root -g root -m 0755 /usr/local/bin
+  ln -sfn "$release_dir/current/swarmops-core" /usr/local/bin/swarmops-core
 }
 
 assert_local_ip() {
@@ -232,6 +332,36 @@ append_allowed_cidr() {
   else
     operator_cidrs="$cidr"
   fi
+}
+
+validate_allowed_cidr() {
+  local cidr="$1" address prefix maximum
+  [[ "$cidr" == */* ]] || fail '--allow-cidr must include an IPv4 or IPv6 prefix length'
+  address="${cidr%/*}"
+  prefix="${cidr##*/}"
+  [[ "$prefix" =~ ^[0-9]+$ ]] || fail '--allow-cidr prefix length must be numeric'
+  if [[ "$address" == *:* ]]; then
+    maximum=128
+  else
+    maximum=32
+  fi
+  ((prefix >= 0 && prefix <= maximum)) || fail '--allow-cidr prefix length is outside the valid range'
+  if [[ "$address" == 0.0.0.0 && "$prefix" != 0 ]]; then
+    fail '0.0.0.0/32 permits only the unspecified address; use 0.0.0.0/0 for every IPv4 client'
+  fi
+  if [[ "$address" == :: && "$prefix" != 0 ]]; then
+    fail '::/128 permits only the unspecified address; use ::/0 for every IPv6 client'
+  fi
+  ip route get "$address" >/dev/null 2>&1 || fail '--allow-cidr must contain a valid IPv4 or IPv6 address'
+}
+
+validate_allowed_cidrs() {
+  local cidr
+  local cidrs=()
+  IFS=',' read -r -a cidrs <<<"$operator_cidrs"
+  for cidr in "${cidrs[@]}"; do
+    validate_allowed_cidr "$cidr"
+  done
 }
 
 random_port() {
@@ -266,25 +396,31 @@ write_random_secret() {
 write_admin_password_hash() {
   local destination="$config_dir/admin-password-hash"
   local password_hash temporary
-  [[ -t 0 && -t 1 ]] || fail 'a terminal is required to set the initial administrator password'
-  while true; do
-    IFS= read -r -s -p 'Set SwarmOps administrator password (at least 16 characters): ' admin_password
-    printf '\n'
-    [[ ${#admin_password} -ge 16 ]] || {
-      printf '%s\n' 'Password must be at least 16 characters.' >&2
-      admin_password=""
-      continue
-    }
-    IFS= read -r -s -p 'Confirm administrator password: ' admin_password_confirm
-    printf '\n'
-    [[ "$admin_password" == "$admin_password_confirm" ]] || {
-      printf '%s\n' 'Passwords did not match.' >&2
-      admin_password=""
-      admin_password_confirm=""
-      continue
-    }
-    break
-  done
+  if [[ "$generate_admin_password" == true ]]; then
+    generated_admin_password="$(openssl rand -hex 32)" || fail 'generate initial administrator password'
+    [[ "$generated_admin_password" =~ ^[[:xdigit:]]{64}$ ]] || fail 'generated administrator password is invalid'
+    admin_password="$generated_admin_password"
+  else
+    [[ -t 0 && -t 1 ]] || fail 'a terminal is required to set the initial administrator password'
+    while true; do
+      IFS= read -r -s -p 'Set SwarmOps administrator password (at least 16 characters): ' admin_password
+      printf '\n'
+      [[ ${#admin_password} -ge 16 ]] || {
+        printf '%s\n' 'Password must be at least 16 characters.' >&2
+        admin_password=""
+        continue
+      }
+      IFS= read -r -s -p 'Confirm administrator password: ' admin_password_confirm
+      printf '\n'
+      [[ "$admin_password" == "$admin_password_confirm" ]] || {
+        printf '%s\n' 'Passwords did not match.' >&2
+        admin_password=""
+        admin_password_confirm=""
+        continue
+      }
+      break
+    done
+  fi
   password_hash="$(printf '%s' "$admin_password" | "$release_dir/current/swarmops-core" password-hash)" || fail 'hash administrator password'
   admin_password=""
   admin_password_confirm=""
@@ -501,6 +637,12 @@ wait_for_health() {
   fail 'the control-plane service did not pass its localhost readiness check'
 }
 
+if [[ "$#" -eq 0 ]]; then
+  automatic_setup=true
+  install_dependencies=true
+  generate_admin_password=true
+fi
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --listen-ip)
@@ -523,6 +665,10 @@ while [[ "$#" -gt 0 ]]; do
       github_repository="$2"
       shift 2
       ;;
+    --generate-admin-password)
+      generate_admin_password=true
+      shift
+      ;;
     --install-dependencies)
       install_dependencies=true
       shift
@@ -537,14 +683,17 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+bootstrap_phase='validating controller settings'
+info 'Starting the SwarmOps Core installation; validating controller settings.'
 require_root
-[[ -n "$listen_ip" ]] || fail '--listen-ip is required'
-[[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 validate_repository
 validate_release
 if [[ "$install_dependencies" == true ]]; then
+  bootstrap_phase='installing required controller dependencies'
+  info 'Installing required controller dependencies.'
   install_host_dependencies
 fi
+bootstrap_phase='checking the controller host'
 require_command curl
 require_command ip
 require_command od
@@ -553,9 +702,19 @@ require_command ss
 require_command systemctl
 require_command tar
 command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 || fail 'sha256sum or shasum is required'
+if [[ "$automatic_setup" == true ]]; then
+  bootstrap_phase='confirming controller network access'
+  info 'Confirming the controller IP and trusted operator network.'
+  configure_automatic_network
+fi
+[[ -n "$listen_ip" ]] || fail '--listen-ip is required'
+[[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 assert_local_ip "$listen_ip"
+validate_allowed_cidrs
 assert_fresh_controller
 
+bootstrap_phase='preparing protected controller directories'
+info 'Preparing protected controller directories.'
 if ! id -u "$service_user" >/dev/null 2>&1; then
   useradd --system --user-group --home-dir /nonexistent --shell /usr/sbin/nologin "$service_user"
 fi
@@ -568,8 +727,13 @@ install -d -o root -g root -m 0755 "$release_dir"
 install -d -o root -g "$service_user" -m 0750 "$config_dir"
 release_platform
 resolve_release_version
+bootstrap_phase='downloading the verified Core release'
+info "Downloading checksum-verified Core release $release_version for Linux/$release_arch."
 install_core_release
 set_current_release
+install_command_shim
+bootstrap_phase='configuring Core and its local updater'
+info 'Configuring the restricted Core service and local release updater.'
 write_admin_password_hash
 write_random_secret "$config_dir/session-key" 48
 write_random_secret "$config_dir/data-encryption-key" 32
@@ -580,6 +744,8 @@ write_warden_service "$port"
 systemctl daemon-reload
 systemctl enable --now "$service_name"
 systemctl enable --now "$warden_timer_name"
+bootstrap_phase='waiting for Core readiness'
+info 'Waiting for the local Core readiness check.'
 wait_for_service
 wait_for_health "$port"
 
@@ -591,3 +757,11 @@ printf 'Allowed client networks: %s\n' "$operator_cidrs"
 printf '%s\n' 'Verify this fingerprint over your server console before trusting the self-signed certificate in a browser.'
 printf '%s\n' 'The controller has no Docker socket access; mutations and builds remain disabled until you explicitly enable them.'
 printf '%s\n' 'SwarmOps Warden checks published GitHub releases every 12 hours, health-checks locally, rolls back failures, and retains three known-good releases.'
+printf '%s\n' 'Change operator access later with: sudo swarmops-core access set-cidrs <CIDR> [CIDR...]'
+if [[ "$generate_admin_password" == true ]]; then
+  printf '\n%s\n' 'Initial administrator credentials (shown once):'
+  printf '%s\n' 'Username: operator'
+  printf 'Password: %s\n' "$generated_admin_password"
+  printf '%s\n' 'Store this password in a password manager now. Only its bcrypt hash is retained on the host.'
+  generated_admin_password=""
+fi

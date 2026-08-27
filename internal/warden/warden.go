@@ -423,8 +423,23 @@ func extractBundle(bundle []byte, directory, component string) error {
 		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 			return err
 		}
-		file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, bundleFileMode(name))
+		// MkdirTemp and MkdirAll also apply the process umask. Every directory
+		// in a reviewed release must remain traversable by the component's
+		// service account even though Warden itself runs as root.
+		if err := os.Chmod(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
+		mode := bundleFileMode(name)
+		file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 		if err != nil {
+			return err
+		}
+		// OpenFile applies the process umask. Warden intentionally runs under a
+		// restrictive umask, so restore the reviewed bundle mode explicitly;
+		// otherwise root-owned executables become 0700 and the service account
+		// cannot start the candidate.
+		if err := file.Chmod(mode); err != nil {
+			_ = file.Close()
 			return err
 		}
 		_, copyErr := io.CopyN(file, reader, header.Size)

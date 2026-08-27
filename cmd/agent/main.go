@@ -33,6 +33,19 @@ const (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version":
+			fmt.Println(version)
+			return
+		case "upgrade":
+			runAgentUpgrade(os.Args[2:])
+			return
+		case "gen":
+			runGenerateKey(os.Args[2:])
+			return
+		}
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	runtime, err := loadRuntime()
 	if err != nil {

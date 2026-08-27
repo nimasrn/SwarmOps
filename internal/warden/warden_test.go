@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -132,12 +133,31 @@ func TestExtractBundleRejectsPathTraversal(t *testing.T) {
 
 func TestExtractCoreBundleIncludesReviewedAssets(t *testing.T) {
 	directory := t.TempDir()
-	if err := extractBundle(testBundle(t, "core"), directory, "core"); err != nil {
-		t.Fatalf("extractBundle(): %v", err)
+	var extractErr error
+	func() {
+		previousUmask := syscall.Umask(0o077)
+		defer syscall.Umask(previousUmask)
+		extractErr = extractBundle(testBundle(t, "core"), directory, "core")
+	}()
+	if extractErr != nil {
+		t.Fatalf("extractBundle(): %v", extractErr)
+	}
+	for _, name := range []string{directory, filepath.Join(directory, "assets")} {
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatalf("core bundle directory %q: %v", name, err)
+		}
+		if got, want := info.Mode().Perm(), os.FileMode(0o755); got != want {
+			t.Fatalf("core bundle directory %q mode = %04o, want %04o", name, got, want)
+		}
 	}
 	for _, name := range requiredBundleFiles("core") {
-		if _, err := os.Stat(filepath.Join(directory, filepath.FromSlash(name))); err != nil {
+		info, err := os.Stat(filepath.Join(directory, filepath.FromSlash(name)))
+		if err != nil {
 			t.Fatalf("core bundle file %q: %v", name, err)
+		}
+		if got, want := info.Mode().Perm(), bundleFileMode(name); got != want {
+			t.Fatalf("core bundle file %q mode = %04o, want %04o", name, got, want)
 		}
 	}
 }
