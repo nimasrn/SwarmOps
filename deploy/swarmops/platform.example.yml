@@ -135,6 +135,10 @@ workloads:
     profile: application
     replicas: 1
     domain: vlora.ir
+    # This slot can be redeployed without a public route, or assigned one
+    # unique hostname beneath apps.vlora.ir from the SwarmOps console.
+    domainOptional: true
+    domainSuffixes: [apps.vlora.ir]
     resolver: le
     resources:
       cpuCores: 1

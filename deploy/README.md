@@ -148,7 +148,7 @@ SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 
 The local server proxies browser API requests to the manager; it has no
 SwarmOps data directory, Docker dependency, or local API process. Generate an
-outbound enrollment command in **Infrastructure → Agents** for each Ubuntu
+outbound enrollment command in **Cluster → Servers** for each Ubuntu
 host, or use the install-first form and approve its printed code:
 
 ```bash
@@ -168,7 +168,7 @@ AES-256-GCM-sealed state; explicit disconnect removes it, and
 `SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual, memory-only posture.
 
 The normal installer command does not install Docker or form/join a Swarm.
-Once the agent is enrolled, **Infrastructure → Readiness** offers only fixed
+Once the agent is enrolled, **Cluster → Setup & readiness** offers only fixed
 controller-managed setup actions:
 install Docker on Debian/Ubuntu, initialize a new Swarm, or join the selected
 Swarm. The join credential is not shown or persisted in the browser.

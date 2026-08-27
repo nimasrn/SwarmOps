@@ -8,7 +8,7 @@ registry="${REGISTRY:-ghcr.io}"
 namespace="${REGISTRY_NS:-nimasrn}"
 platform="${PLATFORM:-linux/amd64}"
 requested_target="${TARGET:-}"
-targets="${TARGETS:-api agent cli}"
+targets="${TARGETS:-api agent cli fluentd logs}"
 
 case "$mode" in
   build|push) ;;

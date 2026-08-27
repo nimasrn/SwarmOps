@@ -20,7 +20,7 @@ or Traefik route is required for control traffic.
 
 ## Quick start
 
-In **Infrastructure → Agents**, generate a short-lived one-time installer
+In **Cluster → Servers**, generate a short-lived one-time installer
 command and run it on the Ubuntu host:
 
 ```sh
@@ -37,16 +37,17 @@ for the self-signed certificate created by the Docker-free Core installer. Docke
 Swarm initialization remain separate typed catalog operations after the agent
 is visible; the Core process itself never needs Docker. Alternatively, run the
 same command without `--enrollment-code`; the agent prints a short-lived code
-to approve in **Infrastructure → Agents** and retains the private redemption
+to approve in **Cluster → Servers** and retains the private redemption
 secret locally.
 
-After a native agent is enrolled, **Infrastructure → Readiness** offers a
-one-target plan in the console. The page reads a bounded host snapshot first —
+After a native agent is enrolled, **Cluster → Setup & readiness** shows a
+one-target checklist in the console. The page reads a bounded host snapshot first —
 hostname, operating system, kernel, architecture, CPU capacity and load,
 memory, root-disk capacity, uptime, agent version, Docker state, and Swarm
-state — even when Docker has not been installed yet. It can then queue a fixed
-Debian/Ubuntu plan to update OS packages, install or update Docker Engine,
-initialise an inactive host as a single-node Swarm, and apply a CIDR-scoped UFW
+state — even when Docker has not been installed yet. Each missing requirement
+has a concrete fix button and visible review sheet. It can queue a fixed
+Debian/Ubuntu action to update OS packages, install or update Docker Engine,
+initialise an inactive host as a single-node Swarm, or apply a CIDR-scoped UFW
 baseline. Docker Swarm ports are restricted to reviewed peer CIDRs. Joining an
 existing Swarm, manager promotion, node availability, and package maintenance
 are typed catalog operations; custom shell commands and arbitrary UFW rules do
@@ -54,7 +55,7 @@ not exist.
 
 ### Control-plane placement and recovery
 
-**Settings → Core and movement** is deliberately separate from **Agents**.
+**Settings → Controller & recovery** is deliberately separate from **Servers**.
 It reports the API process identity, whether this member is active or standby,
 and the recorded handoff state. The host serving the console never appears in
 the agent inventory by itself. If it must be operated as a Docker host, install
@@ -144,6 +145,26 @@ the nim.zone site’s versioned docs content and publish at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops) when the current site
 version is deployed.
 
+## Console information architecture
+
+The console uses operator-centered groups. **Overview** answers what is healthy
+and what needs action. **Cluster** owns servers, Swarm topology, Docker
+resources, readiness and diagnostics. **Workloads** owns applications,
+databases, runtime services, stacks and image builds. **Networking** owns the
+Traefik gateway, routes, ports, DNS providers and TLS. **Monitoring** owns
+health, logs and collectors. **Activity** owns runs, the fixed action catalog
+and audit. **Settings** owns controller recovery and the source/registry
+boundary.
+
+A page may show a compact status owned elsewhere, but it must link to the
+owner for investigation or mutation. It must not recreate the owner's tables,
+filters, charts, configuration, or action menus. Overview is the deliberate
+exception for summaries, never a second full workspace. Every destination is
+directly addressable and preserves the selected server.
+
+The complete ownership table and interaction rules are in
+[console information architecture](docs/console-information-architecture.md).
+
 ## What it operates
 
 | Area | Capability | Boundary |
@@ -154,7 +175,7 @@ version is deployed.
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
 | Services | Read a bounded service-log tail; restart, rollback, or scale a replicated service with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. The console permits a whole replica count from 0 through 1000 and deliberately omits replica control for global services. |
 | Docker resources | Read containers, images, volumes, networks, secrets, and configs on the selected target, and create or delete networks, volumes, and configs; start, stop, restart, or remove a container; pull or remove an image | Reads are projections, not a socket proxy: container environment values are reduced to variable names, secret values are unreadable by Docker itself, and config payloads are never returned. Every create or delete is one fixed, CSRF-protected, audited command with its own typed confirmation phrase. |
-| Insight dashboard | Charted trends over a rolling in-memory series sampled once a minute — tasks and containers over time, failures and degradation, disk by resource with reclaimable split out, largest images, and Engine activity by action — beside the live totals | The series is in-memory only, bounded to four hours per target, and lost on API restart; it holds counts and byte totals, never operator data. Long-range history remains the Prometheus stack SwarmOps deploys. |
+| Monitoring health | Compact task, node, container, and disk trends over the rolling minute series; current alerts derived from manager evidence; recent Engine activity; explicit source boundaries for traces and scrape-target failures | The series is in-memory only, bounded to four hours per target, and lost on API restart; it holds counts and byte totals, never operator data. Logs, traces, and scrape failures are shown only when their owning collectors return them; long-range history remains the Prometheus stack SwarmOps deploys. |
 | Command runner | Run any catalogued operation from the console against an explicitly chosen server: the form is generated from the operation's own parameter description, a read shows exactly what that server returned, and a mutation is queued in the ledger for it | The target is named per command rather than inherited from the shell's selection, and only a connected remote Swarm manager is eligible; the Command queue shows the server each row will change. The runner adds no capability. It builds requests only from catalogued routes, and a destructive entry stays disabled until the operator types the phrase the API derives for that exact target. |
 | Cluster insights | Node, service, task, and container counts; fleet CPU/memory/disk capacity; image, volume, container, and build-cache disk usage with reclaimable totals; a bounded Engine event window; and swarm orchestration settings | Computed once on the control plane so every screen reads the same numbers. Pruning any resource kind needs its own `PRUNE_<RESOURCE>` confirmation; a volume prune destroys data SwarmOps cannot restore. |
 | Swarm | Read the cluster object and raft/orchestration settings, set the task-history retention limit, and rotate a leaked worker or manager join token | Join tokens are never returned by any read path or by the rotation itself; enrolment stays an installer workflow on the machine. |
@@ -256,7 +277,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.7.0`. Release history is in
+The current version is `0.7.1`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -319,14 +340,12 @@ targets and invalid TLS certificates. The production API remains the source of
 truth for cluster profiles, audit records, checked-in deployment assets, and
 the served production console.
 
-The console has eight stable sections: **Home**, **Infrastructure**,
-**Applications**, **Deploy**, **Traffic**, **Observe**, **Operations**, and
-**Settings**. They appear as one horizontal section bar on desktop and the same
-ordered destinations in the mobile drawer. The masthead keeps Core authority
-separate from the selected Swarm cluster, and every cluster read or mutation
-continues to carry that explicit manager target. Infrastructure owns agents,
-readiness, diagnostics, and Docker resources; Operations owns the durable
-command ledger, audit trail, catalog, and fleet work. Pages that require a
+The console has seven stable groups: **Overview**, **Cluster**, **Workloads**,
+**Networking**, **Monitoring**, **Activity**, and **Settings**. Their direct
+destinations appear in a persistent desktop side rail and the same order in the
+mobile drawer. The masthead keeps controller authority separate from the
+selected Swarm cluster, and every cluster read or mutation continues to carry
+that explicit manager target. Pages that require a
 manager show a selected-manager workspace with direct recovery paths instead
 of silently replacing the requested destination.
 
@@ -335,7 +354,7 @@ of silently replacing the requested destination.
 The sign-in screen includes **Install and connect a server**, so an operator
 can discover the install-first flow before signing in. The Ubuntu agent prints
 a short-lived approval code, keeps its private key and redemption secret on the
-host, and waits. After sign-in, **Infrastructure → Agents** gives equal
+host, and waits. After sign-in, **Cluster → Servers** gives equal
 prominence to approving that code or generating a one-command certificate
 grant.
 
@@ -762,9 +781,9 @@ hooks, and a tested restore before it is deployed.
 
 Enroll a fresh Ubuntu server with the one-time installer command, wait for its
 agent health and compatibility report, then queue Docker installation and the
-appropriate Swarm init or join operation from **Infrastructure → Readiness**.
+appropriate Swarm init or join operation from **Cluster → Setup & readiness**.
 Every mutation carries an explicit Core, cluster, and node target and remains
-visible in **Operations** through disconnect, retry, or operator attention.
+visible in **Activity → Runs** through disconnect, retry, or operator attention.
 
 PostgreSQL primary/replica requires two separate `nim.postgres.slot` labels;
 the Mongo replica set requires all three `nim.mongo.slot=1|2|3` labels. A
@@ -777,7 +796,7 @@ the [stateful services guide](https://github.com/nimasrn/nim/blob/main/docs/swar
 
 ## Durable node operations
 
-Use **Operations** or the `swarmops` CLI to submit a versioned catalog action
+Use **Activity → Action catalog** or the `swarmops` CLI to submit a versioned catalog action
 to an explicit node or node set. Core persists the command before acceptance;
 an agent leases it, emits ordered state transitions, and resumes from its last
 acknowledged cursor after an outage. Only retry-safe actions retry

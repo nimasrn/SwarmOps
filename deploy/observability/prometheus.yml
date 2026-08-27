@@ -9,7 +9,7 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: [alertmanager:9093]
+        - targets: [swarmops-alertmanager.swarmops.internal:8081]
 
 scrape_configs:
   - job_name: prometheus
@@ -17,47 +17,24 @@ scrape_configs:
       - targets: [localhost:9090]
 
   - job_name: swarmops-api
-    dns_sd_configs:
-      - names: [tasks.swarmops_api]
-        type: A
-        port: 8084
+    metrics_path: /metrics
+    static_configs:
+      - targets: [swarmops-control.swarmops.internal:8081]
 
   # Applications SwarmOps renders are discovered rather than configured. The
-  # controller serves the target list on the internal swarmops overlay, so a
+  # controller serves the target list through Traefik's internal entrypoint, so a
   # newly deployed application starts being scraped without regenerating this
   # file and without giving Prometheus the Docker socket. __metrics_path__ and
   # the application labels come from the discovery response.
   - job_name: swarmops-applications
     http_sd_configs:
-      - url: http://swarmops_api:8084/metrics/targets
+      - url: http://swarmops-control.swarmops.internal:8081/metrics/targets
         refresh_interval: 30s
 
-  - job_name: swarmops-node-agent
-    dns_sd_configs:
-      - names: [tasks.swarmops-agent_agent]
-        type: A
-        port: 9180
-
-  - job_name: node-exporter
-    dns_sd_configs:
-      - names: [tasks.swarmops-agent_node-exporter]
-        type: A
-        port: 9100
-
   - job_name: traefik
-    dns_sd_configs:
-      - names: [tasks.traefik_traefik]
-        type: A
-        port: 8082
-
-  - job_name: jaeger
-    dns_sd_configs:
-      - names: [tasks.swarmops-observability_jaeger]
-        type: A
-        port: 8888
+    static_configs:
+      - targets: [traefik-metrics.swarmops.internal:8082]
 
   - job_name: alertmanager
-    dns_sd_configs:
-      - names: [tasks.swarmops-observability_alertmanager]
-        type: A
-        port: 9093
+    static_configs:
+      - targets: [swarmops-alertmanager.swarmops.internal:8081]

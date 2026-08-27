@@ -1,6 +1,7 @@
 # SwarmOps replaces Portainer as the audited, Git-aligned Swarm control plane.
-# Its API connects to user-selected remote Docker servers through pinned TLS;
-# it does not mount or expose the Docker socket of the host running the API.
+# Its API connects to user-selected remote Docker servers through their pinned
+# machine APIs; it does not mount or expose the Docker socket of the host
+# running the API.
 # The optional inventory agent is a separate stack. This core API can deploy
 # it only through a reviewed asset and never exposes a Docker socket itself.
 version: "3.9"
@@ -25,12 +26,16 @@ services:
       SWARMOPS_BUILD_MAX_BYTES: ${SWARMOPS_BUILD_MAX_BYTES:-536870912}
       SWARMOPS_BUILD_MAX_CPUS: ${SWARMOPS_BUILD_MAX_CPUS:-2}
       SWARMOPS_BUILD_MAX_MEMORY_MIB: ${SWARMOPS_BUILD_MAX_MEMORY_MIB:-2048}
+      # This is the API process identity, not a Docker node or managed server.
+      # A standby uses a distinct ID and SWARMOPS_CORE_MODE=standby after a
+      # complete encrypted-state restore; it never appears in Servers unless
+      # its own native agent is independently enrolled.
+      SWARMOPS_CORE_ENDPOINT: ${SWARMOPS_CORE_ENDPOINT:-}
+      SWARMOPS_CORE_ID: ${SWARMOPS_CORE_ID:-core-local}
+      SWARMOPS_CORE_MODE: ${SWARMOPS_CORE_MODE:-active}
+      SWARMOPS_CORE_NAME: ${SWARMOPS_CORE_NAME:-SwarmOps-control-plane}
       SWARMOPS_DATA_ENCRYPTION_KEY_FILE: /run/secrets/swarmops_data_encryption_key
       SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-ghcr.io/nimasrn/}
-      # Docker expands this Swarm template inside each API task. A promoted
-      # replacement uses it to prove that its own healthcheck is running on
-      # the nominated handover node before source data can be retired.
-      SWARMOPS_INSTANCE_NODE_ID: "{{.Node.ID}}"
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
       SWARMOPS_ALERTMANAGER_CONFIG_NAME: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
       SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME: ${SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME:-swarmops_fluentd_aggregator_v1}
@@ -42,6 +47,11 @@ services:
       SWARMOPS_REGISTRY_CONFIG_FILE: /run/secrets/swarmops_registry_config
       SWARMOPS_SECURE_COOKIES: "true"
       SWARMOPS_SESSION_KEY_FILE: /run/secrets/swarmops_session_key
+      # Private source discovery is default-off. Self-managed provider hosts
+      # must be listed exactly; public GitHub/GitLab/Gitea origins are built in.
+      SWARMOPS_SOURCE_ALLOWED_HOSTS: ${SWARMOPS_SOURCE_ALLOWED_HOSTS:-}
+      SWARMOPS_SOURCE_ENABLED: ${SWARMOPS_SOURCE_ENABLED:-false}
+      SWARMOPS_SOURCE_IMAGE_PREFIX: ${SWARMOPS_SOURCE_IMAGE_PREFIX:-}
       SWARMOPS_TRAEFIK_DASHBOARD_URL: ${TRAEFIK_DASHBOARD_URL:-https://traefik.nim.zone/dashboard/}
       TAG: ${TAG:?set TAG}
       # The checked-in Traefik asset itself requires this at reconcile time.
@@ -55,8 +65,9 @@ services:
       TRAEFIK_IMAGE: ${TRAEFIK_IMAGE:-traefik:v3.6.13}
     volumes:
       # This local volume is the authoritative encrypted control-plane state:
-      # sealed server profiles and audit history stay on the designated control
-      # manager with the singleton API task.
+      # sealed profiles, audit history, command ledger, and core handoff state
+      # stay with the one active API task. Do not scale this local-volume
+      # service to create a standby; restore one separately with a unique ID.
       - swarmops_data:/var/lib/swarmops
     configs:
       - source: swarmops_logs_stack
@@ -151,7 +162,7 @@ services:
           memory: 1024M
       labels:
         - traefik.enable=true
-        - traefik.docker.network=traefik
+        - traefik.swarm.network=traefik
         - traefik.http.routers.swarmops.rule=Host(`${SWARMOPS_HOST:-swarmops.nim.zone}`)
         - traefik.http.routers.swarmops.entrypoints=websecure
         - traefik.http.routers.swarmops.tls.certresolver=le
@@ -165,6 +176,11 @@ services:
         - traefik.http.middlewares.swarmops-login-rate.ratelimit.average=12
         - traefik.http.middlewares.swarmops-login-rate.ratelimit.burst=24
         - traefik.http.services.swarmops.loadbalancer.server.port=8084
+        - traefik.http.routers.swarmops-control-internal.rule=Host(`swarmops-control.swarmops.internal`)
+        - traefik.http.routers.swarmops-control-internal.entrypoints=internal-http
+        - traefik.http.routers.swarmops-control-internal.service=swarmops
+        - traefik.http.routers.swarmops-control-internal.observability.metrics=true
+        - traefik.http.routers.swarmops-control-internal.observability.accesslogs=false
         # Prometheus scrapes /metrics and the /metrics/targets discovery
         # document over the internal swarmops overlay; the edge must never
         # serve either to the public hostname.
@@ -192,15 +208,8 @@ networks:
     name: swarmops
     driver: overlay
     internal: true
-  # The data plane for managed databases and the applications SwarmOps renders.
-  # It is deliberately separate from the control-plane `swarmops` network and
-  # internal, so database traffic never leaves the cluster and an application
-  # cannot reach the controller through it. Applications join it by name.
-  swarmops-data:
-    name: swarmops-data
-    driver: overlay
-    attachable: true
-    internal: true
+    driver_opts:
+      encrypted: "true"
 
 volumes:
   # The local driver is intentional. This sealed durable control-plane state

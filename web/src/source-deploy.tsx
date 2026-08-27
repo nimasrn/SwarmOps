@@ -5,6 +5,7 @@ import {
   BrandMark,
   Banner,
   Button,
+  CodeBlock,
   Columns,
   CopyChip,
   DataTable,
@@ -25,9 +26,11 @@ import {
   RailSection,
   RecordLink,
   Select,
+  Sheet,
   Spinner,
   StageTrack,
   Stack as Rows,
+  StatusDot,
   Switch,
   Body,
   useToast,
@@ -69,6 +72,7 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
   const [plan, setPlan] = useState<SourcePlan | null>(null)
   const [error, setError] = useState('')
   const [pending, setPending] = useState('')
+  const [setupOpen, setSetupOpen] = useState(false)
 
   const [provider, setProvider] = useState<SourceProviderKind>('github')
   const [connectionName, setConnectionName] = useState('GitHub source')
@@ -396,17 +400,22 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
   return (
     <Page width="full">
       {error ? <Banner title="Source deployment needs attention" tone="danger">{error}</Banner> : null}
-      {!status.enabled ? (
-        <Panel eyebrow="Disabled by default" marker={<Icon name="lock" size="sm" />} title="Enable the sealed source boundary">
+      {!status.enabled || !status.buildEnabled || !status.imagePrefixConfigured ? (
+        <>
+        <DetailHeader subtitle="Configure the controller boundary that reads source, builds immutable images, and pushes them to your registry." title="Source & registry" />
+        <Panel eyebrow="Setup required" marker={<Icon name="lock" size="sm" />} title="Connect source code and an image registry">
           <Rows>
-            <Body size="sm">Source deploy is intentionally off until this controller is configured with <Mono>SWARMOPS_SOURCE_ENABLED=true</Mono>. Configure an allow-listed private-provider host only when you need GitHub Enterprise, self-managed GitLab, Gitea, or Forgejo.</Body>
-            <Facts items={[
-              { label: 'Private provider hosts', value: status.privateHostsConfigured ? 'Configured' : 'Not configured' },
-              { label: 'Registry image prefix', value: status.imagePrefixConfigured ? 'Configured' : 'Not configured' },
-              { label: 'Bounded source builds', value: status.buildEnabled ? 'Enabled' : 'Disabled' },
-            ]} />
+            <Body size="sm">Source deployment is not ready yet. Complete the requirements below, restart the controller, then SwarmOps will validate providers, scan a repository, build a bounded image, and deploy it through the normal workload path.</Body>
+            <List plain>
+              <ListRow leading={<Icon name={status.enabled ? 'check-circle' : 'alert'} size="sm" tone={status.enabled ? 'success' : 'warning'} />} subtitle="Allows the controller to accept source-provider connections." title="Source deployment enabled" trailing={<StatusDot tone={status.enabled ? 'success' : 'warning'}>{status.enabled ? 'Ready' : 'Required'}</StatusDot>} />
+              <ListRow leading={<Icon name={status.imagePrefixConfigured ? 'check-circle' : 'alert'} size="sm" tone={status.imagePrefixConfigured ? 'success' : 'warning'} />} subtitle="The registry namespace where immutable application images are pushed." title="Registry image prefix" trailing={<StatusDot tone={status.imagePrefixConfigured ? 'success' : 'warning'}>{status.imagePrefixConfigured ? 'Ready' : 'Required'}</StatusDot>} />
+              <ListRow leading={<Icon name={status.buildEnabled ? 'check-circle' : 'alert'} size="sm" tone={status.buildEnabled ? 'success' : 'warning'} />} subtitle="Runs only the reviewed, resource-bounded source build workflow." title="Bounded builds" trailing={<StatusDot tone={status.buildEnabled ? 'success' : 'warning'}>{status.buildEnabled ? 'Ready' : 'Required'}</StatusDot>} />
+              <ListRow leading={<Icon name={status.privateHostsConfigured ? 'check-circle' : 'info'} size="sm" tone={status.privateHostsConfigured ? 'success' : undefined} />} subtitle="Only needed for GitHub Enterprise, self-managed GitLab, Gitea, or Forgejo. github.com and gitlab.com need no private-host allowlist." title="Private provider hosts" trailing={<StatusDot tone={status.privateHostsConfigured ? 'success' : 'neutral'}>{status.privateHostsConfigured ? 'Configured' : 'Optional'}</StatusDot>} />
+            </List>
+            <Button onClick={() => setSetupOpen(true)} variant="accent">Configure source deployment</Button>
           </Rows>
         </Panel>
+        </>
       ) : (
         <>
           <DetailHeader title="Deploy application" />
@@ -625,6 +634,20 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
           </DetailLayout>
         </>
       )}
+      <Sheet closeLabel="Close source setup" onClose={() => setSetupOpen(false)} open={setupOpen} title="Configure source deployment">
+        <Rows>
+          <Body size="sm">These are controller startup settings, so SwarmOps cannot change them from the browser while it is running. Add the reviewed values to the controller service, restart it, then return here to verify readiness.</Body>
+          <Facts columns={1} items={[
+            { label: 'Hosted GitHub / GitLab', value: 'No provider-host allowlist required' },
+            { label: 'Private Git provider', value: 'Add only its exact HTTPS hostname' },
+            { label: 'Registry', value: 'Use the namespace SwarmOps may push application images to' },
+          ]} />
+          <CodeBlock label="Required controller settings" wrap>{'SWARMOPS_SOURCE_ENABLED=true\nSWARMOPS_SOURCE_BUILD_ENABLED=true\nSWARMOPS_SOURCE_IMAGE_PREFIX=registry.example.com/team'}</CodeBlock>
+          <CodeBlock label="Optional private provider" wrap>SWARMOPS_SOURCE_PRIVATE_HOSTS=git.example.com</CodeBlock>
+          <Banner title="Credentials stay separate" tone="info">Provider tokens and registry credentials are entered only after this readiness check passes. They are never included in this configuration snippet.</Banner>
+          <Button onClick={() => setSetupOpen(false)} variant="secondary">Done</Button>
+        </Rows>
+      </Sheet>
     </Page>
   )
 }

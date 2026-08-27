@@ -59,16 +59,26 @@ build_bundle() {
   chmod 0755 "$stage_dir/$executable" "$stage_dir/swarmops-warden"
   if [[ "$component" == core ]]; then
     install -d -m 0755 "$stage_dir/assets"
+    install -m 0444 deploy/observability/alertmanager.yml "$stage_dir/assets/alertmanager.yml"
     install -m 0444 deploy/stacks/swarmops-agent.yml "$stage_dir/assets/agent.yml"
+    install -m 0444 deploy/observability/fluentd-aggregator.conf "$stage_dir/assets/fluentd-aggregator.conf"
+    install -m 0444 deploy/observability/fluentd-forwarder.conf "$stage_dir/assets/fluentd-forwarder.conf"
+    install -m 0444 deploy/observability/jaeger.yml "$stage_dir/assets/jaeger.yml"
     install -m 0444 deploy/stacks/swarmops-logs.yml "$stage_dir/assets/logs.yml"
     install -m 0444 deploy/stacks/swarmops-mongo.yml "$stage_dir/assets/mongo.yml"
     install -m 0444 deploy/stacks/swarmops-observability.yml "$stage_dir/assets/observability.yml"
     install -m 0444 deploy/stacks/swarmops-postgres.yml "$stage_dir/assets/postgres.yml"
+    install -m 0444 deploy/observability/prometheus-alerts.yml "$stage_dir/assets/prometheus-alerts.yml"
+    install -m 0444 deploy/observability/prometheus.yml "$stage_dir/assets/prometheus.yml"
     install -m 0444 deploy/stacks/swarmops-redis.yml "$stage_dir/assets/redis.yml"
+    install -m 0444 deploy/traefik/dynamic.yml "$stage_dir/assets/traefik-dynamic.yml"
     install -m 0444 deploy/stacks/traefik.yml "$stage_dir/assets/traefik.yml"
     tar -C "$stage_dir" -czf "$output_dir/$asset_name" "$executable" swarmops-warden \
-      assets/agent.yml assets/logs.yml assets/mongo.yml assets/observability.yml \
-      assets/postgres.yml assets/redis.yml assets/traefik.yml
+      assets/alertmanager.yml assets/agent.yml assets/fluentd-aggregator.conf \
+      assets/fluentd-forwarder.conf assets/jaeger.yml assets/logs.yml \
+      assets/mongo.yml assets/observability.yml assets/postgres.yml \
+      assets/prometheus-alerts.yml assets/prometheus.yml assets/redis.yml \
+      assets/traefik-dynamic.yml assets/traefik.yml
   else
     tar -C "$stage_dir" -czf "$output_dir/$asset_name" "$executable" swarmops-warden
   fi

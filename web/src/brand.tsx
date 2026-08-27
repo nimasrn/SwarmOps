@@ -108,7 +108,7 @@ export interface BrandProps {
    belongs to this product is the mark, the two words, and the one custom
    property that colours the second — which is set in `styles.css`, the only
    place this app is allowed an identity. */
-export function Brand({ size = 'md', subtitle = 'Remote Docker Swarm control plane' }: BrandProps) {
+export function Brand({ size = 'md', subtitle = 'Remote Docker Swarm operations' }: BrandProps) {
   return (
     <KitBrand
       mark={<SwarmOpsMark size={size === 'lg' ? 38 : 30} title="SwarmOps" />}

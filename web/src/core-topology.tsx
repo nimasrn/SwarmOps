@@ -163,7 +163,7 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
             <Body size="sm">Register the target identity and pinned HTTPS endpoint. SwarmOps never copies controller state or secrets to a peer automatically.</Body>
             <Columns>
               <Input label="Core ID" onChange={(event) => setMemberID(event.target.value)} placeholder="core-manager-02" value={memberID} />
-              <Input label="Display name" onChange={(event) => setName(event.target.value)} placeholder="Manager 02 control plane" value={name} />
+              <Input label="Display name" onChange={(event) => setName(event.target.value)} placeholder="Controller 02" value={name} />
               <Input label="Standby HTTPS endpoint" onChange={(event) => setEndpoint(event.target.value)} placeholder="https://swarmops-standby.example.com" value={endpoint} />
             </Columns>
             <Inline><Select label="Optional enrolled agent" onChange={(event) => setAgentServerID(event.target.value)} options={servers.map((server) => ({ label: `${server.name} · ${server.host}`, value: server.id }))} placeholder="No agent link" value={agentServerID} /><Button disabled={Boolean(pending) || !memberID.trim() || !name.trim() || !endpoint.trim()} loading={pending === 'replica'} onClick={addReplica} variant="accent">Prepare standby</Button></Inline>

@@ -3,6 +3,7 @@ package ops
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,12 @@ func testDatabaseSettings() DatabaseSettings {
 
 func databaseAsset(t *testing.T, engine string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "stacks", "swarmops-"+engine+".yml"))
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate database test source")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../.."))
+	raw, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "stacks", "swarmops-"+engine+".yml"))
 	if err != nil {
 		t.Fatalf("read %s asset: %v", engine, err)
 	}

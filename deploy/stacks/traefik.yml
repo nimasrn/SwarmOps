@@ -6,41 +6,7 @@ services:
   traefik:
     image: ${TRAEFIK_IMAGE:-traefik:v3.6.13}
     command:
-      - --log.level=INFO
-      - --accesslog=true
-      - --accesslog.format=json
-      - --api.dashboard=true
-      - --ping=true
-      - --metrics.prometheus=true
-      - --metrics.prometheus.entrypoint=metrics
-      - --providers.swarm.endpoint=unix:///var/run/docker.sock
-      - --providers.swarm.exposedbydefault=false
-      - --providers.swarm.network=traefik
-      - --providers.file.filename=/etc/traefik/dynamic.yml
-      - --entrypoints.web.address=:80
-      # Redirect every plain-HTTP request to HTTPS at the entrypoint. Doing it
-      # here rather than with per-stack middleware labels is what lets SwarmOps
-      # render an application stack without giving a browser-originated stack
-      # the ability to define shared Traefik middleware. Traefik serves the
-      # ACME HTTP-01 challenge from its own higher-priority internal router, so
-      # the `http` resolver below still completes with this redirection on.
-      - --entrypoints.web.http.redirections.entryPoint.to=websecure
-      - --entrypoints.web.http.redirections.entryPoint.scheme=https
-      - --entrypoints.websecure.address=:443
-      - --entrypoints.metrics.address=:8082
-      - --certificatesresolvers.le.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
-      - --certificatesresolvers.le.acme.storage=/data/acme.json
-      - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
-      # Dedicated resolver names let a reviewed app choose its DNS authority
-      # without exposing provider credentials in the app stack. A single
-      # resolver has one DNS provider; use a CNAME delegation when one domain
-      # must be validated through another authority.
-      - --certificatesresolvers.arvan.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
-      - --certificatesresolvers.arvan.acme.storage=/data/acme-arvan.json
-      - --certificatesresolvers.arvan.acme.dnschallenge.provider=arvancloud
-      - --certificatesresolvers.http.acme.email=${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}
-      - --certificatesresolvers.http.acme.storage=/data/acme-http.json
-      - --certificatesresolvers.http.acme.httpchallenge.entrypoint=web
+      - --configFile=/etc/traefik/traefik.yml
     environment:
       CF_DNS_API_TOKEN_FILE: /run/secrets/traefik_cf_dns_token
       ARVANCLOUD_API_KEY_FILE: /run/secrets/traefik_arvan_api_key
@@ -57,6 +23,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_acme:/data
     configs:
+      - source: traefik_static
+        target: /etc/traefik/traefik.yml
       - source: traefik_dynamic
         target: /etc/traefik/dynamic.yml
     secrets:
@@ -101,6 +69,7 @@ services:
           memory: 256M
       labels:
         - traefik.enable=true
+        - traefik.swarm.network=traefik
         - traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}`)
         - traefik.http.routers.traefik-dashboard.entrypoints=websecure
         - traefik.http.routers.traefik-dashboard.tls.certresolver=le
@@ -122,6 +91,9 @@ volumes:
   traefik_acme:
 
 configs:
+  traefik_static:
+    external: true
+    name: ${TRAEFIK_STATIC_CONFIG_NAME:-swarmops_traefik_static_v1_0000000000000000}
   traefik_dynamic:
     file: ../traefik/dynamic.yml
     name: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}

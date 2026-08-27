@@ -15,7 +15,7 @@ services:
         mode: 0400
     volumes:
       - swarmops_redis_data:/data
-    networks: [swarmops-data]
+    networks: [swarmops-data, route-redis]
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
@@ -46,6 +46,9 @@ networks:
   swarmops-data:
     external: true
     name: swarmops-data
+  route-redis:
+    external: true
+    name: ${SWARMOPS_REDIS_ROUTE_NETWORK:-swarmops-route-swarmops-redis-redis-aeec253a}
 
 volumes:
   swarmops_redis_data:

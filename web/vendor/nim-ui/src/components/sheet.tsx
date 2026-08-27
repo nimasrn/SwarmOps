@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { IconButton } from '@/components/icon-button'
@@ -24,6 +24,7 @@ export interface SheetProps {
 export function Sheet({ children, className, closeLabel = 'Close', footer, onClose, open, title }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
+  const titleId = useId()
 
   useEffect(() => {
     if (!open) return
@@ -35,6 +36,24 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (event.key !== 'Tab') return
+      const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (!focusable?.length) {
+        event.preventDefault()
+        panelRef.current?.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
 
@@ -51,7 +70,8 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
     <>
       <div className="nim-sheet__scrim" onClick={onClose} />
       <div
-        aria-label={typeof title === 'string' ? title : closeLabel}
+        aria-label={title ? undefined : closeLabel}
+        aria-labelledby={title ? titleId : undefined}
         aria-modal="true"
         className={cn('nim-sheet__panel', className)}
         ref={panelRef}
@@ -61,7 +81,7 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
         <span aria-hidden="true" className="nim-sheet__handle" />
         {title ? (
           <div className="nim-sheet__header">
-            <p className="nim-title nim-title--md">{title}</p>
+            <p className="nim-title nim-title--md" id={titleId}>{title}</p>
             <IconButton label={closeLabel} name="close" onClick={onClose} size="sm" />
           </div>
         ) : null}

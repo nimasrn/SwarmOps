@@ -83,7 +83,6 @@ import type {
   TraefikStatus,
 } from './types'
 
-type Page = 'home' | 'infrastructure' | 'applications' | 'deploy' | 'traffic' | 'observe' | 'operations' | 'settings'
 type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'resources' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'traefik'
 type ClusterPage = Exclude<WorkspacePage, 'agent-diagnostics' | 'audit' | 'catalogue' | 'commands' | 'core' | 'provisioning' | 'servers' | 'source-deploy'>
 
@@ -103,60 +102,31 @@ interface ConnectionError {
 }
 
 const PAGES: Record<WorkspacePage, string> = {
-	'agent-diagnostics': 'Agent diagnostics',
+  'agent-diagnostics': 'Server diagnostics',
   applications: 'Applications',
   audit: 'Audit trail',
   builds: 'Image builds',
-  catalogue: 'Supported commands',
-  commands: 'Command queue',
-  core: 'Control plane',
+  catalogue: 'Action catalog',
+  commands: 'Runs',
+  core: 'Controller & recovery',
   databases: 'Managed databases',
-  insights: 'Cluster insights',
+  insights: 'Health',
   logs: 'Logs',
-  nodes: 'Nodes',
-  observability: 'Observability',
-  overview: 'Cluster overview',
-  provisioning: 'Server readiness',
-  resources: 'Docker resources',
+  nodes: 'Swarm',
+  observability: 'Collectors',
+  overview: 'Overview',
+  provisioning: 'Setup & readiness',
+  resources: 'Resources',
   servers: 'Servers',
-  services: 'Services',
-  'source-deploy': 'Source deploy',
+  services: 'Runtime',
+  'source-deploy': 'Source & registry',
   stacks: 'Stacks',
-  traefik: 'Traefik & TLS',
+  traefik: 'Gateway, routes & DNS',
 }
 
-const SECTION_DEFAULT: Record<Page, WorkspacePage> = {
-	home: 'overview',
-	infrastructure: 'nodes',
-	applications: 'applications',
-	deploy: 'source-deploy',
-	traffic: 'traefik',
-	observe: 'insights',
-	operations: 'commands',
-	settings: 'core',
-}
-
-const SECTION_OPTIONS: Record<Page, { label: string; value: WorkspacePage }[]> = {
-	home: [{ label: 'Control room', value: 'overview' }],
-	infrastructure: [
-		{ label: 'Topology', value: 'nodes' },
-		{ label: 'Agents', value: 'servers' },
-		{ label: 'Readiness', value: 'provisioning' },
-		{ label: 'Diagnostics', value: 'agent-diagnostics' },
-		{ label: 'Resources', value: 'resources' },
-	],
-	applications: [
-		{ label: 'Applications', value: 'applications' },
-		{ label: 'Services', value: 'services' },
-		{ label: 'Stacks', value: 'stacks' },
-		{ label: 'Shared data', value: 'databases' },
-		{ label: 'Builds', value: 'builds' },
-	],
-	deploy: [{ label: 'Source to release', value: 'source-deploy' }],
-	traffic: [{ label: 'Routes and certificates', value: 'traefik' }],
-	observe: [{ label: 'Overview', value: 'insights' }, { label: 'Logs', value: 'logs' }, { label: 'Collection settings', value: 'observability' }],
-	operations: [{ label: 'Command ledger', value: 'commands' }, { label: 'Audit', value: 'audit' }, { label: 'Catalog', value: 'catalogue' }],
-	settings: [{ label: 'Core and movement', value: 'core' }],
+const LEGACY_ROUTES: Record<string, WorkspacePage> = {
+  home: 'overview', infrastructure: 'nodes', applications: 'applications', deploy: 'source-deploy',
+  traffic: 'traefik', observe: 'insights', operations: 'commands', settings: 'core',
 }
 
 const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
@@ -229,7 +199,7 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
               <Button onClick={() => setShowAgentSetup(true)} size="sm" type="button" variant="ghost">Install and connect a server</Button>
             </Rows>
           }
-          subtitle="An audited control plane for remote Docker Swarm servers."
+          subtitle="Audited operations for remote Docker Swarm servers."
           title="Remote operations, with a boundary."
         >
           <Input
@@ -352,28 +322,28 @@ function StandaloneClaimGuide({ onApproved, toast }: { onApproved: () => Promise
 }
 
 function Console({ onLogout, session }: { onLogout: () => void; session: Session }) {
-  const [page, setPage] = useHashPage()
-	const [workspace, setWorkspace] = useState<WorkspacePage>(SECTION_DEFAULT[page])
+  const [workspace, setWorkspace] = useHashWorkspace()
   const toast = useToast()
   const { error: serversError, loading: serversLoading, refresh: refreshServers, servers } = useServers(onLogout)
-	const { error: auditError, events: auditEvents, loading: auditLoading, refresh: refreshAudit } = useAuditEvents(page === 'operations', onLogout)
-	const { commands, error: commandsError, loading: commandsLoading, refresh: refreshCommands } = useCommands(page === 'operations' || page === 'home', onLogout)
+	const { error: auditError, events: auditEvents, loading: auditLoading, refresh: refreshAudit } = useAuditEvents(workspace === 'audit', onLogout)
+	const { commands, error: commandsError, loading: commandsLoading, refresh: refreshCommands } = useCommands(workspace === 'commands' || workspace === 'catalogue' || workspace === 'overview', onLogout)
 	const { core, error: coreError, refresh: refreshCore } = useCoreTopology(onLogout)
   const [homeActivity, setHomeActivity] = useState<InsightsSample[]>([])
+  const [highlightedCommandID, setHighlightedCommandID] = useState('')
   const [activeServerID, setActiveServerID] = useState('')
   const activeServer = servers.find((server) => server.id === activeServerID && serverCanManage(server))
   const managers = servers.filter(serverCanManage)
   const { data, error, refresh, refreshing } = useDashboard(activeServer?.id ?? '', onLogout)
 
   useEffect(() => {
-    const openLogs = () => { setPage('observe'); setWorkspace('logs') }
+    const openLogs = () => setWorkspace('logs')
     window.addEventListener('swarmops:open-logs', openLogs)
     return () => window.removeEventListener('swarmops:open-logs', openLogs)
-  }, [setPage])
+  }, [setWorkspace])
 
   useEffect(() => {
     let cancelled = false
-    if (page !== 'home' || !activeServer) {
+    if (workspace !== 'overview' || !activeServer) {
       setHomeActivity([])
       return () => { cancelled = true }
     }
@@ -381,9 +351,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       .then((samples) => { if (!cancelled) setHomeActivity(Array.isArray(samples) ? samples : []) })
       .catch(() => { if (!cancelled) setHomeActivity([]) })
     return () => { cancelled = true }
-  }, [activeServer?.id, data?.overview.generatedAt, page])
-
-	useEffect(() => setWorkspace((current) => page === 'observe' && current === 'logs' ? current : SECTION_DEFAULT[page]), [page])
+  }, [activeServer?.id, data?.overview.generatedAt, workspace])
 
   useEffect(() => {
     const next = servers.some((server) => server.id === activeServerID && serverCanManage(server))
@@ -401,12 +369,11 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   const connected = async (server: Server) => {
     await refreshServers()
     if (server.swarmControlAvailable) {
-      selectServer(server.id)
-		setPage('home')
+		selectServer(server.id)
+      setWorkspace('overview')
       toast({ message: `${server.name} connected`, tone: 'success' })
       return
     }
-		setPage('infrastructure')
 		setWorkspace('provisioning')
     toast({ message: server.dockerAvailable ? `${server.name} is connected. Complete server readiness before using cluster operations.` : `${server.name} is connected through its machine API. Choose its readiness plan next.`, tone: 'accent' })
   }
@@ -422,16 +389,42 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     onLogout()
   }
 
-	const groups = useMemo(() => [{ key: 'swarmops', label: '', items: [
-		{ icon: 'home' as const, key: 'home', label: 'Home', onSelect: () => setPage('home') },
-		{ icon: 'server' as const, key: 'infrastructure', label: 'Infrastructure', onSelect: () => setPage('infrastructure') },
-		{ icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setPage('applications') },
-		{ icon: 'play' as const, key: 'deploy', label: 'Deploy', onSelect: () => setPage('deploy') },
-		{ icon: 'external' as const, key: 'traffic', label: 'Traffic', onSelect: () => setPage('traffic') },
-		{ icon: 'trend-up' as const, key: 'observe', label: 'Observe', onSelect: () => setPage('observe') },
-		{ icon: 'terminal' as const, key: 'operations', label: 'Operations', onSelect: () => setPage('operations') },
-		{ icon: 'settings' as const, key: 'settings', label: 'Settings', onSelect: () => setPage('settings') },
-	]}], [setPage])
+	const groups = useMemo(() => [
+    { key: 'overview', label: '', items: [
+      { icon: 'home' as const, key: 'overview', label: 'Overview', onSelect: () => setWorkspace('overview') },
+    ] },
+    { key: 'cluster', label: 'Cluster', items: [
+      { icon: 'server' as const, key: 'servers', label: 'Servers', onSelect: () => setWorkspace('servers') },
+      { icon: 'layers' as const, key: 'nodes', label: 'Swarm', onSelect: () => setWorkspace('nodes') },
+      { icon: 'package' as const, key: 'resources', label: 'Resources', onSelect: () => setWorkspace('resources') },
+      { icon: 'check-circle' as const, key: 'provisioning', label: 'Setup & readiness', onSelect: () => setWorkspace('provisioning') },
+      { icon: 'activity' as const, key: 'agent-diagnostics', label: 'Diagnostics', onSelect: () => setWorkspace('agent-diagnostics') },
+    ] },
+    { key: 'workloads', label: 'Workloads', items: [
+      { icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setWorkspace('applications') },
+      { icon: 'database' as const, key: 'databases', label: 'Databases', onSelect: () => setWorkspace('databases') },
+      { icon: 'terminal' as const, key: 'services', label: 'Runtime', onSelect: () => setWorkspace('services') },
+      { icon: 'layers' as const, key: 'stacks', label: 'Stacks', onSelect: () => setWorkspace('stacks') },
+      { icon: 'package' as const, key: 'builds', label: 'Image builds', onSelect: () => setWorkspace('builds') },
+    ] },
+    { key: 'networking', label: 'Networking', items: [
+      { icon: 'external' as const, key: 'traefik', label: 'Gateway, routes & DNS', onSelect: () => setWorkspace('traefik') },
+    ] },
+    { key: 'monitoring', label: 'Monitoring', items: [
+      { icon: 'trend-up' as const, key: 'insights', label: 'Health', onSelect: () => setWorkspace('insights') },
+      { icon: 'document' as const, key: 'logs', label: 'Logs', onSelect: () => setWorkspace('logs') },
+      { icon: 'settings' as const, key: 'observability', label: 'Collectors', onSelect: () => setWorkspace('observability') },
+    ] },
+    { key: 'activity', label: 'Activity', items: [
+      { icon: 'play' as const, key: 'commands', label: 'Runs', onSelect: () => setWorkspace('commands') },
+      { icon: 'document' as const, key: 'catalogue', label: 'Action catalog', onSelect: () => setWorkspace('catalogue') },
+      { icon: 'shield' as const, key: 'audit', label: 'Audit', onSelect: () => setWorkspace('audit') },
+    ] },
+    { key: 'settings', label: 'Settings', items: [
+      { icon: 'settings' as const, key: 'core', label: 'Controller & recovery', onSelect: () => setWorkspace('core') },
+      { icon: 'cloud' as const, key: 'source-deploy', label: 'Source & registry', onSelect: () => setWorkspace('source-deploy') },
+    ] },
+  ], [setWorkspace])
 
 	const refreshAction = workspace === 'audit'
     ? refreshAudit
@@ -467,25 +460,25 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       navigation="sidebar"
       sidebarFooter={
         <>
-          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Checking Core' : core.controlEnabled ? 'Core reachable' : 'Core read-only'}</StatusDot>
-          <span>{core ? `Authority epoch ${core.authorityEpoch}` : 'Reading Core authority'}</span>
+          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Checking controller' : core.controlEnabled ? 'Controller reachable' : 'Controller read-only'}</StatusDot>
+          <span>{core ? `Controller authority ${core.authorityEpoch}` : 'Reading controller authority'}</span>
           <span>{data ? `Cluster snapshot ${formatDateTime(data.overview.generatedAt)}` : activeServer ? 'Refreshing cluster state' : 'No cluster selected'}</span>
         </>
       }
       title={
         <Inline wrap={false}>
-          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Core: Checking' : core.controlEnabled ? 'Core: Active' : 'Core: Standby'}</StatusDot>
+          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Controller: Checking' : core.controlEnabled ? 'Controller: Active' : 'Controller: Standby'}</StatusDot>
           <Label>Cluster:</Label>
           {managers.length ? (
             <Select
               aria-label="Selected Docker Swarm cluster manager"
-				onChange={(event) => event.target.value ? selectServer(event.target.value) : (setPage('infrastructure'), setWorkspace('servers'))}
+				onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('servers')}
               options={managers.map((server) => ({ label: server.name, value: server.id }))}
               placeholder="Select cluster"
               value={activeServerID}
             />
           ) : (
-			<Button iconStart="server" onClick={() => { setPage('infrastructure'); setWorkspace('servers') }} size="sm" variant="ghost">Connect cluster</Button>
+			<Button iconStart="server" onClick={() => setWorkspace('servers')} size="sm" variant="ghost">Connect cluster</Button>
           )}
         </Inline>
       }
@@ -499,16 +492,15 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
           </Inline>
         </>
       }
-      value={page}
+      value={workspace}
     >
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
-	  {SECTION_OPTIONS[page].length > 1 && !(page === 'infrastructure' && workspace === 'nodes') ? <Tabs label={`${capitalize(page)} views`} onChange={(value) => setWorkspace(value as WorkspacePage)} options={SECTION_OPTIONS[page]} value={workspace} /> : null}
 	  {workspace === 'servers' ? (
 		<ServersPage activeServerID={activeServerID} onConnected={connected} onDiagnostics={(id) => { selectServer(id); setWorkspace('agent-diagnostics') }} onProvision={() => setWorkspace('provisioning')} onRefresh={refreshServers} onSelect={selectServer} servers={servers} toast={toast} />
 	  ) : workspace === 'agent-diagnostics' ? (
 		<AgentDiagnosticsPage onRefreshServers={refreshServers} servers={servers} toast={toast} />
 	  ) : workspace === 'core' ? (
-		<>{coreError ? <Banner title="Core status unavailable" tone="danger">{coreError}</Banner> : null}<CoreTopologyPage servers={servers} toast={toast} /></>
+		<>{coreError ? <Banner title="Controller status unavailable" tone="danger">{coreError}</Banner> : null}<CoreTopologyPage servers={servers} toast={toast} /></>
 	  ) : workspace === 'provisioning' ? (
 		<ServerReadinessPage servers={servers} toast={toast} />
 	  ) : workspace === 'audit' ? (
@@ -518,11 +510,11 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         </>
 	  ) : workspace === 'commands' ? (
         <>
-          {commandsError ? <Banner title="Command queue unavailable" tone="danger">{commandsError}</Banner> : null}
-          {commandsLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} onRefresh={refreshCommands} servers={servers} toast={toast} />}
+          {commandsError ? <Banner title="Runs unavailable" tone="danger">{commandsError}</Banner> : null}
+          {commandsLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} highlightedID={highlightedCommandID} onRefresh={refreshCommands} servers={servers} toast={toast} />}
         </>
 	  ) : workspace === 'catalogue' ? (
-        <CommandCataloguePage activeServerID={activeServerID} servers={servers} toast={toast} />
+        <CommandCataloguePage activeServerID={activeServerID} onQueued={(commandID) => { setHighlightedCommandID(commandID); setWorkspace('commands') }} servers={servers} toast={toast} />
 	  ) : workspace === 'source-deploy' ? (
         <SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} />
 	  ) : workspace === 'overview' && core ? (
@@ -531,21 +523,21 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  cluster={activeServer && data ? data : undefined}
 		  commands={commands}
 		  core={core}
-		  onAddNode={() => { setPage('infrastructure'); setWorkspace('servers') }}
-		  onDiagnose={() => { setPage('infrastructure'); setWorkspace('agent-diagnostics') }}
-		  onDeploy={() => setPage('deploy')}
-		  onOpenApplications={() => setPage('applications')}
-		  onOpenInfrastructure={() => setPage('infrastructure')}
-		  onOpenOperations={() => setPage('operations')}
-		  onOpenTraffic={() => setPage('traffic')}
+		  onAddNode={() => setWorkspace('servers')}
+		  onDiagnose={() => setWorkspace('agent-diagnostics')}
+		  onDeploy={() => setWorkspace('source-deploy')}
+		  onOpenApplications={() => setWorkspace('applications')}
+		  onOpenInfrastructure={() => setWorkspace('nodes')}
+		  onOpenOperations={() => setWorkspace('commands')}
+		  onOpenTraffic={() => setWorkspace('traefik')}
 		  servers={servers}
 		/>
 	  ) : !activeServer ? (
         <ServerRequiredPage
 		  page={workspace as ClusterPage}
           servers={servers}
-		  onOpenProvisioning={() => { setPage('infrastructure'); setWorkspace('provisioning') }}
-		  onOpenServers={() => { setPage('infrastructure'); setWorkspace('servers') }}
+		  onOpenProvisioning={() => setWorkspace('provisioning')}
+		  onOpenServers={() => setWorkspace('servers')}
         />
       ) : (
         <>
@@ -553,9 +545,9 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  {!data ? <LoadingScreen label={serversLoading ? 'Reading server profiles' : 'Reading the selected Docker Swarm'} /> : <PageRouter
 			commands={commands}
 			data={data}
-			onAddNode={() => { setPage('infrastructure'); setWorkspace('servers') }}
-			onDiagnostics={() => { setPage('infrastructure'); setWorkspace('agent-diagnostics') }}
-			onReadiness={() => { setPage('infrastructure'); setWorkspace('provisioning') }}
+			onAddNode={() => setWorkspace('servers')}
+			onDiagnostics={() => setWorkspace('agent-diagnostics')}
+			onReadiness={() => setWorkspace('provisioning')}
 			page={workspace as ClusterPage}
 			toast={toast}
 		  />}
@@ -666,13 +658,13 @@ function ServerRequiredPage({
         <Panel
           description="These controls are intentionally available before a manager is selected, so the setup path is not a dead end."
           eyebrow="Available now"
-          title="Keep the control plane moving"
+          title="Continue setup"
         >
           <List plain>
             <ListRow href="#servers" leading={<Icon name="server" size="sm" />} subtitle="Add, reconnect, or select a pinned machine API target." title="Servers" />
-			<ListRow href="#infrastructure" leading={<Icon name="play" size="sm" />} subtitle="Use the enrolled host agent for Docker installation, repair, and Swarm quorum." title="Readiness" />
-            <ListRow href="#commands" leading={<Icon name="clock" size="sm" />} subtitle="Review durable command state without exposing remote output." title="Command queue" />
-            <ListRow href="#audit" leading={<Icon name="document" size="sm" />} subtitle="Inspect safe, append-only operator audit records." title="Audit trail" />
+            <ListRow href="#provisioning" leading={<Icon name="play" size="sm" />} subtitle="Install Docker, initialize Swarm, and configure the firewall through reviewed fixes." title="Setup & readiness" />
+            <ListRow href="#commands" leading={<Icon name="clock" size="sm" />} subtitle="Review queued, running, completed, or failed work." title="Runs" />
+            <ListRow href="#audit" leading={<Icon name="document" size="sm" />} subtitle="Inspect safe, append-only operator activity records." title="Audit" />
           </List>
         </Panel>
       </Columns>
@@ -788,11 +780,12 @@ function ServersPage({
   }
 
   const columns: TableColumn<Server>[] = [
-    { header: 'Server', key: 'server', render: (server) => <RecordLink meta={serverEndpointLabel(server)} title={server.name} /> },
+    { header: 'Server', key: 'server', render: (server) => <RecordLink meta={server.connectionType === 'agent_pull' ? 'Connects out securely · no inbound agent port' : serverEndpointLabel(server)} title={server.name} /> },
     { header: 'Connection', key: 'transport', render: serverConnectionLabel },
     { header: 'Docker', key: 'docker', render: (server) => server.dockerAvailable ? server.dockerVersion || 'Engine reachable' : 'Not detected' },
     { header: 'Swarm', key: 'swarm', render: (server) => server.swarmControlAvailable ? 'Manager' : server.dockerAvailable ? server.swarmState || 'Not active' : 'Bootstrap required' },
-	{ header: 'Status', key: 'connection', render: (server) => <StatusBadge health={serverHealth(server)} label={server.agentHealth?.summary || (server.connectionState === 'connected' ? 'Awaiting agent probe' : 'Reconnect required')} /> },
+	{ header: 'Agent', key: 'agent', render: (server) => server.agentHealth?.agentVersion ? `v${server.agentHealth.agentVersion.replace(/^v/, '')}` : 'Version unavailable' },
+	{ header: 'Status', key: 'connection', render: (server) => <StatusBadge health={serverHealth(server)} label={server.connectionState === 'connected' && serverHealth(server) === 'healthy' ? 'Connected' : server.agentHealth?.summary || (server.connectionState === 'connected' ? 'Checking connection' : 'Reconnect required')} /> },
     {
       header: 'Action',
       key: 'action',
@@ -807,7 +800,7 @@ function ServersPage({
   const connectionReady = Boolean(apiKey) && Boolean(apiURL) && Boolean(tlsFingerprint)
   return (
     <Page>
-	  <DetailHeader subtitle="Enroll an Ubuntu host with outbound HTTPS. Core never opens the host Docker socket directly, and agents require no inbound port or SSH session." title="Agents" />
+	  <DetailHeader subtitle="Connect servers, understand their Docker and Swarm role, and open setup or diagnostics from one place." title="Servers" />
 	  <Columns>
 		<OutboundEnrollmentGuide toast={toast} />
 		<StandaloneClaimGuide onApproved={onRefresh} toast={toast} />
@@ -834,8 +827,8 @@ function ServersPage({
         </Panel>
       </Columns>
       ) : null}
-      <Panel eyebrow="Saved non-secret profiles" title="Servers">
-        <Banner title="Control plane is separate" tone="info">The host serving this console is not added here automatically. It becomes a managed server only when its own machine agent is explicitly installed and enrolled, exactly like every other host.</Banner>
+      <Panel eyebrow="Connected infrastructure" title="Managed servers">
+        <Banner title="How a server connects" tone="info">Each server initiates an encrypted connection to SwarmOps, so the agent does not expose an inbound port. The computer running this controller appears here only if you also install and enroll an agent on it.</Banner>
         <DataTable
           caption="Remote server profiles"
           columns={columns}
@@ -982,7 +975,7 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
                 ]} /></Panel>
                 <Panel title="Routes & ports"><Body size="sm" tone="muted">Published port and route evidence is shown in Traffic. This inspect payload does not claim an application route.</Body></Panel>
               </Columns>
-              <Panel title="Recent log preview"><Body size="sm" tone="muted">Raw Engine log streaming is not part of the fixed manager API. Open Observe → Logs for sanitized Fluentd records from the selected cluster.</Body></Panel>
+              <Panel title="Recent log preview"><Body size="sm" tone="muted">Raw Engine log streaming is not part of the fixed manager API. Open Monitoring → Logs for sanitized Fluentd records from the selected cluster.</Body></Panel>
               <Panel title="Recent activity"><Facts items={[
                 { label: 'Created', value: formatDateTime(containerDetail.Created) },
                 { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) },
@@ -1000,10 +993,10 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
                 { label: 'Network mode', value: containerDetail.HostConfig.NetworkMode ?? '—' },
                 { label: 'Docker health', value: containerDetail.State.Health?.Status ?? (containerDetail.State.Running ? 'Running' : 'Stopped') },
               ]} /></Panel>
-              <Panel title="Telemetry"><Body size="sm">Metrics are sampled from Docker. Logs and traces remain source-labeled in Observe and are never fabricated when collectors are absent.</Body></Panel>
+              <Panel title="Telemetry"><Body size="sm">Metrics are sampled from Docker. Logs and traces remain source-labeled under Monitoring and are never fabricated when collectors are absent.</Body></Panel>
             </Rows>
           </Columns>
-        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">Use Observe for collected logs. This Core does not proxy unrestricted container streams.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Mode', mono: true, value: containerDetail.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: containerStats ? formatBytes(containerStats.networkRxBytes) : '—' }, { label: 'Egress sample', value: containerStats ? formatBytes(containerStats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: containerDetail.Id }, { label: 'Image ID', mono: true, value: containerDetail.Image }, { label: 'Environment names', value: containerDetail.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: containerDetail.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(containerDetail.Created) }, { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) }, { label: 'Finished', value: formatDateTime(containerDetail.State.FinishedAt) }, { label: 'Restarts', value: String(containerDetail.RestartCount) }]} /></Panel>}
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">Use Monitoring → Logs for collected records. This controller does not proxy unrestricted container streams.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Mode', mono: true, value: containerDetail.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: containerStats ? formatBytes(containerStats.networkRxBytes) : '—' }, { label: 'Egress sample', value: containerStats ? formatBytes(containerStats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: containerDetail.Id }, { label: 'Image ID', mono: true, value: containerDetail.Image }, { label: 'Environment names', value: containerDetail.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: containerDetail.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(containerDetail.Created) }, { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) }, { label: 'Finished', value: formatDateTime(containerDetail.State.FinishedAt) }, { label: 'Restarts', value: String(containerDetail.RestartCount) }]} /></Panel>}
       </Page>
     )
   }
@@ -1377,7 +1370,7 @@ function BuildsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
           <Button disabled={!archive || !image || pending} loading={pending} onClick={() => void submit()} variant="accent">Start bounded build</Button>
         </Panel>
         <Panel eyebrow="Durable command" title="Build status">
-          {result ? <Rows><Banner tone={result.state === 'needs_attention' ? 'warning' : 'success'} title={`Build ${result.state.replace('_', ' ')}`}>Command <Mono>{result.id}</Mono> owns this source archive until it succeeds or needs operator attention.</Banner><Body size="sm">Build output is never returned to the browser or audit trail. Follow this command in Command queue.</Body></Rows> : <EmptyState description="A source archive is retained only in protected command storage until its queued build succeeds. Build output is not exposed in the console." icon="upload" title="No build command" />}
+          {result ? <Rows><Banner tone={result.state === 'needs_attention' ? 'warning' : 'success'} title={`Build ${result.state.replace('_', ' ')}`}>Run <Mono>{result.id}</Mono> owns this source archive until it succeeds or needs operator attention.</Banner><Body size="sm">Build output is never returned to the browser or audit trail. Follow this work under Activity → Runs.</Body></Rows> : <EmptyState description="A source archive is retained only in protected run storage until its queued build succeeds. Build output is not exposed in the console." icon="upload" title="No build run" />}
         </Panel>
       </Columns>
     </Page>
@@ -1895,18 +1888,23 @@ function AuditPage({ events }: { events: AuditEvent[] }) {
     <Page>
       <DetailHeader subtitle="SwarmOps writes append-only local audit records for each operation. The record contains actors, targets, outcomes, and request IDs—not passwords, Compose content, build contexts, or registry credentials." title="Audit trail" />
       <Panel>
-        <ActivityFeed empty={<EmptyState description="The control plane has not recorded an operation yet." icon="clock" title="No audit events" />} events={events.map((event) => ({ action: `${event.action} · ${event.outcome}`, actor: event.actor, at: event.occurredAt, icon: event.outcome === 'success' ? 'check' as const : 'danger' as const, id: event.id, target: event.target, tone: event.outcome === 'success' ? 'success' as const : 'danger' as const }))} />
+        <ActivityFeed empty={<EmptyState description="The controller has not recorded an operation yet." icon="clock" title="No audit events" />} events={events.map((event) => ({ action: `${event.action} · ${event.outcome}`, actor: event.actor, at: event.occurredAt, icon: event.outcome === 'success' ? 'check' as const : 'danger' as const, id: event.id, target: event.target, tone: event.outcome === 'success' ? 'success' as const : 'danger' as const }))} />
       </Panel>
     </Page>
   )
 }
 
-function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: Command[]; onRefresh: () => Promise<void>; servers: Server[]; toast: ReturnType<typeof useToast> }) {
+function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }: { commands: Command[]; highlightedID: string; onRefresh: () => Promise<void>; servers: Server[]; toast: ReturnType<typeof useToast> }) {
   const [retrying, setRetrying] = useState('')
   const [selectedID, setSelectedID] = useState(() => commands.find((command) => command.state === 'needs_attention')?.id ?? commands[0]?.id ?? '')
+  const [query, setQuery] = useState('')
   const [stateFilter, setStateFilter] = useState('all')
   const [targetFilter, setTargetFilter] = useState('all')
   const [actionFilter, setActionFilter] = useState('all')
+  const [timeFilter, setTimeFilter] = useState('all')
+  useEffect(() => {
+    if (highlightedID && commands.some((command) => command.id === highlightedID)) setSelectedID(highlightedID)
+  }, [commands, highlightedID])
   const retry = async (command: Command) => {
     setRetrying(command.id)
     try {
@@ -1926,9 +1924,11 @@ function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: C
   const retryScheduled = commands.filter((command) => command.state === 'retry_scheduled').length
   const completed = commands.filter((command) => command.state === 'succeeded').length
   const filteredCommands = commands.filter((command) =>
-    (stateFilter === 'all' || command.state === stateFilter)
+    (!query || `${command.action} ${command.target} ${command.id} ${servers.find((server) => server.id === command.serverId)?.name ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+    && (stateFilter === 'all' || command.state === stateFilter)
     && (targetFilter === 'all' || command.target === targetFilter)
-    && (actionFilter === 'all' || command.action === actionFilter))
+    && (actionFilter === 'all' || command.action === actionFilter)
+    && (timeFilter === 'all' || Date.now() - new Date(command.createdAt).getTime() <= Number(timeFilter) * 60 * 60 * 1000))
   const columns: TableColumn<Command>[] = [
     { header: 'Command', key: 'command', render: (command) => <RecordLink meta={shortID(command.id)} title={command.action} /> },
     { header: 'Target', key: 'target', render: (command) => <Mono>{command.target}</Mono> },
@@ -1947,7 +1947,7 @@ function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: C
       <DetailHeader
         status={attention.length ? <StatusDot tone="danger">{attention.length} need attention</StatusDot> : <StatusDot tone="success">No attention required</StatusDot>}
         subtitle="Durable, explicitly targeted operations with ordered attempts and bounded retries."
-        title="Operations"
+        title="Runs"
       />
       <MetricGrid columns={5}>
         <Metric label="Queued" tone={queued ? 'accent' : 'neutral'} value={String(queued)} />
@@ -1983,10 +1983,11 @@ function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: C
       >
         <Panel caption={`${commands.length} retained command${commands.length === 1 ? '' : 's'}`} flush title="Command ledger">
           <Toolbar actions={<Button iconStart="refresh" onClick={() => void onRefresh()} size="sm" variant="ghost">Refresh</Button>}>
+            <Input aria-label="Search runs" iconStart="search" onChange={(event) => setQuery(event.target.value)} placeholder="Search action, target, or run ID" value={query} />
             <Select aria-label="Filter commands by state" onChange={(event) => setStateFilter(event.target.value)} options={[{ label: 'State: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.state))).map((state) => ({ label: capitalize(state.replaceAll('_', ' ')), value: state }))]} value={stateFilter} />
             <Select aria-label="Filter commands by target" onChange={(event) => setTargetFilter(event.target.value)} options={[{ label: 'Target: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.target))).map((target) => ({ label: target, value: target }))]} value={targetFilter} />
             <Select aria-label="Filter commands by action" onChange={(event) => setActionFilter(event.target.value)} options={[{ label: 'Action: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.action))).map((action) => ({ label: action, value: action }))]} value={actionFilter} />
-            <Select aria-label="Filter commands by time" disabled options={[{ label: 'Time: All retained', value: 'all' }]} value="all" />
+            <Select aria-label="Filter commands by time" onChange={(event) => setTimeFilter(event.target.value)} options={[{ label: 'Time: All retained', value: 'all' }, { label: 'Last hour', value: '1' }, { label: 'Last 24 hours', value: '24' }, { label: 'Last 7 days', value: '168' }]} value={timeFilter} />
           </Toolbar>
           <DataTable
             columns={columns}
@@ -2047,12 +2048,13 @@ function CommandStateBadge({ state }: { state: Command['state'] }) {
   return <Badge dot pill size="sm" tone="soft" variant={variant}>{state.replace('_', ' ')}</Badge>
 }
 
-function useHashPage(): [Page, (page: Page) => void] {
+function useHashWorkspace(): [WorkspacePage, (page: WorkspacePage) => void] {
 	const read = () => {
 		const value = window.location.hash.slice(1)
-		return Object.prototype.hasOwnProperty.call(SECTION_DEFAULT, value) ? value as Page : 'home'
+		if (Object.prototype.hasOwnProperty.call(PAGES, value)) return value as WorkspacePage
+    return LEGACY_ROUTES[value] ?? 'overview'
 	}
-  const [page, setPage] = useState<Page>(read)
+  const [page, setPage] = useState<WorkspacePage>(read)
   useEffect(() => { const update = () => setPage(read()); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
   return [page, (next) => { window.location.hash = next; setPage(next) }]
 }

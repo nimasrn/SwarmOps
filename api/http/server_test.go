@@ -78,6 +78,26 @@ func TestConnectionErrorReturnsSafeDiagnostic(t *testing.T) {
 	}
 }
 
+func TestConnectionErrorExplainsMachineAPIPinReplacement(t *testing.T) {
+	t.Parallel()
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/test/connect", nil)
+	response := httptest.NewRecorder()
+
+	server.connectionError(response, request, remote.ErrAgentAPIFingerprint)
+
+	var payload struct {
+		Detail string `json:"detail"`
+		Error  string `json:"error"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Error != "Machine API certificate fingerprint mismatch" || !strings.Contains(payload.Detail, "update this saved profile") {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestOperationErrorExplainsWhenDockerBootstrapIsRequired(t *testing.T) {
 	t.Parallel()
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}

@@ -21,12 +21,12 @@ const base = {
   username: '',
 }
 
-test('outbound agents remain visible to host readiness and diagnostics', () => {
+test('connected agents use operator-facing connection language', () => {
   const server = { ...base, authentication: 'mutual_tls', connectionType: 'agent_pull' }
   assert.equal(isNativeAgent(server), true)
   assert.equal(isConnectedNativeAgent(server), true)
-  assert.equal(serverConnectionLabel(server), 'Outbound agent')
-  assert.equal(serverEndpointLabel(server), 'Outbound mTLS long poll')
+  assert.equal(serverConnectionLabel(server), 'Secure outbound connection')
+  assert.equal(serverEndpointLabel(server), 'Agent connects securely to SwarmOps')
 })
 
 test('legacy SSH profiles do not enter native-agent workflows', () => {

@@ -17,7 +17,7 @@ services:
         mode: 0400
     volumes:
       - swarmops_mongo_data:/data/db
-    networks: [swarmops-data]
+    networks: [swarmops-data, route-mongo]
     stop_grace_period: 60s
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' || exit 1"]
@@ -48,6 +48,9 @@ networks:
   swarmops-data:
     external: true
     name: swarmops-data
+  route-mongo:
+    external: true
+    name: ${SWARMOPS_MONGO_ROUTE_NETWORK:-swarmops-route-swarmops-mongo-mongo-d5664c78}
 
 volumes:
   swarmops_mongo_data:

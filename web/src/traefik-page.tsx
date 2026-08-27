@@ -19,6 +19,7 @@ import {
   Page,
   Panel,
   Select,
+  Sheet,
   Stack as Rows,
   StatusDot,
   Switch,
@@ -57,7 +58,7 @@ const tabs = [
   { label: 'Overview', value: 'overview' as const },
   { label: 'Routes', value: 'routes' as const },
   { label: 'Certificates', value: 'certificates' as const },
-  { label: 'Entry points & DNS', value: 'dns' as const },
+  { label: 'Gateway configuration', value: 'dns' as const },
   { label: 'Logs & metrics', value: 'logs' as const },
 ]
 
@@ -71,6 +72,9 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [installOpen, setInstallOpen] = useState(false)
+  const [installConfirmation, setInstallConfirmation] = useState('')
+  const [installing, setInstalling] = useState(false)
 
   const load = async (refreshRuntime = false) => {
     setError('')
@@ -103,13 +107,26 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
 
   const installed = Boolean(status.service)
   const running = status.service?.health === 'healthy'
+  const install = async () => {
+    setInstalling(true)
+    try {
+      const command = await api.reconcileTraefik(installConfirmation)
+      queuedToast(toast, command, 'Gateway installation')
+      setInstallOpen(false)
+      setInstallConfirmation('')
+      await load(false)
+    } catch (reason) {
+      setError(messageOf(reason))
+    } finally { setInstalling(false) }
+  }
   return (
     <Page>
       <DetailHeader
-        actions={<Inline><Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open Traefik logs</Button><Button onClick={() => setTab('routes')} variant="accent">Add route</Button><Button onClick={() => setTab('dns')} variant="secondary">Traefik settings</Button><Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
+        actions={<Inline>{!installed ? <Button onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : <Button onClick={() => setTab('routes')} variant="accent">Add route</Button>}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button><Button onClick={() => setTab('dns')} variant="secondary">Configure gateway</Button><Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
         status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not installed' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
-        title="Traffic"
+        title="Gateway, routes & DNS"
       />
+      <Banner title="What lives here" tone="info">Install and operate the Traefik gateway, publish application routes, configure listening ports, issue TLS certificates, and manage Cloudflare or ArvanCloud DNS access. Provider credentials are under Gateway configuration—not under entrypoints.</Banner>
       {tab !== 'overview' ? (!installed ? (
         <Banner title="Traefik is not installed on this cluster" tone="info">
           Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. Stored routing declarations are preserved and do not imply that a gateway is running.
@@ -127,6 +144,14 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
       {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'logs' ? <LogsMetricsTab onQueued={() => void load(false)} prometheus={prometheus} settings={state.settings} toast={toast} /> : null}
+      <Sheet closeLabel="Close gateway installation" onClose={() => { setInstallOpen(false); setInstallConfirmation('') }} open={installOpen} title="Install Traefik gateway">
+        <Rows>
+          <Body size="sm">SwarmOps will deploy its reviewed singleton Traefik stack on the selected manager. Routes, certificates, access logs, and metrics become available after the run succeeds.</Body>
+          <Facts columns={1} items={[{ label: 'Target', value: 'Selected Swarm manager' }, { label: 'Result', value: 'One Traefik gateway service managed by SwarmOps' }, { label: 'Impact', value: 'Publishes configured gateway ports; existing services are not changed.' }]} />
+          <Input hint="Type DEPLOY_TRAEFIK exactly." label="Confirmation" onChange={(event) => setInstallConfirmation(event.target.value)} placeholder="DEPLOY_TRAEFIK" value={installConfirmation} />
+          <Inline><Button disabled={installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
+        </Rows>
+      </Sheet>
     </Page>
   )
 }
@@ -470,7 +495,7 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
   return (
     <Rows>
       <Columns>
-        <Panel eyebrow="Static singleton configuration" title="Entry points & resolvers">
+        <Panel eyebrow="Gateway listening and certificate policy" title="Ports & certificate resolvers">
           <Rows>
             <Input label="ACME account email" onChange={(event) => setSettings({ ...settings, acmeEmail: event.target.value })} type="email" value={settings.acmeEmail} />
             <Columns><Input label="Stream port range start" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, start: Number(event.target.value) } })} type="number" value={settings.portRange.start} /><Input label="Stream port range end" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, end: Number(event.target.value) } })} type="number" value={settings.portRange.end} /></Columns>
@@ -482,7 +507,7 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
             <Button disabled={Boolean(pending) || settingsConfirmation !== 'RESTART_SINGLETON_TRAEFIK'} loading={pending === 'settings'} onClick={() => void queueSettings()} variant="danger">Queue static settings</Button>
           </Rows>
         </Panel>
-        <Panel eyebrow="Encrypted controller custody" title="Provider credentials">
+        <Panel eyebrow="Cloudflare and ArvanCloud" title="DNS providers & credentials">
           <Rows>
             <Banner tone="info">The value is written first to the encrypted durable command artifact, validated with the provider, sealed in controller state, then created as a new immutable Swarm secret. Responses, logs, commands, and audit records contain metadata only.</Banner>
             <Select label="Provider" onChange={(event) => setProvider(event.target.value as 'cloudflare' | 'arvan')} options={[{ label: 'Cloudflare scoped DNS token', value: 'cloudflare' }, { label: 'ArvanCloud DNS API key', value: 'arvan' }]} value={provider} />

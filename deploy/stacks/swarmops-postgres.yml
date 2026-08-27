@@ -18,9 +18,10 @@ services:
         mode: 0400
     volumes:
       - swarmops_postgres_data:/var/lib/postgresql/data
-    # The database is reachable only on the internal data overlay. Publishing it to
-    # the host or the edge stays an explicit, separate operator decision.
-    networks: [swarmops-data]
+    # Applications reach this managed database only over the internal data
+    # overlay. The dedicated route overlay remains for SwarmOps' typed
+    # dependency bindings and never replaces the data plane.
+    networks: [swarmops-data, route-postgres]
     stop_grace_period: 60s
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U swarmops -d swarmops"]
@@ -51,6 +52,9 @@ networks:
   swarmops-data:
     external: true
     name: swarmops-data
+  route-postgres:
+    external: true
+    name: ${SWARMOPS_POSTGRES_ROUTE_NETWORK:-swarmops-route-swarmops-postgres-postgres-75a65713}
 
 volumes:
   swarmops_postgres_data:

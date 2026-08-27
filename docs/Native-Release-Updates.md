@@ -74,7 +74,7 @@ only in AES-256-GCM-sealed Core state so agents reconnect after a restart; set
 ## Install Agent on a host
 
 For the supported production flow, generate an enrollment command in
-**Infrastructure → Agents** and run it with `sudo` on Ubuntu. An install-first
+**Cluster → Servers** and run it with `sudo` on Ubuntu. An install-first
 host can omit the one-time code and print a short-lived approval code instead:
 
 ```bash
@@ -94,7 +94,7 @@ installations remain available with paired TLS file arguments, but are not the
 production outbound path.
 
 The default installation does not change Docker or Swarm. After the agent has
-been enrolled, **Infrastructure → Readiness** can approve the fixed
+been enrolled, **Cluster → Setup & readiness** can approve the fixed
 Debian/Ubuntu Docker setup,
 initialize a new Swarm, or join the selected Swarm. For a join, the selected
 manager issues Docker's short-lived credential directly to the enrolled

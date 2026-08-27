@@ -11,6 +11,26 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.1 — 2026-08-28
+
+This release reorganizes the console around operator tasks and closes the
+remaining setup dead ends discovered during end-to-end release validation.
+
+- **Operator-centered console** — the sidebar now groups Overview, Cluster,
+  Workloads, Networking, Monitoring, Activity, and Settings; old implementation
+  labels such as Observe, Operations, Traffic, and Control plane are removed.
+- **Visible action workflows** — readiness uses fix actions instead of a switch
+  plan, catalog actions open immediately in a responsive review sheet, Runs and
+  Resources expose working filters, and queued work links back to Activity.
+- **Clear gateway and source setup** — Traefik has an explicit reviewed install
+  action; entrypoints, certificate resolvers, and Cloudflare/ArvanCloud DNS
+  credentials are separated; source/registry blockers have a guided setup action.
+- **Unified log workspace** — Monitoring → Logs provides typed filters, cursor
+  paging, five-second live polling, current-container enrichment, and health banners.
+- **Complete native bundles** — Core release archives now carry and verify every
+  reviewed Prometheus, Alertmanager, Jaeger, Fluentd, and Traefik configuration
+  alongside their stack assets, so Warden upgrades cannot install a partial runtime.
+
 ## 0.7.0 — 2026-08-28
 
 This release replaces the former log runtime with a SwarmOps-owned Fluentd
@@ -73,20 +93,6 @@ that left legacy in-memory agent profiles permanently disconnected.
 - **Installer regression coverage** — self-signed acceptance, wrong-pin and
   malformed-pin rejection, Core fingerprint extraction, help text and CLI
   propagation are exercised by automated tests.
-
-## Warden recovery 0.6.0.1 — 2026-08-27
-
-This updater-only prerelease repairs the v0.5.10-to-v0.6.0 native Core bridge;
-it does not change the SwarmOps Core or Agent product version.
-
-- **Forward-compatible reviewed assets** — Warden continues to require every
-  known Core binary and stack asset, checksum verification, regular files,
-  path containment, and the extraction limit, while permitting additional
-  flat `assets/<safe-name>.yml` documents in later trusted release bundles.
-- **Verified one-paste recovery** — the recovery script downloads a fixed
-  Linux Warden from the immutable `warden-v0.6.0.1` prerelease, verifies its
-  published checksum, and runs the normal health-checked, rollback-capable
-  update without replacing controller state or the installed updater by hand.
 
 ## 0.6.1 — 2026-08-27
 

@@ -98,6 +98,7 @@ export function HomePage({
   servers,
 }: HomePageProps) {
   const activeCore = core.members.find((member) => member.id === core.activeId)
+  const connectedServer = servers.find((server) => server.connectionState === 'connected' && server.swarmControlAvailable)
   const attention = attentionItems(core, cluster, servers, commands)
   const nodes = cluster?.overview.nodes ?? []
   const history = Array.isArray(activity) ? activity.slice(-12) : []
@@ -108,7 +109,8 @@ export function HomePage({
     <Page width="full">
       <DetailHeader
         actions={<Inline><Button iconStart="play" onClick={onDeploy} variant="accent">Deploy application</Button><Button iconStart="plus" onClick={onAddNode} variant="secondary">Add node</Button></Inline>}
-        title="Home"
+        subtitle={connectedServer ? `Environment ${connectedServer.name} · ${nodes.length} Swarm node${nodes.length === 1 ? '' : 's'}` : 'Controller status and the next action to take'}
+        title="Overview"
       />
 
       <Columns template="two-fifths">
@@ -126,7 +128,16 @@ export function HomePage({
         </Panel>
       </Columns>
 
-      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">View infrastructure</Button>} caption={`${nodes.length} node${nodes.length === 1 ? '' : 's'}`} flush title="Infrastructure">
+      {connectedServer ? <Panel actions={<Inline><Button onClick={onOpenInfrastructure} size="sm" variant="secondary">View server</Button><Button onClick={onDiagnose} size="sm" variant="ghost">Run diagnostics</Button></Inline>} title={`${connectedServer.name} is connected`}>
+        <Body size="sm">This server securely connects out to SwarmOps; no inbound agent port is exposed.</Body>
+        <Facts items={[
+          { label: 'Docker', value: connectedServer.dockerVersion || 'Engine reachable' },
+          { label: 'Swarm', value: connectedServer.swarmControlAvailable ? 'Manager' : connectedServer.swarmState || 'Not active' },
+          { label: 'Agent', mono: true, value: connectedServer.agentHealth?.agentVersion ? `v${connectedServer.agentHealth.agentVersion.replace(/^v/, '')}` : 'Version unavailable' },
+        ]} />
+      </Panel> : null}
+
+      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">Open Swarm</Button>} caption={`${nodes.length} node${nodes.length === 1 ? '' : 's'}`} flush title="Swarm topology">
         {nodes.length ? <Table columns={NODE_COLUMNS} rowKey={(node) => node.id} rows={nodes.slice(0, 6)} /> : (
           <EmptyState actions={<Button onClick={onAddNode} size="sm" variant="secondary">Add node</Button>} description="Node capacity, agent health, Docker state, and task placement appear after enrollment." icon="server" title="No managed nodes" />
         )}
@@ -148,10 +159,19 @@ export function HomePage({
           ]} /> : <EmptyState description="Activity history begins after two manager snapshots." icon="chart" title="Collecting activity" />}
         </Panel>
 
-        <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View all</Button>} flush title="Recent operations">
+        <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View runs</Button>} flush title="Recent activity">
           {visibleCommands.length ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} /> : <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations" />}
         </Panel>
       </Columns>
+
+      <Panel title="How workloads are organized">
+        <Facts items={[
+          { label: 'Application', value: 'The product you deploy and operate as one lifecycle.' },
+          { label: 'Service', value: 'A long-running process inside an application or stack.' },
+          { label: 'Stack', value: 'An advanced group of services, networks, configs, and secrets deployed together.' },
+          { label: 'Managed database', value: 'A database whose placement, credentials, backup, and lifecycle SwarmOps owns.' },
+        ]} />
+      </Panel>
 
       <Panel title="Platform status">
         <Facts items={[

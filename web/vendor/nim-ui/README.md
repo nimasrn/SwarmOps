@@ -1091,8 +1091,11 @@ Picking between the near-neighbours:
   belongs in a form where three other fields need the space.
 - **`TabBar` vs `Tabs`** — the tab bar is the app's destinations and lives at
   the bottom of the frame; `Tabs` switches a region inside one screen.
-- **`Dialog` vs `Sheet`** — the sheet is the mobile-first modal surface; the
-  dialog is the centred one, and renders a real `<dialog>` so the top layer,
+- **`Dialog` vs `Sheet`** — the sheet is the mobile-first modal surface. It
+  rises from the bottom on compact viewports and becomes a right-side review
+  panel from 64rem, keeping long operational actions visible without moving the
+  invoking page. The dialog is the centred surface and renders a real
+  `<dialog>` so the top layer,
   the focus trap and Escape come from the platform. Its flex layout applies
   only while `[open]`, preserving the browser's closed-dialog behaviour.
   A caller that is waiting for an irreversible request may pass

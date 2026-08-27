@@ -92,3 +92,26 @@ func TestCoreInstallerOnePasteDocumentationKeepsDownloadFailuresVisible(t *testi
 		}
 	}
 }
+
+func TestCoreReleaseCarriesEveryCollectorConfig(t *testing.T) {
+	for _, scriptName := range []string{"build-release-bundles.sh", "bootstrap-swarmops-control-plane.sh"} {
+		data, err := os.ReadFile(scriptName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := string(data)
+		for _, asset := range []string{
+			"assets/alertmanager.yml",
+			"assets/fluentd-aggregator.conf",
+			"assets/fluentd-forwarder.conf",
+			"assets/jaeger.yml",
+			"assets/prometheus-alerts.yml",
+			"assets/prometheus.yml",
+			"assets/traefik-dynamic.yml",
+		} {
+			if !strings.Contains(script, asset) {
+				t.Fatalf("%s does not carry or verify %s", scriptName, asset)
+			}
+		}
+	}
+}

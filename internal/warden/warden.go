@@ -490,12 +490,19 @@ func requiredBundleFiles(component string) []string {
 		return []string{
 			"swarmops-core",
 			"swarmops-warden",
+			"assets/alertmanager.yml",
 			"assets/agent.yml",
+			"assets/fluentd-aggregator.conf",
+			"assets/fluentd-forwarder.conf",
+			"assets/jaeger.yml",
 			"assets/logs.yml",
 			"assets/mongo.yml",
 			"assets/observability.yml",
 			"assets/postgres.yml",
+			"assets/prometheus-alerts.yml",
+			"assets/prometheus.yml",
 			"assets/redis.yml",
+			"assets/traefik-dynamic.yml",
 			"assets/traefik.yml",
 		}
 	}

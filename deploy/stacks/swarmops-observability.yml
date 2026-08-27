@@ -1,6 +1,6 @@
-# A single internal observability plane for the Swarm. Prometheus,
-# Alertmanager, Jaeger, and their telemetry endpoints remain internal;
-# SwarmOps renders operator graphs and metrics in its own console.
+# Internal collection and alerting for the Swarm. SwarmOps renders the small
+# operator-facing graphs itself; Prometheus, Alertmanager, and Jaeger remain
+# available only through typed internal Traefik routes.
 version: "3.9"
 
 services:
@@ -20,7 +20,7 @@ services:
         mode: 0444
     volumes:
       - swarmops_prometheus:/prometheus
-    networks: [swarmops]
+    networks: [route-prometheus]
     read_only: true
     tmpfs: [/tmp]
     deploy:
@@ -49,7 +49,7 @@ services:
         mode: 0444
     volumes:
       - swarmops_alertmanager:/alertmanager
-    networks: [swarmops]
+    networks: [route-alertmanager]
     read_only: true
     tmpfs: [/tmp]
     deploy:
@@ -77,7 +77,7 @@ services:
         mode: 0444
     volumes:
       - swarmops_jaeger:/var/lib/jaeger
-    networks: [swarmops]
+    networks: [route-jaeger]
     read_only: true
     tmpfs: [/tmp]
     deploy:
@@ -96,9 +96,15 @@ services:
           memory: 1536M
 
 networks:
-  swarmops:
+  route-prometheus:
     external: true
-    name: swarmops
+    name: swarmops-route-swarmops-observability-prometheus-efd3b86d
+  route-alertmanager:
+    external: true
+    name: swarmops-route-swarmops-observability-alertmanager-48422d25
+  route-jaeger:
+    external: true
+    name: swarmops-route-swarmops-observability-jaeger-b3ab6686
 
 volumes:
   swarmops_prometheus:

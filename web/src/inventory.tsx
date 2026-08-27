@@ -26,6 +26,7 @@ import {
   ResourceMeter,
   Segmented,
   Select,
+  Sheet,
   Sparkline,
   Spinner,
   Stack as Rows,
@@ -134,7 +135,7 @@ export function InsightsPage({ toast }: { toast: Toast }) {
       <DetailHeader
         actions={<Inline><Button iconStart="plus" variant="accent">Create alert</Button><Button iconStart="settings" variant="secondary">Collection settings</Button></Inline>}
         meta={<StatusDot tone={alerts.length ? 'warning' : 'success'}>Collection state: {alerts.length ? 'Needs attention' : 'Healthy'}</StatusDot>}
-        title="Observe"
+        title="Health"
       />
       {error ? <Banner tone="warning" title="Some readings are stale">{error}</Banner> : null}
       <div className="nim-console-filter-row"><Select aria-label="Observation window" onChange={(event) => setWindow(event.target.value)} options={[{ label: 'Last 15 minutes', value: '15' }, { label: 'Last hour', value: '60' }, { label: 'Last 6 hours', value: '360' }, { label: 'Last 24 hours', value: '1440' }]} value={window} /><Button size="sm" variant="secondary">Application: All</Button><Button size="sm" variant="secondary">Node: All</Button></div>
@@ -198,7 +199,7 @@ export function InsightsPage({ toast }: { toast: Toast }) {
     <Page>
       <DetailHeader
         subtitle="Live Docker Engine and Swarm readings sampled once a minute by the selected manager. Collection settings remain separate from this operational view."
-        title="Observe"
+        title="Health"
       />
       {error ? <Banner tone="warning" title="Some readings are stale">{error}</Banner> : null}
       <MetricGrid aria-label="Cluster totals" columns={4}>
@@ -265,7 +266,7 @@ export function InsightsPage({ toast }: { toast: Toast }) {
         </Columns>
       ) : (
         <Banner tone="info" title="Trend lines start after two samples">
-          The control plane takes one reading a minute. Charts over time appear once a second reading exists; the totals
+          The controller takes one reading a minute. Charts over time appear once a second reading exists; the totals
           above are live either way.
         </Banner>
       )}
@@ -540,6 +541,8 @@ export function ResourcesPage({ toast }: { toast: Toast }) {
 
 function ContainersTab({ toast }: { toast: Toast }) {
   const { data, error, loading, reload } = useResource(() => api.containers(), [])
+  const [query, setQuery] = useState('')
+  const [stateFilter, setStateFilter] = useState('all')
   const [selected, setSelected] = useState<ContainerDetail | null>(null)
   const [stats, setStats] = useState<ContainerStats | null>(null)
   const [detailError, setDetailError] = useState('')
@@ -582,7 +585,11 @@ function ContainersTab({ toast }: { toast: Toast }) {
 
   if (loading && !data) return <Spinner label="Reading containers" />
   if (error) return <Banner tone="danger" title="Containers are unavailable">{error}</Banner>
-  const rows = data ?? []
+  const allRows = data ?? []
+  const rows = allRows.filter((container) => {
+    const matchesQuery = !query || `${containerName(container)} ${container.Image} ${container.Id}`.toLowerCase().includes(query.toLowerCase())
+    return matchesQuery && (stateFilter === 'all' || container.State === stateFilter)
+  })
   if (selected) {
     const name = selected.Name.replace(/^\//, '')
     const environmentCount = selected.Config.EnvNames?.length ?? 0
@@ -619,7 +626,7 @@ function ContainersTab({ toast }: { toast: Toast }) {
             <RailSection meta={String(labelCount)} title="Labels"><Body size="sm">Values are available in Inspect.</Body></RailSection>
             <RailSection meta={String(mountCount)} title="Mounts"><Body size="sm">{selected.Mounts?.map((mount) => mount.Destination).join(', ') || 'No mounts'}</Body></RailSection>
             <RailSection title="Docker health"><StatusDot tone={selected.State.Health?.Status === 'healthy' || selected.State.Running ? 'success' : 'warning'}>{selected.State.Health?.Status ?? (selected.State.Running ? 'Running' : 'Stopped')}</StatusDot></RailSection>
-            <RailSection title="Telemetry"><Body size="sm">One Engine resource sample is available. Cluster log and trace collectors are reported separately under Observe.</Body></RailSection>
+            <RailSection title="Telemetry"><Body size="sm">One Engine resource sample is available. Cluster log and trace collectors are reported separately under Monitoring.</Body></RailSection>
           </Rail>}>
             <Columns template="one-third">
               <Panel title="Health & placement">
@@ -642,7 +649,7 @@ function ContainersTab({ toast }: { toast: Toast }) {
               </Panel>
             </Columns>
             <Panel title="Recent log preview">
-              <Body size="sm" tone="muted">Container log streaming is not exposed by this Core endpoint. Use the cluster-managed log collector in Observe when it is configured.</Body>
+              <Body size="sm" tone="muted">Container log streaming is not exposed by this controller endpoint. Use the cluster-managed log collector under Monitoring when it is configured.</Body>
             </Panel>
             <Panel title="Recent activity">
               <Facts items={[
@@ -653,18 +660,20 @@ function ContainersTab({ toast }: { toast: Toast }) {
               ]} />
             </Panel>
           </DetailLayout>
-        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Observe for collected logs.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: stats ? formatBytes(stats.networkRxBytes) : '—' }, { label: 'Egress sample', value: stats ? formatBytes(stats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Monitoring → Logs for collected records.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: stats ? formatBytes(stats.networkRxBytes) : '—' }, { label: 'Egress sample', value: stats ? formatBytes(stats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
       </Rows>
     )
   }
   return (
-    <Panel flush title={`Containers (${rows.length})`}>
+    <Panel flush title={`Containers (${allRows.length})`}>
       <DataTable
         caption="Containers on the selected target"
         columns={columns}
         empty={<EmptyState description="This target reported no containers." icon="layers" title="No containers" />}
         rowKey={(container) => container.Id}
         rows={rows}
+        summary={`Showing ${rows.length} of ${allRows.length} containers`}
+        toolbar={<Columns><Input iconStart="search" label="Search containers" onChange={(event) => setQuery(event.target.value)} placeholder="Name, image, or ID" value={query} /><Select label="State" onChange={(event) => setStateFilter(event.target.value)} options={[{ label: 'All states', value: 'all' }, ...Array.from(new Set(allRows.map((container) => container.State))).map((state) => ({ label: state.charAt(0).toUpperCase() + state.slice(1), value: state }))]} value={stateFilter} /></Columns>}
       />
     </Panel>
   )
@@ -957,24 +966,33 @@ function SwarmObjectsTab({ kind, toast }: { kind: 'configs' | 'secrets'; toast: 
 
 export function CommandCataloguePage({
   activeServerID,
+  onQueued,
   servers,
   toast,
 }: {
   activeServerID: string
+  onQueued: (commandID: string) => void
   servers: Server[]
   toast: Toast
 }) {
   const { data, error, loading } = useResource(() => api.commandCatalogue(), [])
   const [selected, setSelected] = useState<CommandDefinition | null>(null)
+  const [query, setQuery] = useState('')
+  const [kind, setKind] = useState('all')
   const grouped = useMemo(() => {
     const groups = new Map<string, CommandDefinition[]>()
-    for (const definition of data ?? []) {
+    const filtered = (data ?? []).filter((definition) => {
+      const matchesQuery = !query || `${definition.title} ${definition.description} ${definition.resource} ${definition.action}`.toLowerCase().includes(query.toLowerCase())
+      const matchesKind = kind === 'all' || (kind === 'mutation' ? definition.mutation : !definition.mutation)
+      return matchesQuery && matchesKind
+    })
+    for (const definition of filtered) {
       const entries = groups.get(definition.resource) ?? []
       entries.push(definition)
       groups.set(definition.resource, entries)
     }
     return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right))
-  }, [data])
+  }, [data, kind, query])
 
   if (loading && !data) return <Spinner label="Reading the command vocabulary" />
   if (error) return <Banner tone="danger" title="The catalogue is unavailable">{error}</Banner>
@@ -984,23 +1002,26 @@ export function CommandCataloguePage({
   return (
     <Page>
       <DetailHeader
-        subtitle="Everything SwarmOps can read from or do to a cluster, with the Docker command each entry becomes — and a Run button that executes it here. This vocabulary is closed: an operation absent from this list has no route, no queue action, and no argv the machine agent will accept."
-        title="Supported commands"
+        subtitle={`Safe, fixed operations you can review and run on ${servers.find((server) => server.id === activeServerID)?.name ?? 'a selected server'}. Every change is explicitly targeted, audited, and visible under Runs.`}
+        title="Action catalog"
       />
       <MetricGrid aria-label="Vocabulary size" columns={3}>
         <Metric hint="Projections of Docker and Swarm state" icon="document" label="Read operations" value={String(reads)} />
         <Metric hint="Queued, CSRF-protected, and audited" icon="terminal" label="Mutations" value={String(mutations)} />
         <Metric hint="Require a typed confirmation phrase" icon="alert" label="Destructive" tone="warning" value={String((data ?? []).filter((definition) => definition.destructive).length)} />
       </MetricGrid>
-      {selected ? (
-        <CommandRunner
+      <Columns>
+        <Input iconStart="search" label="Search actions" onChange={(event) => setQuery(event.target.value)} placeholder="Diagnostics, image, service…" value={query} />
+        <Select label="Action type" onChange={(event) => setKind(event.target.value)} options={[{ label: 'All actions', value: 'all' }, { label: 'Read-only', value: 'read' }, { label: 'Changes', value: 'mutation' }]} value={kind} />
+      </Columns>
+      {selected ? <CommandRunner
           defaultServerID={activeServerID}
           definition={selected}
           onClose={() => setSelected(null)}
+          onQueued={onQueued}
           servers={servers}
           toast={toast}
-        />
-      ) : null}
+        /> : null}
       {grouped.map(([resource, definitions]) => (
         <Panel eyebrow={`${definitions.length} operation${definitions.length === 1 ? '' : 's'}`} flush key={resource} title={resourceTitle(resource)}>
           <DataTable
@@ -1033,7 +1054,7 @@ export function CommandCataloguePage({
                 header: '',
                 key: 'run',
                 render: (definition: CommandDefinition) => (
-                  <Button onClick={() => setSelected(definition)} size="sm" variant={definition.destructive ? 'ghost' : 'secondary'}>Run</Button>
+                  <Button onClick={() => setSelected(definition)} size="sm" variant={definition.destructive ? 'ghost' : 'secondary'}>Review action</Button>
                 ),
               },
             ]}
@@ -1055,12 +1076,14 @@ function CommandRunner({
   defaultServerID,
   definition,
   onClose,
+  onQueued,
   servers,
   toast,
 }: {
   defaultServerID: string
   definition: CommandDefinition
   onClose: () => void
+  onQueued: (commandID: string) => void
   servers: Server[]
   toast: Toast
 }) {
@@ -1106,6 +1129,7 @@ function CommandRunner({
       if (definition.mutation) {
         const queued = payload as { id?: string }
         toast({ message: `${definition.title} queued on ${target?.name ?? serverID}${queued?.id ? ` (${shortID(queued.id)})` : ''}`, tone: 'success' })
+        if (queued.id) onQueued(queued.id)
       }
     } catch (reason) {
       setError(messageOf(reason))
@@ -1115,17 +1139,14 @@ function CommandRunner({
   }
 
   return (
-    <Panel
-      actions={<Button onClick={onClose} size="sm" variant="ghost">Close</Button>}
-      eyebrow={definition.docker}
-      title={`Run: ${definition.title}`}
-    >
+    <Sheet closeLabel="Close action review" onClose={onClose} open title={definition.title}>
       <Rows>
         <Body size="sm">{definition.description}</Body>
         <Facts items={[
-          { label: 'Request', mono: true, value: definition.endpoint },
-          { label: 'Kind', value: definition.mutation ? 'Queued mutation' : 'Read' },
-          { label: 'Runs on', value: target ? `${target.name} · ${target.host}` : 'No server chosen' },
+          { label: 'Target', value: target ? `${target.name} · ${target.host}` : 'Choose a server below' },
+          { label: 'Expected result', value: definition.mutation ? 'A durable run appears in Activity and executes on the selected server.' : 'A read-only result appears in this sheet.' },
+          { label: 'Impact', value: definition.destructive ? 'Destructive change; exact confirmation required.' : definition.mutation ? 'Changes server state through one reviewed operation.' : 'Read-only; no server state is changed.' },
+          { label: 'Operation', mono: true, value: definition.docker },
           ...(confirmation ? [{ label: 'Confirmation', mono: true, value: confirmation }] : []),
         ]} />
         <Select
@@ -1179,13 +1200,13 @@ function CommandRunner({
             <CodeBlock label={`${definition.action} response`}>{JSON.stringify(result, null, 2).slice(0, 20000)}</CodeBlock>
             <Body size="sm">
               {definition.mutation
-                ? `The response is the queued command record for ${target?.name ?? serverID}. Follow it to completion in Command queue.`
-                : `This is exactly what ${target?.name ?? 'the control plane'} returned, including the fields it withholds by design.`}
+                ? `The response is the queued run for ${target?.name ?? serverID}. Follow it to completion under Activity → Runs.`
+                : `This is exactly what ${target?.name ?? 'the controller'} returned, including the fields it withholds by design.`}
             </Body>
           </Rows>
         ) : null}
       </Rows>
-    </Panel>
+    </Sheet>
   )
 }
 
