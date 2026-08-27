@@ -23,7 +23,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-var version = "0.6.0"
+var version = "0.6.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -121,12 +121,6 @@ func main() {
 		AlertmanagerImage:         cfg.TrustedAlertmanagerImage,
 		AlloyConfigName:           cfg.TrustedAlloyConfig,
 		AlloyImage:                cfg.TrustedAlloyImage,
-		GrafanaAdminSecret:        cfg.TrustedGrafanaAdminSecret,
-		GrafanaDashboardConfig:    cfg.TrustedGrafanaDashboard,
-		GrafanaDashboardProvider:  cfg.TrustedGrafanaProvider,
-		GrafanaDatasourcesConfig:  cfg.TrustedGrafanaDatasources,
-		GrafanaHost:               cfg.TrustedGrafanaHost,
-		GrafanaImage:              cfg.TrustedGrafanaImage,
 		JaegerConfigName:          cfg.TrustedJaegerConfig,
 		JaegerImage:               cfg.TrustedJaegerImage,
 		LokiConfigName:            cfg.TrustedLokiConfig,

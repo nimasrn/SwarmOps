@@ -26,7 +26,6 @@ advertise_02=""
 advertise_03=""
 traefik_email=""
 swarmops_host=""
-grafana_host=""
 traefik_dashboard_host=""
 traefik_token_file=""
 traefik_dashboard_auth_file=""
@@ -34,7 +33,6 @@ swarmops_admin_password_hash_file=""
 swarmops_session_key_file=""
 swarmops_agent_token_file=""
 swarmops_registry_config_file=""
-grafana_admin_password_file=""
 tag="$(git -C "$repo_root" rev-parse --short HEAD)"
 releases=()
 temporary_files=()
@@ -67,7 +65,6 @@ usage() {
     '  --platform                  Deploy Traefik and SwarmOps after host bootstrap.' \
     '  --traefik-email <email>     ACME email for Traefik.' \
     '  --swarmops-host <hostname>  SwarmOps HTTPS hostname.' \
-    '  --grafana-host <hostname>   Grafana HTTPS hostname.' \
     '  --traefik-dashboard-host <hostname> Protected Traefik dashboard hostname.' \
     '  --traefik-token-file <path> Cloudflare token file outside the repository.' \
     '  --traefik-dashboard-auth-file <path> htpasswd dashboard-auth file outside the repository.' \
@@ -75,7 +72,6 @@ usage() {
     '  --swarmops-session-key-file <path> random 32+ byte session key file outside the repository.' \
     '  --swarmops-agent-token-file <path> random agent token file outside the repository.' \
     '  --swarmops-registry-config-file <path> Docker registry config JSON outside the repository.' \
-    '  --grafana-admin-password-file <path> Grafana administrator password file outside the repository.' \
     '  --release <stack>           Build when needed and deploy one SwarmOps stack.' \
     '  --tag <git-sha>             Immutable image tag; defaults to current SHA.'
 }
@@ -188,7 +184,6 @@ write_host_file() {
     if [[ "$name" == manager-01 && -n "$traefik_email" ]]; then
       printf 'TRAEFIK_ACME_EMAIL=%s\n' "$traefik_email"
       printf 'SWARMOPS_HOST=%s\n' "$swarmops_host"
-      printf 'GRAFANA_HOST=%s\n' "$grafana_host"
       printf 'TRAEFIK_DASHBOARD_HOST=%s\n' "$traefik_dashboard_host"
       printf 'TRAEFIK_DASHBOARD_URL=https://%s/dashboard/\n' "$traefik_dashboard_host"
       printf '%s\n' 'SWARMOPS_MUTATIONS_ENABLED=false'
@@ -285,11 +280,6 @@ while (($#)); do
       swarmops_host="$2"
       shift 2
       ;;
-    --grafana-host)
-      need_value "$@"
-      grafana_host="$2"
-      shift 2
-      ;;
     --traefik-dashboard-host)
       need_value "$@"
       traefik_dashboard_host="$2"
@@ -323,11 +313,6 @@ while (($#)); do
     --swarmops-registry-config-file)
       need_value "$@"
       swarmops_registry_config_file="$2"
-      shift 2
-      ;;
-    --grafana-admin-password-file)
-      need_value "$@"
-      grafana_admin_password_file="$2"
       shift 2
       ;;
     --release)
@@ -375,7 +360,6 @@ fi
 if ((deploy_platform)); then
   [[ -n "$traefik_email" ]] || fail '--platform requires --traefik-email'
   [[ -n "$swarmops_host" ]] || fail '--platform requires --swarmops-host'
-  [[ -n "$grafana_host" ]] || fail '--platform requires --grafana-host'
   [[ -n "$traefik_dashboard_host" ]] || fail '--platform requires --traefik-dashboard-host'
   [[ -n "$traefik_token_file" ]] || fail '--platform requires --traefik-token-file'
   [[ -n "$traefik_dashboard_auth_file" ]] || fail '--platform requires --traefik-dashboard-auth-file'
@@ -383,10 +367,8 @@ if ((deploy_platform)); then
   [[ -n "$swarmops_session_key_file" ]] || fail '--platform requires --swarmops-session-key-file'
   [[ -n "$swarmops_agent_token_file" ]] || fail '--platform requires --swarmops-agent-token-file'
   [[ -n "$swarmops_registry_config_file" ]] || fail '--platform requires --swarmops-registry-config-file'
-  [[ -n "$grafana_admin_password_file" ]] || fail '--platform requires --grafana-admin-password-file'
   safe_email "$traefik_email" || fail 'invalid Traefik email'
   safe_hostname "$swarmops_host" || fail 'invalid SwarmOps hostname'
-  safe_hostname "$grafana_host" || fail 'invalid Grafana hostname'
   safe_hostname "$traefik_dashboard_host" || fail 'invalid Traefik dashboard hostname'
   [[ -s "$traefik_token_file" ]] || fail 'Cloudflare token file must exist and be non-empty'
   [[ -s "$traefik_dashboard_auth_file" ]] || fail 'Traefik dashboard-auth file must exist and be non-empty'
@@ -394,7 +376,6 @@ if ((deploy_platform)); then
   [[ -s "$swarmops_session_key_file" ]] || fail 'SwarmOps session-key file must exist and be non-empty'
   [[ -s "$swarmops_agent_token_file" ]] || fail 'SwarmOps agent-token file must exist and be non-empty'
   [[ -s "$swarmops_registry_config_file" ]] || fail 'SwarmOps registry-config file must exist and be non-empty'
-  [[ -s "$grafana_admin_password_file" ]] || fail 'Grafana administrator-password file must exist and be non-empty'
 fi
 
 if (( ${#releases[@]} )); then
@@ -469,8 +450,6 @@ if ((deploy_platform)); then
     SECRET=swarmops_agent_token_v1 FILE="$swarmops_agent_token_file"
   make -C "$repo_root" secret-create HOST=manager-01 \
     SECRET=swarmops_registry_config_v1 FILE="$swarmops_registry_config_file"
-  make -C "$repo_root" secret-create HOST=manager-01 \
-    SECRET=swarmops_grafana_admin_password_v1 FILE="$grafana_admin_password_file"
   make -C "$repo_root" stack-check STACK=traefik TAG="$tag"
   make -C "$repo_root" stack-check STACK=swarmops TAG="$tag"
   make -C "$repo_root" platform-deploy HOST=manager-01 TAG="$tag"

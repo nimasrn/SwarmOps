@@ -95,9 +95,10 @@ Do not expose 2377, 7946, 4789, Docker's socket, the optional SwarmOps agent
 or node-exporter ports, or Traefik's internal metrics port to the public
 internet. The direct-controller and explicitly installed machine-agent ports
 are deliberate exceptions: restrict both through host/cloud firewall rules.
-SwarmOps and Grafana are otherwise reached through Traefik HTTPS routes;
-Prometheus, Alertmanager, Jaeger, Loki, and probes stay on internal overlay
-networks. The SwarmOps API itself has no Docker socket mount and reaches a
+SwarmOps is reached through its Traefik HTTPS route. Prometheus, Alertmanager,
+Jaeger, Loki, and probes stay on internal overlay networks; graphs and metrics
+are rendered inside the SwarmOps console rather than a separate dashboard
+service. The SwarmOps API itself has no Docker socket mount and reaches a
 selected remote target only through that target's fixed machine API.
 
 ## Automated host and Swarm bootstrap
@@ -287,9 +288,6 @@ make secret-create HOST=manager-01 \
   SECRET=swarmops_agent_token_v1 FILE=/secure/swarmops-agent-token
 make secret-create HOST=manager-01 \
   SECRET=swarmops_registry_config_v1 FILE=/secure/swarmops-registry-config.json
-make secret-create HOST=manager-01 \
-  SECRET=swarmops_grafana_admin_password_v1 FILE=/secure/grafana-admin-password
-
 # This is public topology only. It becomes the immutable admission contract
 # mounted into SwarmOps; do not put secret values in this file.
 make swarmops-preflight MANIFEST=/secure/swarmops-platform.yml
@@ -301,7 +299,7 @@ make secret-create HOST=manager-01 \
 ```
 
 Set non-secret deployment settings such as `TRAEFIK_ACME_EMAIL`,
-`SWARMOPS_HOST`, `GRAFANA_HOST`, `TRAEFIK_DASHBOARD_HOST`, and
+`SWARMOPS_HOST`, `TRAEFIK_DASHBOARD_HOST`, and
 `TRAEFIK_DASHBOARD_URL` in the ignored `deploy/hosts/manager-01.env`. Build and
 push the immutable SwarmOps API and agent images, then validate and deploy
 Traefik before SwarmOps:
@@ -363,7 +361,7 @@ Runtime configuration is a versioned Swarm secret, never an image layer,
 | `traefik` | `traefik_cf_dns_token_v1`, `traefik_arvan_api_key_v1`, `traefik_dashboard_auth_v1` | Cloudflare token via `CF_DNS_API_TOKEN_FILE`, ArvanCloud API key via `ARVANCLOUD_API_KEY_FILE`, protected dashboard auth file |
 | `swarmops` | `swarmops_admin_password_hash_v1`, `swarmops_session_key_v1`, `swarmops_data_encryption_key_v1`, `swarmops_agent_token_v1`, `swarmops_registry_config_v1` | bcrypt operator hash, session HMAC key, and a base64-encoded random 32-byte AES-256-GCM data key for the API; node-agent token for the optional agent; standard Docker `config.json` for capped remote Engine builds only. Private stack pulls use reviewed credentials on the remote Swarm nodes. |
 | `swarmops-agent` | `swarmops_agent_token_v1` | Optional global read-only host inventory agent; the companion node-exporter has no credential and remains internal |
-| `swarmops-observability` | `swarmops_grafana_admin_password_v1` | Grafana administrator password file; Alertmanager uses a checked-in blackhole receiver until an operator supplies a reviewed, credential-safe receiver config |
+| `swarmops-observability` | none | Prometheus, Alertmanager, and Jaeger remain internal; Alertmanager uses a checked-in blackhole receiver until an operator supplies a reviewed, credential-safe receiver config |
 | `ai-gateway` | `ai_gateway_config_v1` | `/run/secrets/ai_gateway_config` via `AI_GATEWAY_CONFIG_FILE` |
 | `vlora-backend` | `vlora_runtime_env_v1` | `/.env` for API and scan worker |
 | `iranianlawclub-backend` | `iranianlawclub_runtime_env_v1` | `/app/.env` for API and worker |
@@ -482,7 +480,7 @@ data. The stateful deployment and restore boundaries are in
 | Stack family | Manifest status | Cutover condition |
 | --- | --- | --- |
 | `traefik`, `swarmops`, `nim`, `ai-gateway` | ready for operator deployment | platform bootstrap, required secrets, immutable image push, and live checks completed |
-| `swarmops-agent`, `swarmops-observability`, `swarmops-logs` | optional host monitoring, shared monitoring, and logging manifests | enable only after capacity, Grafana secret, retention, alert receiver, and backup plan are reviewed |
+| `swarmops-agent`, `swarmops-observability`, `swarmops-logs` | optional host monitoring, shared monitoring, and logging manifests | enable only after capacity, retention, alert receiver, and backup plan are reviewed; operator graphs stay in SwarmOps |
 | `mongo-replicaset`, `postgres-primary-replica` | reviewed stateful manifests | only after distinct durable slot labels, live capacity admission, versioned database secrets, and tested database-consistent recovery |
 | `vlora-*` | Swarm manifests are ready; existing project Compose path remains live | validate Mongo/Redis/S3, payment callbacks, CORS, Android/PWA behavior, DNS |
 | `iranianlawclub-*` | Swarm manifests are ready; existing Compose path remains live | supply Mongo/Redis/S3/ClamAV, seed/migration plan, DNS and auth smoke tests |

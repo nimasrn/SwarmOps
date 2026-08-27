@@ -87,15 +87,13 @@ the primary manager. It never reads a value into an inventory or host file.
   --platform \
   --traefik-email ops@example.invalid \
   --swarmops-host swarmops.example.invalid \
-  --grafana-host grafana.example.invalid \
   --traefik-dashboard-host traefik.example.invalid \
   --traefik-token-file /secure/traefik-cf-dns-token \
   --traefik-dashboard-auth-file /secure/traefik-dashboard.htpasswd \
   --swarmops-admin-password-hash-file /secure/swarmops-admin.bcrypt \
   --swarmops-session-key-file /secure/swarmops-session-key \
   --swarmops-agent-token-file /secure/swarmops-agent-token \
-  --swarmops-registry-config-file /secure/swarmops-registry-config.json \
-  --grafana-admin-password-file /secure/grafana-admin-password
+  --swarmops-registry-config-file /secure/swarmops-registry-config.json
 ~~~
 
 Build and push the immutable SwarmOps images before this phase.
@@ -139,7 +137,7 @@ Git-and-Make deployment path:
 ~~~bash
 cp deploy/hosts/example.env deploy/hosts/manager-01.env
 # Fill SSH_TARGET, DOCKER_CONTEXT, TRAEFIK_ACME_EMAIL, SWARMOPS_HOST,
-# GRAFANA_HOST, TRAEFIK_DASHBOARD_HOST, and TRAEFIK_DASHBOARD_URL.
+# TRAEFIK_DASHBOARD_HOST, and TRAEFIK_DASHBOARD_URL.
 
 make context HOST=manager-01
 make secret-create HOST=manager-01 \
@@ -154,8 +152,6 @@ make secret-create HOST=manager-01 \
   SECRET=swarmops_agent_token_v1 FILE=/secure/swarmops-agent-token
 make secret-create HOST=manager-01 \
   SECRET=swarmops_registry_config_v1 FILE=/secure/swarmops-registry-config.json
-make secret-create HOST=manager-01 \
-  SECRET=swarmops_grafana_admin_password_v1 FILE=/secure/grafana-admin-password
 make push TAG=<git-sha>
 make stack-check STACK=traefik TAG=<git-sha>
 make stack-check STACK=swarmops TAG=<git-sha>
@@ -174,7 +170,7 @@ After an apply, verify manager membership with docker node ls on the primary
 manager. After platform-deploy, use make ps HOST=manager-01 STACK=traefik,
 make ps HOST=manager-01 STACK=swarmops, and an authenticated browser check of
 the configured SwarmOps hostname. Then deliberately deploy the optional core
-observability stack and verify Grafana authentication, Prometheus targets, and
-Jaeger storage. Ansible syntax and check-mode success do not prove firewall
-reachability, DNS propagation, ACME issuance, SwarmOps login, or agent
-reachability.
+observability stack and verify the internal Prometheus targets, Jaeger storage,
+and SwarmOps' own graphs and metrics. Ansible syntax and check-mode success do
+not prove firewall reachability, DNS propagation, ACME issuance, SwarmOps
+login, or agent reachability.

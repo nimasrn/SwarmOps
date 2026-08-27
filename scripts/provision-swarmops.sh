@@ -84,7 +84,6 @@ if [[ "$apply" == "y" || "$apply" == "Y" ]]; then
     printf '%s\n' 'The platform phase creates versioned secrets from protected local files. It never asks for or stores secret values.'
     traefik_email="$(ask_required 'Traefik ACME email')"
     swarmops_host="$(ask_required 'SwarmOps HTTPS hostname')"
-    grafana_host="$(ask_required 'Grafana HTTPS hostname')"
     dashboard_host="$(ask_required 'Traefik dashboard HTTPS hostname')"
     traefik_token_file="$(ask_file 'Path to Cloudflare DNS token file')"
     dashboard_auth_file="$(ask_file 'Path to Traefik dashboard htpasswd file')"
@@ -92,12 +91,10 @@ if [[ "$apply" == "y" || "$apply" == "Y" ]]; then
     session_key_file="$(ask_file 'Path to SwarmOps random session-key file')"
     agent_token_file="$(ask_file 'Path to SwarmOps random agent-token file')"
     registry_config_file="$(ask_file 'Path to Docker registry-config JSON file')"
-    grafana_password_file="$(ask_file 'Path to Grafana administrator-password file')"
     args+=(
       --platform
       --traefik-email "$traefik_email"
       --swarmops-host "$swarmops_host"
-      --grafana-host "$grafana_host"
       --traefik-dashboard-host "$dashboard_host"
       --traefik-token-file "$traefik_token_file"
       --traefik-dashboard-auth-file "$dashboard_auth_file"
@@ -105,7 +102,6 @@ if [[ "$apply" == "y" || "$apply" == "Y" ]]; then
       --swarmops-session-key-file "$session_key_file"
       --swarmops-agent-token-file "$agent_token_file"
       --swarmops-registry-config-file "$registry_config_file"
-      --grafana-admin-password-file "$grafana_password_file"
     )
   fi
 else

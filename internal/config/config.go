@@ -98,12 +98,6 @@ type Config struct {
 	TrustedAlertmanagerImage   string
 	TrustedAlloyConfig         string
 	TrustedAlloyImage          string
-	TrustedGrafanaAdminSecret  string
-	TrustedGrafanaDashboard    string
-	TrustedGrafanaProvider     string
-	TrustedGrafanaDatasources  string
-	TrustedGrafanaHost         string
-	TrustedGrafanaImage        string
 	TrustedJaegerConfig        string
 	TrustedJaegerImage         string
 	TrustedLokiConfig          string
@@ -189,12 +183,6 @@ func Load() (Config, error) {
 		TrustedAlertmanagerImage:   env("ALERTMANAGER_IMAGE", "prom/alertmanager:v0.33.1"),
 		TrustedAlloyConfig:         env("SWARMOPS_ALLOY_CONFIG_NAME", "swarmops_alloy_config_v1"),
 		TrustedAlloyImage:          env("ALLOY_IMAGE", "grafana/alloy:v1.18.1"),
-		TrustedGrafanaAdminSecret:  env("GRAFANA_ADMIN_PASSWORD_SECRET", "swarmops_grafana_admin_password_v1"),
-		TrustedGrafanaDashboard:    env("SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME", "swarmops_grafana_dashboard_v1"),
-		TrustedGrafanaProvider:     env("SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME", "swarmops_grafana_dashboard_provider_v1"),
-		TrustedGrafanaDatasources:  env("SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME", "swarmops_grafana_datasources_v1"),
-		TrustedGrafanaHost:         env("GRAFANA_HOST", "grafana.nim.zone"),
-		TrustedGrafanaImage:        env("GRAFANA_IMAGE", "grafana/grafana:13.1.4"),
 		TrustedJaegerConfig:        env("SWARMOPS_JAEGER_CONFIG_NAME", "swarmops_jaeger_config_v1"),
 		TrustedJaegerImage:         env("JAEGER_IMAGE", "jaegertracing/jaeger:2.20.0"),
 		TrustedLokiConfig:          env("SWARMOPS_LOKI_CONFIG_NAME", "swarmops_loki_config_v1"),

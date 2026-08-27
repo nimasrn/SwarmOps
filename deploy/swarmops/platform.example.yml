@@ -116,8 +116,6 @@ workloads:
   - name: observability
     profile: observability
     replicas: 1
-    domain: grafana.example.com
-    resolver: arvan
 
   # Application-profile workloads are the slots SwarmOps can render and deploy
   # from the console. The name, domain, resolver, and resource ceiling are

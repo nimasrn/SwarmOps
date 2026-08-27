@@ -65,6 +65,30 @@ func TestCheckedInTrustedStackAssetsRenderWithoutRemoteEnvironment(t *testing.T)
 	}
 }
 
+func TestObservabilityStackHasNoGrafanaServiceOrPublicRoute(t *testing.T) {
+	t.Parallel()
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate trusted stack test source")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "../.."))
+	source, err := os.ReadFile(filepath.Join(repoRoot, "deploy", "stacks", "swarmops-observability.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{"\n  grafana:", "GRAFANA_", "swarmops_grafana", "traefik.http.routers.grafana"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("observability stack retains Grafana integration %q", forbidden)
+		}
+	}
+	for _, required := range []string{"\n  prometheus:", "\n  alertmanager:", "\n  jaeger:"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("observability stack is missing internal service %q", required)
+		}
+	}
+}
+
 func testTrustedStackSettings() TrustedStackSettings {
 	return TrustedStackSettings{
 		AgentTokenSecret:          "swarmops_agent_token_v1",
@@ -72,12 +96,6 @@ func testTrustedStackSettings() TrustedStackSettings {
 		AlertmanagerImage:         "prom/alertmanager:v0.33.1",
 		AlloyConfigName:           "swarmops_alloy_config_v1",
 		AlloyImage:                "grafana/alloy:v1.18.1",
-		GrafanaAdminSecret:        "swarmops_grafana_admin_password_v1",
-		GrafanaDashboardConfig:    "swarmops_grafana_dashboard_v1",
-		GrafanaDashboardProvider:  "swarmops_grafana_dashboard_provider_v1",
-		GrafanaDatasourcesConfig:  "swarmops_grafana_datasources_v1",
-		GrafanaHost:               "grafana.example.com",
-		GrafanaImage:              "grafana/grafana:13.1.4",
 		JaegerConfigName:          "swarmops_jaeger_config_v1",
 		JaegerImage:               "jaegertracing/jaeger:2.20.0",
 		LokiConfigName:            "swarmops_loki_config_v1",

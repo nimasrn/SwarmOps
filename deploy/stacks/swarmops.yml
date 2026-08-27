@@ -11,9 +11,6 @@ services:
     environment:
       ALERTMANAGER_IMAGE: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.33.1}
       ALLOY_IMAGE: ${ALLOY_IMAGE:-grafana/alloy:v1.18.1}
-      GRAFANA_ADMIN_PASSWORD_SECRET: ${GRAFANA_ADMIN_PASSWORD_SECRET:-swarmops_grafana_admin_password_v1}
-      GRAFANA_HOST: ${GRAFANA_HOST:-grafana.nim.zone}
-      GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:13.1.4}
       JAEGER_IMAGE: ${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}
       LOKI_IMAGE: ${LOKI_IMAGE:-grafana/loki:3.7.4}
       NODE_EXPORTER_IMAGE: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.12.1}
@@ -39,9 +36,6 @@ services:
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
       SWARMOPS_ALERTMANAGER_CONFIG_NAME: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
       SWARMOPS_ALLOY_CONFIG_NAME: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}
-      SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME: ${SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME:-swarmops_grafana_dashboard_v1}
-      SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME: ${SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME:-swarmops_grafana_dashboard_provider_v1}
-      SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME: ${SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME:-swarmops_grafana_datasources_v1}
       SWARMOPS_JAEGER_CONFIG_NAME: ${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}
       SWARMOPS_LOKI_CONFIG_NAME: ${SWARMOPS_LOKI_CONFIG_NAME:-swarmops_loki_config_v1}
       SWARMOPS_PLATFORM_MANIFEST_FILE: /opt/swarmops/platform.yml
@@ -81,15 +75,6 @@ services:
         mode: 0444
       - source: swarmops_alloy_config
         target: /opt/swarmops/alloy.alloy
-        mode: 0444
-      - source: swarmops_grafana_datasources
-        target: /opt/swarmops/grafana-datasources.yml
-        mode: 0444
-      - source: swarmops_grafana_dashboard_provider
-        target: /opt/swarmops/grafana-dashboard-provider.yml
-        mode: 0444
-      - source: swarmops_grafana_dashboard
-        target: /opt/swarmops/grafana-dashboard.json
         mode: 0444
       - source: swarmops_jaeger_config
         target: /opt/swarmops/jaeger.yml
@@ -257,15 +242,6 @@ configs:
   swarmops_alloy_config:
     file: ../observability/alloy.alloy
     name: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}
-  swarmops_grafana_datasources:
-    file: ../observability/grafana/provisioning/datasources/datasources.yml
-    name: ${SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME:-swarmops_grafana_datasources_v1}
-  swarmops_grafana_dashboard_provider:
-    file: ../observability/grafana/provisioning/dashboards/swarmops.yml
-    name: ${SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME:-swarmops_grafana_dashboard_provider_v1}
-  swarmops_grafana_dashboard:
-    file: ../observability/grafana/dashboards/swarmops-overview.json
-    name: ${SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME:-swarmops_grafana_dashboard_v1}
   swarmops_jaeger_config:
     file: ../observability/jaeger.yml
     name: ${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}

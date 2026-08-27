@@ -11,6 +11,22 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.6.1 — 2026-08-27
+
+This corrective release makes the intended observability boundary explicit:
+SwarmOps owns the operator experience and renders its own graphs and metrics.
+
+- **No Grafana service** — the public Grafana route, container, admin secret,
+  provisioning files, dashboard bundle, configuration, and installer prompts
+  have been removed from the trusted stacks and release assets.
+- **Internal telemetry remains** — Prometheus, Alertmanager, and Jaeger remain
+  private services used by SwarmOps. Loki and Alloy continue to provide the
+  internal log pipeline; their upstream image names retain the `grafana/`
+  publisher namespace but do not install the Grafana dashboard product.
+- **Explicit rollout boundary** — publishing this release does not mutate a
+  running cluster. Operators can review and deploy the corrected observability
+  stack separately, at which point Swarm reconciles the removed service.
+
 ## 0.6.0 — 2026-08-27
 
 The complete control-plane surface, redesigned Quorum console, and native

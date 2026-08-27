@@ -19,12 +19,6 @@ type TrustedStackSettings struct {
 	AlertmanagerImage         string
 	AlloyConfigName           string
 	AlloyImage                string
-	GrafanaAdminSecret        string
-	GrafanaDashboardConfig    string
-	GrafanaDashboardProvider  string
-	GrafanaDatasourcesConfig  string
-	GrafanaHost               string
-	GrafanaImage              string
 	JaegerConfigName          string
 	JaegerImage               string
 	LokiConfigName            string
@@ -106,20 +100,14 @@ func (s TrustedStackSettings) templateValues(stack string) (map[string]string, e
 			return nil, err
 		}
 		return map[string]string{
-			"${PROMETHEUS_IMAGE:-prom/prometheus:v3.14.0}":                                               s.PrometheusImage,
-			"${PROMETHEUS_RETENTION:-15d}":                                                               s.PrometheusRetention,
-			"${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.33.1}":                                           s.AlertmanagerImage,
-			"${GRAFANA_IMAGE:-grafana/grafana:13.1.4}":                                                   s.GrafanaImage,
-			"${GRAFANA_HOST:-grafana.nim.zone}":                                                          s.GrafanaHost,
-			"${GRAFANA_ADMIN_PASSWORD_SECRET:-swarmops_grafana_admin_password_v1}":                       s.GrafanaAdminSecret,
-			"${SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME:-swarmops_grafana_dashboard_v1}":                   s.GrafanaDashboardConfig,
-			"${SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME:-swarmops_grafana_dashboard_provider_v1}": s.GrafanaDashboardProvider,
-			"${SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME:-swarmops_grafana_datasources_v1}":               s.GrafanaDatasourcesConfig,
-			"${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}":                                               s.JaegerImage,
-			"${SWARMOPS_PROMETHEUS_CONFIG_NAME:-swarmops_prometheus_config_v1}":                          s.PrometheusConfigName,
-			"${SWARMOPS_PROMETHEUS_RULES_CONFIG_NAME:-swarmops_prometheus_rules_v1}":                     s.PrometheusRulesConfigName,
-			"${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}":                      s.AlertmanagerConfigName,
-			"${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}":                                  s.JaegerConfigName,
+			"${PROMETHEUS_IMAGE:-prom/prometheus:v3.14.0}":                           s.PrometheusImage,
+			"${PROMETHEUS_RETENTION:-15d}":                                           s.PrometheusRetention,
+			"${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.33.1}":                       s.AlertmanagerImage,
+			"${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}":                           s.JaegerImage,
+			"${SWARMOPS_PROMETHEUS_CONFIG_NAME:-swarmops_prometheus_config_v1}":      s.PrometheusConfigName,
+			"${SWARMOPS_PROMETHEUS_RULES_CONFIG_NAME:-swarmops_prometheus_rules_v1}": s.PrometheusRulesConfigName,
+			"${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}":  s.AlertmanagerConfigName,
+			"${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}":              s.JaegerConfigName,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported trusted stack %q", stack)
@@ -151,7 +139,6 @@ func (s TrustedStackSettings) validateLogs() error {
 func (s TrustedStackSettings) validateObservability() error {
 	for label, image := range map[string]string{
 		"Alertmanager image": s.AlertmanagerImage,
-		"Grafana image":      s.GrafanaImage,
 		"Jaeger image":       s.JaegerImage,
 		"Prometheus image":   s.PrometheusImage,
 	} {
@@ -162,18 +149,11 @@ func (s TrustedStackSettings) validateObservability() error {
 	if !trustedRetentionPattern.MatchString(s.PrometheusRetention) {
 		return fmt.Errorf("Prometheus retention is invalid")
 	}
-	if !safeHostname(s.GrafanaHost) {
-		return fmt.Errorf("Grafana hostname is invalid")
-	}
 	return validateTrustedNames(map[string]string{
-		"Alertmanager config":               s.AlertmanagerConfigName,
-		"Grafana admin secret":              s.GrafanaAdminSecret,
-		"Grafana dashboard config":          s.GrafanaDashboardConfig,
-		"Grafana dashboard provider config": s.GrafanaDashboardProvider,
-		"Grafana datasources config":        s.GrafanaDatasourcesConfig,
-		"Jaeger config":                     s.JaegerConfigName,
-		"Prometheus config":                 s.PrometheusConfigName,
-		"Prometheus rules config":           s.PrometheusRulesConfigName,
+		"Alertmanager config":     s.AlertmanagerConfigName,
+		"Jaeger config":           s.JaegerConfigName,
+		"Prometheus config":       s.PrometheusConfigName,
+		"Prometheus rules config": s.PrometheusRulesConfigName,
 	})
 }
 
