@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags='-s -w' -o /out/swarmops-logs ./cmd/logs
 
-FROM fluent/fluentd:v1.19.3-debian-1.0 AS fluentd
+FROM fluentd:v1.19.3-debian-1.0 AS fluentd
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential libsystemd-dev pkg-config \
