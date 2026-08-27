@@ -1,0 +1,4 @@
+---
+swarm_primary_manager: ''
+swarm_overlay_network: traefik
+swarm_node_labels: {}

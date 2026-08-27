@@ -1,0 +1,37 @@
+---
+- name: Verify Docker socket exists for the SwarmOps manager boundary
+  ansible.builtin.stat:
+    path: /var/run/docker.sock
+  register: swarmops_docker_socket
+
+- name: Require a Docker socket
+  ansible.builtin.assert:
+    that:
+      - swarmops_docker_socket.stat.exists
+      - swarmops_docker_socket.stat.issock
+    fail_msg: SwarmOps cannot inspect or operate this node because Docker's Unix socket is unavailable.
+
+- name: Check that Docker reports an active Swarm
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{{ '{{' }}.Swarm.LocalNodeState{{ '}}' }}"
+  changed_when: false
+  register: swarmops_swarm_state
+
+- name: Require an active Swarm before control-plane deployment
+  ansible.builtin.assert:
+    that:
+      - swarmops_swarm_state.stdout | trim == 'active'
+    fail_msg: SwarmOps must be deployed only after Docker Swarm formation succeeds.
+
+- name: Check manager memory capacity
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.memtotal_mb | int >= swarmops_min_memory_mb | int
+    fail_msg: >-
+      This node has less than {{ swarmops_min_memory_mb }} MiB RAM. Keep the
+      SwarmOps API and shared observability services off an undersized manager.
+  when: inventory_hostname == swarm_primary_manager

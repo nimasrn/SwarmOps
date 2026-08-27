@@ -1,0 +1,88 @@
+# Optional read-only node inventory for SwarmOps. Deploy only after the core
+# control plane and its private swarmops overlay are healthy. The service is
+# global by design so live admission can fail closed when one node lacks fresh
+# disk or memory evidence.
+version: "3.9"
+
+services:
+  agent:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-agent:${TAG:?set TAG}
+    environment:
+      NODE_NAME: "{{.Node.Hostname}}"
+      SWARMOPS_AGENT_TOKEN_FILE: /run/secrets/swarmops_agent_token
+      SWARMOPS_HOST_OS: /host/etc/os-release
+      SWARMOPS_HOST_PROC: /host/proc
+      SWARMOPS_HOST_ROOT: /host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host root is read only and is used only for capacity measurement. The
+      # agent exposes no command, file-read, or Docker-proxy endpoint.
+      - /:/host:ro
+    secrets:
+      - source: swarmops_agent_token
+        target: swarmops_agent_token
+        mode: 0400
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9180/healthz"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+        limits:
+          cpus: "0.25"
+          memory: 192M
+
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.12.1}
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+        limits:
+          cpus: "0.25"
+          memory: 192M
+
+networks:
+  swarmops:
+    external: true
+    name: swarmops
+
+secrets:
+  swarmops_agent_token:
+    external: true
+    name: ${SWARMOPS_AGENT_TOKEN_SECRET:-swarmops_agent_token_v1}

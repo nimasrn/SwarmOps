@@ -1,0 +1,56 @@
+# Managed Redis with append-only persistence. Reviewed, checked-in stateful
+# stack; the console chooses only whether it runs. The auth password is a Swarm
+# secret that SwarmOps generates on the manager and never returns to a browser.
+version: "3.9"
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:8.4-alpine}
+    # requirepass is read from the mounted secret rather than an environment
+    # variable so the password never appears in the service specification.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$(cat /run/secrets/redis_password)\""]
+    secrets:
+      - source: redis_password
+        target: redis_password
+        mode: 0400
+    volumes:
+      - swarmops_redis_data:/data
+    networks: [swarmops-data]
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      update_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+
+networks:
+  swarmops-data:
+    external: true
+    name: swarmops-data
+
+volumes:
+  swarmops_redis_data:
+
+secrets:
+  redis_password:
+    external: true
+    name: ${SWARMOPS_REDIS_PASSWORD_SECRET:-swarmops_redis_password_v1}

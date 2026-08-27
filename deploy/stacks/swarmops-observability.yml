@@ -1,0 +1,191 @@
+# A single shared observability plane for the Swarm. Grafana is the only
+# public UI; Prometheus, Alertmanager, Jaeger, and their telemetry endpoints
+# remain internal.
+version: "3.9"
+
+services:
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.14.0}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --web.enable-lifecycle=false
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
+      - source: prometheus_rules
+        target: /etc/prometheus/rules/swarmops.yml
+        mode: 0444
+    volumes:
+      - swarmops_prometheus:/prometheus
+    networks: [swarmops, traefik]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.20"
+          memory: 512M
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.33.1}
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    configs:
+      - source: alertmanager_config
+        target: /etc/alertmanager/alertmanager.yml
+        mode: 0444
+    volumes:
+      - swarmops_alertmanager:/alertmanager
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.1.4}
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SERVER_ROOT_URL: https://${GRAFANA_HOST:-grafana.nim.zone}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/swarmops.yml
+        mode: 0444
+      - source: grafana_dashboard_provider
+        target: /etc/grafana/provisioning/dashboards/swarmops.yml
+        mode: 0444
+      - source: grafana_dashboard
+        target: /etc/grafana/provisioning/dashboards/swarmops-overview.json
+        mode: 0444
+    secrets:
+      - source: grafana_admin_password
+        target: grafana_admin_password
+        mode: 0400
+    volumes:
+      - swarmops_grafana:/var/lib/grafana
+    networks: [swarmops, traefik]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.20"
+          memory: 256M
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik
+        - traefik.http.routers.swarmops-grafana.rule=Host(`${GRAFANA_HOST:-grafana.nim.zone}`)
+        - traefik.http.routers.swarmops-grafana.entrypoints=websecure
+        - traefik.http.routers.swarmops-grafana.tls.certresolver=le
+        - traefik.http.services.swarmops-grafana.loadbalancer.server.port=3000
+        - traefik.http.routers.swarmops-grafana-http.rule=Host(`${GRAFANA_HOST:-grafana.nim.zone}`)
+        - traefik.http.routers.swarmops-grafana-http.entrypoints=web
+        - traefik.http.routers.swarmops-grafana-http.service=noop@internal
+        - traefik.http.routers.swarmops-grafana-http.middlewares=swarmops-grafana-https
+        - traefik.http.middlewares.swarmops-grafana-https.redirectscheme.scheme=https
+        - traefik.http.middlewares.swarmops-grafana-https.redirectscheme.permanent=true
+
+  jaeger:
+    image: ${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}
+    command: ["--config=/etc/jaeger/config.yml"]
+    configs:
+      - source: jaeger_config
+        target: /etc/jaeger/config.yml
+        mode: 0444
+    volumes:
+      - swarmops_jaeger:/var/lib/jaeger
+    networks: [swarmops]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      restart_policy:
+        condition: any
+      resources:
+        reservations:
+          cpus: "0.20"
+          memory: 512M
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+networks:
+  swarmops:
+    external: true
+    name: swarmops
+  traefik:
+    external: true
+    name: traefik
+
+volumes:
+  swarmops_prometheus:
+  swarmops_alertmanager:
+  swarmops_grafana:
+  swarmops_jaeger:
+
+configs:
+  prometheus_config:
+    external: true
+    name: ${SWARMOPS_PROMETHEUS_CONFIG_NAME:-swarmops_prometheus_config_v1}
+  prometheus_rules:
+    external: true
+    name: ${SWARMOPS_PROMETHEUS_RULES_CONFIG_NAME:-swarmops_prometheus_rules_v1}
+  alertmanager_config:
+    external: true
+    name: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
+  grafana_datasources:
+    external: true
+    name: ${SWARMOPS_GRAFANA_DATASOURCES_CONFIG_NAME:-swarmops_grafana_datasources_v1}
+  grafana_dashboard_provider:
+    external: true
+    name: ${SWARMOPS_GRAFANA_DASHBOARD_PROVIDER_CONFIG_NAME:-swarmops_grafana_dashboard_provider_v1}
+  grafana_dashboard:
+    external: true
+    name: ${SWARMOPS_GRAFANA_DASHBOARD_CONFIG_NAME:-swarmops_grafana_dashboard_v1}
+  jaeger_config:
+    external: true
+    name: ${SWARMOPS_JAEGER_CONFIG_NAME:-swarmops_jaeger_config_v1}
+
+secrets:
+  grafana_admin_password:
+    external: true
+    name: ${GRAFANA_ADMIN_PASSWORD_SECRET:-swarmops_grafana_admin_password_v1}

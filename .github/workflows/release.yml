@@ -1,0 +1,74 @@
+name: Release native binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # `push.tags` also observes a moved or deleted tag. Only a newly created
+    # immutable version tag is allowed to publish a release.
+    if: github.event.created && !github.event.deleted
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Select immutable tag
+        id: release
+        env:
+          REQUESTED_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TAG" =~ ^v[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+          git rev-parse --verify --quiet "refs/tags/$REQUESTED_TAG" >/dev/null
+          git checkout --detach "refs/tags/$REQUESTED_TAG"
+          printf 'tag=%s\n' "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release source
+        run: |
+          go test ./...
+          go vet ./...
+          bash scripts/test-install-swarmops-agent.sh
+          make docs-check
+          make stack-check-all TAG="${{ steps.release.outputs.tag }}"
+
+      - name: Build embedded console
+        working-directory: web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Build native release bundles
+        run: |
+          bash scripts/build-release-bundles.sh "${{ steps.release.outputs.tag }}" "$GITHUB_WORKSPACE/dist"
+          bash scripts/test-install-swarmops-agent.sh "$GITHUB_WORKSPACE/dist/install-swarmops-agent.sh"
+
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "SwarmOps $TAG" --generate-notes --verify-tag
+          fi

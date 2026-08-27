@@ -1,0 +1,61 @@
+# Managed PostgreSQL. This is a reviewed, checked-in stateful stack: the
+# console chooses only whether it runs, never its Compose content. The
+# superuser password is a Swarm secret that SwarmOps generates on the manager
+# and never returns to a browser.
+version: "3.9"
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18.2-alpine}
+    environment:
+      POSTGRES_DB: swarmops
+      POSTGRES_USER: swarmops
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - source: postgres_password
+        target: postgres_password
+        mode: 0400
+    volumes:
+      - swarmops_postgres_data:/var/lib/postgresql/data
+    # The database is reachable only on the internal data overlay. Publishing it to
+    # the host or the edge stays an explicit, separate operator decision.
+    networks: [swarmops-data]
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swarmops -d swarmops"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.stateful == true
+      update_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+        limits:
+          cpus: "2.00"
+          memory: 2048M
+
+networks:
+  swarmops-data:
+    external: true
+    name: swarmops-data
+
+volumes:
+  swarmops_postgres_data:
+
+secrets:
+  postgres_password:
+    external: true
+    name: ${SWARMOPS_POSTGRES_PASSWORD_SECRET:-swarmops_postgres_password_v1}

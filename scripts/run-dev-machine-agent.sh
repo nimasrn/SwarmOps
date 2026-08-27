@@ -4,9 +4,9 @@ umask 077
 
 # Run the source-built machine API for local development. This is deliberately
 # separate from the production installer: it binds only loopback, makes no
-# service-manager changes, and shares a local-only identity with `make dev-api`
-# so Core can attach without browser-entered credentials. It is a host process:
-# Docker may come online after the agent starts.
+# service-manager changes, and shares a local-only identity with
+# `make dev-api` so Core can attach without browser-entered credentials. It is
+# a host process: Docker may come online after the agent starts.
 
 prepare_only=false
 dev_root="${SWARMOPS_DEV_DIR:-${TMPDIR:-/tmp}/swarmops-dev}"
@@ -70,12 +70,6 @@ require_protected_file() {
     400|600) ;;
     *) fail "$label must use mode 0400 or 0600" ;;
   esac
-}
-
-require_private_directory() {
-  local label="$1" path="$2"
-  [[ -d "$path" && ! -L "$path" ]] || fail "$label must be a non-symlink directory"
-  chmod 0700 "$path"
 }
 
 validate_paths() {
@@ -175,16 +169,9 @@ done
 
 validate_paths
 require_command openssl
-if [[ -e "$dev_root" || -L "$dev_root" ]]; then
-  require_private_directory 'SWARMOPS_DEV_DIR' "$dev_root"
-else
-  install -d -m 0700 "$dev_root"
-fi
-if [[ -e "$machine_dir" || -L "$machine_dir" ]]; then
-  require_private_directory 'local development machine-agent directory' "$machine_dir"
-else
-  install -d -m 0700 "$machine_dir"
-fi
+install -d -m 0700 "$dev_root" "$machine_dir"
+chmod 0700 "$dev_root"
+chmod 0700 "$machine_dir"
 prepare_api_key
 prepare_core_session_key
 prepare_tls_identity
@@ -198,15 +185,7 @@ docker_socket="${SWARMOPS_DOCKER_SOCKET:-}"
 if [[ -z "$docker_socket" ]]; then
   case "$(uname -s)" in
     Linux) docker_socket='/var/run/docker.sock' ;;
-    Darwin)
-      if [[ -S "$HOME/.docker/run/docker.sock" ]]; then
-        docker_socket="$HOME/.docker/run/docker.sock"
-      elif [[ -S "$HOME/.orbstack/run/docker.sock" ]]; then
-        docker_socket="$HOME/.orbstack/run/docker.sock"
-      else
-        docker_socket="$HOME/.docker/run/docker.sock"
-      fi
-      ;;
+    Darwin) docker_socket="$HOME/.docker/run/docker.sock" ;;
     *) fail "unsupported operating system: $(uname -s)" ;;
   esac
 fi

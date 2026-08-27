@@ -1,0 +1,15 @@
+# Dynamic configuration intentionally contains only cross-stack transport
+# settings. Application routing remains in each application's Swarm labels.
+http:
+  middlewares:
+    traefik-dashboard-auth:
+      basicAuth:
+        # An htpasswd line lives in the versioned Swarm secret mounted at this
+        # path; API/dashboard ports are never published directly.
+        usersFile: /run/secrets/traefik_dashboard_auth
+        removeHeader: true
+  serversTransports:
+    portainer-internal:
+      # Portainer creates its own certificate on 9443. The overlay network is
+      # encrypted and this transport is scoped solely to the Portainer service.
+      insecureSkipVerify: true

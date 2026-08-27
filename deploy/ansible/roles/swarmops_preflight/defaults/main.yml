@@ -1,0 +1,5 @@
+---
+# The small reference topology reserves 1 GiB for SwarmOps and its control
+# dependencies. This preflight is intentionally conservative: it detects an
+# undersized manager before an operator enables mutations or monitoring.
+swarmops_min_memory_mb: 2048

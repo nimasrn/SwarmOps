@@ -1,0 +1,63 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/swarmops.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [alertmanager:9093]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+
+  - job_name: swarmops-api
+    dns_sd_configs:
+      - names: [tasks.swarmops_api]
+        type: A
+        port: 8084
+
+  # Applications SwarmOps renders are discovered rather than configured. The
+  # controller serves the target list on the internal swarmops overlay, so a
+  # newly deployed application starts being scraped without regenerating this
+  # file and without giving Prometheus the Docker socket. __metrics_path__ and
+  # the application labels come from the discovery response.
+  - job_name: swarmops-applications
+    http_sd_configs:
+      - url: http://swarmops_api:8084/metrics/targets
+        refresh_interval: 30s
+
+  - job_name: swarmops-node-agent
+    dns_sd_configs:
+      - names: [tasks.swarmops-agent_agent]
+        type: A
+        port: 9180
+
+  - job_name: node-exporter
+    dns_sd_configs:
+      - names: [tasks.swarmops-agent_node-exporter]
+        type: A
+        port: 9100
+
+  - job_name: traefik
+    dns_sd_configs:
+      - names: [tasks.traefik_traefik]
+        type: A
+        port: 8082
+
+  - job_name: jaeger
+    dns_sd_configs:
+      - names: [tasks.swarmops-observability_jaeger]
+        type: A
+        port: 8888
+
+  - job_name: alertmanager
+    dns_sd_configs:
+      - names: [tasks.swarmops-observability_alertmanager]
+        type: A
+        port: 9093

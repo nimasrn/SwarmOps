@@ -1,0 +1,104 @@
+---
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Remove conflicting Docker packages when explicitly approved
+  ansible.builtin.apt:
+    name: "{{ docker_conflicting_packages }}"
+    state: absent
+    purge: false
+  when: docker_remove_conflicting_packages | bool
+
+- name: Refuse to replace conflicting Docker packages by default
+  ansible.builtin.assert:
+    that:
+      - item not in ansible_facts.packages
+    fail_msg: >-
+      {{ item }} is already installed. Review the host workload and set
+      docker_remove_conflicting_packages=true only if removing the existing
+      runtime is intentional.
+  loop: "{{ docker_conflicting_packages }}"
+  when: not (docker_remove_conflicting_packages | bool)
+
+- name: Refresh APT metadata
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Docker repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - python3-debian
+    state: present
+
+- name: Create Docker APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install Docker's repository signing key
+  ansible.builtin.get_url:
+    url: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}/gpg"
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Detect Debian package architecture
+  ansible.builtin.command:
+    argv:
+      - dpkg
+      - --print-architecture
+  register: docker_dpkg_architecture
+  changed_when: false
+
+- name: Configure Docker's official APT repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}"
+    suites: "{{ ansible_facts.distribution_release }}"
+    components: [stable]
+    architectures:
+      - "{{ docker_dpkg_architecture.stdout }}"
+    signed_by: /etc/apt/keyrings/docker.asc
+    state: present
+  register: docker_apt_repository
+
+- name: Refresh APT metadata after Docker repository changes
+  ansible.builtin.apt:
+    update_cache: true
+  when: docker_apt_repository.changed
+
+- name: Install Docker Engine and Buildx plugins
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+
+- name: Enable and start Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Confirm each requested Docker user exists
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ item }}"
+  loop: "{{ docker_users | unique }}"
+  when: docker_users | length > 0
+
+- name: Grant requested users Docker CLI access
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users | unique }}"
+  when: docker_users | length > 0
