@@ -107,6 +107,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /v1/routing/bind", s.routingBind)
 		mux.HandleFunc("GET /v1/traefik/runtime", s.traefikRuntime)
 		mux.HandleFunc("POST /v1/traefik/logs", s.traefikLogs)
+		mux.HandleFunc("POST /v1/logs/query", s.logsQuery)
+		mux.HandleFunc("GET /v1/logs/status", s.logsStatus)
 		mux.HandleFunc("GET /v1/traefik/prometheus", s.traefikPrometheus)
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

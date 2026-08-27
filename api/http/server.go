@@ -177,6 +177,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/stacks/deploy", s.withActiveAuth(s.stackDeploy))
 	mux.HandleFunc("GET /api/v1/services", s.withAuth(false, s.services))
 	mux.HandleFunc("GET /api/v1/services/{id}/logs", s.withAuth(false, s.serviceLogs))
+	mux.HandleFunc("GET /api/v1/logs", s.withAuth(false, s.logs))
+	mux.HandleFunc("GET /api/v1/logs/status", s.withAuth(false, s.logsStatus))
 	mux.HandleFunc("POST /api/v1/services/{id}/actions", s.withActiveAuth(s.serviceAction))
 	mux.HandleFunc("POST /api/v1/builds", s.withActiveAuth(s.buildImage))
 	mux.HandleFunc("GET /api/v1/traefik/status", s.withAuth(false, s.traefikStatus))
@@ -409,12 +411,11 @@ func (s *Server) serverAdd(response http.ResponseWriter, request *http.Request, 
 
 func (s *Server) serverConnect(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	var input struct {
-		APIKey                    string `json:"apiKey"`
-		Authentication            string `json:"authentication"`
-		Password                  string `json:"password"`
-		PrivateKey                string `json:"privateKey"`
-		PrivateKeyPassword        string `json:"privateKeyPassphrase"`
-		TLSCertificateFingerprint string `json:"tlsCertificateFingerprint"`
+		APIKey             string `json:"apiKey"`
+		Authentication     string `json:"authentication"`
+		Password           string `json:"password"`
+		PrivateKey         string `json:"privateKey"`
+		PrivateKeyPassword string `json:"privateKeyPassphrase"`
 	}
 	if !decodeJSON(response, request, &input) {
 		return
@@ -427,12 +428,11 @@ func (s *Server) serverConnect(response http.ResponseWriter, request *http.Reque
 	}()
 	id := request.PathValue("id")
 	server, err := s.servers.Connect(request.Context(), id, remote.Credentials{
-		APIKey:                    input.APIKey,
-		Authentication:            input.Authentication,
-		Password:                  input.Password,
-		PrivateKey:                input.PrivateKey,
-		PrivateKeyPassword:        input.PrivateKeyPassword,
-		TLSCertificateFingerprint: input.TLSCertificateFingerprint,
+		APIKey:             input.APIKey,
+		Authentication:     input.Authentication,
+		Password:           input.Password,
+		PrivateKey:         input.PrivateKey,
+		PrivateKeyPassword: input.PrivateKeyPassword,
 	})
 	if err != nil {
 		s.record(claims.Username, requestID(request), "server.reconnect", "server/"+id, err, nil)
@@ -1089,6 +1089,10 @@ func (s *Server) operationError(response http.ResponseWriter, request *http.Requ
 	}
 	if strings.Contains(err.Error(), "audit log is unavailable") {
 		writeError(response, http.StatusServiceUnavailable, "The audit log is unavailable; the operation was not attempted")
+		return
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "log collection") || strings.Contains(strings.ToLower(err.Error()), "fixed fluentd adapter") {
+		writeError(response, http.StatusServiceUnavailable, "Log collection is unavailable on the selected server. Enable or repair the SwarmOps Logs stack.")
 		return
 	}
 	if errors.Is(err, ops.ErrOutputLimit) {

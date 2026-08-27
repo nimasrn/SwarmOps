@@ -110,7 +110,7 @@ export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
     /** The count at full width. It steps down on its own below that — the grid
         is a container query, so a row of tiles inside a narrow panel wraps like
         a row of tiles on a narrow screen. */
-    columns?: 2 | 3 | 4 | 5;
+    columns?: 2 | 3 | 4 | 5 | 6;
 }
 export declare function MetricGrid({ children, className, columns, dense, ...props }: MetricGridProps): import("react").JSX.Element;
 export interface Fact {
@@ -133,7 +133,7 @@ export interface FactsProps extends HTMLAttributes<HTMLDListElement> {
  * is the entire question this block exists to answer.
  */
 export declare function Facts({ className, columns, items, ...props }: FactsProps): import("react").JSX.Element;
-export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'quarters' | 'thirds';
+export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'one-third' | 'quarters' | 'thirds' | 'two-fifths' | 'two-thirds';
 export interface ColumnsProps extends HTMLAttributes<HTMLDivElement> {
     children: ReactNode;
     /** `aside` is a main column plus a fixed rail; `halves` and `thirds` are
@@ -141,6 +141,14 @@ export interface ColumnsProps extends HTMLAttributes<HTMLDivElement> {
     template?: ColumnsTemplate;
 }
 export declare function Columns({ children, className, template, ...props }: ColumnsProps): import("react").JSX.Element;
+export interface StatusHeroProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+    description?: ReactNode;
+    icon: IconName;
+    title: ReactNode;
+    tone?: StatusTone;
+}
+/** A large first-glance health statement for a control-room overview. */
+export declare function StatusHero({ className, description, icon, title, tone, ...props }: StatusHeroProps): import("react").JSX.Element;
 export interface CodeBlockProps extends Omit<HTMLAttributes<HTMLPreElement>, 'children'> {
     /** The text itself. A string rather than nodes, so it can be copied — a log
         an operator cannot paste into a ticket has failed at its one job. */

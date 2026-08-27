@@ -151,7 +151,7 @@ export function AssistantThread({
                       // React 18's typings have no `inert`; the attribute is
                       // real and is what takes the collapsed links out of the
                       // tab order.
-                      {...({ inert: open === turn.id ? undefined : '' } as { inert?: string })}
+                      {...({ inert: open !== turn.id } as { inert?: boolean })}
                     >
                       {turn.steps.map((step) => (
                         <li className="nim-turn__step" data-status={step.status} key={step.label}>

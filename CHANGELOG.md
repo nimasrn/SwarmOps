@@ -11,6 +11,31 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.0 — 2026-08-28
+
+This release replaces the former log runtime with a SwarmOps-owned Fluentd
+pipeline and one bounded, manager-targeted log workspace.
+
+- **All managed-node logs** — a global Fluentd 1.19.3 forwarder tails Docker
+  JSON stdout/stderr and the host systemd journal with persistent cursors,
+  acknowledged forwarding, retry-forever file buffers, and backpressure.
+- **Fixed safe records** — input is reduced to one schema, control characters
+  are removed, messages stop at 32 KiB, and secret-like material is redacted
+  before storage. Command output remains only in its bounded ledger.
+- **Bounded local retention** — UTC one-minute JSONL partitions expire after
+  seven days and are evicted oldest-first at the 20 GiB hard cap, with buffer,
+  malformed-record, retained-byte, and capacity-warning status.
+- **One query contract** — the new targeted logs and status APIs accept only
+  validated literal filters, opaque cursors, bounded pages, deadlines, and
+  response sizes. Service and Traefik log endpoints use the same query path.
+- **Private route split** — Forward traffic and agent HTTP queries use distinct
+  encrypted routes; neither listener is public.
+- **Unified console** — Observe → Logs provides typed filters, cursor paging,
+  five-second live polling, current-container enrichment, and health banners.
+- **Migration boundary** — source collectors are recognized as replaceable
+  infrastructure. Historical data is neither imported nor deleted, and this
+  prepared release does not mutate a live cluster.
+
 ## 0.6.2 — 2026-08-28
 
 This reliability release repairs first enrollment against the self-signed TLS

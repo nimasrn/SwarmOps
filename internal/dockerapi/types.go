@@ -53,7 +53,7 @@ type Service struct {
 			TargetPort    uint16 `json:"TargetPort"`
 		} `json:"Ports"`
 	} `json:"Endpoint"`
-	Spec      struct {
+	Spec struct {
 		Labels map[string]string `json:"Labels"`
 		Mode   struct {
 			Global     *struct{} `json:"Global"`

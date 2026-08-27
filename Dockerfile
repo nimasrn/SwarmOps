@@ -30,6 +30,21 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags='-s -w' -o /out/swarmopsctl ./cmd/swarmopsctl
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
+    go build -trimpath -ldflags='-s -w' -o /out/swarmops-logs ./cmd/logs
+
+FROM fluent/fluentd:v1.19.3-debian-1.0 AS fluentd
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential libsystemd-dev pkg-config \
+    && fluent-gem install fluent-plugin-systemd -v 1.1.1 --no-document \
+    && apt-get purge -y --auto-remove build-essential libsystemd-dev pkg-config \
+    && apt-get install -y --no-install-recommends libsystemd0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/fluentd/cursors /var/lib/fluentd/buffer /var/lib/swarmops-logs/records /var/lib/swarmops-logs/buffer
+COPY fluentd/filter_swarmops_normalize.rb /fluentd/plugins/filter_swarmops_normalize.rb
+USER fluent
 
 FROM alpine:${ALPINE_VERSION} AS api
 RUN apk add --no-cache ca-certificates docker-cli tzdata \
@@ -51,3 +66,11 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-build /out/swarmopsctl /app/swarmopsctl
 ENTRYPOINT ["/app/swarmopsctl"]
+
+FROM alpine:${ALPINE_VERSION} AS logs
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S swarmops && adduser -S -G swarmops swarmops
+COPY --from=go-build /out/swarmops-logs /usr/local/bin/swarmops-logs
+USER swarmops
+EXPOSE 8085
+ENTRYPOINT ["/usr/local/bin/swarmops-logs"]

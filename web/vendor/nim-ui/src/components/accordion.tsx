@@ -88,7 +88,7 @@ export function Accordion({
                   out. It is not in React 18's JSX types, hence the cast. */}
               <div
                 className="nim-accordion__panel-inner"
-                {...({ inert: isOpen ? undefined : '' } as { inert?: string })}
+                {...({ inert: !isOpen } as { inert?: boolean })}
               >
                 {item.content}
               </div>

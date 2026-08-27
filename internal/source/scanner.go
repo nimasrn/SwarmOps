@@ -299,7 +299,7 @@ func classifyService(name, image string) (Classification, []string, []string) {
 		return ClassificationManagedData, []string{"redis"}, nil
 	case containsWord(value, "mysql"), containsWord(value, "mariadb"), containsWord(value, "cassandra"), containsWord(value, "cockroach"):
 		return ClassificationUnsupported, nil, nil
-	case containsWord(value, "loki"), containsWord(value, "alloy"), containsWord(value, "promtail"):
+	case containsWord(value, "loki"), containsWord(value, "alloy"), containsWord(value, "promtail"), containsWord(value, "fluentd"), strings.Contains(value, "fluent-bit"), containsWord(value, "fluentbit"):
 		return ClassificationSharedPlatform, nil, []string{"swarmops-logs"}
 	case containsWord(value, "grafana"):
 		return ClassificationUnsupported, nil, nil

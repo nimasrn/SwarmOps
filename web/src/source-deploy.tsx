@@ -8,6 +8,7 @@ import {
   Columns,
   CopyChip,
   DataTable,
+  DetailHeader,
   DetailLayout,
   EmptyState,
   Facts,
@@ -17,8 +18,6 @@ import {
   Label,
   List,
   ListRow,
-  Metric,
-  MetricGrid,
   Mono,
   Page,
   Panel,
@@ -410,6 +409,7 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
         </Panel>
       ) : (
         <>
+          <DetailHeader title="Deploy application" />
           <StageTrack label="Source deployment stages" stages={stages} />
 
           <DetailLayout
@@ -486,7 +486,7 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
                     </Inline>
                   </>
                 )}
-                <Banner icon="lock" title="Security" tone="neutral">SwarmOps never retains your source contents or access tokens. Repositories are accessed on-demand and never persisted.</Banner>
+                {!plan ? <Banner icon="lock" title="Security" tone="neutral">SwarmOps never retains your source contents or access tokens. Repositories are accessed on-demand and never persisted.</Banner> : null}
               </Rows>
             </Panel>
 
@@ -669,7 +669,7 @@ function DeploymentPlan({
   const blockers = findings.filter((finding) => finding.level === 'blocker')
   const databases = selectedService?.databases ?? []
   // The rail names the stacks the way the discovery found them — Prometheus,
-  // Jaeger, Loki, and Alloy — rather than the single platform stack they are
+  // Jaeger and logging collectors — rather than the reviewed platform stacks they are
   // reconciled into. What SwarmOps owns is one stack; what an operator is
   // deciding about is the three signals they wrote into their Compose.
   const stacks = plan
@@ -758,7 +758,7 @@ function DeploymentPlan({
             reviewed stacks: turning one on from a deployment plan would queue
             a platform change under the heading of one application. */}
         <Switch checked={Boolean(selectedService?.tracing)} disabled readOnly>Traces (OpenTelemetry)</Switch>
-        <Switch checked={stacks.some((stack) => stack.toLowerCase().includes('loki'))} disabled readOnly>Logs (Loki)</Switch>
+        <Switch checked={stacks.some((stack) => ['loki','alloy','promtail','fluentd','fluent-bit'].some(name => stack.toLowerCase().includes(name)))} disabled readOnly>Logs (replaced by SwarmOps Fluentd)</Switch>
         <Body size="sm" tone="muted">Traces and logs follow the cluster's reviewed observability stacks; change them on the Observability page.</Body>
       </RailSection>
 
@@ -846,7 +846,7 @@ function DependencyMark({ fallback, name }: { fallback: 'database' | 'layers'; n
 
 // Same rule as an engine: the platform names the product, not the container.
 function stackName(stack: string) {
-  const stacks: Record<string, string> = { alertmanager: 'Alertmanager', alloy: 'Alloy', cadvisor: 'cAdvisor', jaeger: 'Jaeger', loki: 'Loki', 'node-exporter': 'Node exporter', prometheus: 'Prometheus' }
+  const stacks: Record<string, string> = { alertmanager: 'Alertmanager', alloy: 'Source logging collector', cadvisor: 'cAdvisor', fluentd: 'Source logging collector', 'fluent-bit': 'Source logging collector', jaeger: 'Jaeger', loki: 'Source logging collector', promtail: 'Source logging collector', 'node-exporter': 'Node exporter', prometheus: 'Prometheus' }
   return stacks[stack.toLowerCase()] ?? stack
 }
 
@@ -882,43 +882,15 @@ function DiscoveryEvidence({ onChooseService, plan, selectedService, serviceKey 
   const applications = allServices.filter((service) => service.classification === 'application')
   return (
     <>
-      <Panel
-        actions={<Inline><Icon name="check-circle" size="xs" tone="success" /><Body size="sm">No repository data retained</Body></Inline>}
-        caption={`Scan completed ${formatDateTime(plan.generatedAt)}`}
-        marker="2"
-        title="Discovery"
-      >
+      <Panel actions={<Inline><Icon name="check-circle" size="xs" tone="success" /><Body size="sm">No repository data retained</Body></Inline>} caption={`Scan completed ${formatDateTime(plan.generatedAt)}`} eyebrow="Discovery" marker="2" title={`Service classification (${allServices.length} total)`}>
         <Rows>
-          <Body size="sm">Evidence discovered in <Mono>{plan.repository.path}</Mono> at <Mono>{shortID(plan.revision.sha)}</Mono> by <Mono>{plan.scanner}</Mono>.</Body>
-          <MetricGrid dense>
-            <Metric hint="docker-compose*.yml" icon="document" label="Compose files" layout="inline" value={String(plan.composeFiles.length)} />
-            <Metric hint="Dockerfile*" icon="package" label="Dockerfiles" layout="inline" value={String(plan.dockerfiles.length)} />
-            <Metric hint={`Across ${directoryCount(plan)} directories`} icon="layers" label="Services detected" layout="inline" value={String(allServices.length)} />
-            <Metric hint="Ready to review" icon="check" label="Deployable apps" layout="inline" tone={plan.ready ? 'success' : 'warning'} value={String(applications.filter((service) => !hasBlocker(service.findings)).length)} />
-          </MetricGrid>
-          <Accordion
-            items={[{
-              content: (
-                <Columns>
-                  <Rows>
-                    <Label>Compose files</Label>
-                    <EvidenceTable empty="No Compose files were found; standalone Dockerfiles were inspected." files={plan.composeFiles} />
-                  </Rows>
-                  <Rows>
-                    <Label>Dockerfiles</Label>
-                    <EvidenceTable empty="No Dockerfiles were found." files={plan.dockerfiles} />
-                  </Rows>
-                </Columns>
-              ),
-              id: 'evidence',
-              title: 'View all evidence',
-            }]}
-            variant="plain"
-          />
-        </Rows>
-      </Panel>
-      <Panel eyebrow="Classification" title={`Service classification (${allServices.length} total)`}>
-        <Rows>
+          <Inline>
+            <Badge variant="neutral">{plan.composeFiles.length} Compose</Badge>
+            <Badge variant="neutral">{plan.dockerfiles.length} Dockerfiles</Badge>
+            <Badge variant="neutral">{directoryCount(plan)} directories</Badge>
+            <Badge variant={plan.ready ? 'success' : 'warning'}>{applications.filter((service) => !hasBlocker(service.findings)).length} deployable</Badge>
+            <Body size="sm">Pinned <Mono>{shortID(plan.revision.sha)}</Mono> from <Mono>{plan.repository.path}</Mono></Body>
+          </Inline>
           <DataTable
             caption="Source service classifications"
             columns={serviceColumns}
@@ -927,6 +899,7 @@ function DiscoveryEvidence({ onChooseService, plan, selectedService, serviceKey 
             rows={allServices}
           />
           {applications.length > 0 ? <Select label="Deployable source service" onChange={(event) => onChooseService(event.target.value)} options={applications.map((service) => ({ label: `${service.name} · ${service.composePath || 'standalone Dockerfile'}`, value: sourceServiceKey(service) }))} value={serviceKey} /> : null}
+          <Accordion items={[{ content: <Columns><Rows><Label>Compose files</Label><EvidenceTable empty="No Compose files were found; standalone Dockerfiles were inspected." files={plan.composeFiles} /></Rows><Rows><Label>Dockerfiles</Label><EvidenceTable empty="No Dockerfiles were found." files={plan.dockerfiles} /></Rows></Columns>, id: 'evidence', title: 'View all evidence' }]} variant="plain" />
         </Rows>
       </Panel>
       {!selectedService && applications.length > 0 ? <Banner title="Choose one application" tone="info">A source discovery can find several deployable services in a monorepo. Select exactly one service and map it to one approved platform slot for each deployment.</Banner> : null}

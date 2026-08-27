@@ -448,43 +448,63 @@ func (s *Server) traefikLogs(response http.ResponseWriter, request *http.Request
 }
 
 func (s *Server) queryTraefikLogs(ctx context.Context, query agentcontrol.TraefikLogQuery) ([]agentcontrol.TraefikLogEntry, error) {
-	selector := `{swarm_service_name="traefik_traefik"} | json`
-	for field, value := range map[string]string{"level": query.Level, "RouterName": query.Router, "ServiceName": query.Service, "request_id": query.RequestID} {
-		if value != "" {
-			selector += " | " + field + "=" + strconv.Quote(value)
-		}
+	search := query.RequestID
+	if search == "" {
+		search = query.Router
 	}
-	parameters := url.Values{}
-	parameters.Set("query", selector)
-	parameters.Set("start", strconv.FormatInt(query.From.UnixNano(), 10))
-	parameters.Set("end", strconv.FormatInt(query.To.UnixNano(), 10))
-	parameters.Set("limit", strconv.Itoa(query.Limit))
-	parameters.Set("direction", "backward")
-	var payload struct {
-		Data struct {
-			Result []struct {
-				Values [][]string `json:"values"`
-			} `json:"result"`
-		} `json:"data"`
-		Status string `json:"status"`
+	page, err := s.queryLogs(ctx, agentcontrol.LogQuery{From: query.From, To: query.To, Level: strings.ToLower(query.Level), SourceKind: "traefik", Service: query.Service, Search: search, Limit: query.Limit})
+	if err != nil {
+		return nil, err
 	}
-	endpoint := strings.TrimSuffix(s.config.LokiBaseURL, "/") + "/loki/api/v1/query_range?" + parameters.Encode()
-	if err := fixedInternalJSON(ctx, s.internalHTTPClient(), endpoint, &payload); err != nil || payload.Status != "success" {
-		return nil, fmt.Errorf("query fixed Loki adapter")
-	}
-	entries := make([]agentcontrol.TraefikLogEntry, 0, query.Limit)
-	for _, stream := range payload.Data.Result {
-		for _, value := range stream.Values {
-			if len(value) != 2 || len(entries) >= query.Limit {
-				continue
-			}
-			nanoseconds, _ := strconv.ParseInt(value[0], 10, 64)
-			entry := sanitizeTraefikLogLine(value[1])
-			entry.Timestamp = time.Unix(0, nanoseconds).UTC()
-			entries = append(entries, entry)
-		}
+	entries := make([]agentcontrol.TraefikLogEntry, 0, len(page.Records))
+	for _, record := range page.Records {
+		entries = append(entries, agentcontrol.TraefikLogEntry{Timestamp: record.Timestamp, Level: record.Level, Message: record.Message, Service: record.Service})
 	}
 	return entries, nil
+}
+
+func (s *Server) logsQuery(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var query agentcontrol.LogQuery
+	if !decodeRoutingRequest(response, request, &query) {
+		return
+	}
+	if err := query.Normalize(time.Now()); err != nil {
+		http.Error(response, "invalid log query", http.StatusBadRequest)
+		return
+	}
+	page, err := s.queryLogs(request.Context(), query)
+	if err != nil {
+		http.Error(response, "log collection unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(response, page)
+}
+
+func (s *Server) logsStatus(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var status agentcontrol.LogStatus
+	endpoint := strings.TrimSuffix(s.config.LogsBaseURL, "/") + "/v1/status"
+	if err := fixedInternalJSON(request.Context(), s.internalHTTPClient(), endpoint, &status); err != nil {
+		http.Error(response, "log collection unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(response, status)
+}
+
+func (s *Server) queryLogs(ctx context.Context, query agentcontrol.LogQuery) (agentcontrol.LogPage, error) {
+	var page agentcontrol.LogPage
+	endpoint := strings.TrimSuffix(s.config.LogsBaseURL, "/") + "/v1/query"
+	if err := fixedInternalPostJSON(ctx, s.internalHTTPClient(), endpoint, query, &page); err != nil {
+		return page, fmt.Errorf("query fixed Fluentd adapter: %w", err)
+	}
+	return page, nil
 }
 
 func sanitizeTraefikLogLine(line string) agentcontrol.TraefikLogEntry {
@@ -577,6 +597,31 @@ func fixedInternalJSON(ctx context.Context, client *http.Client, endpoint string
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 2<<20))
 	return decoder.Decode(output)
+}
+
+func fixedInternalPostJSON(ctx context.Context, client *http.Client, endpoint string, input, output any) error {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme != "http" || parsed.Host == "" {
+		return fmt.Errorf("invalid fixed internal endpoint")
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, parsed.String(), strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("fixed internal endpoint failed")
+	}
+	return json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(output)
 }
 
 func sanitizeAdapterText(value string, limit int) string {

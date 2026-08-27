@@ -77,7 +77,7 @@ func ConnectionErrorDetails(err error) (message, detail string, ok bool) {
 		return "", "", false
 	}
 	if errors.Is(err, ErrAgentAPIFingerprint) {
-		return "Machine API certificate fingerprint mismatch", "Verify the SHA256 TLS certificate fingerprint from the machine's trusted console, replace it in Infrastructure > Agents > Reconnect, then reconnect. The endpoint and port remain fixed.", true
+		return "Machine API certificate fingerprint mismatch", "Verify the SHA256 TLS certificate fingerprint from the machine's trusted console, then update this saved profile only after the endpoint and port are confirmed.", true
 	}
 	if errors.Is(err, ErrAgentAPIUnauthorized) {
 		return "Machine API key was rejected", "Verify the API key configured on the machine. The key is never saved in the controller profile or audit trail.", true
@@ -120,17 +120,14 @@ func ConnectionErrorDetails(err error) (message, detail string, ok bool) {
 	}
 }
 
-// Credentials is accepted only for a connect operation. Authentication values
-// must not be persisted, logged, or added to an audit-event detail map. A
-// replacement machine API certificate fingerprint is non-secret, but is saved
-// only after it successfully verifies the selected machine endpoint.
+// Credentials is accepted only for a connect operation. It must not be
+// persisted, logged, or added to an audit-event detail map.
 type Credentials struct {
-	APIKey                    string
-	Authentication            string
-	Password                  string
-	PrivateKey                string
-	PrivateKeyPassword        string
-	TLSCertificateFingerprint string
+	APIKey             string
+	Authentication     string
+	Password           string
+	PrivateKey         string
+	PrivateKeyPassword string
 }
 
 // AddInput combines the non-secret server profile with a one-time credential
@@ -427,17 +424,6 @@ func (m *Manager) Connect(ctx context.Context, id string, credentials Credential
 	if credentials.Authentication != profile.Authentication {
 		scrubCredentials(&credentials)
 		return domain.Server{}, fmt.Errorf("authentication method does not match this server")
-	}
-	if fingerprint := strings.TrimSpace(credentials.TLSCertificateFingerprint); fingerprint != "" {
-		if profile.ConnectionType != ConnectionAgentAPI {
-			scrubCredentials(&credentials)
-			return domain.Server{}, fmt.Errorf("machine API TLS certificate fingerprint may be changed only for a machine API server")
-		}
-		profile.TLSCertificateFingerprint = normalizeCertificateFingerprint(fingerprint)
-		if err := validateProfile(profile); err != nil {
-			scrubCredentials(&credentials)
-			return domain.Server{}, err
-		}
 	}
 	apiKey := credentials.APIKey
 	connection, profile, err := establish(ctx, profile, credentials)
@@ -751,7 +737,6 @@ func scrubCredentials(credentials *Credentials) {
 	credentials.Password = ""
 	credentials.PrivateKey = ""
 	credentials.PrivateKeyPassword = ""
-	credentials.TLSCertificateFingerprint = ""
 }
 
 // Connector turns a pinned SSH session into Docker's standard stdio tunnel.

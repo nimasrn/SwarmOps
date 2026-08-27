@@ -37,6 +37,7 @@ export {
   Rail,
   RailSection,
   RecordLink,
+  StatusHero,
   StatusDot,
   Toolbar,
 } from '@/components/console'
@@ -57,6 +58,7 @@ export type {
   RailProps,
   RailSectionProps,
   RecordLinkProps,
+  StatusHeroProps,
   StatusDotProps,
   StatusTone,
   ToolbarProps,

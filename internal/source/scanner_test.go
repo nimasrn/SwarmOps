@@ -87,6 +87,15 @@ func TestScannerClassifiesMonorepoAndNeverReturnsSourceValues(t *testing.T) {
 	}
 }
 
+func TestScannerReplacesKnownSourceLoggingInfrastructure(t *testing.T) {
+	for _, service := range []string{"loki", "alloy", "promtail", "fluentd", "fluent-bit", "fluentbit"} {
+		classification, databases, stacks := classifyService(service, "vendor/"+service+":pinned")
+		if classification != ClassificationSharedPlatform || len(databases) != 0 || strings.Join(stacks, ",") != "swarmops-logs" {
+			t.Fatalf("%s classification = %q, databases=%v stacks=%v", service, classification, databases, stacks)
+		}
+	}
+}
+
 func TestScannerFindsEveryStandaloneDockerfileInMonorepo(t *testing.T) {
 	revision := Revision{SHA: strings.Repeat("c", 40)}
 	provider := &fixtureProvider{

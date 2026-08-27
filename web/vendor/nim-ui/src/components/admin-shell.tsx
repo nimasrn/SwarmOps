@@ -90,10 +90,10 @@ export function AdminShell({
     <nav aria-label={text.nav} className="nim-admin__nav">
       {groups.map((group) => (
         <div className="nim-admin__group" key={group.key}>
-          <p className="nim-admin__group-label">
+          {group.label ? <p className="nim-admin__group-label">
             {group.icon ? <Icon name={group.icon} size="xs" /> : null}
             {group.label}
-          </p>
+          </p> : null}
           {group.items.map((item) => {
             const active = item.key === value
             const content = (
@@ -248,7 +248,7 @@ export function DetailHeader({
             {status ? <span className="nim-detail-header__status">{status}</span> : null}
           </div>
           {subtitle ? <p className="nim-detail-header__subtitle">{subtitle}</p> : null}
-          {meta ? <p className="nim-detail-header__meta">{meta}</p> : null}
+          {meta ? <div className="nim-detail-header__meta">{meta}</div> : null}
         </div>
         {actions ? <div className="nim-detail-header__actions">{actions}</div> : null}
       </div>

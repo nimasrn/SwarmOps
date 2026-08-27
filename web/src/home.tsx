@@ -1,21 +1,16 @@
 import {
-  Badge,
-  Banner,
   Body,
   Button,
   Chart,
   Columns,
   DetailHeader,
-  DetailLayout,
   EmptyState,
   Facts,
   Inline,
-  Metric,
-  MetricGrid,
   Mono,
   Page,
   Panel,
-  Stack as Rows,
+  StatusHero,
   StatusDot,
   Table,
 } from '@nim.zone/ui'
@@ -103,103 +98,69 @@ export function HomePage({
   servers,
 }: HomePageProps) {
   const activeCore = core.members.find((member) => member.id === core.activeId)
-  const connectedAgents = servers.filter((server) => server.connectionState === 'connected').length
-  const openCommands = commands.filter((command) => !terminalCommand(command.state))
   const attention = attentionItems(core, cluster, servers, commands)
   const nodes = cluster?.overview.nodes ?? []
-  const summary = cluster?.overview.summary
   const history = Array.isArray(activity) ? activity.slice(-12) : []
-  const attentionItem = attention[0]
+  const healthy = core.controlEnabled && Boolean(cluster) && attention.length === 0
+  const visibleCommands = commands.slice(0, 6)
 
   return (
     <Page width="full">
       <DetailHeader
         actions={<Inline><Button iconStart="play" onClick={onDeploy} variant="accent">Deploy application</Button><Button iconStart="plus" onClick={onAddNode} variant="secondary">Add node</Button></Inline>}
-        subtitle="One active Core coordinates this Docker Swarm cluster through durable outbound agent sessions."
-        title="Production overview"
+        title="Home"
       />
 
-      <MetricGrid columns={4}>
-        <Metric hint={core.controlEnabled ? `Authority epoch ${core.authorityEpoch}` : 'Mutations are fenced'} icon="shield" label="Core authority" tone={core.controlEnabled ? 'success' : 'warning'} value={core.controlEnabled ? 'Active' : 'Standby'} />
-        <Metric hint={summary ? `${summary.readyNodes} of ${summary.nodes} nodes ready` : 'Choose a connected manager'} icon="server" label="Cluster health" tone={cluster ? healthTone(cluster.overview.health) : 'neutral'} value={cluster ? healthLabel(cluster.overview.health) : 'Not connected'} />
-        <Metric hint={cluster ? `${summary?.runningTasks ?? 0} running tasks` : 'Awaiting cluster state'} icon="layers" label="Applications" onClick={onOpenApplications} tone={cluster?.stacks.length ? 'success' : 'neutral'} value={cluster ? String(cluster.stacks.length) : '—'} />
-        <Metric hint={openCommands.length ? 'Work remains visible in Operations' : 'No pending mutations'} icon="terminal" label="Pending operations" tone={openCommands.length ? 'warning' : 'success'} value={String(openCommands.length)} />
-      </MetricGrid>
+      <Columns template="two-fifths">
+        <StatusHero
+          description={healthy ? 'All systems operational' : cluster ? `${attention.length} issue${attention.length === 1 ? '' : 's'} require review.` : 'Core is active; select a Swarm manager to begin cluster inspection.'}
+          icon={healthy ? 'check' : attention.length ? 'alert' : 'activity'}
+          title={healthy ? 'Cluster is healthy' : attention.length ? 'Cluster needs attention' : 'Connect a cluster'}
+          tone={healthy ? 'success' : attention.length ? 'warning' : 'accent'}
+        />
+        <Panel actions={attention.length ? <Button onClick={onDiagnose} size="sm" variant="ghost">View all issues</Button> : undefined} flush title={`Needs your attention${attention.length ? ` (${attention.length})` : ''}`}>
+          {attention.length ? <Table columns={[
+            { header: 'Resource', key: 'resource', render: (item: AttentionItem) => <StatusDot tone={item.tone}>{item.label}</StatusDot> },
+            { header: 'Diagnosis', key: 'detail', render: (item: AttentionItem) => item.detail },
+          ]} rowKey={(item) => item.id} rows={attention.slice(0, 3)} /> : <Body size="sm" tone="muted">No current Core, agent, cluster, or command issue needs operator attention.</Body>}
+        </Panel>
+      </Columns>
 
-      <DetailLayout
-        aside={
-          <Rows gap="md">
-            {attentionItem ? (
-              <Banner action={<Button onClick={onDiagnose} size="sm" variant="ghost">Review</Button>} title={attentionItem.label} tone={attentionItem.tone === 'danger' ? 'danger' : 'warning'}>
-                {attentionItem.detail}
-              </Banner>
-            ) : <Banner title="No action needs attention" tone="success">Core, agents, and the selected cluster report no current failure evidence.</Banner>}
-            <Panel caption="Singletons" title="Shared platform">
-              <Facts columns={1} items={[
-                { label: 'Traefik', value: cluster ? serviceState(cluster.traefik.service?.health) : 'Not observed' },
-                { label: 'Prometheus + Jaeger', value: cluster ? installedState(cluster.observability.coreInstalled, cluster.observability.coreHealthy) : 'Not observed' },
-                { label: 'Loki', value: cluster ? installedState(cluster.observability.logsEnabled, cluster.observability.logsHealthy) : 'Not observed' },
-                { label: 'PostgreSQL / MongoDB / Redis', value: cluster ? 'Managed per cluster' : 'Not observed' },
-              ]} />
-            </Panel>
-            <Panel actions={<Button onClick={onOpenTraffic} size="sm" variant="ghost">Open</Button>} title="Traffic health">
-              <Facts columns={1} items={[
-                { label: 'HTTP, TCP, UDP', value: cluster?.traefik.service ? 'Typed routes active' : 'Not observed' },
-                { label: 'Certificates', value: cluster?.traefik.service ? 'Open diagnostics' : 'Not observed' },
-                { label: 'Control transport', value: 'Outbound agent HTTPS' },
-              ]} />
-            </Panel>
-            <Body size="sm" tone="muted">
-              Core and cluster remain separate identities. Every failure leads to evidence and a bounded action.
-            </Body>
-          </Rows>
-        }
-      >
-        <Rows gap="loose">
-          <Columns template="aside">
-            <Panel actions={<Badge pill size="sm" tone="outline">Recent samples</Badge>} title="Cluster activity">
-              {history.length > 1 ? (
-                <Chart
-                  categories={history.map((sample) => formatTime(sample.at))}
-                  format={(value) => Number.isInteger(value) ? String(value) : value.toFixed(1)}
-                  height={220}
-                  legend
-                  max={Math.max(1, ...history.map((sample) => Math.max(sample.tasksDesired, sample.containersTotal)))}
-                  min={0}
-                  note="Source: SwarmOps insight history · selected manager"
-                  series={[
-                    { label: 'Running tasks', series: 1, values: history.map((sample) => sample.tasksRunning) },
-                    { label: 'Running containers', series: 2, values: history.map((sample) => sample.containersRunning) },
-                  ]}
-                />
-              ) : <EmptyState description="Activity history begins after the selected manager produces more than one snapshot." icon="chart" title="Collecting cluster activity" />}
-            </Panel>
+      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">View infrastructure</Button>} caption={`${nodes.length} node${nodes.length === 1 ? '' : 's'}`} flush title="Infrastructure">
+        {nodes.length ? <Table columns={NODE_COLUMNS} rowKey={(node) => node.id} rows={nodes.slice(0, 6)} /> : (
+          <EmptyState actions={<Button onClick={onAddNode} size="sm" variant="secondary">Add node</Button>} description="Node capacity, agent health, Docker state, and task placement appear after enrollment." icon="server" title="No managed nodes" />
+        )}
+      </Panel>
 
-            <Panel actions={<Badge dot pill size="sm" variant={core.controlEnabled ? 'success' : 'warning'}>{core.controlEnabled ? 'Active' : 'Standby'}</Badge>} title="Core authority">
-              <Facts columns={1} items={[
-                { label: 'Identity', mono: true, value: activeCore?.name ?? core.localId },
-                { label: 'Location', mono: true, value: activeCore?.endpoint || 'Outside cluster' },
-                { label: 'Storage', value: 'Encrypted controller state' },
-                { label: 'Authority epoch', mono: true, value: String(core.authorityEpoch) },
-                { label: 'Standby', value: `${core.members.filter((member) => member.role === 'standby').length} registered` },
-                { label: 'Connected agents', value: String(connectedAgents) },
-              ]} />
-            </Panel>
-          </Columns>
+      <Columns template="thirds">
+        <Panel actions={<Button onClick={onOpenApplications} size="sm" variant="ghost">View all</Button>} flush title={`Applications (${cluster?.stacks.length ?? 0})`}>
+          {cluster?.stacks.length ? <Table columns={[
+            { header: 'Application', key: 'name', render: (stack: Stack) => stack.name },
+            { header: 'Health', key: 'health', render: (stack: Stack) => <StatusDot tone={healthTone(stack.health)}>{healthLabel(stack.health)}</StatusDot> },
+            { header: 'Tasks', key: 'tasks', numeric: true, render: (stack: Stack) => stack.runningTasks },
+          ]} rowKey={(stack) => stack.name} rows={cluster.stacks.slice(0, 7)} /> : <EmptyState description="Applications appear after the selected manager reports deployed stacks." icon="layers" title="No applications" />}
+        </Panel>
 
-          <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">View topology</Button>} caption={`${nodes.length} node${nodes.length === 1 ? '' : 's'}`} flush title="Infrastructure">
-            {nodes.length ? <Table columns={NODE_COLUMNS} rowKey={(node) => node.id} rows={nodes.slice(0, 6)} /> : (
-              <EmptyState actions={<Button onClick={onAddNode} size="sm" variant="secondary">Add node</Button>} description="Node capacity, agent health, Docker state, and container inventory appear after enrollment." icon="server" title="Infrastructure is ready for its first node" />
-            )}
-          </Panel>
+        <Panel actions={<Button onClick={onOpenTraffic} size="sm" variant="ghost">View traffic</Button>} title="Cluster activity">
+          {history.length > 1 ? <Chart categories={history.map((sample) => formatTime(sample.at))} format={(value) => Number.isInteger(value) ? String(value) : value.toFixed(1)} height={150} legend max={Math.max(1, ...history.map((sample) => Math.max(sample.tasksDesired, sample.containersTotal)))} min={0} series={[
+            { label: 'Tasks', series: 1, values: history.map((sample) => sample.tasksRunning) },
+            { label: 'Containers', series: 2, values: history.map((sample) => sample.containersRunning) },
+          ]} /> : <EmptyState description="Activity history begins after two manager snapshots." icon="chart" title="Collecting activity" />}
+        </Panel>
 
-          <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">Open ledger</Button>} caption={`${commands.length} recorded`} flush title="Recent operations">
-            {commands.length ? <Table columns={COMMAND_COLUMNS} rowKey={(command) => command.id} rows={commands.slice(0, 6)} /> : (
-              <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations recorded" />
-            )}
-          </Panel>
-        </Rows>
-      </DetailLayout>
+        <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View all</Button>} flush title="Recent operations">
+          {visibleCommands.length ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} /> : <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations" />}
+        </Panel>
+      </Columns>
+
+      <Panel title="Platform status">
+        <Facts items={[
+          { label: 'Core identity', mono: true, value: activeCore?.name ?? core.localId },
+          { label: 'Traefik', value: cluster ? serviceState(cluster.traefik.service?.health) : 'Not observed' },
+          { label: 'Prometheus + Jaeger', value: cluster ? installedState(cluster.observability.coreInstalled, cluster.observability.coreHealthy) : 'Not observed' },
+          { label: 'Fluentd', value: cluster ? installedState(cluster.observability.logsEnabled, cluster.observability.logsHealthy) : 'Not observed' },
+        ]} />
+      </Panel>
     </Page>
   )
 }
@@ -243,10 +204,6 @@ function commandTone(state: Command['state']): StatusTone {
 
 function stateLabel(state: Command['state']) {
   return state.split('_').map(capitalize).join(' ')
-}
-
-function terminalCommand(state: Command['state']) {
-  return state === 'succeeded' || state === 'failed' || state === 'needs_attention' || state === 'superseded' || state === 'cancelled'
 }
 
 function serviceState(health?: string) {

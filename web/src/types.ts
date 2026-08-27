@@ -130,10 +130,6 @@ export interface ServerCredentials {
   apiKey: string
 }
 
-export interface ServerReconnectInput extends ServerCredentials {
-  tlsCertificateFingerprint?: string
-}
-
 export interface ServerInput extends ServerCredentials {
   apiUrl: string
   name: string
@@ -500,6 +496,45 @@ export interface TraefikLogRecord {
   service?: string
   statusCode?: number
   timestamp: string
+}
+
+export interface LogRecord {
+  id: string
+  timestamp: string
+  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+  sourceKind: 'container' | 'host' | 'docker' | 'traefik' | 'core' | 'agent' | 'fluentd'
+  node?: string
+  stack?: string
+  service?: string
+  containerId?: string
+  stream?: string
+  unit?: string
+  identifier?: string
+  message: string
+}
+
+export interface LogPage {
+  records: LogRecord[]
+  nextCursor?: string
+  truncated: boolean
+  facets: { levels: string[]; sourceKinds: string[]; nodes: string[]; stacks: string[]; services: string[]; units: string[] }
+}
+
+export interface LogStatus {
+  healthy: boolean
+  forwarders: number
+  expectedNodes: number
+  bufferBytes: number
+  retainedBytes: number
+  oldest?: string
+  newest?: string
+  retentionSeconds: number
+  capacityBytes: number
+  capacityEvictions: number
+  droppedRecords: number
+  malformedRecords: number
+  lastCleanupAt?: string
+  warnings: string[]
 }
 
 export interface PrometheusStatus {

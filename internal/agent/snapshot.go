@@ -27,11 +27,11 @@ type Config struct {
 	BuildMaxCPUs         float64
 	BuildMaxMemoryMiB    int64
 	Docker               *dockerapi.Client
-	// InternalHTTP reaches only the fixed Traefik, Loki, and Prometheus
+	// InternalHTTP reaches only the fixed Traefik, Fluentd-query, and Prometheus
 	// adapters below. Their base URLs come from the agent's trusted startup
 	// configuration, never from an API request.
 	InternalHTTP      *http.Client
-	LokiBaseURL       string
+	LogsBaseURL       string
 	PrometheusBaseURL string
 	TraefikAPIBaseURL string
 	// EnrollmentSecret is the installer's one-time secret. When present the

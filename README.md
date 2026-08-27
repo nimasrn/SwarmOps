@@ -5,7 +5,7 @@
 
 SwarmOps is a remote Docker Swarm control plane. It is the replacement path
 for Portainer: an auditable host-native Go Core, host-native Ubuntu agents,
-and Prometheus/Jaeger/Loki observability manifests. A
+and Prometheus/Jaeger/Fluentd observability manifests. A
 production installation has one active **control-plane** member by default:
 its persisted cluster profiles, audit history, encrypted command ledger,
 checked-in deployment assets, and production console live there. That process
@@ -107,7 +107,7 @@ managed database attachments:
    deployment is queued from, and it can be saved as a browser-local draft
    holding the selection alone — never evidence. Source PostgreSQL/MongoDB/Redis/
    Valkey services are replaced by managed databases; Prometheus,
-   Alertmanager, Jaeger, Loki, Alloy, and exporters reuse the global stacks.
+   Alertmanager, Jaeger, Fluentd, and exporters reuse the global stacks.
    Dashboard containers from a source repository are unsupported.
 
 The application slot — its name, public domain, certificate resolver, and
@@ -256,7 +256,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.6.2`. Release history is in
+The current version is `0.7.0`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -637,8 +637,10 @@ The guided flow is deterministic:
    own immutable build identity.
 4. Review classifications. Application services become closed
    `ApplicationSpec` candidates. PostgreSQL, MongoDB, Redis, and Valkey become
-   managed attachments. Prometheus, Alertmanager, Jaeger, Loki,
-   Alloy, node-exporter, and cAdvisor map to reviewed global stacks. Unsupported
+   managed attachments. Prometheus, Alertmanager, Jaeger, node-exporter, and
+   cAdvisor map to reviewed global stacks. Loki, Alloy, Promtail, Fluentd, and
+   Fluent Bit source services are recognized as logging infrastructure and
+   replaced by the reviewed `swarmops-logs` Fluentd stack. Unsupported
    stateful engines and unsafe/ambiguous build evidence stop the candidate.
 5. Select an approved application slot and, when its manifest permits it, an
    exact domain or hostname inside one reviewed suffix.
@@ -882,8 +884,10 @@ secrets or configs, change DNS/firewalls, push images, or enable
 mutations/builds.
 
 ```bash
-make push APP=swarmops TARGET=api TAG=<immutable-tag>
-make push APP=swarmops TARGET=agent TAG=<immutable-tag>
+make push TARGET=api TAG=<immutable-tag>
+make push TARGET=agent TAG=<immutable-tag>
+make push TARGET=fluentd TAG=<immutable-tag>
+make push TARGET=logs TAG=<immutable-tag>
 make swarmops-preflight MANIFEST=/secure/swarmops-platform.yml
 make config-create HOST=manager-01 CONFIG=swarmops_platform_manifest_v1 FILE=/secure/swarmops-platform.yml
 make stack-check STACK=traefik TAG=<immutable-tag>
@@ -892,6 +896,7 @@ make platform-deploy HOST=manager-01 TAG=<immutable-tag>
 
 # After the versioned SwarmOps observability configs exist:
 make deploy STACK=swarmops-observability HOST=manager-01 TAG=<immutable-tag>
+make deploy STACK=swarmops-logs HOST=manager-01 TAG=<immutable-tag>
 ```
 
 The console can also deploy/remove the reviewed observability core after a

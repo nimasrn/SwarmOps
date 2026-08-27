@@ -1,7 +1,7 @@
 export { ActivityFeed, AdminShell, DetailHeader, FilterChips } from './components/admin-shell';
 export type { ActivityEvent, ActivityFeedProps, AdminNavGroup, AdminNavItem, AdminShellProps, DetailHeaderProps, FilterChip, FilterChipsProps, } from './components/admin-shell';
-export { CodeBlock, Columns, CopyChip, DetailLayout, Facts, Metric, MetricGrid, Mono, Page, Panel, Rail, RailSection, RecordLink, StatusDot, Toolbar, } from './components/console';
-export type { CodeBlockProps, ColumnsProps, ColumnsTemplate, CopyChipProps, DetailLayoutProps, Fact, FactsProps, MetricGridProps, MetricProps, MonoProps, PageProps, PageWidth, PanelProps, RailProps, RailSectionProps, RecordLinkProps, StatusDotProps, StatusTone, ToolbarProps, } from './components/console';
+export { CodeBlock, Columns, CopyChip, DetailLayout, Facts, Metric, MetricGrid, Mono, Page, Panel, Rail, RailSection, RecordLink, StatusHero, StatusDot, Toolbar, } from './components/console';
+export type { CodeBlockProps, ColumnsProps, ColumnsTemplate, CopyChipProps, DetailLayoutProps, Fact, FactsProps, MetricGridProps, MetricProps, MonoProps, PageProps, PageWidth, PanelProps, RailProps, RailSectionProps, RecordLinkProps, StatusHeroProps, StatusDotProps, StatusTone, ToolbarProps, } from './components/console';
 export { Brand } from './components/brand';
 export type { BrandProps, BrandSize } from './components/brand';
 export { BrandMark, brandFor } from './components/brand-mark';

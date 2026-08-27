@@ -57,3 +57,5 @@ jobs:
           docker build --target api --tag swarmops-api:ci .
           docker build --target agent --tag swarmops-agent:ci .
           docker build --target cli --tag swarmops-cli:ci .
+          docker build --target fluentd --tag swarmops-fluentd:ci .
+          docker build --target logs --tag swarmops-logs:ci .

@@ -96,9 +96,10 @@ or node-exporter ports, or Traefik's internal metrics port to the public
 internet. The direct-controller and explicitly installed machine-agent ports
 are deliberate exceptions: restrict both through host/cloud firewall rules.
 SwarmOps is reached through its Traefik HTTPS route. Prometheus, Alertmanager,
-Jaeger, Loki, and probes stay on internal overlay networks; graphs and metrics
-are rendered inside the SwarmOps console rather than a separate dashboard
-service. The SwarmOps API itself has no Docker socket mount and reaches a
+Jaeger, Fluentd forwarding/query routes, and probes stay on isolated internal
+overlay networks; graphs, metrics, and sanitized logs are rendered inside the
+SwarmOps console rather than a separate dashboard service. The SwarmOps API
+itself has no Docker socket mount and reaches a
 selected remote target only through that target's fixed machine API.
 
 ## Automated host and Swarm bootstrap
@@ -305,8 +306,10 @@ push the immutable SwarmOps API and agent images, then validate and deploy
 Traefik before SwarmOps:
 
 ```bash
-make push APP=swarmops TARGET=api TAG=<git-sha>
-make push APP=swarmops TARGET=agent TAG=<git-sha>
+make push TARGET=api TAG=<git-sha>
+make push TARGET=agent TAG=<git-sha>
+make push TARGET=fluentd TAG=<git-sha>
+make push TARGET=logs TAG=<git-sha>
 make stack-check STACK=traefik TAG=<git-sha>
 make stack-check STACK=swarmops TAG=<git-sha>
 make platform-deploy HOST=manager-01 TAG=<git-sha>
@@ -392,9 +395,9 @@ high-trust boundary. SwarmOps has no equivalent API socket mount: each target
 is reached through a pinned TLS machine API using an operator-supplied API key
 held only in memory. Restrict manager access, the machine-agent listener,
 certificate pinning, API-key distribution, and host firewalls accordingly. The
-optional read-only agent, node-exporter, and Alloy log collector still mount
-host paths for inventory/metrics/log collection; they expose no arbitrary
-command or file endpoint.
+optional read-only agent, node-exporter, and global Fluentd forwarder still
+mount reviewed host paths for inventory, metrics, Docker JSON logs, and host
+journals; they expose no arbitrary command or file endpoint.
 
 ## Platform admission, durable fleet jobs, and backups
 

@@ -23,7 +23,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-var version = "0.6.2"
+var version = "0.7.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -116,23 +116,21 @@ func main() {
 		Image:               cfg.TraefikImage,
 	}
 	trustedStackSettings := ops.TrustedStackSettings{
-		AgentTokenSecret:          cfg.TrustedAgentTokenSecret,
-		AlertmanagerConfigName:    cfg.TrustedAlertmanagerConfig,
-		AlertmanagerImage:         cfg.TrustedAlertmanagerImage,
-		AlloyConfigName:           cfg.TrustedAlloyConfig,
-		AlloyImage:                cfg.TrustedAlloyImage,
-		JaegerConfigName:          cfg.TrustedJaegerConfig,
-		JaegerImage:               cfg.TrustedJaegerImage,
-		LokiConfigName:            cfg.TrustedLokiConfig,
-		LokiImage:                 cfg.TrustedLokiImage,
-		NodeExporterImage:         cfg.TrustedNodeExporterImage,
-		PrometheusConfigName:      cfg.TrustedPrometheusConfig,
-		PrometheusImage:           cfg.TrustedPrometheusImage,
-		PrometheusRetention:       cfg.TrustedPrometheusRetention,
-		PrometheusRulesConfigName: cfg.TrustedPrometheusRules,
-		Registry:                  cfg.TrustedRegistry,
-		RegistryNamespace:         cfg.TrustedRegistryNamespace,
-		Tag:                       cfg.TrustedTag,
+		AgentTokenSecret:           cfg.TrustedAgentTokenSecret,
+		AlertmanagerConfigName:     cfg.TrustedAlertmanagerConfig,
+		AlertmanagerImage:          cfg.TrustedAlertmanagerImage,
+		FluentAggregatorConfigName: cfg.TrustedFluentAggregatorConfig,
+		FluentForwarderConfigName:  cfg.TrustedFluentForwarderConfig,
+		JaegerConfigName:           cfg.TrustedJaegerConfig,
+		JaegerImage:                cfg.TrustedJaegerImage,
+		NodeExporterImage:          cfg.TrustedNodeExporterImage,
+		PrometheusConfigName:       cfg.TrustedPrometheusConfig,
+		PrometheusImage:            cfg.TrustedPrometheusImage,
+		PrometheusRetention:        cfg.TrustedPrometheusRetention,
+		PrometheusRulesConfigName:  cfg.TrustedPrometheusRules,
+		Registry:                   cfg.TrustedRegistry,
+		RegistryNamespace:          cfg.TrustedRegistryNamespace,
+		Tag:                        cfg.TrustedTag,
 	}
 	targets := apihttp.TargetResolverFunc(func(id string) (apihttp.Target, error) {
 		connection, err := servers.Resolve(id)

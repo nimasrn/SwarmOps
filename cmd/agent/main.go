@@ -32,7 +32,7 @@ const (
 	provisionTimeout = 50 * time.Minute
 )
 
-var version = "0.6.2"
+var version = "0.7.0"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -78,7 +78,7 @@ func main() {
 		BuildMaxCPUs:         runtime.buildMaxCPUs,
 		BuildMaxMemoryMiB:    runtime.buildMaxMemoryMiB,
 		Docker:               docker,
-		LokiBaseURL:          env("SWARMOPS_LOKI_INTERNAL_URL", "http://swarmops-loki.swarmops.internal:8081"),
+		LogsBaseURL:          env("SWARMOPS_LOGS_INTERNAL_URL", "http://swarmops-fluentd-query.swarmops.internal:8081"),
 		PrometheusBaseURL:    env("SWARMOPS_PROMETHEUS_INTERNAL_URL", "http://swarmops-prometheus.swarmops.internal:8081"),
 		TraefikAPIBaseURL:    env("SWARMOPS_TRAEFIK_INTERNAL_API_URL", "http://traefik_traefik:8080/api"),
 		EnrollmentSecret:     runtime.enrollmentSecret,

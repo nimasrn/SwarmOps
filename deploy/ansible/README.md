@@ -15,8 +15,8 @@ SwarmOps is the audited operator console for the resulting Swarm services.
   and an existing sudo-capable user.
 - A private, node-to-node network that permits TCP 2377, TCP/UDP 7946, and
   UDP 4789. Expose only TCP 80 and 443 publicly once Traefik is deployed;
-  the SwarmOps node agent, Traefik metrics, Prometheus, Jaeger, and Loki remain
-  internal.
+  the SwarmOps node agent, Traefik metrics, Prometheus, Jaeger, and the isolated
+  Fluentd Forward/query routes remain internal.
 - A reviewed firewall/security-group configuration. This playbook does not
   invent cloud firewall policy because an incorrect private CIDR can cut off
   SSH or Swarm quorum.

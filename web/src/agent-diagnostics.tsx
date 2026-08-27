@@ -106,6 +106,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
   return (
     <Page width="full">
       <DetailHeader
+        actions={<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open agent logs</Button>}
         status={<StatusDot tone={statusTone(state)}>{statusLabel(state, current?.summary)}</StatusDot>}
         subtitle="See the last authenticated agent probe, the controller’s safe failure observations, and the agent’s bounded lifecycle events. Service logs and command output stay on the server."
         title="Agent diagnostics"

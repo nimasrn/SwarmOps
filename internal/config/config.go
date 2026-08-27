@@ -51,66 +51,64 @@ type Config struct {
 	// Core identity is intentionally independent from saved machine-agent
 	// servers. A host running this API enters Servers only after its agent is
 	// separately installed and enrolled like any other machine.
-	CoreEndpoint               string
-	CoreID                     string
-	CoreMode                   string
-	CoreName                   string
-	DataDir                    string
-	DataEncryptionKey          []byte
-	DevMachineAPI              *DevMachineAPI
-	ImagePrefixes              []string
-	InsecureDevAuth            bool
-	ListenAddr                 string
-	LogsStackFile              string
-	MongoImage                 string
-	MongoPasswordSecret        string
-	MongoStackFile             string
-	MutationEnabled            bool
-	ObservabilityStackFile     string
-	PostgresImage              string
-	PostgresPasswordSecret     string
-	PostgresStackFile          string
-	RedisImage                 string
-	RedisPasswordSecret        string
-	RedisStackFile             string
-	RetainMachineKeys          bool
-	PlatformManifestFile       string
-	RegistryAuth               []byte
-	SecureCookies              bool
-	SessionKey                 []byte
-	SessionTTL                 time.Duration
-	SourceAllowedHosts         []string
-	SourceEnabled              bool
-	SourceImagePrefix          string
-	TLSCertFile                string
-	TLSKeyFile                 string
-	TraefikDashboardURL        string
-	TraefikACMEEmail           string
-	TraefikArvanAPIKeySecret   string
-	TraefikCFDNSTokenSecret    string
-	TraefikDashboardAuthSecret string
-	TraefikDashboardHost       string
-	TraefikDynamicConfigName   string
-	TraefikImage               string
-	TraefikStackFile           string
-	TrustedAgentTokenSecret    string
-	TrustedAlertmanagerConfig  string
-	TrustedAlertmanagerImage   string
-	TrustedAlloyConfig         string
-	TrustedAlloyImage          string
-	TrustedJaegerConfig        string
-	TrustedJaegerImage         string
-	TrustedLokiConfig          string
-	TrustedLokiImage           string
-	TrustedNodeExporterImage   string
-	TrustedPrometheusConfig    string
-	TrustedPrometheusImage     string
-	TrustedPrometheusRetention string
-	TrustedPrometheusRules     string
-	TrustedProxyCIDRs          []netip.Prefix
-	TrustedRegistry            string
-	TrustedRegistryNamespace   string
-	TrustedTag                 string
+	CoreEndpoint                  string
+	CoreID                        string
+	CoreMode                      string
+	CoreName                      string
+	DataDir                       string
+	DataEncryptionKey             []byte
+	DevMachineAPI                 *DevMachineAPI
+	ImagePrefixes                 []string
+	InsecureDevAuth               bool
+	ListenAddr                    string
+	LogsStackFile                 string
+	MongoImage                    string
+	MongoPasswordSecret           string
+	MongoStackFile                string
+	MutationEnabled               bool
+	ObservabilityStackFile        string
+	PostgresImage                 string
+	PostgresPasswordSecret        string
+	PostgresStackFile             string
+	RedisImage                    string
+	RedisPasswordSecret           string
+	RedisStackFile                string
+	RetainMachineKeys             bool
+	PlatformManifestFile          string
+	RegistryAuth                  []byte
+	SecureCookies                 bool
+	SessionKey                    []byte
+	SessionTTL                    time.Duration
+	SourceAllowedHosts            []string
+	SourceEnabled                 bool
+	SourceImagePrefix             string
+	TLSCertFile                   string
+	TLSKeyFile                    string
+	TraefikDashboardURL           string
+	TraefikACMEEmail              string
+	TraefikArvanAPIKeySecret      string
+	TraefikCFDNSTokenSecret       string
+	TraefikDashboardAuthSecret    string
+	TraefikDashboardHost          string
+	TraefikDynamicConfigName      string
+	TraefikImage                  string
+	TraefikStackFile              string
+	TrustedAgentTokenSecret       string
+	TrustedAlertmanagerConfig     string
+	TrustedAlertmanagerImage      string
+	TrustedFluentAggregatorConfig string
+	TrustedFluentForwarderConfig  string
+	TrustedJaegerConfig           string
+	TrustedJaegerImage            string
+	TrustedNodeExporterImage      string
+	TrustedPrometheusConfig       string
+	TrustedPrometheusImage        string
+	TrustedPrometheusRetention    string
+	TrustedPrometheusRules        string
+	TrustedProxyCIDRs             []netip.Prefix
+	TrustedRegistry               string
+	TrustedRegistryNamespace      string
+	TrustedTag                    string
 }
 
 // DevMachineAPI is the loopback-only machine-agent connection used by the
@@ -160,41 +158,39 @@ func Load() (Config, error) {
 		// Enrollment never shows the operator a machine API key, so the sealed
 		// copy is what lets a restarted controller reconnect. Set this to false
 		// to restore the memory-only posture and reconnect each host by hand.
-		RetainMachineKeys:          envBool("SWARMOPS_RETAIN_MACHINE_KEYS", true),
-		PlatformManifestFile:       env("SWARMOPS_PLATFORM_MANIFEST_FILE", ""),
-		SecureCookies:              envBool("SWARMOPS_SECURE_COOKIES", true),
-		SessionTTL:                 envDuration("SWARMOPS_SESSION_TTL", 12*time.Hour),
-		SourceAllowedHosts:         csv(env("SWARMOPS_SOURCE_ALLOWED_HOSTS", "")),
-		SourceEnabled:              envBool("SWARMOPS_SOURCE_ENABLED", false),
-		SourceImagePrefix:          strings.TrimSuffix(env("SWARMOPS_SOURCE_IMAGE_PREFIX", ""), "/"),
-		TLSCertFile:                env("SWARMOPS_TLS_CERT_FILE", ""),
-		TLSKeyFile:                 env("SWARMOPS_TLS_KEY_FILE", ""),
-		TraefikDashboardURL:        env("SWARMOPS_TRAEFIK_DASHBOARD_URL", ""),
-		TraefikACMEEmail:           env("TRAEFIK_ACME_EMAIL", ""),
-		TraefikArvanAPIKeySecret:   env("TRAEFIK_ARVAN_API_KEY_SECRET", "traefik_arvan_api_key_v1"),
-		TraefikCFDNSTokenSecret:    env("TRAEFIK_CF_DNS_TOKEN_SECRET", "traefik_cf_dns_token_v1"),
-		TraefikDashboardAuthSecret: env("TRAEFIK_DASHBOARD_AUTH_SECRET", "traefik_dashboard_auth_v1"),
-		TraefikDashboardHost:       env("TRAEFIK_DASHBOARD_HOST", ""),
-		TraefikDynamicConfigName:   env("TRAEFIK_DYNAMIC_CONFIG_NAME", "nim_traefik_dynamic_v1"),
-		TraefikImage:               env("TRAEFIK_IMAGE", "traefik:v3.6.13"),
-		TraefikStackFile:           env("SWARMOPS_TRAEFIK_STACK_FILE", filepath.Join(assetDir, "traefik.yml")),
-		TrustedAgentTokenSecret:    env("SWARMOPS_AGENT_TOKEN_SECRET", "swarmops_agent_token_v1"),
-		TrustedAlertmanagerConfig:  env("SWARMOPS_ALERTMANAGER_CONFIG_NAME", "swarmops_alertmanager_config_v1"),
-		TrustedAlertmanagerImage:   env("ALERTMANAGER_IMAGE", "prom/alertmanager:v0.33.1"),
-		TrustedAlloyConfig:         env("SWARMOPS_ALLOY_CONFIG_NAME", "swarmops_alloy_config_v1"),
-		TrustedAlloyImage:          env("ALLOY_IMAGE", "grafana/alloy:v1.18.1"),
-		TrustedJaegerConfig:        env("SWARMOPS_JAEGER_CONFIG_NAME", "swarmops_jaeger_config_v1"),
-		TrustedJaegerImage:         env("JAEGER_IMAGE", "jaegertracing/jaeger:2.20.0"),
-		TrustedLokiConfig:          env("SWARMOPS_LOKI_CONFIG_NAME", "swarmops_loki_config_v1"),
-		TrustedLokiImage:           env("LOKI_IMAGE", "grafana/loki:3.7.4"),
-		TrustedNodeExporterImage:   env("NODE_EXPORTER_IMAGE", "prom/node-exporter:v1.12.1"),
-		TrustedPrometheusConfig:    env("SWARMOPS_PROMETHEUS_CONFIG_NAME", "swarmops_prometheus_config_v1"),
-		TrustedPrometheusImage:     env("PROMETHEUS_IMAGE", "prom/prometheus:v3.14.0"),
-		TrustedPrometheusRetention: env("PROMETHEUS_RETENTION", "15d"),
-		TrustedPrometheusRules:     env("SWARMOPS_PROMETHEUS_RULES_CONFIG_NAME", "swarmops_prometheus_rules_v1"),
-		TrustedRegistry:            env("REGISTRY", "ghcr.io"),
-		TrustedRegistryNamespace:   env("REGISTRY_NS", "nimasrn"),
-		TrustedTag:                 env("TAG", ""),
+		RetainMachineKeys:             envBool("SWARMOPS_RETAIN_MACHINE_KEYS", true),
+		PlatformManifestFile:          env("SWARMOPS_PLATFORM_MANIFEST_FILE", ""),
+		SecureCookies:                 envBool("SWARMOPS_SECURE_COOKIES", true),
+		SessionTTL:                    envDuration("SWARMOPS_SESSION_TTL", 12*time.Hour),
+		SourceAllowedHosts:            csv(env("SWARMOPS_SOURCE_ALLOWED_HOSTS", "")),
+		SourceEnabled:                 envBool("SWARMOPS_SOURCE_ENABLED", false),
+		SourceImagePrefix:             strings.TrimSuffix(env("SWARMOPS_SOURCE_IMAGE_PREFIX", ""), "/"),
+		TLSCertFile:                   env("SWARMOPS_TLS_CERT_FILE", ""),
+		TLSKeyFile:                    env("SWARMOPS_TLS_KEY_FILE", ""),
+		TraefikDashboardURL:           env("SWARMOPS_TRAEFIK_DASHBOARD_URL", ""),
+		TraefikACMEEmail:              env("TRAEFIK_ACME_EMAIL", ""),
+		TraefikArvanAPIKeySecret:      env("TRAEFIK_ARVAN_API_KEY_SECRET", "traefik_arvan_api_key_v1"),
+		TraefikCFDNSTokenSecret:       env("TRAEFIK_CF_DNS_TOKEN_SECRET", "traefik_cf_dns_token_v1"),
+		TraefikDashboardAuthSecret:    env("TRAEFIK_DASHBOARD_AUTH_SECRET", "traefik_dashboard_auth_v1"),
+		TraefikDashboardHost:          env("TRAEFIK_DASHBOARD_HOST", ""),
+		TraefikDynamicConfigName:      env("TRAEFIK_DYNAMIC_CONFIG_NAME", "nim_traefik_dynamic_v1"),
+		TraefikImage:                  env("TRAEFIK_IMAGE", "traefik:v3.6.13"),
+		TraefikStackFile:              env("SWARMOPS_TRAEFIK_STACK_FILE", filepath.Join(assetDir, "traefik.yml")),
+		TrustedAgentTokenSecret:       env("SWARMOPS_AGENT_TOKEN_SECRET", "swarmops_agent_token_v1"),
+		TrustedAlertmanagerConfig:     env("SWARMOPS_ALERTMANAGER_CONFIG_NAME", "swarmops_alertmanager_config_v1"),
+		TrustedAlertmanagerImage:      env("ALERTMANAGER_IMAGE", "prom/alertmanager:v0.33.1"),
+		TrustedFluentAggregatorConfig: env("SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME", "swarmops_fluentd_aggregator_v1"),
+		TrustedFluentForwarderConfig:  env("SWARMOPS_FLUENTD_FORWARDER_CONFIG_NAME", "swarmops_fluentd_forwarder_v1"),
+		TrustedJaegerConfig:           env("SWARMOPS_JAEGER_CONFIG_NAME", "swarmops_jaeger_config_v1"),
+		TrustedJaegerImage:            env("JAEGER_IMAGE", "jaegertracing/jaeger:2.20.0"),
+		TrustedNodeExporterImage:      env("NODE_EXPORTER_IMAGE", "prom/node-exporter:v1.12.1"),
+		TrustedPrometheusConfig:       env("SWARMOPS_PROMETHEUS_CONFIG_NAME", "swarmops_prometheus_config_v1"),
+		TrustedPrometheusImage:        env("PROMETHEUS_IMAGE", "prom/prometheus:v3.14.0"),
+		TrustedPrometheusRetention:    env("PROMETHEUS_RETENTION", "15d"),
+		TrustedPrometheusRules:        env("SWARMOPS_PROMETHEUS_RULES_CONFIG_NAME", "swarmops_prometheus_rules_v1"),
+		TrustedRegistry:               env("REGISTRY", "ghcr.io"),
+		TrustedRegistryNamespace:      env("REGISTRY_NS", "nimasrn"),
+		TrustedTag:                    env("TAG", ""),
 	}
 	if !c.InsecureDevAuth && devMachineAPIConfigured() {
 		return Config{}, fmt.Errorf("SWARMOPS_DEV_MACHINE_API_* is available only with SWARMOPS_INSECURE_DEV_AUTH")
@@ -509,8 +505,8 @@ func parseClientCIDRs(value string) ([]netip.Prefix, error) {
 			continue
 		}
 		prefix, err := netip.ParsePrefix(item)
-		if err != nil || !prefix.IsValid() {
-			return nil, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS contains an invalid network")
+		if err != nil || !prefix.IsValid() || prefix.Bits() == 0 {
+			return nil, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS contains an invalid or unrestricted network")
 		}
 		result = append(result, prefix.Masked())
 	}

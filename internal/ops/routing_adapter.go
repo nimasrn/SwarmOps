@@ -8,13 +8,15 @@ import (
 
 // TraefikMachineAdapter is implemented by the pinned machine-agent transport.
 // Every method maps to one fixed endpoint; it is not a generic Docker, HTTP,
-// Loki, or Prometheus proxy.
+// Fluentd-query or Prometheus proxy.
 type TraefikMachineAdapter interface {
 	BindRouting(context.Context, agentcontrol.RoutingBindingRequest) error
 	PrometheusTraefik(context.Context) (agentcontrol.PrometheusSnapshot, error)
 	PrepareRoutingNetwork(context.Context, agentcontrol.RoutingNetworkRequest) error
 	ReconcileRouting(context.Context, agentcontrol.RoutingReconcileRequest) error
 	TraefikLogs(context.Context, agentcontrol.TraefikLogQuery) ([]agentcontrol.TraefikLogEntry, error)
+	Logs(context.Context, agentcontrol.LogQuery) (agentcontrol.LogPage, error)
+	LogsStatus(context.Context) (agentcontrol.LogStatus, error)
 	TraefikRuntime(context.Context) (agentcontrol.TraefikRuntimeSnapshot, error)
 }
 

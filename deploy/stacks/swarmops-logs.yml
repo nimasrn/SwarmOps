@@ -1,75 +1,74 @@
-# Log collection is a separate lifecycle because a global collector sees
-# application stdout/stderr on every node. SwarmOps requires an explicit
-# action to enable it and a typed confirmation to remove it.
+# Fluentd collection is a separate lifecycle because the global forwarder sees
+# application stdout/stderr and the host journal on every managed Linux node.
 version: "3.9"
-
 services:
-  loki:
-    image: ${LOKI_IMAGE:-grafana/loki:3.7.4}
-    command: ["-config.file=/etc/loki/config.yml"]
+  aggregator:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-fluentd:${TAG:?set TAG}
+    command: ["fluentd", "-c", "/fluentd/etc/fluent.conf", "-p", "/fluentd/plugins"]
     configs:
-      - source: loki_config
-        target: /etc/loki/config.yml
-        mode: 0444
-    volumes:
-      - swarmops_loki:/loki
-    networks: [swarmops]
+      - {source: fluentd_aggregator_config, target: /fluentd/etc/fluent.conf, mode: 0444}
+    volumes: [swarmops_logs:/var/lib/swarmops-logs]
     read_only: true
     tmpfs: [/tmp]
     deploy:
       replicas: 1
       placement:
-        constraints:
-          - node.labels.nim.stateful == true
-      restart_policy:
-        condition: any
+        constraints: [node.labels.nim.stateful == true]
+      restart_policy: {condition: any}
       resources:
-        reservations:
-          cpus: "0.20"
-          memory: 512M
-        limits:
-          cpus: "1.00"
-          memory: 1536M
-
-  alloy:
-    image: ${ALLOY_IMAGE:-grafana/alloy:v1.18.1}
-    command: ["run", "/etc/alloy/config.alloy", "--server.http.listen-addr=0.0.0.0:12345"]
+        reservations: {cpus: "0.10", memory: 128M}
+        limits: {cpus: "1.00", memory: 768M}
+  query:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-logs:${TAG:?set TAG}
+    environment:
+      SWARMOPS_LOG_ROOT: /var/lib/swarmops-logs
+      SWARMOPS_LOG_CAPACITY_BYTES: "21474836480"
+    volumes: [swarmops_logs:/var/lib/swarmops-logs]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8085/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.nim.stateful == true]
+      restart_policy: {condition: any}
+      resources:
+        reservations: {cpus: "0.05", memory: 64M}
+        limits: {cpus: "0.50", memory: 256M}
+  forwarder:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_NS:-nimasrn}/swarmops-fluentd:${TAG:?set TAG}
+    command: ["fluentd", "-c", "/fluentd/etc/fluent.conf", "-p", "/fluentd/plugins"]
+    environment:
+      NODE_NAME: "{{.Node.Hostname}}"
     configs:
-      - source: alloy_config
-        target: /etc/alloy/config.alloy
-        mode: 0444
+      - {source: fluentd_forwarder_config, target: /fluentd/etc/fluent.conf, mode: 0444}
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    networks: [swarmops]
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - swarmops_fluentd_state:/var/lib/fluentd
     read_only: true
     tmpfs: [/tmp]
     deploy:
       mode: global
       placement:
-        constraints:
-          - node.platform.os == linux
-      restart_policy:
-        condition: any
+        constraints: [node.platform.os == linux]
+      restart_policy: {condition: any}
       resources:
-        reservations:
-          cpus: "0.05"
-          memory: 96M
-        limits:
-          cpus: "0.50"
-          memory: 384M
-
-networks:
-  swarmops:
-    external: true
-    name: swarmops
-
+        reservations: {cpus: "0.05", memory: 96M}
+        limits: {cpus: "0.50", memory: 384M}
 volumes:
-  swarmops_loki:
-
+  swarmops_logs:
+  swarmops_fluentd_state:
 configs:
-  alloy_config:
+  fluentd_aggregator_config:
     external: true
-    name: ${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}
-  loki_config:
+    name: ${SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME:-swarmops_fluentd_aggregator_v1}
+  fluentd_forwarder_config:
     external: true
-    name: ${SWARMOPS_LOKI_CONFIG_NAME:-swarmops_loki_config_v1}
+    name: ${SWARMOPS_FLUENTD_FORWARDER_CONFIG_NAME:-swarmops_fluentd_forwarder_v1}

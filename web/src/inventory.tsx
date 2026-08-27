@@ -9,6 +9,7 @@ import {
   Columns,
   DataTable,
   DetailHeader,
+  DetailLayout,
   EmptyState,
   Facts,
   Inline,
@@ -20,13 +21,17 @@ import {
   Page,
   Panel,
   RecordLink,
+  Rail,
+  RailSection,
   ResourceMeter,
   Segmented,
   Select,
   Sparkline,
   Spinner,
   Stack as Rows,
+  StatusDot,
   Switch,
+  Tabs,
   useToast,
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
@@ -110,46 +115,117 @@ export function InsightsPage({ toast }: { toast: Toast }) {
   if (loading && !insights) return <Spinner label="Reading cluster insights" />
   if (error && !insights) return <Banner tone="danger" title="Insights are unavailable">{error}</Banner>
   if (!insights) return <EmptyState description="The Engine returned no inventory." icon="sparkle" title="No insights" />
+  const liveInsights: Insights = insights
 
-  const reclaimable = insights.storage.reclaimableImageBytes + insights.storage.reclaimableVolumeBytes + insights.storage.reclaimableBuildCacheBytes
+  const reclaimable = liveInsights.storage.reclaimableImageBytes + liveInsights.storage.reclaimableVolumeBytes + liveInsights.storage.reclaimableBuildCacheBytes
   // One reading a minute, so the axis is the sample clock rather than an
   // invented one. A single point draws nothing useful, so the charts wait.
   const times = history.map((sample) => formatClock(sample.at))
   const charted = history.length > 1
   const eventCounts = countEvents(events)
   const largestImages = images.slice(0, 8)
+  const alerts = [
+    ...(liveInsights.nodes.unavailable ? [{ affected: `${liveInsights.nodes.unavailable} node${liveInsights.nodes.unavailable === 1 ? '' : 's'}`, diagnosis: 'Open Infrastructure', severity: 'Critical', since: 'Current sample' }] : []),
+    ...(liveInsights.services.degraded ? [{ affected: `${liveInsights.services.degraded} degraded service${liveInsights.services.degraded === 1 ? '' : 's'}`, diagnosis: 'Inspect application', severity: 'Warning', since: 'Current sample' }] : []),
+    ...(liveInsights.containers.unhealthy ? [{ affected: `${liveInsights.containers.unhealthy} unhealthy container${liveInsights.containers.unhealthy === 1 ? '' : 's'}`, diagnosis: 'Inspect container', severity: 'Warning', since: 'Current sample' }] : []),
+  ]
+  return (
+    <Page width="full">
+      <DetailHeader
+        actions={<Inline><Button iconStart="plus" variant="accent">Create alert</Button><Button iconStart="settings" variant="secondary">Collection settings</Button></Inline>}
+        meta={<StatusDot tone={alerts.length ? 'warning' : 'success'}>Collection state: {alerts.length ? 'Needs attention' : 'Healthy'}</StatusDot>}
+        title="Observe"
+      />
+      {error ? <Banner tone="warning" title="Some readings are stale">{error}</Banner> : null}
+      <div className="nim-console-filter-row"><Select aria-label="Observation window" onChange={(event) => setWindow(event.target.value)} options={[{ label: 'Last 15 minutes', value: '15' }, { label: 'Last hour', value: '60' }, { label: 'Last 6 hours', value: '360' }, { label: 'Last 24 hours', value: '1440' }]} value={window} /><Button size="sm" variant="secondary">Application: All</Button><Button size="sm" variant="secondary">Node: All</Button></div>
+      <MetricGrid aria-label="Collector status" columns={6} dense>
+        <Metric icon="activity" label="Prometheus" tone="success" value="Metrics" />
+        <Metric icon="sparkle" label="Traces" value="Configured separately" />
+        <Metric icon="document" label="Logs" value="Configured separately" />
+        <Metric icon="server" label="Nodes ready" tone={liveInsights.nodes.unavailable ? 'warning' : 'success'} value={`${liveInsights.nodes.ready}/${liveInsights.nodes.total}`} />
+        <Metric icon="layers" label="Containers" tone={liveInsights.containers.unhealthy ? 'warning' : 'success'} value={`${liveInsights.containers.running} running`} />
+        <Metric icon="activity" label="Tasks" tone={liveInsights.services.degraded ? 'warning' : 'success'} value={`${liveInsights.services.runningTasks}/${liveInsights.services.desiredTasks}`} />
+      </MetricGrid>
+      <Columns template="two-thirds">
+        <Panel title="Cluster">
+          {charted ? <div className="nim-console-chart-grid">
+            <Chart categories={times} format={(value) => String(Math.round(value))} height={110} kind="line" series={[{ label: 'Running', values: history.map((sample) => sample.tasksRunning) }, { label: 'Desired', values: history.map((sample) => sample.tasksDesired) }]} title="Tasks" />
+            <Chart categories={times} format={(value) => String(Math.round(value))} height={110} kind="line" series={[{ label: 'Ready', values: history.map((sample) => sample.nodesReady) }, { label: 'Total', values: history.map((sample) => sample.nodesTotal) }]} title="Nodes" />
+            <Chart categories={times} format={(value) => String(Math.round(value))} height={110} kind="line" series={[{ label: 'Running', values: history.map((sample) => sample.containersRunning) }, { label: 'Total', values: history.map((sample) => sample.containersTotal) }]} title="Containers" />
+            <Chart categories={times} format={formatBytes} height={110} kind="line" series={[{ label: 'Used', values: history.map((sample) => sample.diskUsedBytes) }, { label: 'Capacity', values: history.map((sample) => sample.diskCapacityBytes) }]} title="Disk" />
+          </div> : <Banner tone="info">Trend lines appear after two real samples.</Banner>}
+        </Panel>
+        <Rows gap="md">
+          <Panel flush title="Active alerts">
+            <DataTable columns={[
+              { header: 'Severity', key: 'severity', render: (alert: (typeof alerts)[number]) => <StatusDot tone={alert.severity === 'Critical' ? 'danger' : 'warning'}>{alert.severity}</StatusDot> },
+              { header: 'Affected resource', key: 'affected', render: (alert: (typeof alerts)[number]) => alert.affected },
+              { header: 'Since', key: 'since', render: (alert: (typeof alerts)[number]) => alert.since },
+              { header: 'Diagnosis', key: 'diagnosis', render: (alert: (typeof alerts)[number]) => <span className="nim-tone-success">{alert.diagnosis}</span> },
+            ]} empty={<Body size="sm">No active alert is derivable from the current manager sample.</Body>} rowKey={(alert) => alert.affected} rows={alerts} />
+          </Panel>
+          <Panel title="Scrape target failures"><Body size="sm" tone="muted">Prometheus target-level failures are not returned by this manager endpoint. Open Collection settings for the source-specific view.</Body></Panel>
+        </Rows>
+      </Columns>
+      <Columns>
+        <Panel flush title="Recent Engine activity">
+          <DataTable columns={[
+            { header: 'Timestamp', key: 'time', render: (event: EngineEvent) => formatTimestamp(event.time) },
+            { header: 'Level', key: 'level', render: () => <StatusDot tone="success">INFO</StatusDot> },
+            { header: 'Resource', key: 'resource', render: (event: EngineEvent) => eventSubject(event) },
+            { header: 'Message', key: 'message', render: (event: EngineEvent) => <Mono>{`${event.Type} ${event.Action}`}</Mono> },
+          ]} empty={<Body size="sm">No Engine events were recorded in this window.</Body>} rowKey={(event) => `${event.timeNano}-${event.Actor.ID}`} rows={events.slice(0, 5)} />
+        </Panel>
+        <Panel title="Recent traces"><Body size="sm" tone="muted">Trace rows are shown only when a trace collector reports them. This Docker manager endpoint does not supply trace payloads.</Body></Panel>
+      </Columns>
+      <Panel title="Retention and storage">
+        <Facts items={[
+          { label: 'Sample history', value: `${history.length} in-memory samples` },
+          { label: 'Engine event window', value: `${window} minutes` },
+          { label: 'Engine disk', value: formatBytes(liveInsights.storage.imageBytes + liveInsights.storage.volumeBytes + liveInsights.storage.containerWritableBytes + liveInsights.storage.buildCacheBytes) },
+          { label: 'Reclaimable', value: formatBytes(reclaimable) },
+        ]} />
+      </Panel>
+      <Columns>
+        <Panel title="Storage actions"><PruneControls toast={toast} usage={usage} /></Panel>
+        <Panel title="Swarm orchestration">{swarm ? <SwarmControls settings={swarm} toast={toast} /> : <Body size="sm">The Swarm object was not returned by this target.</Body>}</Panel>
+      </Columns>
+    </Page>
+  )
+  /* The mutation controls below remain compiled while the operational Observe
+     surface is kept read-only; they are being moved to resource settings. */
   return (
     <Page>
       <DetailHeader
-        subtitle="Everything the Docker Engine and the Swarm orchestrator report about this cluster, sampled once a minute on the control plane. The figure is the reading; the shape beside it is the last few hours."
-        title="Cluster insights"
+        subtitle="Live Docker Engine and Swarm readings sampled once a minute by the selected manager. Collection settings remain separate from this operational view."
+        title="Observe"
       />
       {error ? <Banner tone="warning" title="Some readings are stale">{error}</Banner> : null}
       <MetricGrid aria-label="Cluster totals" columns={4}>
         <Metric
-          hint={<>{`${insights.nodes.managers} manager${insights.nodes.managers === 1 ? '' : 's'} · ${insights.nodes.unavailable} not active`}{charted ? <Sparkline label="Nodes ready over the sampled window" values={history.map((sample) => sample.nodesReady)} /> : null}</>}
+          hint={<>{`${liveInsights.nodes.managers} manager${liveInsights.nodes.managers === 1 ? '' : 's'} · ${liveInsights.nodes.unavailable} not active`}{charted ? <Sparkline label="Nodes ready over the sampled window" values={history.map((sample) => sample.nodesReady)} /> : null}</>}
           icon="server"
           label="Nodes ready"
-          value={`${insights.nodes.ready} / ${insights.nodes.total}`}
+          value={`${liveInsights.nodes.ready} / ${liveInsights.nodes.total}`}
         />
         <Metric
-          hint={<>{`${insights.services.degraded} degraded · ${insights.services.unhealthy} unhealthy`}{charted ? <Sparkline label="Running tasks over the sampled window" series={2} values={history.map((sample) => sample.tasksRunning)} /> : null}</>}
+          hint={<>{`${liveInsights.services.degraded} degraded · ${liveInsights.services.unhealthy} unhealthy`}{charted ? <Sparkline label="Running tasks over the sampled window" series={2} values={history.map((sample) => sample.tasksRunning)} /> : null}</>}
           icon="activity"
           label="Service tasks"
-          value={`${insights.services.runningTasks} / ${insights.services.desiredTasks}`}
+          value={`${liveInsights.services.runningTasks} / ${liveInsights.services.desiredTasks}`}
         />
         <Metric
-          hint={<>{`${insights.containers.stopped} stopped · ${insights.containers.unhealthy} unhealthy`}{charted ? <Sparkline label="Running containers over the sampled window" series={3} values={history.map((sample) => sample.containersRunning)} /> : null}</>}
+          hint={<>{`${liveInsights.containers.stopped} stopped · ${liveInsights.containers.unhealthy} unhealthy`}{charted ? <Sparkline label="Running containers over the sampled window" series={3} values={history.map((sample) => sample.containersRunning)} /> : null}</>}
           icon="layers"
           label="Containers running"
-          value={`${insights.containers.running} / ${insights.containers.total}`}
+          value={`${liveInsights.containers.running} / ${liveInsights.containers.total}`}
         />
         <Metric
           hint={<>{reclaimable ? `${formatBytes(reclaimable)} reclaimable` : 'Nothing reclaimable'}{charted ? <Sparkline label="Reclaimable bytes over the sampled window" series={4} values={history.map((sample) => sample.reclaimableBytes)} /> : null}</>}
           icon="database"
           label="Engine disk"
           tone={reclaimable > 0 ? 'warning' : 'neutral'}
-          value={formatBytes(insights.storage.imageBytes + insights.storage.volumeBytes + insights.storage.containerWritableBytes + insights.storage.buildCacheBytes)}
+          value={formatBytes(liveInsights.storage.imageBytes + liveInsights.storage.volumeBytes + liveInsights.storage.containerWritableBytes + liveInsights.storage.buildCacheBytes)}
         />
       </MetricGrid>
       {charted ? (
@@ -206,19 +282,19 @@ export function InsightsPage({ toast }: { toast: Toast }) {
               {
                 label: 'In use',
                 values: [
-                  insights.storage.imageBytes - insights.storage.reclaimableImageBytes,
-                  insights.storage.volumeBytes - insights.storage.reclaimableVolumeBytes,
-                  insights.storage.containerWritableBytes,
-                  insights.storage.buildCacheBytes - insights.storage.reclaimableBuildCacheBytes,
+                  liveInsights.storage.imageBytes - liveInsights.storage.reclaimableImageBytes,
+                  liveInsights.storage.volumeBytes - liveInsights.storage.reclaimableVolumeBytes,
+                  liveInsights.storage.containerWritableBytes,
+                  liveInsights.storage.buildCacheBytes - liveInsights.storage.reclaimableBuildCacheBytes,
                 ],
               },
               {
                 label: 'Reclaimable',
                 values: [
-                  insights.storage.reclaimableImageBytes,
-                  insights.storage.reclaimableVolumeBytes,
+                  liveInsights.storage.reclaimableImageBytes,
+                  liveInsights.storage.reclaimableVolumeBytes,
                   0,
-                  insights.storage.reclaimableBuildCacheBytes,
+                  liveInsights.storage.reclaimableBuildCacheBytes,
                 ],
               },
             ]}
@@ -227,7 +303,7 @@ export function InsightsPage({ toast }: { toast: Toast }) {
           <PruneControls toast={toast} usage={usage} />
         </Panel>
         <Panel eyebrow="Swarm settings" title="Orchestration">
-          {swarm ? <SwarmControls settings={swarm} toast={toast} /> : <Body size="sm">The Swarm object was not returned by this target.</Body>}
+          {swarm ? <SwarmControls settings={swarm!} toast={toast} /> : <Body size="sm">The Swarm object was not returned by this target.</Body>}
         </Panel>
       </Columns>
       <Columns>
@@ -282,17 +358,17 @@ export function InsightsPage({ toast }: { toast: Toast }) {
         <Columns>
           <Rows>
             <Facts items={[
-              { label: 'CPU cores', value: String(insights.capacity.cpuCores) },
-              { label: 'Memory', value: formatBytes(insights.capacity.memoryBytes) },
-              { label: 'Overlay networks', value: `${insights.networks.overlay} of ${insights.networks.total}` },
-              { label: 'Secrets / configs', value: `${insights.secrets} / ${insights.configs}` },
+              { label: 'CPU cores', value: String(liveInsights.capacity.cpuCores) },
+              { label: 'Memory', value: formatBytes(liveInsights.capacity.memoryBytes) },
+              { label: 'Overlay networks', value: `${liveInsights.networks.overlay} of ${liveInsights.networks.total}` },
+              { label: 'Secrets / configs', value: `${liveInsights.secrets} / ${liveInsights.configs}` },
             ]} />
-            {insights.capacity.diskBytes ? (
+            {liveInsights.capacity.diskBytes ? (
               <ResourceMeter
                 detail="Reported by nodes running the machine agent"
                 label="Fleet disk"
-                percent={Math.round((insights.capacity.diskUsedBytes / insights.capacity.diskBytes) * 100)}
-                value={`${formatBytes(insights.capacity.diskUsedBytes)} / ${formatBytes(insights.capacity.diskBytes)}`}
+                percent={Math.round((liveInsights.capacity.diskUsedBytes / liveInsights.capacity.diskBytes) * 100)}
+                value={`${formatBytes(liveInsights.capacity.diskUsedBytes)} / ${formatBytes(liveInsights.capacity.diskBytes)}`}
               />
             ) : (
               <Body size="sm">Disk capacity is reported by the machine agent. Nodes without an agent contribute no disk figure.</Body>
@@ -468,6 +544,8 @@ function ContainersTab({ toast }: { toast: Toast }) {
   const [stats, setStats] = useState<ContainerStats | null>(null)
   const [detailError, setDetailError] = useState('')
   const [pending, setPending] = useState('')
+  const [detailTab, setDetailTab] = useState('overview')
+  const [autoOpened, setAutoOpened] = useState(false)
 
   const inspect = async (id: string) => {
     setDetailError('')
@@ -477,6 +555,12 @@ function ContainersTab({ toast }: { toast: Toast }) {
       setStats(await api.containerStats(id))
     } catch (reason) { setDetailError(messageOf(reason)) }
   }
+
+  useEffect(() => {
+    if (autoOpened || !data?.length) return
+    setAutoOpened(true)
+    void inspect(data[0].Id)
+  }, [autoOpened, data])
 
   const act = async (id: string, action: 'remove' | 'restart' | 'start' | 'stop', confirmation?: string) => {
     setPending(action)
@@ -499,64 +583,90 @@ function ContainersTab({ toast }: { toast: Toast }) {
   if (loading && !data) return <Spinner label="Reading containers" />
   if (error) return <Banner tone="danger" title="Containers are unavailable">{error}</Banner>
   const rows = data ?? []
-  return (
-    <Columns>
-      <Panel flush title={`Containers (${rows.length})`}>
-        <DataTable
-          caption="Containers on the selected target"
-          columns={columns}
-          empty={<EmptyState description="This target reported no containers." icon="layers" title="No containers" />}
-          rowKey={(container) => container.Id}
-          rows={rows}
+  if (selected) {
+    const name = selected.Name.replace(/^\//, '')
+    const environmentCount = selected.Config.EnvNames?.length ?? 0
+    const labelCount = Object.keys(selected.Config.Labels ?? {}).length
+    const mountCount = selected.Mounts?.length ?? 0
+    return (
+      <Rows>
+        <DetailHeader
+          actions={<Inline><Button disabled={pending !== ''} loading={pending === 'restart'} onClick={() => void act(selected.Id, 'restart')} variant="secondary">Restart container</Button><Button disabled={pending !== ''} loading={pending === 'stop'} onClick={() => void act(selected.Id, 'stop')} variant="danger">Stop container</Button></Inline>}
+          back={{ label: 'Containers', onClick: () => { setSelected(null); setStats(null) } }}
+          meta={<Inline><Mono>{shortID(selected.Id)}</Mono><StatusDot tone={selected.State.Running ? 'success' : 'warning'}>{selected.State.Status}</StatusDot><span>Image <Mono>{selected.Config.Image ?? selected.Image}</Mono></span></Inline>}
+          subtitle={`Created ${formatDateTime(selected.Created)} · started ${formatDateTime(selected.State.StartedAt)}`}
+          title={name}
         />
-      </Panel>
-      <Panel eyebrow={selected ? shortID(selected.Id) : 'Nothing selected'} title={selected ? selected.Name.replace(/^\//, '') : 'Container detail'}>
+        <Tabs label="Container views" onChange={setDetailTab} options={[
+          { label: 'Overview', value: 'overview' },
+          { label: 'Metrics', value: 'metrics' },
+          { label: 'Logs', value: 'logs' },
+          { label: 'Network', value: 'network' },
+          { label: 'Inspect', value: 'inspect' },
+          { label: 'Activity', value: 'activity' },
+        ]} value={detailTab} />
         {detailError ? <Banner tone="danger">{detailError}</Banner> : null}
-        {!selected ? (
-          <EmptyState description="Select a container to read its configuration and one resource sample." icon="document" title="No container selected" />
-        ) : (
-          <Rows>
-            <Facts items={[
-              { label: 'Image', mono: true, value: selected.Image },
-              { label: 'State', value: `${selected.State.Status}${selected.State.Health ? ` · ${selected.State.Health.Status}` : ''}` },
-              { label: 'Started', value: formatDateTime(selected.State.StartedAt) },
-              { label: 'Restarts', value: String(selected.RestartCount) },
-              { label: 'Network mode', value: selected.HostConfig.NetworkMode ?? '—' },
-              { label: 'Restart policy', value: selected.HostConfig.RestartPolicy?.Name ?? '—' },
-            ]} />
-            {stats ? (
-              <MetricGrid aria-label="Container resource sample" columns={2}>
-                <Metric hint="One sample, not a stream" icon="activity" label="CPU" value={`${stats.cpuPercent.toFixed(2)}%`} />
-                <Metric hint={stats.memoryLimitBytes ? `of ${formatBytes(stats.memoryLimitBytes)}` : 'no limit set'} icon="trend-up" label="Memory" value={formatBytes(stats.memoryUsedBytes)} />
-                <Metric hint={`${formatBytes(stats.networkTxBytes)} out`} icon="cloud" label="Network in" value={formatBytes(stats.networkRxBytes)} />
-                <Metric hint={`${formatBytes(stats.blockWriteBytes)} written`} icon="database" label="Block read" value={formatBytes(stats.blockReadBytes)} />
-              </MetricGrid>
-            ) : null}
-            <Rows gap="tight">
-              <Label as="p">Environment</Label>
-              <Body size="sm">
-                {selected.Config.EnvNames?.length
-                  ? `${selected.Config.EnvNames.length} variables: ${selected.Config.EnvNames.join(', ')}`
-                  : 'This container declares no environment variables.'}
-              </Body>
-              <Body size="sm">Values are withheld by the control plane — a container environment routinely carries database passwords and API keys.</Body>
-            </Rows>
-            <Inline>
-              <Button disabled={pending !== ''} loading={pending === 'start'} onClick={() => void act(selected.Id, 'start')} variant="secondary">Start</Button>
-              <Button disabled={pending !== ''} loading={pending === 'stop'} onClick={() => void act(selected.Id, 'stop')} variant="secondary">Stop</Button>
-              <Button disabled={pending !== ''} loading={pending === 'restart'} onClick={() => void act(selected.Id, 'restart')} variant="ghost">Restart</Button>
-            </Inline>
-            <ConfirmAction
-              busy={pending === 'remove'}
-              confirmation={`REMOVE_CONTAINER_${selected.Id.toUpperCase()}`}
-              destructive
-              label="Remove container"
-              onConfirm={(confirmation) => act(selected.Id, 'remove', confirmation)}
-            />
-          </Rows>
-        )}
-      </Panel>
-    </Columns>
+        {detailTab === 'overview' || detailTab === 'metrics' ? <>
+          <MetricGrid columns={4}>
+            <Metric hint="One live sample" icon="activity" label="CPU" value={stats ? `${stats.cpuPercent.toFixed(2)}%` : '—'} />
+            <Metric hint={stats?.memoryLimitBytes ? `of ${formatBytes(stats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" value={stats ? formatBytes(stats.memoryUsedBytes) : '—'} />
+            <Metric hint={stats ? `${formatBytes(stats.networkTxBytes)} egress` : 'No sample'} icon="cloud" label="Network ingress" value={stats ? formatBytes(stats.networkRxBytes) : '—'} />
+            <Metric hint="Engine restart counter" icon="refresh" label="Restart count" value={String(selected.RestartCount)} />
+          </MetricGrid>
+          <DetailLayout aside={<Rail title="Container inspector">
+            <RailSection title="Image"><Mono>{selected.Config.Image ?? selected.Image}</Mono></RailSection>
+            <RailSection title="Entrypoint"><Mono>{selected.Path ?? '—'}</Mono></RailSection>
+            <RailSection meta={String(labelCount)} title="Labels"><Body size="sm">Values are available in Inspect.</Body></RailSection>
+            <RailSection meta={String(mountCount)} title="Mounts"><Body size="sm">{selected.Mounts?.map((mount) => mount.Destination).join(', ') || 'No mounts'}</Body></RailSection>
+            <RailSection title="Docker health"><StatusDot tone={selected.State.Health?.Status === 'healthy' || selected.State.Running ? 'success' : 'warning'}>{selected.State.Health?.Status ?? (selected.State.Running ? 'Running' : 'Stopped')}</StatusDot></RailSection>
+            <RailSection title="Telemetry"><Body size="sm">One Engine resource sample is available. Cluster log and trace collectors are reported separately under Observe.</Body></RailSection>
+          </Rail>}>
+            <Columns template="one-third">
+              <Panel title="Health & placement">
+                <Facts columns={1} items={[
+                  { label: 'State', value: selected.State.Status },
+                  { label: 'Health check', value: selected.State.Health?.Status ?? 'Not configured' },
+                  { label: 'Started', value: formatDateTime(selected.State.StartedAt) },
+                  { label: 'Restart policy', value: selected.HostConfig.RestartPolicy?.Name ?? '—' },
+                  { label: 'Exit code', value: String(selected.State.ExitCode) },
+                ]} />
+              </Panel>
+              <Panel title="Runtime configuration">
+                <Facts columns={1} items={[
+                  { label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' },
+                  { label: 'Working directory', mono: true, value: selected.Config.WorkingDir ?? '—' },
+                  { label: 'User', mono: true, value: selected.Config.User ?? 'Default image user' },
+                  { label: 'Environment', value: `${environmentCount} variable names; values withheld` },
+                  { label: 'Mounts', value: String(mountCount) },
+                ]} />
+              </Panel>
+            </Columns>
+            <Panel title="Recent log preview">
+              <Body size="sm" tone="muted">Container log streaming is not exposed by this Core endpoint. Use the cluster-managed log collector in Observe when it is configured.</Body>
+            </Panel>
+            <Panel title="Recent activity">
+              <Facts items={[
+                { label: 'Created', value: formatDateTime(selected.Created) },
+                { label: 'Started', value: formatDateTime(selected.State.StartedAt) },
+                { label: 'Restarts', value: String(selected.RestartCount) },
+                { label: 'Last sample', value: stats ? formatDateTime(stats.sampledAt) : '—' },
+              ]} />
+            </Panel>
+          </DetailLayout>
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Observe for collected logs.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: stats ? formatBytes(stats.networkRxBytes) : '—' }, { label: 'Egress sample', value: stats ? formatBytes(stats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
+      </Rows>
+    )
+  }
+  return (
+    <Panel flush title={`Containers (${rows.length})`}>
+      <DataTable
+        caption="Containers on the selected target"
+        columns={columns}
+        empty={<EmptyState description="This target reported no containers." icon="layers" title="No containers" />}
+        rowKey={(container) => container.Id}
+        rows={rows}
+      />
+    </Panel>
   )
 }
 

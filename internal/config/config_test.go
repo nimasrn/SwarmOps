@@ -211,32 +211,6 @@ func TestLoadDirectTLSParsesClientNetwork(t *testing.T) {
 	}
 }
 
-func TestLoadDirectTLSAllowsExplicitInternetCIDR(t *testing.T) {
-	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "false")
-	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
-	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
-	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
-	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32)))))
-	t.Setenv("SWARMOPS_TLS_CERT_FILE", writeSecretFile(t, "certificate", []byte("certificate")))
-	t.Setenv("SWARMOPS_TLS_KEY_FILE", writeSecretFile(t, "private-key", []byte("private-key")))
-	t.Setenv("SWARMOPS_LISTEN_ADDR", "192.0.2.20:42420")
-	t.Setenv("SWARMOPS_ALLOWED_CLIENT_CIDRS", "0.0.0.0/0,::/0")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := len(cfg.AllowedClientCIDRs), 2; got != want {
-		t.Fatalf("allowed client CIDRs = %#v, want %d prefixes", cfg.AllowedClientCIDRs, want)
-	}
-	if got, want := cfg.AllowedClientCIDRs[0].String(), "0.0.0.0/0"; got != want {
-		t.Fatalf("first client CIDR = %q, want %q", got, want)
-	}
-	if got, want := cfg.AllowedClientCIDRs[1].String(), "::/0"; got != want {
-		t.Fatalf("second client CIDR = %q, want %q", got, want)
-	}
-}
-
 func TestLoadDefaultsAndBoundsForRetentionValues(t *testing.T) {
 	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
 	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())

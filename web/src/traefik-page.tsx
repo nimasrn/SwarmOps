@@ -13,13 +13,16 @@ import {
   Facts,
   Inline,
   Input,
+  Metric,
+  MetricGrid,
   Mono,
   Page,
   Panel,
-  Segmented,
   Select,
   Stack as Rows,
+  StatusDot,
   Switch,
+  Tabs,
   useToast,
 } from '@nim.zone/ui'
 import type { BadgeVariant, TableColumn } from '@nim.zone/ui'
@@ -47,10 +50,11 @@ import type {
   TraefikStatus,
 } from './types'
 
-type Tab = 'routes' | 'certificates' | 'dns' | 'logs'
+type Tab = 'overview' | 'routes' | 'certificates' | 'dns' | 'logs'
 type Toast = ReturnType<typeof useToast>
 
 const tabs = [
+  { label: 'Overview', value: 'overview' as const },
   { label: 'Routes', value: 'routes' as const },
   { label: 'Certificates', value: 'certificates' as const },
   { label: 'Entry points & DNS', value: 'dns' as const },
@@ -58,7 +62,7 @@ const tabs = [
 ]
 
 export function TraefikControlPage({ status, toast }: { status: TraefikStatus; toast: Toast }) {
-  const [tab, setTab] = useState<Tab>('routes')
+  const [tab, setTab] = useState<Tab>('overview')
   const [state, setState] = useState<RoutingState | null>(null)
   const [routes, setRoutes] = useState<RouteInventoryRow[]>([])
   const [certificates, setCertificates] = useState<CertificateStatus[]>([])
@@ -102,12 +106,11 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
   return (
     <Page>
       <DetailHeader
-        actions={<Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="secondary">Refresh runtime</Button>}
+        actions={<Inline><Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open Traefik logs</Button><Button onClick={() => setTab('routes')} variant="accent">Add route</Button><Button onClick={() => setTab('dns')} variant="secondary">Traefik settings</Button><Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
         status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not installed' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
-        subtitle="Declare service routing, DNS, certificate, logs, and Prometheus collection through one typed control plane. Raw Traefik labels, rules, provider URLs, LogQL, and PromQL are never accepted here."
-        title="Traefik & TLS"
+        title="Traffic"
       />
-      {!installed ? (
+      {tab !== 'overview' ? (!installed ? (
         <Banner title="Traefik is not installed on this cluster" tone="info">
           Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. Stored routing declarations are preserved and do not imply that a gateway is running.
         </Banner>
@@ -115,15 +118,71 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
         <Banner title="One gateway, one accepted failure domain" tone="warning">
           Traefik intentionally runs as one task. Applying static settings or adding a TCP/UDP entrypoint restarts that singleton and can interrupt every routed connection. Route enable/disable is dynamic once its entrypoint exists.
         </Banner>
-      )}
-      <Segmented fullWidth label="Traefik control-plane sections" onChange={setTab} options={tabs} value={tab} />
+      )) : null}
+      {tab !== 'overview' ? <Tabs label="Traefik control-plane sections" onChange={setTab} options={tabs} value={tab} /> : null}
       {error ? <Banner title="Routing state unavailable" tone="danger">{error}</Banner> : null}
       {loading || !state ? <Panel><Rows><Body>Loading the selected manager’s sealed routing state…</Body></Rows></Panel> : null}
+      {!loading && state && tab === 'overview' ? <TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /> : null}
       {!loading && state && tab === 'routes' ? <RoutesTab cutover={cutover} onQueued={() => void load(false)} routes={routes} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
       {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'logs' ? <LogsMetricsTab onQueued={() => void load(false)} prometheus={prometheus} settings={state.settings} toast={toast} /> : null}
     </Page>
+  )
+}
+
+function TrafficOverview({ certificates, prometheus, routes, state }: { certificates: CertificateStatus[]; prometheus: PrometheusStatus | null; routes: RouteInventoryRow[]; state: RoutingState }) {
+  const [protocol, setProtocol] = useState('all')
+  const [selectedKey, setSelectedKey] = useState(routes[0]?.route.key ?? '')
+  const filtered = protocol === 'all' ? routes : routes.filter((row) => row.route.protocol === protocol)
+  const selected = routes.find((row) => row.route.key === selectedKey) ?? filtered[0] ?? routes[0]
+  const expiring = certificates.filter((certificate) => certificate.notAfter && new Date(certificate.notAfter).getTime() < Date.now() + 30 * 86400000)
+  const failingTargets = prometheus?.targets.filter((target) => target.health !== 'up').length ?? 0
+  const routeColumns: TableColumn<RouteInventoryRow>[] = [
+    { header: 'Application / service', key: 'service', render: (row) => <Button onClick={() => setSelectedKey(row.route.key)} size="sm" variant="ghost">{row.route.serviceKey}</Button> },
+    { header: 'Proto', key: 'protocol', render: (row) => row.route.protocol.toUpperCase() },
+    { header: 'Public host / entrypoint', key: 'public', render: (row) => <Mono>{row.route.match.hosts?.join(', ') || row.route.match.sni?.join(', ') || row.route.listenPort || 'Internal only'}</Mono> },
+    { header: 'Internal destination', key: 'target', render: (row) => <Mono>{`${row.route.serviceKey}:${row.route.targetPort}`}</Mono> },
+    { header: 'TLS / resolver', key: 'tls', render: (row) => row.route.tls === 'off' ? 'Off' : `${row.route.tls}${row.route.resolver ? ` · ${row.route.resolver}` : ''}` },
+    { header: 'Status', key: 'status', render: (row) => <StatusDot tone={row.status === 'enabled' || row.status === 'healthy' ? 'success' : row.status.includes('fail') ? 'danger' : 'warning'}>{capitalize(row.status)}</StatusDot> },
+  ]
+  return (
+    <Rows>
+      <Tabs label="Route protocol" onChange={setProtocol} options={['all', 'http', 'tcp', 'udp'].map((value) => ({ label: value === 'all' ? 'All' : value.toUpperCase(), value }))} value={protocol} />
+      <MetricGrid columns={5}>
+        <Metric label="Observed routes" value={String(routes.length)} />
+        <Metric label="Enabled" tone="success" value={String(routes.filter((row) => row.route.enabled).length)} />
+        <Metric label="Public routes" value={String(routes.filter((row) => row.route.scope !== 'internal').length)} />
+        <Metric label="Runtime failures" tone={routes.some((row) => row.status.includes('fail')) ? 'danger' : 'success'} value={String(routes.filter((row) => row.status.includes('fail')).length)} />
+        <Metric label="Certificates expiring" tone={expiring.length ? 'warning' : 'success'} value={String(expiring.length)} />
+      </MetricGrid>
+      <Columns template="two-thirds">
+        <Panel flush title="Routes">
+          <DataTable columns={routeColumns} empty={<EmptyState description="Declare a typed route for a reviewed service to make it visible here." icon="external" title="No routes" />} rowKey={(row) => row.route.key} rows={filtered} summary={`Showing ${filtered.length} of ${routes.length} routes`} />
+        </Panel>
+        <Rows gap="md">
+          <Panel title={selected ? `Route · ${selected.route.serviceKey}` : 'Route diagnosis'}>
+            {selected ? <Facts columns={1} items={[
+              { label: 'Declaration', value: selected.declaration.role },
+              { label: 'Protocol', value: selected.route.protocol.toUpperCase() },
+              { label: 'Scope', value: selected.route.scope },
+              { label: 'Entrypoints', value: selected.runtime?.entryPoints.join(', ') || 'Not observed' },
+              { label: 'Router', mono: true, value: selected.runtime?.router || 'Not observed' },
+              { label: 'Backend', mono: true, value: `${selected.route.serviceKey}:${selected.route.targetPort}` },
+              { label: 'Runtime', value: selected.runtime?.state || selected.status },
+            ]} /> : <Body size="sm">Select a route to inspect its structural and runtime evidence.</Body>}
+          </Panel>
+          <Panel title={`Certificates (${certificates.length})`}>
+            {certificates.length ? <Rows gap="tight">{certificates.slice(0, 4).map((certificate) => <StatusDot key={certificate.routeKey} tone={certificate.handshakeValid ? 'success' : 'warning'}>{certificate.domains.join(', ') || certificate.routeKey}</StatusDot>)}</Rows> : <Body size="sm">No TLS certificate is currently observed.</Body>}
+          </Panel>
+        </Rows>
+      </Columns>
+      <Columns template="thirds">
+        <Panel title="Traffic by protocol"><Facts items={['http', 'tcp', 'udp'].map((value) => ({ label: value.toUpperCase(), value: String(routes.filter((row) => row.route.protocol === value).length) }))} /></Panel>
+        <Panel title="Prometheus targets"><Facts items={[{ label: 'Collected', value: prometheus?.collected ? 'Yes' : 'No' }, { label: 'Targets', value: String(prometheus?.targets.length ?? 0) }, { label: 'Failing', value: String(failingTargets) }]} /></Panel>
+        <Panel title="Internal dependency routes">{state.bindings.length ? <Rows gap="tight">{state.bindings.map((binding) => <StatusDot key={`${binding.callerService}-${binding.targetRoute}`} tone="success">{binding.callerService} → {binding.targetRoute}</StatusDot>)}</Rows> : <Body size="sm">No managed east-west binding is declared.</Body>}</Panel>
+      </Columns>
+    </Rows>
   )
 }
 
@@ -513,7 +572,7 @@ function LogsMetricsTab({ onQueued, prometheus, settings: initialSettings, toast
             <Button disabled={Boolean(pending) || confirmation !== 'RESTART_SINGLETON_TRAEFIK'} loading={pending === 'settings'} onClick={() => void queueSettings()} variant="danger">Queue logging settings</Button>
           </Rows>
         </Panel>
-        <Panel eyebrow="Fixed bounded Loki adapter" title="Live tail & seven-day history">
+        <Panel eyebrow="Fixed bounded Fluentd query" title="Live tail & seven-day history">
           <Rows>
             <Columns><Select label="Level" onChange={(event) => setLevel(event.target.value)} options={[{ label: 'All levels', value: '' }, ...['DEBUG', 'INFO', 'WARN', 'ERROR'].map(option)]} value={level} /><Input label="Router" onChange={(event) => setRouter(event.target.value)} value={router} /><Input label="Service" onChange={(event) => setService(event.target.value)} value={service} /></Columns>
             <Columns><Input label="Request ID" onChange={(event) => setRequestID(event.target.value)} value={requestID} /><Input hint="Maximum 168 hours and 1,000 records." label="History hours" min="0.083" max="168" onChange={(event) => setHours(event.target.value)} step="0.083" type="number" value={hours} /></Columns>
@@ -618,5 +677,6 @@ function unique(values: string[]) { return [...new Set(values)].sort() }
 function roleVariant(role: ServiceRouteRole): BadgeVariant { return role === 'routed' ? 'success' : role === 'needs-configuration' ? 'warning' : role === 'platform-exception' ? 'info' : 'neutral' }
 function statusVariant(status: string): BadgeVariant { return status === 'active' ? 'success' : status === 'drift' || status === 'service-missing' ? 'danger' : status === 'desired' ? 'info' : 'neutral' }
 function dateTime(value?: string) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—' }
+function capitalize(value: string) { return value ? `${value[0]?.toUpperCase()}${value.slice(1)}` : value }
 function messageOf(reason: unknown) { return reason instanceof Error ? reason.message : 'The operation failed.' }
 function queuedToast(toast: Toast, command: Command, label: string) { toast({ message: `${label} queued (${command.id.slice(0, 12)})`, tone: 'success' }) }

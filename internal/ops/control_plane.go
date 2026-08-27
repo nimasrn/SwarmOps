@@ -359,21 +359,6 @@ func (c *ControlPlane) ServiceAction(ctx context.Context, actor, requestID, serv
 	return err
 }
 
-func (c *ControlPlane) ServiceLogs(ctx context.Context, actor, requestID, serviceID string, tail uint64) (string, error) {
-	if err := c.requireAudit(); err != nil {
-		return "", err
-	}
-	if _, err := serviceReference(serviceID); err != nil {
-		return "", err
-	}
-	if tail == 0 || tail > 1000 {
-		tail = 200
-	}
-	output, err := c.CLI.Run(ctx, "service", "logs", "--raw", "--timestamps", "--tail", fmt.Sprint(tail), serviceID)
-	c.record(actor, requestID, "service.logs.read", "service/"+serviceID, err, map[string]string{"tail": fmt.Sprint(tail)})
-	return output, err
-}
-
 func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID string, enabled bool, confirmation string) error {
 	if !c.Mutations {
 		return fmt.Errorf("cluster mutations are disabled")
@@ -394,13 +379,13 @@ func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID stri
 			routeErr = c.deployTrustedStack(ctx, c.LogsStackFile, "swarmops-logs")
 		}
 		if routeErr == nil {
-			routeErr = c.activateManagedRoutes(ctx, routes, map[string]bool{"alloy": true})
+			routeErr = c.activateManagedRoutes(ctx, routes, nil)
 		}
 		if routeErr == nil {
-			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-logs_alloy", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-logs_forwarder", Delivery: DependencyExisting, TargetRoute: "swarmops-fluentd-forward", Version: RoutingSchemaVersion})
 		}
 		if routeErr == nil && serviceExists(ctx, c.Docker, "swarmops-agent_agent") {
-			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-fluentd-query", Version: RoutingSchemaVersion})
 		}
 		err = routeErr
 	} else {
@@ -432,8 +417,8 @@ func (c *ControlPlane) NodeAgentCollection(ctx context.Context, actor, requestID
 			return fmt.Errorf("node agent stack file is not configured")
 		}
 		err = c.deployTrustedStack(ctx, c.AgentStackFile, "swarmops-agent")
-		if err == nil && c.Routing != nil && serviceExists(ctx, c.Docker, "swarmops-logs_loki") {
-			err = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-loki", Version: RoutingSchemaVersion})
+		if err == nil && c.Routing != nil && serviceExists(ctx, c.Docker, "swarmops-logs_query") {
+			err = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-fluentd-query", Version: RoutingSchemaVersion})
 		}
 		if err == nil && c.Routing != nil && serviceExists(ctx, c.Docker, "swarmops-observability_prometheus") {
 			err = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-prometheus", Version: RoutingSchemaVersion})

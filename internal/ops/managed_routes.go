@@ -42,13 +42,19 @@ func trustedStackRouteTemplates(stack string) (map[string]RouteSpec, error) {
 			"jaeger":       internalHTTPRoute("swarmops-jaeger-otlp", "swarmops-observability_jaeger", 4318),
 		}, nil
 	case "swarmops-logs":
+		query := internalHTTPRoute("swarmops-fluentd-query", "swarmops-logs_query", 8085)
+		query.Health.Path = "/healthz"
 		return map[string]RouteSpec{
-			"loki":  internalHTTPRoute("swarmops-loki", "swarmops-logs_loki", 3100),
-			"alloy": internalHTTPRoute("swarmops-alloy", "swarmops-logs_alloy", 12345),
+			"aggregator": internalTCPRoute("swarmops-fluentd-forward", "swarmops-logs_aggregator", 10024, 24224),
+			"query":      query,
 		}, nil
 	default:
 		return nil, fmt.Errorf("trusted stack has no managed route templates")
 	}
+}
+
+func internalTCPRoute(key, serviceKey string, listen, target uint16) RouteSpec {
+	return RouteSpec{Enabled: false, Health: RouteHealthProof{Kind: "handshake", TimeoutSeconds: 5}, Key: key, ListenPort: listen, Managed: true, Metrics: true, Protocol: RouteTCP, Scope: RouteInternal, ServiceKey: serviceKey, TLS: RouteTLSOff, TargetPort: target, Version: RoutingSchemaVersion}.Normalize()
 }
 
 func internalHTTPRoute(key, serviceKey string, target uint16) RouteSpec {

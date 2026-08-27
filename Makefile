@@ -4,7 +4,7 @@ REGISTRY    ?= ghcr.io
 REGISTRY_NS ?= nimasrn
 TAG         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM    ?= linux/amd64
-TARGETS     := api agent cli
+TARGETS     := api agent cli fluentd logs
 STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs swarmops-postgres swarmops-mongo swarmops-redis
 
 .PHONY: help test web-build web-dev local dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
@@ -13,8 +13,8 @@ STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-l
 
 help:
 	@printf '%s\n' \
-	  'Build:    make build [TARGET=api|agent|cli] [TAG=<immutable-tag>]' \
-	  'Push:     make registry-login && make push [TARGET=api|agent|cli]' \
+	  'Build:    make build [TARGET=api|agent|cli|fluentd|logs] [TAG=<immutable-tag>]' \
+	  'Push:     make registry-login && make push [TARGET=api|agent|cli|fluentd|logs]' \
 	  'Validate: make test | make stack-check STACK=<stack>' \
 	  'Local:    make local      # loopback Agent + Core + console' \
 	  'Dev:      make dev-agent  # source-built loopback machine API' \

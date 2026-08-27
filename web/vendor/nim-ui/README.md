@@ -75,6 +75,10 @@ The active navigation row also carries a narrow leading rail in addition to
 its tint and label colour. This keeps the selected destination explicit in a
 dense dark sidebar without relying on colour alone.
 
+`StatusHero` plus the ratio-based `Columns` templates provide large
+first-glance health statements and stable 40/60 or one-third/two-thirds splits
+for control-room overview screens.
+
 ---
 
 ## What changed in 0.13
@@ -531,7 +535,10 @@ rebuilding. Nothing was removed and no token changed.
   markup, so the two cannot drift. Below 38rem the topbar toolbar takes its own
   wrapping row instead of pushing session controls beyond the viewport. The
   breakpoints are **container** queries, so a console embedded in a panel
-  answers its own width rather than the window's. `collapsible` adds the rail
+  answers its own width rather than the window's. The shell and its scrolling
+  workspace are explicitly clamped to that container, so wide tabs, headers,
+  and data surfaces cannot silently lay out beyond a narrow mobile viewport.
+  `collapsible` adds the rail
   control: the sidebar narrows to its icons and every label is hidden rather
   than truncated, because a nav label clipped to four characters is worse than
   the icon alone. It is opt-in — a console with five destinations has nothing

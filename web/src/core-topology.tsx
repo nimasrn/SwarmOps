@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Badge,
   Banner,
   Body,
   Button,
+  Columns,
+  DataTable,
   DetailHeader,
   DetailLayout,
   Facts,
-  Icon,
   Inline,
   Input,
-  List,
-  ListRow,
-  Metric,
-  MetricGrid,
   Mono,
   Page,
   Panel,
@@ -24,8 +20,10 @@ import {
   Stack as Rows,
   StatusDot,
   Switch,
+  Tabs,
   useToast,
 } from '@nim.zone/ui'
+import type { TableColumn } from '@nim.zone/ui'
 import { api } from './api'
 import type { CoreMember, CoreTopology, Server } from './types'
 
@@ -68,6 +66,22 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
   const verifiedStandbys = useMemo(() => standbys.filter((member) => member.replicaState === 'verified'), [standbys])
   const handoff = topology?.handoff
   const plannedPromotion = Boolean(handoff?.state === 'fenced' && handoff.toId === topology?.localId)
+  const timeline = useMemo(() => {
+    const prepared = Boolean(handoff)
+    const fenced = handoff?.state === 'fenced'
+    return [
+      ['Register standby', standbys.length > 0, 'Standby identity and endpoint recorded'],
+      ['Restore encrypted state', verifiedStandbys.length > 0, 'Operator-attested restore verification'],
+      ['Select target', prepared, handoff?.toId ?? 'No handoff target selected'],
+      ['Prepare handoff', prepared, prepared ? 'Authority movement recorded' : 'Waiting for a verified target'],
+      ['Freeze new mutations', fenced, fenced ? 'Current Core fenced' : 'Pending explicit fence'],
+      ['Drain command leases', fenced, fenced ? 'No new leases issued here' : 'Runs at the fencing boundary'],
+      ['Final encrypted snapshot', fenced, fenced ? 'Copy the fenced controller state' : 'Required before promotion'],
+      ['Promote target', plannedPromotion && Boolean(topology?.controlEnabled), plannedPromotion ? 'Target is eligible for local promotion' : 'Pending on target Core'],
+      ['Health burn-in', false, 'Verify the promoted Core independently'],
+      ['Retain rollback', false, 'Keep the previous encrypted state until verified'],
+    ].map(([stage, complete, evidence], index) => ({ complete: Boolean(complete), evidence: String(evidence), id: index + 1, stage: String(stage) }))
+  }, [handoff, plannedPromotion, standbys.length, topology?.controlEnabled, verifiedStandbys.length])
 
   useEffect(() => {
     setHandoffTarget((current) => verifiedStandbys.some((member) => member.id === current) ? current : verifiedStandbys[0]?.id ?? '')
@@ -112,55 +126,53 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
     <Page width="full">
       {error ? <Banner title="Control-plane action needs attention" tone="danger">{error}</Banner> : null}
       {!topology ? <Panel><Spinner label="Reading control-plane topology" /></Panel> : (
-        <DetailLayout aside={<CoreRail onRefresh={() => void refresh()} pending={pending} topology={topology} />}>
+        <>
+          <Tabs label="Settings views" onChange={() => undefined} options={[
+            { label: 'Core', value: 'core' },
+            { label: 'Agents', value: 'agents' },
+            { label: 'Source & registry', value: 'source' },
+            { label: 'DNS & TLS', value: 'dns' },
+            { label: 'Shared services', value: 'services' },
+            { label: 'Security', value: 'security' },
+            { label: 'Backups', value: 'backups' },
+          ]} value="core" />
+          <DetailLayout aside={<CoreRail onRefresh={() => void refresh()} pending={pending} topology={topology} />}>
           <DetailHeader
-            actions={<Button disabled={Boolean(pending)} iconStart="refresh" loading={pending === 'refresh'} onClick={() => void refresh()} size="sm" variant="secondary">Refresh</Button>}
-            subtitle="The API that serves this console is a control-plane member, not a managed Docker server. It has no implicit local Docker or host-provisioning access."
-            title="Control plane"
+            actions={<Inline><Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} size="sm" variant="ghost">Open Core logs</Button><Button disabled={!verifiedStandbys.length || Boolean(pending)} onClick={() => document.getElementById('core-movement')?.scrollIntoView({ behavior: 'smooth' })} size="sm" variant="accent">Move Core</Button><Button disabled={Boolean(pending)} iconStart="refresh" loading={pending === 'refresh'} onClick={() => void refresh()} size="sm" variant="secondary">Check for update</Button></Inline>}
+            meta={<Inline><span>Core identity <Mono>{topology.localId}</Mono></span><span>Role <StatusDot tone={topology.controlEnabled ? 'success' : 'warning'}>{topology.localRole}</StatusDot></span><span>Authority term <Mono>{String(topology.authorityEpoch)}</Mono></span></Inline>}
+            title="Core"
           />
-
-          <Panel marker="1" title="Boundary and current role">
-            <Rows>
-              <MetricGrid dense>
-                <Metric icon="shield" label="This core" layout="inline" tone={topology.controlEnabled ? 'success' : 'warning'} value={topology.controlEnabled ? 'Active' : 'Standby'} />
-                <Metric icon="server" label="Core members" layout="inline" value={String(topology.members.length)} />
-                <Metric icon="layers" label="Managed agents" layout="inline" value={String(servers.length)} />
-                <Metric icon="clock" label="Handoff" layout="inline" tone={handoff ? 'warning' : 'neutral'} value={handoff ? handoff.state : 'None'} />
-              </MetricGrid>
-              <Facts items={[
-                { label: 'Local control-plane ID', mono: true, value: topology.localId },
-                { label: 'Declared active core', mono: true, value: topology.activeId || 'No active core while handoff is fenced' },
-                { label: 'Agent boundary', value: 'A core host appears under Servers only after that host’s own machine agent is installed and enrolled.' },
-              ]} />
-              <Banner title="No implicit self-management" tone="info">This API cannot install Docker, initialise a Swarm, change UFW, or execute host changes on the computer it runs on. Those fixed operations remain available only through a separately enrolled agent, including when that agent happens to be on this same host.</Banner>
-            </Rows>
+          <Panel flush title="Core members">
+            <DataTable columns={coreMemberColumns(topology, servers, pending, (member) => {
+              if (!window.confirm(`Confirm that ${member.name} has a complete, tested encrypted controller-state restore. This only records your attestation; it does not probe or copy the standby.`)) return
+              void run(`verify-${member.id}`, () => api.verifyCoreReplica(member.id), `${member.name} is marked as restore-verified.`)
+            })} rowKey={(member) => member.id} rows={topology.members} />
           </Panel>
 
-          <Panel marker="2" title="Core members">
-            <Rows>
-              <Body size="sm">A linked agent is optional. Linking one only records that the host was independently enrolled; it does not turn a core member into a managed server or grant the core host special privileges.</Body>
-              <List>
-                {topology.members.map((member) => <CoreMemberRow key={member.id} member={member} servers={servers} onVerify={() => {
-                  if (!window.confirm(`Confirm that ${member.name} has a complete, tested encrypted controller-state restore. This only records your attestation; it does not probe or copy the standby.`)) return
-                  void run(`verify-${member.id}`, () => api.verifyCoreReplica(member.id), `${member.name} is marked as restore-verified.`)
-                }} pending={pending} />)}
-              </List>
-            </Rows>
+          <Panel actions={<Inline><span>One-active-Core authority term: <Mono>{String(topology.authorityEpoch)}</Mono></span><span>Lease TTL: bounded</span></Inline>} flush title="Planned move timeline">
+            <DataTable columns={[
+              { header: '#', key: 'id', render: (item) => item.id },
+              { header: 'Stage', key: 'stage', render: (item) => item.stage },
+              { header: 'State', key: 'state', render: (item) => <StatusDot tone={item.complete ? 'success' : 'neutral'}>{item.complete ? 'Complete' : 'Pending'}</StatusDot> },
+              { header: 'Evidence', key: 'evidence', render: (item) => item.evidence },
+              { header: 'Rollback boundary', key: 'boundary', render: (item) => item.id === 5 ? <span className="nim-tone-success">Exact authority boundary</span> : item.id < 5 ? 'Before fencing' : 'After promotion' },
+            ] satisfies TableColumn<(typeof timeline)[number]>[]} rowKey={(item) => String(item.id)} rows={timeline} />
           </Panel>
+
+          <Panel title="Install new Core standby">
+            <Body size="sm">Register the target identity and pinned HTTPS endpoint. SwarmOps never copies controller state or secrets to a peer automatically.</Body>
+            <Columns>
+              <Input label="Core ID" onChange={(event) => setMemberID(event.target.value)} placeholder="core-manager-02" value={memberID} />
+              <Input label="Display name" onChange={(event) => setName(event.target.value)} placeholder="Manager 02 control plane" value={name} />
+              <Input label="Standby HTTPS endpoint" onChange={(event) => setEndpoint(event.target.value)} placeholder="https://swarmops-standby.example.com" value={endpoint} />
+            </Columns>
+            <Inline><Select label="Optional enrolled agent" onChange={(event) => setAgentServerID(event.target.value)} options={servers.map((server) => ({ label: `${server.name} · ${server.host}`, value: server.id }))} placeholder="No agent link" value={agentServerID} /><Button disabled={Boolean(pending) || !memberID.trim() || !name.trim() || !endpoint.trim()} loading={pending === 'replica'} onClick={addReplica} variant="accent">Prepare standby</Button></Inline>
+          </Panel>
+
+          <Banner tone="info">Core is host-native, Docker-free, and movable inside or outside the cluster. It never appears as a managed node unless a separate agent is enrolled for that host.</Banner>
 
           {topology.controlEnabled ? <>
-            <Panel marker="3" title="Prepare a standby core">
-              <Rows>
-                <Body size="sm">Register a unique standby first. Then deploy the same reviewed SwarmOps release on that host in standby mode, restore a tested encrypted copy of the complete controller state, and only then mark it verified below. SwarmOps does not copy data or secrets over an unpinned peer connection.</Body>
-                <Input hint="Use a stable value such as core-manager-02. It is separate from a Docker node name and server ID." label="Core ID" onChange={(event) => setMemberID(event.target.value)} placeholder="core-manager-02" value={memberID} />
-                <Input label="Display name" onChange={(event) => setName(event.target.value)} placeholder="Manager 02 control plane" value={name} />
-                <Input hint="HTTPS is required outside local development. This is a status identity, not a remote shell endpoint." label="Standby HTTPS endpoint" onChange={(event) => setEndpoint(event.target.value)} placeholder="https://swarmops-standby.example.com" value={endpoint} />
-                <Select label="Optional independently enrolled agent" onChange={(event) => setAgentServerID(event.target.value)} options={servers.map((server) => ({ label: `${server.name} · ${server.host}`, value: server.id }))} placeholder="No agent link" value={agentServerID} />
-                <Inline><Button disabled={Boolean(pending) || !memberID.trim() || !name.trim() || !endpoint.trim()} loading={pending === 'replica'} onClick={addReplica} variant="accent">Prepare standby</Button></Inline>
-              </Rows>
-            </Panel>
-
-            <HandoffPanel
+            <div id="core-movement"><HandoffPanel
               fenceConfirmation={fenceConfirmation}
               handoff={handoff}
               handoffTarget={handoffTarget}
@@ -170,7 +182,7 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
               onFence={() => void run('fence', () => api.fenceCoreHandoff(handoff?.toId ?? ''), 'This core is fenced and has stopped managing agents. Promote the restored target only after it has the fenced state.')}
               pending={pending}
               verifiedStandbys={verifiedStandbys}
-            />
+            /></div>
           </> : <PromotionPanel
             confirmation={promotionConfirmation}
             localID={topology.localId}
@@ -181,23 +193,23 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
             planned={plannedPromotion}
             primaryStopped={primaryStopped}
           />}
-        </DetailLayout>
+          </DetailLayout>
+        </>
       )}
     </Page>
   )
 }
 
-function CoreMemberRow({ member, onVerify, pending, servers }: { member: CoreMember; onVerify: () => void; pending: string; servers: Server[] }) {
-  const linkedServer = member.agentServerId ? servers.find((server) => server.id === member.agentServerId) : undefined
-  const active = member.role === 'active'
-  return (
-    <ListRow
-      leading={<Icon name={active ? 'shield' : 'server'} size="sm" tone={active ? 'success' : undefined} />}
-      subtitle={<Rows gap="tight"><Mono>{member.id}</Mono><span>{member.endpoint || 'Endpoint not configured'}</span>{linkedServer ? <span>Explicit agent link: {linkedServer.name}</span> : <span>No agent link</span>}</Rows>}
-      title={<Inline><strong>{member.name}</strong><Badge dot variant={active ? 'success' : member.replicaState === 'verified' ? 'info' : 'warning'}>{active ? 'Active' : member.replicaState === 'verified' ? 'Restore verified' : 'Awaiting restore'}</Badge></Inline>}
-      trailing={!active && member.replicaState !== 'verified' ? <Button disabled={Boolean(pending)} loading={pending === `verify-${member.id}`} onClick={onVerify} size="sm" variant="secondary">Mark restore verified</Button> : member.lastCheckpointAt ? <span>{formatDateTime(member.lastCheckpointAt)}</span> : undefined}
-    />
-  )
+function coreMemberColumns(topology: CoreTopology, servers: Server[], pending: string, onVerify: (member: CoreMember) => void): TableColumn<CoreMember>[] {
+  return [
+    { header: 'Role', key: 'role', render: (member) => <StatusDot tone={member.role === 'active' ? 'success' : 'neutral'}>{member.role === 'active' ? 'Active' : 'Standby'}</StatusDot> },
+    { header: 'Host', key: 'host', render: (member) => member.name },
+    { header: 'Endpoint', key: 'endpoint', render: (member) => <Mono>{member.endpoint || 'Not configured'}</Mono> },
+    { header: 'State', key: 'state', render: (member) => member.role === 'active' ? 'Serving' : member.replicaState === 'verified' ? 'Restore verified' : 'Awaiting restore' },
+    { header: 'Agent', key: 'agent', render: (member) => member.agentServerId ? servers.find((server) => server.id === member.agentServerId)?.name ?? member.agentServerId : '—' },
+    { header: 'Checkpoint', key: 'checkpoint', render: (member) => formatDateTime(member.lastCheckpointAt) },
+    { header: 'Actions', key: 'actions', render: (member) => member.role !== 'active' && member.replicaState !== 'verified' ? <Button disabled={Boolean(pending)} loading={pending === `verify-${member.id}`} onClick={() => onVerify(member)} size="sm" variant="secondary">Verify restore</Button> : '•••' },
+  ]
 }
 
 function HandoffPanel({ fenceConfirmation, handoff, handoffTarget, onFence, onFenceConfirmation, onPrepare, onTargetChange, pending, verifiedStandbys }: {

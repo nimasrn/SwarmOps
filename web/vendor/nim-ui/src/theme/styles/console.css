@@ -103,7 +103,7 @@
   /* A console never breaks a heading off the margin. */
   --nim-display-indent: 0px;
 
-  --nim-type-title-lg-size: var(--nim-text-20);
+  --nim-type-title-lg-size: var(--nim-text-24);
   --nim-type-title-lg-line: var(--nim-leading-tight);
   --nim-type-title-lg-weight: var(--nim-weight-semibold);
   --nim-type-title-md-size: var(--nim-text-14);

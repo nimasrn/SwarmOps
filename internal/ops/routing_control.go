@@ -18,7 +18,7 @@ import (
 
 const (
 	traefikServiceName    = "traefik_traefik"
-	lokiServiceName       = "swarmops-logs_loki"
+	logQueryServiceName   = "swarmops-logs_query"
 	prometheusServiceName = "swarmops-observability_prometheus"
 )
 
@@ -640,26 +640,134 @@ func (c *ControlPlane) TraefikLogs(ctx context.Context, filter TraefikLogFilter)
 	if err := filter.Validate(time.Now().UTC()); err != nil {
 		return nil, err
 	}
-	services, err := requiredServicesAvailable(ctx, c.Docker, traefikServiceName, lokiServiceName)
+	services, err := requiredServicesAvailable(ctx, c.Docker, traefikServiceName, logQueryServiceName)
 	if err != nil {
 		return nil, err
 	}
 	if !services {
 		return []TraefikLogRecord{}, nil
 	}
-	adapter, err := c.traefikMachineAdapter()
+	search := filter.RequestID
+	if search == "" {
+		search = filter.Router
+	}
+	page, err := c.Logs(ctx, agentcontrol.LogQuery{From: filter.From, To: filter.To, Level: strings.ToLower(filter.Level), SourceKind: "traefik", Service: filter.Service, Search: search, Limit: filter.Limit})
 	if err != nil {
 		return nil, err
 	}
-	entries, err := adapter.TraefikLogs(ctx, agentcontrol.TraefikLogQuery{From: filter.From, Level: filter.Level, Limit: filter.Limit, Live: filter.Live, RequestID: filter.RequestID, Router: filter.Router, Service: filter.Service, To: filter.To})
-	if err != nil {
-		return nil, err
-	}
-	result := make([]TraefikLogRecord, 0, len(entries))
-	for _, entry := range entries {
-		result = append(result, TraefikLogRecord{Client: entry.Client, Level: entry.Level, Message: entry.Message, Method: entry.Method, RequestID: entry.RequestID, Router: entry.Router, Service: entry.Service, StatusCode: entry.StatusCode, Timestamp: entry.Timestamp})
+	result := make([]TraefikLogRecord, 0, len(page.Records))
+	for _, entry := range page.Records {
+		result = append(result, TraefikLogRecord{Level: entry.Level, Message: entry.Message, Service: entry.Service, Timestamp: entry.Timestamp})
 	}
 	return result, nil
+}
+
+func (c *ControlPlane) Logs(ctx context.Context, query agentcontrol.LogQuery) (agentcontrol.LogPage, error) {
+	if err := query.Normalize(c.now().UTC()); err != nil {
+		return agentcontrol.LogPage{}, err
+	}
+	original := query
+	needsInventoryFilter := query.Stack != "" || query.Service != "" || query.SourceKind == "traefik" || query.SourceKind == "core" || query.SourceKind == "agent" || query.SourceKind == "fluentd"
+	if needsInventoryFilter {
+		// Keep the requested page size so the query service cursor remains the
+		// boundary for exactly the raw records inspected on this page. Fetching a
+		// larger page and slicing after inventory enrichment would skip matching
+		// records when the client follows the opaque cursor.
+		query.Stack, query.Service, query.SourceKind = "", "", ""
+	}
+	adapter, err := c.traefikMachineAdapter()
+	if err != nil {
+		return agentcontrol.LogPage{}, err
+	}
+	page, err := adapter.Logs(ctx, query)
+	if err != nil {
+		return page, err
+	}
+	containers, inventoryErr := c.Docker.ListContainers(ctx, true)
+	if inventoryErr == nil {
+		for index := range page.Records {
+			for _, container := range containers {
+				if page.Records[index].ContainerID != "" && (strings.HasPrefix(container.ID, page.Records[index].ContainerID) || strings.HasPrefix(page.Records[index].ContainerID, container.ID)) {
+					if page.Records[index].Service == "" {
+						page.Records[index].Service = container.Labels["com.docker.swarm.service.name"]
+					}
+					if page.Records[index].Stack == "" {
+						page.Records[index].Stack = container.Labels["com.docker.stack.namespace"]
+					}
+					serviceName := strings.ToLower(page.Records[index].Service)
+					switch {
+					case strings.Contains(serviceName, "traefik"):
+						page.Records[index].SourceKind = "traefik"
+					case strings.Contains(serviceName, "swarmops-api") || strings.Contains(serviceName, "swarmops-core"):
+						page.Records[index].SourceKind = "core"
+					case strings.Contains(serviceName, "swarmops-agent"):
+						page.Records[index].SourceKind = "agent"
+					case strings.Contains(serviceName, "fluentd") || strings.Contains(serviceName, "swarmops-logs"):
+						page.Records[index].SourceKind = "fluentd"
+					}
+					break
+				}
+			}
+		}
+	}
+	if needsInventoryFilter {
+		filtered := page.Records[:0]
+		for _, record := range page.Records {
+			if (original.Stack == "" || record.Stack == original.Stack) && (original.Service == "" || record.Service == original.Service) && (original.SourceKind == "" || record.SourceKind == original.SourceKind) {
+				filtered = append(filtered, record)
+			}
+		}
+		page.Records = filtered
+		if len(page.Records) > original.Limit {
+			page.Records = page.Records[:original.Limit]
+			page.Truncated = true
+		}
+	}
+	return page, nil
+}
+
+func (c *ControlPlane) LogsStatus(ctx context.Context) (agentcontrol.LogStatus, error) {
+	adapter, err := c.traefikMachineAdapter()
+	if err != nil {
+		return agentcontrol.LogStatus{}, err
+	}
+	status, err := adapter.LogsStatus(ctx)
+	if err != nil {
+		return status, err
+	}
+	if nodes, listErr := c.Docker.ListNodes(ctx); listErr == nil {
+		status.ExpectedNodes = len(nodes)
+	}
+	return status, nil
+}
+
+func (c *ControlPlane) ServiceLogs(ctx context.Context, actor, requestID, serviceID string, tail uint64) (string, error) {
+	if err := c.requireAudit(); err != nil {
+		return "", err
+	}
+	if _, err := serviceReference(serviceID); err != nil {
+		return "", err
+	}
+	if tail == 0 || tail > 1000 {
+		tail = 200
+	}
+	serviceName := serviceID
+	if service, inspectErr := c.Docker.InspectService(ctx, serviceID); inspectErr == nil && service.Spec.Name != "" {
+		serviceName = service.Spec.Name
+	}
+	page, err := c.Logs(ctx, agentcontrol.LogQuery{From: c.now().Add(-time.Hour), To: c.now(), Service: serviceName, Limit: int(tail)})
+	c.record(actor, requestID, "service.logs.read", "service/"+serviceID, err, map[string]string{"tail": fmt.Sprint(tail), "source": "fluentd"})
+	if err != nil {
+		return "", fmt.Errorf("log collection is unavailable; enable the SwarmOps Logs stack: %w", err)
+	}
+	var output strings.Builder
+	for _, record := range page.Records {
+		output.WriteString(record.Timestamp.Format(time.RFC3339Nano))
+		output.WriteByte(' ')
+		output.WriteString(record.Message)
+		output.WriteByte('\n')
+	}
+	return output.String(), nil
 }
 
 func (c *ControlPlane) TraefikPrometheusStatus(ctx context.Context) (PrometheusStatus, error) {

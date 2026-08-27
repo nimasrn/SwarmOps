@@ -28,16 +28,17 @@ import {
   Page,
   Panel,
   RecordLink,
-  ResourceMeter,
   Segmented,
   Select,
   Spinner,
   StatusDot,
   Stack as Rows,
   Switch,
+  Table,
   Tabs,
   TaskProgress,
   Textarea,
+  Toolbar,
   Body,
   useToast,
 } from '@nim.zone/ui'
@@ -52,12 +53,15 @@ import { CoreTopologyPage } from './core-topology'
 import { TraefikControlPage } from './traefik-page'
 import { CommandCataloguePage, InsightsPage, ResourcesPage } from './inventory'
 import { HomePage } from './home'
+import { LogsPage } from './logs-page'
 import { isNativeAgent, serverConnectionLabel, serverEndpointLabel } from './server-connection'
 import type {
 	AgentEnrollmentToken,
   AuditEvent,
-  Capacity,
   Command,
+  ContainerDetail,
+  ContainerStats,
+  ContainerSummary,
   ApplicationSpec,
   ApplicationStatus,
   ApprovedWorkload,
@@ -80,7 +84,7 @@ import type {
 } from './types'
 
 type Page = 'home' | 'infrastructure' | 'applications' | 'deploy' | 'traffic' | 'observe' | 'operations' | 'settings'
-type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'insights' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'resources' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'traefik'
+type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'resources' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'traefik'
 type ClusterPage = Exclude<WorkspacePage, 'agent-diagnostics' | 'audit' | 'catalogue' | 'commands' | 'core' | 'provisioning' | 'servers' | 'source-deploy'>
 
 interface DashboardData {
@@ -108,6 +112,7 @@ const PAGES: Record<WorkspacePage, string> = {
   core: 'Control plane',
   databases: 'Managed databases',
   insights: 'Cluster insights',
+  logs: 'Logs',
   nodes: 'Nodes',
   observability: 'Observability',
   overview: 'Cluster overview',
@@ -126,7 +131,7 @@ const SECTION_DEFAULT: Record<Page, WorkspacePage> = {
 	applications: 'applications',
 	deploy: 'source-deploy',
 	traffic: 'traefik',
-	observe: 'observability',
+	observe: 'insights',
 	operations: 'commands',
 	settings: 'core',
 }
@@ -149,12 +154,13 @@ const SECTION_OPTIONS: Record<Page, { label: string; value: WorkspacePage }[]> =
 	],
 	deploy: [{ label: 'Source to release', value: 'source-deploy' }],
 	traffic: [{ label: 'Routes and certificates', value: 'traefik' }],
-	observe: [{ label: 'Telemetry', value: 'observability' }, { label: 'Insights', value: 'insights' }],
+	observe: [{ label: 'Overview', value: 'insights' }, { label: 'Logs', value: 'logs' }, { label: 'Collection settings', value: 'observability' }],
 	operations: [{ label: 'Command ledger', value: 'commands' }, { label: 'Audit', value: 'audit' }, { label: 'Catalog', value: 'catalogue' }],
 	settings: [{ label: 'Core and movement', value: 'core' }],
 }
 
 const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
+const openLogsWorkspace = () => window.dispatchEvent(new Event('swarmops:open-logs'))
 
 export function App() {
   return <SessionGate />
@@ -360,6 +366,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   const { data, error, refresh, refreshing } = useDashboard(activeServer?.id ?? '', onLogout)
 
   useEffect(() => {
+    const openLogs = () => { setPage('observe'); setWorkspace('logs') }
+    window.addEventListener('swarmops:open-logs', openLogs)
+    return () => window.removeEventListener('swarmops:open-logs', openLogs)
+  }, [setPage])
+
+  useEffect(() => {
     let cancelled = false
     if (page !== 'home' || !activeServer) {
       setHomeActivity([])
@@ -371,7 +383,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     return () => { cancelled = true }
   }, [activeServer?.id, data?.overview.generatedAt, page])
 
-	useEffect(() => setWorkspace(SECTION_DEFAULT[page]), [page])
+	useEffect(() => setWorkspace((current) => page === 'observe' && current === 'logs' ? current : SECTION_DEFAULT[page]), [page])
 
   useEffect(() => {
     const next = servers.some((server) => server.id === activeServerID && serverCanManage(server))
@@ -410,7 +422,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     onLogout()
   }
 
-	const groups = useMemo(() => [{ key: 'swarmops', label: 'SwarmOps', items: [
+	const groups = useMemo(() => [{ key: 'swarmops', label: '', items: [
 		{ icon: 'home' as const, key: 'home', label: 'Home', onSelect: () => setPage('home') },
 		{ icon: 'server' as const, key: 'infrastructure', label: 'Infrastructure', onSelect: () => setPage('infrastructure') },
 		{ icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setPage('applications') },
@@ -461,9 +473,9 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         </>
       }
       title={
-        <Inline>
+        <Inline wrap={false}>
           <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Core: Checking' : core.controlEnabled ? 'Core: Active' : 'Core: Standby'}</StatusDot>
-          <Label>Cluster</Label>
+          <Label>Cluster:</Label>
           {managers.length ? (
             <Select
               aria-label="Selected Docker Swarm cluster manager"
@@ -490,7 +502,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       value={page}
     >
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
-	  {SECTION_OPTIONS[page].length > 1 ? <Tabs label={`${capitalize(page)} views`} onChange={(value) => setWorkspace(value as WorkspacePage)} options={SECTION_OPTIONS[page]} value={workspace} /> : null}
+	  {SECTION_OPTIONS[page].length > 1 && !(page === 'infrastructure' && workspace === 'nodes') ? <Tabs label={`${capitalize(page)} views`} onChange={(value) => setWorkspace(value as WorkspacePage)} options={SECTION_OPTIONS[page]} value={workspace} /> : null}
 	  {workspace === 'servers' ? (
 		<ServersPage activeServerID={activeServerID} onConnected={connected} onDiagnostics={(id) => { selectServer(id); setWorkspace('agent-diagnostics') }} onProvision={() => setWorkspace('provisioning')} onRefresh={refreshServers} onSelect={selectServer} servers={servers} toast={toast} />
 	  ) : workspace === 'agent-diagnostics' ? (
@@ -538,7 +550,15 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       ) : (
         <>
           {error ? <Banner title="Cluster snapshot unavailable" tone="danger">{error}</Banner> : null}
-		  {!data ? <LoadingScreen label={serversLoading ? 'Reading server profiles' : 'Reading the selected Docker Swarm'} /> : <PageRouter data={data} page={workspace as ClusterPage} toast={toast} />}
+		  {!data ? <LoadingScreen label={serversLoading ? 'Reading server profiles' : 'Reading the selected Docker Swarm'} /> : <PageRouter
+			commands={commands}
+			data={data}
+			onAddNode={() => { setPage('infrastructure'); setWorkspace('servers') }}
+			onDiagnostics={() => { setPage('infrastructure'); setWorkspace('agent-diagnostics') }}
+			onReadiness={() => { setPage('infrastructure'); setWorkspace('provisioning') }}
+			page={workspace as ClusterPage}
+			toast={toast}
+		  />}
         </>
       )}
     </AdminShell>
@@ -546,21 +566,30 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 }
 
 function PageRouter({
+  commands,
   data,
+  onAddNode,
+  onDiagnostics,
+  onReadiness,
   page,
   toast,
 }: {
+  commands: Command[]
   data: DashboardData
+  onAddNode: () => void
+  onDiagnostics: () => void
+  onReadiness: () => void
   page: ClusterPage
   toast: ReturnType<typeof useToast>
 }) {
   switch (page) {
-    case 'nodes': return <NodesPage nodes={data.nodes} toast={toast} />
+    case 'nodes': return <NodesPage commands={commands} nodes={data.nodes} onAddNode={onAddNode} onDiagnostics={onDiagnostics} onReadiness={onReadiness} overview={data.overview} toast={toast} />
     case 'stacks': return <StacksPage nodes={data.nodes} stacks={data.stacks} toast={toast} />
     case 'services': return <ServicesPage services={data.services} toast={toast} />
     case 'builds': return <BuildsPage toast={toast} />
     case 'traefik': return <TraefikControlPage status={data.traefik} toast={toast} />
     case 'observability': return <ObservabilityPage status={data.observability} toast={toast} />
+    case 'logs': return <LogsPage />
     case 'databases': return <DatabasesPage toast={toast} />
     case 'applications': return <ApplicationsPage toast={toast} />
     case 'resources': return <ResourcesPage toast={toast} />
@@ -723,7 +752,7 @@ function ServersPage({
     const credentials: ServerCredentials = { apiKey }
     try {
       const connected = editing
-		? await api.connectServer(editing.id, { ...credentials, tlsCertificateFingerprint: tlsFingerprint })
+        ? await api.connectServer(editing.id, credentials)
         : await api.addServer({ ...credentials, apiUrl: apiURL, name, port: parsedPort, tlsCertificateFingerprint: tlsFingerprint } satisfies ServerInput)
       setAPIKey('')
       await onConnected(connected)
@@ -790,8 +819,8 @@ function ServersPage({
           <Rows as="form" onSubmit={submit}>
             <Input disabled={Boolean(editing)} hint="A local label only; it never affects the remote host." label="Name" onChange={(event) => setName(event.target.value)} required value={name} />
             <Input disabled={Boolean(editing)} hint="HTTPS origin only, for example https://manager.example.com. Enter its port separately." label="Machine API URL" onChange={(event) => setAPIURL(event.target.value)} required type="url" value={apiURL} />
-            <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input hint={editing ? 'Replace this pin only with the verified public SHA-256 fingerprint currently served by the machine API.' : 'Public SHA-256 fingerprint of the API certificate.'} label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
-            <Input autoComplete="off" hint={editing ? 'It is intentionally blank. Paste the protected key only for this verified reconnect; Core never returns it to the browser.' : 'It is used for the initial verified connection and never returned to the browser.'} label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
+            <Columns><Input disabled={Boolean(editing)} label="Machine API port" min="1" onChange={(event) => setPort(event.target.value)} required type="number" value={port} /><Input disabled={Boolean(editing)} hint="Public SHA-256 fingerprint of the API certificate." label="TLS certificate fingerprint" onChange={(event) => setTLSFingerprint(event.target.value)} placeholder="SHA256:…" required value={tlsFingerprint} /></Columns>
+            <Input autoComplete="off" hint="It is used to connect now and cleared on disconnect or API restart." label="Machine API key" onChange={(event) => setAPIKey(event.target.value)} required type="password" value={apiKey} />
             {error ? <Banner title={error.message} tone="danger"><Rows gap="tight">{error.detail ? <p>{error.detail}</p> : null}{error.requestID ? <Body size="sm">Request ID: <code>{error.requestID}</code></Body> : null}</Rows></Banner> : null}
             <Inline><Button disabled={pending || !connectionReady || (!editing && !name)} loading={pending} type="submit" variant="accent">{editing ? 'Reconnect server' : 'Add and connect server'}</Button><Button onClick={reset} type="button" variant="ghost">Cancel</Button></Inline>
           </Rows>
@@ -819,18 +848,33 @@ function ServersPage({
   )
 }
 
-function NodesPage({ nodes, toast }: { nodes: Node[]; toast: ReturnType<typeof useToast> }) {
-  const [selectedID, setSelectedID] = useState(nodes[0]?.id ?? '')
+function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, overview, toast }: {
+  commands: Command[]
+  nodes: Node[]
+  onAddNode: () => void
+  onDiagnostics: () => void
+  onReadiness: () => void
+  overview: Overview
+  toast: ReturnType<typeof useToast>
+}) {
+  const [selectedID, setSelectedID] = useState('')
+  const [detailTab, setDetailTab] = useState('overview')
   const [tasks, setTasks] = useState<Task[]>([])
+  const [containers, setContainers] = useState<ContainerSummary[]>([])
+  const [containerDetail, setContainerDetail] = useState<ContainerDetail | null>(null)
+  const [containerStats, setContainerStats] = useState<ContainerStats | null>(null)
   const [taskError, setTaskError] = useState('')
+  const [containerError, setContainerError] = useState('')
   const [busy, setBusy] = useState(false)
-  const selected = nodes.find((node) => node.id === selectedID) ?? nodes[0]
+  const selected = nodes.find((node) => node.id === selectedID)
 
   useEffect(() => {
     if (!selected) return
     let live = true
     setTaskError('')
+    setContainerError('')
     void api.nodeTasks(selected.id).then((value) => { if (live) setTasks(value) }).catch((reason) => { if (live) setTaskError(messageOf(reason)) })
+    void api.containers().then((value) => { if (live) setContainers(value) }).catch((reason) => { if (live) setContainerError(messageOf(reason)) })
     return () => { live = false }
   }, [selected?.id])
 
@@ -847,52 +891,286 @@ function NodesPage({ nodes, toast }: { nodes: Node[]; toast: ReturnType<typeof u
     }
   }
 
+  const inspectContainer = async (container: ContainerSummary) => {
+    setBusy(true)
+    setContainerError('')
+    try {
+      const [detail, stats] = await Promise.all([api.container(container.Id), api.containerStats(container.Id)])
+      setContainerDetail(detail)
+      setContainerStats(stats)
+      setDetailTab('overview')
+    } catch (reason) {
+      setContainerError(messageOf(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const actOnContainer = async (action: 'restart' | 'stop') => {
+    if (!containerDetail) return
+    setBusy(true)
+    try {
+      const command = await api.containerAction(containerDetail.Id, action)
+      toast({ message: `${action} queued for ${containerDetail.Name.replace(/^\//, '')} (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ message: messageOf(reason), tone: 'danger', duration: 0 })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const columns: TableColumn<Node>[] = [
-    { header: 'Node', key: 'node', render: (node) => <RecordLink meta={shortID(node.id)} onClick={() => setSelectedID(node.id)} title={node.hostname} /> },
+    { header: 'Name / IP', key: 'node', render: (node) => <RecordLink meta={node.address ?? shortID(node.id)} onClick={() => { setSelectedID(node.id); setDetailTab('overview') }} title={node.hostname} /> },
     { header: 'Role', key: 'role', render: (node) => <span>{node.role}{node.manager?.leader ? ' · leader' : ''}</span> },
     { header: 'Availability', key: 'availability', render: (node) => <span>{node.availability}</span> },
-    { header: 'Host probe', key: 'agent', render: (node) => <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? 'Online' : node.agent.error ? 'Unavailable' : 'Not configured'} /> },
-    { header: 'State', key: 'state', render: (node) => <StatusBadge health={nodeHealth(node)} label={node.state} /> },
+    { header: 'Agent', key: 'agent', render: (node) => <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? node.agent.version || 'Online' : node.agent.error ? 'Unavailable' : 'Not configured'} /> },
+    { header: 'Docker', key: 'docker', render: (node) => <Mono>{node.engine.version ?? node.dockerVersion ?? '—'}</Mono> },
+    { header: 'CPU', key: 'cpu', numeric: true, render: (node) => `${formatNumber(node.cpu.capacity)} cores` },
+    { header: 'Memory', key: 'memory', render: (node) => `${formatBytes(node.memory.used)} / ${formatBytes(node.memory.capacity)}` },
+    { header: 'Disk', key: 'disk', render: (node) => `${formatBytes(node.disk.used)} / ${formatBytes(node.disk.capacity)}` },
+    { header: 'Last seen', key: 'seen', render: (node) => node.agent.collectedAt ? formatDateTime(node.agent.collectedAt) : '—' },
   ]
 
-  if (!selected) return <EmptyState description="No nodes were returned by Docker Engine." icon="settings" title="No Swarm nodes" />
-  return (
-    <Page>
-      <DetailHeader subtitle="Choose a node to inspect its Docker, operating-system, capacity, and task data." title="Node inventory" />
-      <Panel flush><DataTable caption="Docker Swarm nodes" columns={columns} empty={<EmptyState description="No nodes were returned by the remote Docker Engine." icon="server" title="No Swarm nodes" />} rowKey={(node) => node.id} rows={nodes} /></Panel>
-      <Columns aria-label={`${selected.hostname} details`}>
-        <Panel eyebrow={`${selected.role} · ${selected.state}`} title={selected.hostname}>
-          <Rows>
-            <Resource capacity={selected.cpu} capacityOnly detail={selected.load1 !== undefined ? `One-minute load ${selected.load1.toFixed(2)} · CPU use is not inferred from load.` : 'No live load sample yet.'} label="CPU capacity" unit="cores" />
-            <Resource capacity={selected.memory} label="Memory" />
-            <Resource capacity={selected.disk} label="Host root disk" />
-          </Rows>
-          <Facts
-            items={[
-              { label: 'Address', mono: true, value: selected.address ?? '—' },
-              { label: 'OS', value: selected.os ?? selected.platform.os ?? '—' },
-              { label: 'Kernel', mono: true, value: selected.kernel ?? '—' },
-              { label: 'Architecture', value: selected.platform.architecture ?? '—' },
-              { label: 'Docker', mono: true, value: selected.engine.version ?? selected.dockerVersion ?? '—' },
-              { label: 'Storage driver', value: selected.engine.driver ?? '—' },
-              { label: 'cgroup driver', value: selected.engine.cgroupDriver ?? '—' },
-              { label: 'Uptime', value: formatDuration(selected.uptimeSeconds) },
-            ]}
-          />
+  const attention = nodes.filter((node) => node.state !== 'ready' || node.availability !== 'active' || !node.agent.healthy)
+  const manager = nodes.find((node) => node.manager?.leader) ?? nodes.find((node) => node.role === 'manager')
+  const workers = nodes.filter((node) => node.id !== manager?.id)
+  const nodeCommands = selected ? commands.filter((command) => command.nodeId === selected.id || command.target.includes(selected.id) || command.target.includes(selected.hostname)).slice(0, 8) : []
+  const pending = commands.filter((command) => !['succeeded', 'failed', 'needs_attention', 'superseded', 'cancelled'].includes(command.state)).slice(0, 6)
+  const containerColumns: TableColumn<ContainerSummary>[] = [
+    { header: 'Name', key: 'name', render: (container) => <RecordLink meta={shortID(container.Id)} onClick={() => void inspectContainer(container)} title={container.Names?.[0]?.replace(/^\//, '') || shortID(container.Id)} /> },
+    { header: 'Image', key: 'image', render: (container) => <Mono>{container.Image}</Mono> },
+    { header: 'State', key: 'state', render: (container) => <StatusDot tone={container.State === 'running' ? 'success' : 'warning'}>{capitalize(container.State)}</StatusDot> },
+    { header: 'Status', key: 'status', render: (container) => container.Status },
+    { header: 'Networks', key: 'networks', render: (container) => Object.keys(container.NetworkSettings?.Networks ?? {}).join(', ') || '—' },
+  ]
+
+  if (selected && containerDetail) {
+    const containerName = containerDetail.Name.replace(/^\//, '')
+    return (
+      <Page width="full">
+        <DetailHeader
+          actions={<Inline><Button onClick={openLogsWorkspace} variant="ghost">Open in Logs</Button><Button disabled={busy} loading={busy} onClick={() => void actOnContainer('restart')} variant="secondary">Restart container</Button><Button disabled={busy} onClick={() => void actOnContainer('stop')} variant="danger">Stop container</Button></Inline>}
+          back={{ label: selected.hostname, onClick: () => { setContainerDetail(null); setContainerStats(null); setDetailTab('overview') } }}
+          meta={<Inline><Mono>{shortID(containerDetail.Id)}</Mono><StatusDot tone={containerDetail.State.Running ? 'success' : 'warning'}>{capitalize(containerDetail.State.Status)}</StatusDot><span>Node <strong>{selected.hostname}</strong></span></Inline>}
+          subtitle={<Inline><span>Image <Mono>{containerDetail.Config.Image ?? containerDetail.Image}</Mono></span><span>Uptime {formatDuration(containerStats ? Math.max(0, (Date.now() - new Date(containerDetail.State.StartedAt ?? containerDetail.Created).getTime()) / 1000) : 0)}</span></Inline>}
+          title={containerName}
+        />
+        <Tabs label="Container views" onChange={setDetailTab} options={[
+          { label: 'Overview', value: 'overview' },
+          { label: 'Metrics', value: 'metrics' },
+          { label: 'Logs', value: 'logs' },
+          { label: 'Network', value: 'network' },
+          { label: 'Inspect', value: 'inspect' },
+          { label: 'Activity', value: 'activity' },
+        ]} value={detailTab} />
+        {detailTab === 'overview' || detailTab === 'metrics' ? <>
+          <MetricGrid columns={4}>
+            <Metric hint="One Engine sample" icon="activity" label="CPU" value={containerStats ? `${containerStats.cpuPercent.toFixed(2)}%` : '—'} />
+            <Metric hint={containerStats?.memoryLimitBytes ? `of ${formatBytes(containerStats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" value={containerStats ? formatBytes(containerStats.memoryUsedBytes) : '—'} />
+            <Metric hint={containerStats ? `${formatBytes(containerStats.networkTxBytes)} egress` : 'No sample'} icon="cloud" label="Network ingress" value={containerStats ? formatBytes(containerStats.networkRxBytes) : '—'} />
+            <Metric hint="Engine restart counter" icon="refresh" label="Restart count" value={String(containerDetail.RestartCount)} />
+          </MetricGrid>
+          <Columns template="aside">
+            <Rows gap="md">
+              <Columns template="one-third">
+                <Panel title="Health & placement"><Facts columns={1} items={[
+                  { label: 'Health check', value: containerDetail.State.Health?.Status ?? 'Not configured' },
+                  { label: 'State', value: containerDetail.State.Status },
+                  { label: 'Node', value: selected.hostname },
+                  { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) },
+                  { label: 'Restart policy', value: containerDetail.HostConfig.RestartPolicy?.Name ?? '—' },
+                ]} /></Panel>
+                <Panel title="Routes & ports"><Body size="sm" tone="muted">Published port and route evidence is shown in Traffic. This inspect payload does not claim an application route.</Body></Panel>
+              </Columns>
+              <Panel title="Recent log preview"><Body size="sm" tone="muted">Raw Engine log streaming is not part of the fixed manager API. Open Observe → Logs for sanitized Fluentd records from the selected cluster.</Body></Panel>
+              <Panel title="Recent activity"><Facts items={[
+                { label: 'Created', value: formatDateTime(containerDetail.Created) },
+                { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) },
+                { label: 'Restarts', value: String(containerDetail.RestartCount) },
+                { label: 'Last sample', value: containerStats ? formatDateTime(containerStats.sampledAt) : '—' },
+              ]} /></Panel>
+            </Rows>
+            <Rows gap="md">
+              <Panel title="Container inspector"><Facts columns={1} items={[
+                { label: 'Image', mono: true, value: containerDetail.Config.Image ?? containerDetail.Image },
+                { label: 'Entrypoint', mono: true, value: containerDetail.Path ?? '—' },
+                { label: 'Command', mono: true, value: containerDetail.Args?.join(' ') || '—' },
+                { label: 'Labels', value: String(Object.keys(containerDetail.Config.Labels ?? {}).length) },
+                { label: 'Mounts', value: String(containerDetail.Mounts?.length ?? 0) },
+                { label: 'Network mode', value: containerDetail.HostConfig.NetworkMode ?? '—' },
+                { label: 'Docker health', value: containerDetail.State.Health?.Status ?? (containerDetail.State.Running ? 'Running' : 'Stopped') },
+              ]} /></Panel>
+              <Panel title="Telemetry"><Body size="sm">Metrics are sampled from Docker. Logs and traces remain source-labeled in Observe and are never fabricated when collectors are absent.</Body></Panel>
+            </Rows>
+          </Columns>
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">Use Observe for collected logs. This Core does not proxy unrestricted container streams.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Mode', mono: true, value: containerDetail.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: containerStats ? formatBytes(containerStats.networkRxBytes) : '—' }, { label: 'Egress sample', value: containerStats ? formatBytes(containerStats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: containerDetail.Id }, { label: 'Image ID', mono: true, value: containerDetail.Image }, { label: 'Environment names', value: containerDetail.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: containerDetail.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(containerDetail.Created) }, { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) }, { label: 'Finished', value: formatDateTime(containerDetail.State.FinishedAt) }, { label: 'Restarts', value: String(containerDetail.RestartCount) }]} /></Panel>}
+      </Page>
+    )
+  }
+
+  if (!selected) return (
+    <Page width="full">
+      <DetailHeader
+        actions={<Inline><Button iconStart="plus" onClick={onAddNode} variant="accent">Add node</Button><Button iconStart="activity" onClick={onDiagnostics} variant="secondary">Run health check</Button></Inline>}
+        title="Infrastructure"
+      />
+      <Panel flush title="Cluster topology">
+        <div className="nim-cluster-topology__body">
+          <div className="nim-cluster-topology__flow">
+            <div className="nim-cluster-topology__node">
+              <Icon name="server" size="lg" tone={manager ? 'success' : 'warning'} />
+              <span className="nim-cluster-topology__node-copy"><strong>{manager?.hostname ?? 'No manager'}</strong><Mono>{manager?.address ?? 'Manager required'}</Mono></span>
+            </div>
+            <span aria-hidden="true" className="nim-cluster-topology__connector" />
+            <div className="nim-cluster-topology__state">
+              <StatusDot tone={manager?.agent.healthy ? 'success' : 'warning'}>{manager?.agent.healthy ? 'Agent connected' : 'Agent unavailable'}</StatusDot>
+            </div>
+            <span aria-hidden="true" className="nim-cluster-topology__connector" />
+            <div className="nim-cluster-topology__state">
+              <StatusDot tone={overview.summary.managers ? 'success' : 'warning'}>Quorum {overview.summary.managers} / {overview.summary.managers}</StatusDot>
+            </div>
+            <span aria-hidden="true" className="nim-cluster-topology__connector" />
+            <div className="nim-cluster-topology__workers">
+              {workers.map((node) => <div className="nim-cluster-topology__node" key={node.id}><Icon name="server" size="sm" tone={nodeHealth(node) === 'healthy' ? 'success' : 'danger'} /><span className="nim-cluster-topology__node-copy"><strong>{node.hostname}</strong><Mono>{node.address ?? shortID(node.id)}</Mono></span></div>)}
+            </div>
+          </div>
+          <div className="nim-cluster-topology__summary">
+            <Facts columns={1} items={[
+              { label: 'Swarm', value: overview.summary.managers ? 'Active' : 'Unavailable' },
+              { label: 'Managers', value: String(overview.summary.managers) },
+              { label: 'Workers', value: String(Math.max(0, overview.summary.nodes - overview.summary.managers)) },
+              { label: 'Nodes', value: String(overview.summary.nodes) },
+            ]} />
+          </div>
+        </div>
+        <div className="nim-cluster-topology__capacity">
+          <Body size="sm">Fleet capacity</Body>
+          <MetricGrid columns={6} dense>
+            <Metric label="CPU cores" value={formatNumber(overview.summary.totalCpu.capacity)} />
+            <Metric label="Memory" value={formatBytes(overview.summary.totalMemory.capacity)} />
+            <Metric label="Disk" value={formatBytes(overview.summary.totalDisk.capacity)} />
+            <Metric label="Nodes" value={String(overview.summary.nodes)} />
+            <Metric label="Services" value={String(overview.summary.services)} />
+            <Metric label="Running tasks" value={String(overview.summary.runningTasks)} />
+          </MetricGrid>
+        </div>
+      </Panel>
+      <Columns template="aside">
+        <Panel flush title={`Nodes (${nodes.length})`}>
+          {nodes.length ? <DataTable columns={columns} rowKey={(node) => node.id} rows={nodes} summary={`1–${nodes.length} of ${nodes.length}`} /> : <EmptyState actions={<Button onClick={onAddNode} variant="accent">Add node</Button>} description="Enroll an Ubuntu machine agent, inspect its prerequisites, then initialise or join Docker Swarm." icon="server" title="No nodes" />}
         </Panel>
-        <Panel eyebrow="Controlled change" title="Availability">
-          <Body size="sm">Changing availability is an audited Docker node update. Draining preserves stateful workload safety only when those services were designed for relocation.</Body>
-          <Inline>
-            {['active', 'pause', 'drain'].map((availability) => <Button disabled={busy || selected.availability === availability} key={availability} loading={busy && selected.availability !== availability} onClick={() => void updateAvailability(availability)} size="sm" variant={availability === 'drain' ? 'danger' : 'secondary'}>{capitalize(availability)}</Button>)}
-          </Inline>
-          <Label as="p">Host probe state</Label>
-          <StatusBadge health={hostProbeHealth(selected)} label={selected.agent.healthy ? `Last inventory ${formatDateTime(selected.agent.collectedAt)}` : selected.agent.error ?? 'Not configured for this remote target'} />
+        <Panel title="Attention">
+          {attention.length ? <List plain>{attention.map((node) => <ListRow key={node.id} leading={<StatusDot tone={node.state !== 'ready' ? 'danger' : 'warning'}>{node.hostname}</StatusDot>} subtitle={node.agent.error ?? `${capitalize(node.state)} · ${capitalize(node.availability)}`} title={node.agent.healthy ? 'Node needs review' : 'Agent unreachable'} />)}</List> : <StatusDot tone="success">No node needs attention</StatusDot>}
+          <Inline><Button onClick={onDiagnostics} size="sm" variant="secondary">Diagnostics</Button><Button onClick={onReadiness} size="sm" variant="secondary">Readiness</Button></Inline>
         </Panel>
       </Columns>
-      <Panel eyebrow="Workload placement" title={`Tasks on ${selected.hostname}`}>
-        {taskError ? <Banner tone="warning">{taskError}</Banner> : null}
-        {tasks.length === 0 ? <EmptyState description="No task records are currently assigned to this node." icon="sparkle" title="No tasks" /> : <TaskList tasks={tasks} />}
-      </Panel>
+      <Columns template="one-third">
+        <Panel title="Swarm settings">
+          <Facts columns={1} items={[
+            { label: 'Swarm', value: overview.summary.managers ? 'Active' : 'Unavailable' },
+            { label: 'Managers', value: String(overview.summary.managers) },
+            { label: 'Workers', value: String(Math.max(0, overview.summary.nodes - overview.summary.managers)) },
+            { label: 'Ready nodes', value: `${overview.summary.readyNodes} / ${overview.summary.nodes}` },
+          ]} />
+        </Panel>
+        <Panel flush title={`Pending node operations (${pending.length})`}>
+          {pending.length ? <DataTable caption="Pending node operations" columns={[
+            { header: 'Target', key: 'target', render: (command: Command) => <Mono>{command.target}</Mono> },
+            { header: 'Operation', key: 'action', render: (command: Command) => command.action },
+            { header: 'Requested by', key: 'actor', render: (command: Command) => command.actor },
+            { header: 'Status', key: 'state', render: (command: Command) => <StatusDot tone={command.state === 'retry_scheduled' ? 'warning' : 'accent'}>{capitalize(command.state.replaceAll('_', ' '))}</StatusDot> },
+          ]} rowKey={(command) => command.id} rows={pending} /> : <Body size="sm" tone="muted">No node operation is queued or running.</Body>}
+        </Panel>
+      </Columns>
+    </Page>
+  )
+
+  return (
+    <Page width="full">
+      <DetailHeader
+        actions={<Inline><Button iconStart="activity" onClick={onDiagnostics} variant="secondary">Run diagnosis</Button><Button onClick={onReadiness} variant="secondary">Prepare node</Button></Inline>}
+        back={{ label: 'Infrastructure', onClick: () => setSelectedID('') }}
+        meta={<Inline><Mono>{selected.address ?? '—'}</Mono><StatusDot tone={nodeHealth(selected) === 'healthy' ? 'success' : 'warning'}>{capitalize(selected.state)}</StatusDot><span>{selected.role}{selected.manager?.leader ? ' · leader' : ''}</span><span>Agent {selected.agent.version ?? '—'}</span><span>Docker {selected.engine.version ?? selected.dockerVersion ?? '—'}</span></Inline>}
+        title={selected.hostname}
+      />
+      <Tabs label="Node views" onChange={setDetailTab} options={[
+        { label: 'Overview', value: 'overview' },
+        { label: `Containers (${containers.length})`, value: 'containers' },
+        { label: `Tasks (${tasks.length})`, value: 'tasks' },
+        { label: 'Network', value: 'network' },
+        { label: 'Packages', value: 'packages' },
+        { label: 'Activity', value: 'activity' },
+      ]} value={detailTab} />
+
+      {detailTab === 'overview' ? <>
+        <MetricGrid columns={4}>
+          <Metric hint={selected.load1 !== undefined ? `1m load ${selected.load1.toFixed(2)}` : 'No load sample'} icon="activity" label="CPU capacity" value={`${formatNumber(selected.cpu.capacity)} cores`} />
+          <Metric hint={`${formatNumber(selected.memory.percent)}% used`} icon="activity" label="Memory used" tone={selected.memory.percent >= 85 ? 'warning' : 'neutral'} value={formatBytes(selected.memory.used)} />
+          <Metric hint={`${formatNumber(selected.disk.percent)}% used`} icon="activity" label="Disk used" tone={selected.disk.percent >= 85 ? 'warning' : 'neutral'} value={formatBytes(selected.disk.used)} />
+          <Metric hint={`${tasks.filter((task) => task.currentState === 'running').length} running`} icon="layers" label="Tasks" value={String(tasks.length)} />
+        </MetricGrid>
+        <Columns template="aside">
+          <Rows gap="md">
+            <Panel flush title={`Containers (${containers.length})`}>
+              {containerError ? <Banner tone="warning">{containerError}</Banner> : containers.length ? <DataTable columns={containerColumns} rowKey={(container) => container.Id} rows={containers.slice(0, 10)} summary={`Showing 1–${Math.min(10, containers.length)} of ${containers.length}`} /> : <EmptyState description="No local Engine containers were returned for this manager." icon="package" title="No containers" />}
+            </Panel>
+            <Panel flush title="Recent node operations">
+              {nodeCommands.length ? <DataTable caption={`Operations targeting ${selected.hostname}`} columns={[
+                { header: 'Time', key: 'time', render: (command: Command) => formatDateTime(command.updatedAt) },
+                { header: 'Command', key: 'command', render: (command: Command) => command.action },
+                { header: 'State', key: 'state', render: (command: Command) => <StatusDot tone={command.state === 'succeeded' ? 'success' : command.state === 'needs_attention' || command.state === 'failed' ? 'danger' : 'warning'}>{capitalize(command.state.replaceAll('_', ' '))}</StatusDot> },
+                { header: 'Actor', key: 'actor', render: (command: Command) => command.actor },
+              ]} rowKey={(command) => command.id} rows={nodeCommands} /> : <Body size="sm" tone="muted">No durable operation currently targets this node.</Body>}
+            </Panel>
+          </Rows>
+          <Rows gap="md">
+            <Panel title="System">
+              <Facts columns={1} items={[
+                { label: 'OS', value: selected.os ?? selected.platform.os ?? '—' },
+                { label: 'Kernel', mono: true, value: selected.kernel ?? '—' },
+                { label: 'CPU', value: `${formatNumber(selected.cpu.capacity)} cores` },
+                { label: 'Memory', value: formatBytes(selected.memory.capacity) },
+                { label: 'Storage', value: formatBytes(selected.disk.capacity) },
+                { label: 'Architecture', value: selected.platform.architecture ?? '—' },
+                { label: 'Storage driver', value: selected.engine.driver ?? '—' },
+                { label: 'cgroup driver', value: selected.engine.cgroupDriver ?? '—' },
+                { label: 'Uptime', value: formatDuration(selected.uptimeSeconds) },
+              ]} />
+            </Panel>
+            <Panel title="Agent health">
+              <StatusBadge health={hostProbeHealth(selected)} label={selected.agent.healthy ? 'Connected' : selected.agent.error ?? 'Not configured'} />
+              <Facts columns={1} items={[
+                { label: 'Address', mono: true, value: selected.agent.address ?? selected.address ?? '—' },
+                { label: 'Version', mono: true, value: selected.agent.version ?? '—' },
+                { label: 'Last inventory', value: selected.agent.collectedAt ? formatDateTime(selected.agent.collectedAt) : '—' },
+                { label: 'Swarm membership', value: `${capitalize(selected.role)} · ${capitalize(selected.availability)}` },
+              ]} />
+              <Inline>{['active', 'pause', 'drain'].map((availability) => <Button disabled={busy || selected.availability === availability} key={availability} loading={busy && selected.availability !== availability} onClick={() => void updateAvailability(availability)} size="sm" variant={availability === 'drain' ? 'danger' : 'secondary'}>{capitalize(availability)}</Button>)}</Inline>
+            </Panel>
+          </Rows>
+        </Columns>
+      </> : detailTab === 'containers' ? <Panel flush title={`Containers on ${selected.hostname}`}>
+        {containerError ? <Banner tone="warning">{containerError}</Banner> : <DataTable caption="Local Engine containers" columns={containerColumns} empty={<EmptyState description="No local Engine containers were returned." icon="package" title="No containers" />} rowKey={(container) => container.Id} rows={containers} />}
+      </Panel> : detailTab === 'tasks' ? <Panel title={`Tasks on ${selected.hostname}`}>
+        {taskError ? <Banner tone="warning">{taskError}</Banner> : tasks.length ? <TaskList tasks={tasks} /> : <EmptyState description="No task records are currently assigned to this node." icon="sparkle" title="No tasks" />}
+      </Panel> : detailTab === 'network' ? <Panel title="Network">
+        <Facts items={[
+          { label: 'Advertised address', mono: true, value: selected.address ?? '—' },
+          { label: 'Manager address', mono: true, value: selected.manager?.address ?? '—' },
+          { label: 'Reachability', value: selected.manager?.reachability ?? 'Not a manager' },
+          { label: 'Control path', value: 'Outbound pinned HTTPS' },
+        ]} />
+      </Panel> : detailTab === 'packages' ? <Panel actions={<Button onClick={onReadiness} variant="secondary">Open readiness</Button>} title="Packages">
+        <Body size="sm">Package and Docker maintenance are fixed, audited server-readiness operations. SwarmOps does not expose arbitrary package names or a remote shell.</Body>
+      </Panel> : <Panel flush title="Node activity">
+        {nodeCommands.length ? <DataTable caption="Durable node operation history" columns={[
+          { header: 'Time', key: 'time', render: (command: Command) => formatDateTime(command.updatedAt) },
+          { header: 'Action', key: 'action', render: (command: Command) => command.action },
+          { header: 'Target', key: 'target', render: (command: Command) => <Mono>{command.target}</Mono> },
+          { header: 'State', key: 'state', render: (command: Command) => capitalize(command.state.replaceAll('_', ' ')) },
+          { header: 'Actor', key: 'actor', render: (command: Command) => command.actor },
+        ]} rowKey={(command) => command.id} rows={nodeCommands} /> : <Body size="sm" tone="muted">No durable operation has targeted this node.</Body>}
+      </Panel>}
     </Page>
   )
 }
@@ -1032,7 +1310,7 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
   const canScale = selected.mode.toLowerCase() === 'replicated'
   return (
     <Page>
-      <DetailHeader subtitle="Logs are read directly from Docker service logs. Restarts and rollbacks use fixed audited command shapes, not browser-supplied shell commands." title="Service control" />
+      <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Logs come from the bounded Fluentd query path. Restarts and rollbacks use fixed audited command shapes, not browser-supplied shell commands." title="Service control" />
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
       <Columns>
         <Panel eyebrow={selected.stack ?? 'No stack label'} title={selected.name}>
@@ -1110,6 +1388,102 @@ function BuildsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
 // an image, tick the databases it needs, and SwarmOps renders and deploys the
 // Compose. The operator writes no Compose, no Traefik label, and no
 // connection string.
+function ApplicationDetailView({ onBack, onDeploy, status }: { onBack: () => void; onDeploy: () => void; status: ApplicationStatus }) {
+  const [tab, setTab] = useState('overview')
+  const healthy = status.deployed && status.runningTasks >= status.spec.replicas
+  const replicas = Array.from({ length: status.spec.replicas }, (_, index) => ({
+    id: `${status.spec.name}-replica-${index + 1}`,
+    replica: index + 1,
+    state: index < status.runningTasks ? 'Running' : 'Pending',
+  }))
+  const version = status.spec.image.includes(':') ? status.spec.image.split(':').at(-1) ?? status.spec.image : status.spec.image
+  const replicaColumns: TableColumn<(typeof replicas)[number]>[] = [
+    { header: 'Replica', key: 'replica', render: (replica) => `Replica ${replica.replica}` },
+    { header: 'State', key: 'state', render: (replica) => <StatusDot tone={replica.state === 'Running' ? 'success' : 'warning'}>{replica.state}</StatusDot> },
+    { header: 'Health', key: 'health', render: (replica) => replica.state === 'Running' ? status.spec.healthPath ?? 'No probe declared' : 'Waiting for placement' },
+    { header: 'Image', key: 'image', render: () => <Mono>{version}</Mono> },
+  ]
+
+  return (
+    <Page width="full">
+      <DetailHeader
+        actions={<Inline><Button onClick={onDeploy} variant="accent">Deploy new release</Button><Button variant="secondary">More</Button></Inline>}
+        back={{ label: 'Applications', onClick: onBack }}
+        meta={<Inline><span>Replicas {status.runningTasks} / {status.spec.replicas}</span><span>Image <Mono>{version}</Mono></span><span>{status.deployed ? 'Deployed by SwarmOps' : 'Not deployed'}</span></Inline>}
+        status={<StatusBadge health={healthy ? 'healthy' : 'degraded'} />}
+        title={status.spec.name}
+      />
+      <Tabs label="Application views" onChange={setTab} options={[
+        { label: 'Overview', value: 'overview' },
+        { label: 'Containers', value: 'containers' },
+        { label: 'Metrics', value: 'metrics' },
+        { label: 'Logs', value: 'logs' },
+        { label: 'Traces', value: 'traces' },
+        { label: 'Routes', value: 'routes' },
+        { label: 'Releases', value: 'releases' },
+        { label: 'Configuration', value: 'configuration' },
+      ]} value={tab} />
+
+      {tab === 'overview' ? <>
+        <Panel>
+          <Columns template="quarters">
+            <Facts columns={1} items={[{ label: 'Desired version', mono: true, value: version }, { label: 'Current version', mono: true, value: version }]} />
+            <Facts columns={1} items={[{ label: 'Rollout strategy', value: 'Rolling update' }, { label: 'Replicas', value: String(status.spec.replicas) }]} />
+            <Facts columns={1} items={[{ label: 'Health check', mono: true, value: status.spec.healthPath ?? 'Not declared' }, { label: 'Container port', value: String(status.spec.port) }]} />
+            <Facts columns={1} items={[{ label: 'Current state', value: healthy ? 'Healthy' : 'Needs attention' }, { label: 'Source', value: 'Current manager snapshot' }]} />
+          </Columns>
+        </Panel>
+        <Columns template="two-thirds">
+          <Rows gap="md">
+            <Panel flush title={`Replicas · ${status.runningTasks} / ${status.spec.replicas} running`}>
+              <Table columns={replicaColumns} rowKey={(replica) => replica.id} rows={replicas} />
+            </Panel>
+            <MetricGrid columns={3}>
+              <Metric label="Replica availability" tone={healthy ? 'success' : 'warning'} value={`${status.runningTasks} / ${status.spec.replicas}`} />
+              <Metric label="CPU limit" value={`${status.spec.cpus} vCPU`} />
+              <Metric label="Memory limit" value={`${status.spec.memoryMiB} MiB`} />
+            </MetricGrid>
+            <Panel flush title="Recent releases">
+              <Table columns={[
+                { header: 'Version', key: 'version', render: () => <Mono>{version}</Mono> },
+                { header: 'Status', key: 'status', render: () => <StatusDot tone={healthy ? 'success' : 'warning'}>{healthy ? 'Healthy' : 'Degraded'}</StatusDot> },
+                { header: 'Image', key: 'image', render: () => <Mono>{status.spec.image}</Mono> },
+                { header: 'Note', key: 'note', render: () => 'Current manager snapshot' },
+              ]} rowKey={() => status.spec.image} rows={[status]} />
+            </Panel>
+          </Rows>
+          <Rows gap="md">
+            <Panel title="Routes">
+              <Facts columns={1} items={status.spec.domain ? [
+                { label: 'Type', value: 'HTTPS' },
+                { label: 'Hostname', mono: true, value: status.spec.domain },
+                { label: 'TLS resolver', value: status.spec.resolver ?? 'Managed default' },
+              ] : [{ label: 'Exposure', value: 'Internal only' }]} />
+            </Panel>
+            <Panel title="Managed bindings">
+              <Body size="sm">{status.spec.databases?.length ? status.spec.databases.join(', ') : status.spec.backend ? `Backend: ${status.spec.backend}` : 'No managed data or backend binding is declared.'}</Body>
+            </Panel>
+            <Panel title="Telemetry">
+              <Facts columns={1} items={[
+                { label: 'Prometheus', value: status.spec.metrics ? `Enabled${status.spec.metricsPath ? ` · ${status.spec.metricsPath}` : ''}` : 'Disabled' },
+                { label: 'Jaeger', value: status.spec.tracing ? 'Enabled' : 'Disabled' },
+                { label: 'Logs', value: 'Collected by the shared Fluentd policy' },
+              ]} />
+            </Panel>
+            <Panel title="Resource limits">
+              <Facts columns={1} items={[
+                { label: 'CPU', value: `${status.spec.cpus} vCPU` },
+                { label: 'Memory', value: `${status.spec.memoryMiB} MiB` },
+                { label: 'Replicas', value: String(status.spec.replicas) },
+              ]} />
+            </Panel>
+          </Rows>
+        </Columns>
+      </> : <Panel title={capitalize(tab)}><Body size="sm">This view uses the selected manager’s bounded {tab} endpoint. No arbitrary shell or Docker socket access is exposed.</Body></Panel>}
+    </Page>
+  )
+}
+
 function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [applications, setApplications] = useState<ApplicationStatus[] | null>(null)
   const [approved, setApproved] = useState<ApprovedWorkload[]>([])
@@ -1118,6 +1492,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   const [pending, setPending] = useState(false)
   const [preview, setPreview] = useState('')
   const [removals, setRemovals] = useState<Record<string, string>>({})
+  const [inspectedApplication, setInspectedApplication] = useState('')
 
   const [selected, setSelected] = useState('')
   const [image, setImage] = useState('')
@@ -1144,6 +1519,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
     setApplications(safeApps)
     setApproved(safeSlots)
     setDatabases(safeDatabases)
+    setInspectedApplication((current) => current || safeApps[0]?.spec.name || '')
     if (!selected && safeSlots.length > 0) setSelected(safeSlots[0].name)
   }
   useEffect(() => { void refresh().catch((reason) => setError(messageOf(reason))) }, [])
@@ -1215,6 +1591,8 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   }
 
   if (!applications) return <LoadingScreen label="Reading applications" />
+  const inspectedStatus = applications.find((status) => status.spec.name === inspectedApplication)
+  if (inspectedStatus) return <ApplicationDetailView onBack={() => setInspectedApplication('')} onDeploy={() => setInspectedApplication('')} status={inspectedStatus} />
   const domainEligible = applications.filter((status) => {
     const policy = approved.find((workload) => workload.name === status.spec.name)
     return Boolean(policy?.domainOptional || policy?.domainSuffixes?.length)
@@ -1239,7 +1617,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending(false) }
   }
   const columns: TableColumn<ApplicationStatus>[] = [
-    { header: 'Application', key: 'name', render: (status) => <RecordLink meta={status.stack} title={status.spec.name} /> },
+    { header: 'Application', key: 'name', render: (status) => <RecordLink meta={status.stack} onClick={() => setInspectedApplication(status.spec.name)} title={status.spec.name} /> },
     { header: 'Address', key: 'url', render: (status) => status.url ? <a href={status.url} rel="noreferrer" target="_blank">{status.url}</a> : 'Internal only' },
     { header: 'Image', key: 'image', render: (status) => <Mono>{status.spec.image}</Mono> },
     { header: 'Databases', key: 'databases', render: (status) => (status.spec.databases ?? []).join(', ') || '—' },
@@ -1491,12 +1869,12 @@ function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toa
           <TaskProgress caption={status.coreInstalled ? (status.coreHealthy ? 'The core stack is healthy in Docker.' : 'The core stack is present but Docker reports at least one service as degraded.') : 'Provision the core stack before trusting monitoring state.'} steps={[{ id: 'prometheus', label: 'Prometheus discovery, rules, and retention', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }, { id: 'alertmanager', label: 'Alert grouping and routing boundary', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }, { id: 'jaeger', label: 'Jaeger durable storage', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }]} title="Core readiness" />
           {status.coreInstalled ? <><Input hint="Type the exact confirmation before removing shared monitoring." label="Remove-core confirmation" onChange={(event) => setCoreConfirmation(event.target.value)} value={coreConfirmation} /><Button disabled={pending || coreConfirmation !== 'REMOVE_OBSERVABILITY_CORE'} loading={pending} onClick={() => void setCore(false)} variant="danger">Remove core monitoring</Button></> : <Button disabled={pending} loading={pending} onClick={() => void setCore(true)} variant="accent">Deploy core monitoring</Button>}
         </Panel>
-        <Panel eyebrow="Explicit cluster-wide collection" title="Docker service logs">
-          <Switch checked={status.logsEnabled} disabled={pending} description={status.logsEnabled ? 'Alloy is collecting Docker JSON logs globally. Turning the switch off opens the confirmation step; the stack is not removed until you confirm it.' : 'Runs Alloy globally to collect Docker JSON logs into Loki. Enabling queues the reviewed global stack.'} onChange={(event) => { if (event.target.checked) void setLogs(true); else setLogRemovalRequested(true) }}>Enable log collection</Switch>
+        <Panel eyebrow="Explicit cluster-wide collection" title="Fluentd log pipeline">
+          <Switch checked={status.logsEnabled} disabled={pending} description={status.logsEnabled ? 'Fluentd is collecting container output and host journals globally. Turning the switch off opens the confirmation step; the stack is not removed until you confirm it.' : 'Runs the reviewed Fluentd forwarder globally with a stateful aggregator and bounded query service.'} onChange={(event) => { if (event.target.checked) void setLogs(true); else setLogRemovalRequested(true) }}>Enable log collection</Switch>
           {status.logsEnabled ? (
             <Rows gap="tight">
               {!logRemovalRequested ? <Button disabled={pending} onClick={() => setLogRemovalRequested(true)} variant="danger">Begin collection removal</Button> : null}
-              {logRemovalRequested ? <Banner title="Confirm global log collector removal" tone="warning">This removes the reviewed global log-collection stack. Existing retained logs follow Loki retention; it does not delete them from the browser.</Banner> : null}
+              {logRemovalRequested ? <Banner title="Confirm global log collector removal" tone="warning">This removes the reviewed Fluentd stack. Its local retained volume is left untouched for explicit operator recovery or separately approved cleanup.</Banner> : null}
               {logRemovalRequested ? <Input hint="Type the exact confirmation before SwarmOps queues the global stack removal." label="Disable confirmation" onChange={(event) => setConfirmation(event.target.value)} value={confirmation} /> : null}
               {logRemovalRequested ? <Inline><Button disabled={pending || confirmation !== 'DISABLE_LOG_COLLECTION'} loading={pending} onClick={() => void setLogs(false)} variant="danger">Disable collection</Button><Button disabled={pending} onClick={() => { setConfirmation(''); setLogRemovalRequested(false) }} variant="ghost">Keep collection enabled</Button></Inline> : null}
             </Rows>
@@ -1526,6 +1904,9 @@ function AuditPage({ events }: { events: AuditEvent[] }) {
 function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: Command[]; onRefresh: () => Promise<void>; servers: Server[]; toast: ReturnType<typeof useToast> }) {
   const [retrying, setRetrying] = useState('')
   const [selectedID, setSelectedID] = useState(() => commands.find((command) => command.state === 'needs_attention')?.id ?? commands[0]?.id ?? '')
+  const [stateFilter, setStateFilter] = useState('all')
+  const [targetFilter, setTargetFilter] = useState('all')
+  const [actionFilter, setActionFilter] = useState('all')
   const retry = async (command: Command) => {
     setRetrying(command.id)
     try {
@@ -1544,6 +1925,10 @@ function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: C
   const running = commands.filter((command) => command.state === 'leased' || command.state === 'preparing' || command.state === 'running').length
   const retryScheduled = commands.filter((command) => command.state === 'retry_scheduled').length
   const completed = commands.filter((command) => command.state === 'succeeded').length
+  const filteredCommands = commands.filter((command) =>
+    (stateFilter === 'all' || command.state === stateFilter)
+    && (targetFilter === 'all' || command.target === targetFilter)
+    && (actionFilter === 'all' || command.action === actionFilter))
   const columns: TableColumn<Command>[] = [
     { header: 'Command', key: 'command', render: (command) => <RecordLink meta={shortID(command.id)} title={command.action} /> },
     { header: 'Target', key: 'target', render: (command) => <Mono>{command.target}</Mono> },
@@ -1597,15 +1982,25 @@ function CommandQueuePage({ commands, onRefresh, servers, toast }: { commands: C
         ) : undefined}
       >
         <Panel caption={`${commands.length} retained command${commands.length === 1 ? '' : 's'}`} flush title="Command ledger">
+          <Toolbar actions={<Button iconStart="refresh" onClick={() => void onRefresh()} size="sm" variant="ghost">Refresh</Button>}>
+            <Select aria-label="Filter commands by state" onChange={(event) => setStateFilter(event.target.value)} options={[{ label: 'State: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.state))).map((state) => ({ label: capitalize(state.replaceAll('_', ' ')), value: state }))]} value={stateFilter} />
+            <Select aria-label="Filter commands by target" onChange={(event) => setTargetFilter(event.target.value)} options={[{ label: 'Target: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.target))).map((target) => ({ label: target, value: target }))]} value={targetFilter} />
+            <Select aria-label="Filter commands by action" onChange={(event) => setActionFilter(event.target.value)} options={[{ label: 'Action: All', value: 'all' }, ...Array.from(new Set(commands.map((command) => command.action))).map((action) => ({ label: action, value: action }))]} value={actionFilter} />
+            <Select aria-label="Filter commands by time" disabled options={[{ label: 'Time: All retained', value: 'all' }]} value="all" />
+          </Toolbar>
           <DataTable
-            caption="SwarmOps command queue"
             columns={columns}
             empty={<EmptyState description="No cluster mutations have been queued yet." icon="clock" title="No commands" />}
             rowKey={(command) => command.id}
-            rows={commands}
+            rows={filteredCommands}
           />
         </Panel>
       </DetailLayout>
+      {selected ? <Panel title="Audit timeline"><ActivityFeed events={[
+        { action: 'requested command', actor: selected.actor, at: selected.createdAt, id: `${selected.id}-requested`, target: selected.target, tone: 'accent' },
+        ...(selected.lastAttemptAt ? [{ action: `attempt ${selected.attempt} started`, at: selected.lastAttemptAt, id: `${selected.id}-attempt`, target: selected.action, tone: 'warning' as const }] : []),
+        { action: `recorded ${selected.state.replaceAll('_', ' ')}`, at: selected.updatedAt, id: `${selected.id}-result`, target: selected.action, tone: selected.state === 'succeeded' ? 'success' : selected.state === 'needs_attention' || selected.state === 'failed' ? 'danger' : 'default' },
+      ]} /></Panel> : null}
       {attention.length > 0 ? <Panel caption="Uncertain outcomes are never replayed blindly" title="Failure evidence"><List plain>{attention.map((command) => <ListRow key={command.id} subtitle={command.lastError ?? 'Inspect the explicit target before retrying.'} title={`${command.action} · ${command.target}`} trailing={<CommandStateBadge state={command.state} />} />)}</List></Panel> : null}
     </Page>
   )
@@ -1632,16 +2027,6 @@ function TaskList({ tasks }: { tasks: Task[] }) {
 
 function DeploymentPlan({ plan }: { plan: ComposePlan }) {
   return <Banner title="Compose policy accepted" tone="success"><strong>{plan.services.join(', ')}</strong> · {shortDigest(plan.digest)}{plan.targetNodeId ? ` · pinned to ${shortID(plan.targetNodeId)}` : ''}{plan.warnings.map((warning) => <StatusDot key={warning} tone="warning">{warning}</StatusDot>)}</Banner>
-}
-
-function Resource({ capacity, capacityOnly = false, detail, label, unit }: { capacity: Capacity; capacityOnly?: boolean; detail?: string; label: string; unit?: string }) {
-  const total = capacity.capacity
-  const percent = capacity.percent || (total > 0 ? (capacity.used / total) * 100 : 0)
-  const tone = percent >= 90 ? 'danger' : percent >= 75 ? 'warning' : 'accent'
-  const value = capacityOnly
-    ? `${formatNumber(total)} ${unit ?? ''}`.trim()
-    : unit ? `${formatNumber(capacity.used)} / ${formatNumber(total)} ${unit}` : `${formatBytes(capacity.used)} / ${formatBytes(total)}`
-  return <ResourceMeter detail={detail} label={label} percent={capacityOnly ? undefined : percent} tone={tone} value={value} />
 }
 
 function StatusBadge({ health, label }: { health: string; label?: string }) {

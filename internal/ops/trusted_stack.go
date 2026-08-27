@@ -14,23 +14,21 @@ import (
 // selected remote manager from interpreting templates using its own shell
 // environment.
 type TrustedStackSettings struct {
-	AgentTokenSecret          string
-	AlertmanagerConfigName    string
-	AlertmanagerImage         string
-	AlloyConfigName           string
-	AlloyImage                string
-	JaegerConfigName          string
-	JaegerImage               string
-	LokiConfigName            string
-	LokiImage                 string
-	NodeExporterImage         string
-	PrometheusConfigName      string
-	PrometheusImage           string
-	PrometheusRetention       string
-	PrometheusRulesConfigName string
-	Registry                  string
-	RegistryNamespace         string
-	Tag                       string
+	AgentTokenSecret           string
+	AlertmanagerConfigName     string
+	AlertmanagerImage          string
+	FluentAggregatorConfigName string
+	FluentForwarderConfigName  string
+	JaegerConfigName           string
+	JaegerImage                string
+	NodeExporterImage          string
+	PrometheusConfigName       string
+	PrometheusImage            string
+	PrometheusRetention        string
+	PrometheusRulesConfigName  string
+	Registry                   string
+	RegistryNamespace          string
+	Tag                        string
 }
 
 var (
@@ -90,10 +88,11 @@ func (s TrustedStackSettings) templateValues(stack string) (map[string]string, e
 			return nil, err
 		}
 		return map[string]string{
-			"${LOKI_IMAGE:-grafana/loki:3.7.4}":                       s.LokiImage,
-			"${ALLOY_IMAGE:-grafana/alloy:v1.18.1}":                   s.AlloyImage,
-			"${SWARMOPS_ALLOY_CONFIG_NAME:-swarmops_alloy_config_v1}": s.AlloyConfigName,
-			"${SWARMOPS_LOKI_CONFIG_NAME:-swarmops_loki_config_v1}":   s.LokiConfigName,
+			"${REGISTRY:-ghcr.io}":    s.Registry,
+			"${REGISTRY_NS:-nimasrn}": s.RegistryNamespace,
+			"${TAG:?set TAG}":         s.Tag,
+			"${SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME:-swarmops_fluentd_aggregator_v1}": s.FluentAggregatorConfigName,
+			"${SWARMOPS_FLUENTD_FORWARDER_CONFIG_NAME:-swarmops_fluentd_forwarder_v1}":   s.FluentForwarderConfigName,
 		}, nil
 	case "swarmops-observability":
 		if err := s.validateObservability(); err != nil {
@@ -128,12 +127,15 @@ func (s TrustedStackSettings) validateAgent() error {
 }
 
 func (s TrustedStackSettings) validateLogs() error {
-	for label, image := range map[string]string{"Alloy image": s.AlloyImage, "Loki image": s.LokiImage} {
+	if !trustedRegistryPattern.MatchString(s.Registry) || !trustedNamespacePattern.MatchString(s.RegistryNamespace) || !trustedTagPattern.MatchString(s.Tag) {
+		return fmt.Errorf("trusted Fluentd image registry, namespace, or tag is invalid")
+	}
+	for _, image := range []string{s.Registry + "/" + s.RegistryNamespace + "/swarmops-fluentd:" + s.Tag, s.Registry + "/" + s.RegistryNamespace + "/swarmops-logs:" + s.Tag} {
 		if err := validateImage(image); err != nil {
-			return fmt.Errorf("%s: %w", label, err)
+			return fmt.Errorf("trusted logs image: %w", err)
 		}
 	}
-	return validateTrustedNames(map[string]string{"Alloy config": s.AlloyConfigName, "Loki config": s.LokiConfigName})
+	return validateTrustedNames(map[string]string{"Fluentd aggregator config": s.FluentAggregatorConfigName, "Fluentd forwarder config": s.FluentForwarderConfigName})
 }
 
 func (s TrustedStackSettings) validateObservability() error {

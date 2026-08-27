@@ -42,7 +42,7 @@ type UpdateStatus struct {
 
 // Diagnostics joins a current authenticated status with bounded safe events
 // and the native updater state. It is intentionally distinct from host or
-// Docker service logs.
+// collected host or service logs.
 type Diagnostics struct {
 	Events []DiagnosticEvent `json:"events"`
 	Status Status            `json:"status"`

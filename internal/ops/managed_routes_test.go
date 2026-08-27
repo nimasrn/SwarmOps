@@ -55,3 +55,21 @@ networks:
 		t.Fatalf("dedicated route network missing from rendered template:\n%s", rendered)
 	}
 }
+
+func TestLogsRoutesArePrivateAndSeparated(t *testing.T) {
+	routes, err := trustedStackRouteTemplates("swarmops-logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forward := routes["aggregator"]
+	query := routes["query"]
+	if forward.Scope != RouteInternal || forward.Protocol != RouteTCP || forward.ListenPort != 10024 || forward.TargetPort != 24224 {
+		t.Fatalf("unexpected Fluentd forward route: %#v", forward)
+	}
+	if query.Scope != RouteInternal || query.Protocol != RouteHTTP || query.TargetPort != 8085 || query.Health.Path != "/healthz" {
+		t.Fatalf("unexpected log query route: %#v", query)
+	}
+	if forward.ServiceKey == query.ServiceKey || forward.Key == query.Key {
+		t.Fatalf("collector and query routes are not isolated: %#v %#v", forward, query)
+	}
+}

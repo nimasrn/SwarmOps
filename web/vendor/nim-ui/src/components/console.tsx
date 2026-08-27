@@ -250,7 +250,7 @@ export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
   /** The count at full width. It steps down on its own below that — the grid
       is a container query, so a row of tiles inside a narrow panel wraps like
       a row of tiles on a narrow screen. */
-  columns?: 2 | 3 | 4 | 5
+  columns?: 2 | 3 | 4 | 5 | 6
 }
 
 export function MetricGrid({ children, className, columns = 4, dense = false, ...props }: MetricGridProps) {
@@ -302,7 +302,7 @@ export function Facts({ className, columns = 2, items, ...props }: FactsProps) {
   )
 }
 
-export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'quarters' | 'thirds'
+export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'one-third' | 'quarters' | 'thirds' | 'two-fifths' | 'two-thirds'
 
 export interface ColumnsProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
@@ -316,6 +316,26 @@ export function Columns({ children, className, template = 'halves', ...props }: 
     <div className={cn('nim-columns', className)} data-template={template} {...props}>
       {children}
     </div>
+  )
+}
+
+export interface StatusHeroProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  description?: ReactNode
+  icon: IconName
+  title: ReactNode
+  tone?: StatusTone
+}
+
+/** A large first-glance health statement for a control-room overview. */
+export function StatusHero({ className, description, icon, title, tone = 'neutral', ...props }: StatusHeroProps) {
+  return (
+    <section className={cn('nim-status-hero', className)} data-tone={tone} {...props}>
+      <span className="nim-status-hero__mark"><Icon name={icon} size="xl" /></span>
+      <div className="nim-status-hero__copy">
+        <strong className="nim-status-hero__title">{title}</strong>
+        {description ? <p className="nim-status-hero__description">{description}</p> : null}
+      </div>
+    </section>
   )
 }
 

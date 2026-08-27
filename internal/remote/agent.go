@@ -134,6 +134,17 @@ func (r *AgentRunner) TraefikLogs(ctx context.Context, input agentcontrol.Traefi
 	return output, err
 }
 
+func (r *AgentRunner) Logs(ctx context.Context, input agentcontrol.LogQuery) (agentcontrol.LogPage, error) {
+	var output agentcontrol.LogPage
+	err := r.client.postTyped(ctx, "/v1/logs/query", input, &output)
+	return output, err
+}
+func (r *AgentRunner) LogsStatus(ctx context.Context) (agentcontrol.LogStatus, error) {
+	var output agentcontrol.LogStatus
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/logs/status", nil, &output)
+	return output, err
+}
+
 func (r *AgentRunner) PrometheusTraefik(ctx context.Context) (agentcontrol.PrometheusSnapshot, error) {
 	var output agentcontrol.PrometheusSnapshot
 	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/traefik/prometheus", nil, &output)

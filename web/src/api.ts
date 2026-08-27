@@ -31,8 +31,8 @@ import type {
   Overview,
   Service,
   Server,
+  ServerCredentials,
   ServerInput,
-  ServerReconnectInput,
   ServerReadiness,
   ServerReadinessRequest,
   Session,
@@ -63,6 +63,8 @@ import type {
   ServiceRouteRole,
   TraefikLogRecord,
   TraefikSettings,
+  LogPage,
+  LogStatus,
 } from './types'
 
 export class APIError extends Error {
@@ -161,7 +163,7 @@ export class SwarmOpsAPI {
     })
   }
 
-  connectServer(id: string, credentials: ServerReconnectInput) {
+  connectServer(id: string, credentials: ServerCredentials) {
     return this.request<Server>(`/api/v1/servers/${encodeURIComponent(id)}/connect`, {
       method: 'POST',
       body: JSON.stringify(credentials),
@@ -501,6 +503,14 @@ export class SwarmOpsAPI {
   }
 
   traefikPrometheus() { return this.request<PrometheusStatus>('/api/v1/traefik/prometheus') }
+
+  logs(input: { from?: string; to?: string; level?: string; sourceKind?: string; node?: string; stack?: string; service?: string; container?: string; unit?: string; search?: string; limit?: number; cursor?: string } = {}) {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(input)) if (value !== undefined && value !== '') query.set(key, String(value))
+    return this.request<LogPage>(`/api/v1/logs?${query}`)
+  }
+
+  logsStatus() { return this.request<LogStatus>('/api/v1/logs/status') }
   traefikCutoverPlan() { return this.request<CutoverPlan>('/api/v1/traefik/cutover/plan') }
   applyTraefikCutover(confirmation: string) {
     return this.commandRequest<Command>('/api/v1/traefik/cutover', { method: 'POST', body: JSON.stringify({ confirmation }) })
