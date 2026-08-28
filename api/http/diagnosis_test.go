@@ -1,8 +1,15 @@
 package apihttp
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/nimasrn/SwarmOps/internal/auth"
+	"github.com/nimasrn/SwarmOps/internal/k8simport"
 
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
@@ -72,4 +79,54 @@ func TestNoProbesAtAllFallsBackToTheClusterRead(t *testing.T) {
 	if got := oldestProbe(nil, base); !got.Equal(base) {
 		t.Fatalf("want the fallback, got %v", got)
 	}
+}
+
+// The importer's handler needs no cluster, so unlike the other two it can be
+// executed here rather than only reasoned about. It covers the parts a unit
+// test of the parser cannot: the body limit, the empty body, and that the
+// endpoint stays a read.
+func TestKubernetesImportHandler(t *testing.T) {
+	server := &Server{}
+
+	t.Run("reads manifests and reports both halves", func(t *testing.T) {
+		manifests := "kind: Deployment\nmetadata:\n  name: api\nspec:\n  replicas: 2\n  template:\n    spec:\n      containers:\n        - name: a\n          image: a:1\n---\nkind: HorizontalPodAutoscaler\nmetadata:\n  name: api\n"
+		response := httptest.NewRecorder()
+		server.k8sImport(response, httptest.NewRequest("POST", "/api/v1/import/kubernetes", strings.NewReader(manifests)), auth.Claims{})
+		if response.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", response.Code, response.Body.String())
+		}
+		var report k8simport.Report
+		if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Mappings) != 1 || len(report.Gaps) != 1 {
+			t.Fatalf("want one of each, got %d mappings and %d gaps", len(report.Mappings), len(report.Gaps))
+		}
+		if report.Compose == "" {
+			t.Fatal("a mapped workload must produce a stack to review")
+		}
+	})
+
+	t.Run("an empty body is refused rather than reported as nothing to do", func(t *testing.T) {
+		response := httptest.NewRecorder()
+		server.k8sImport(response, httptest.NewRequest("POST", "/api/v1/import/kubernetes", strings.NewReader("")), auth.Claims{})
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status %d", response.Code)
+		}
+	})
+
+	// An oversized paste is truncated by the limit reader rather than read into
+	// memory. Truncation makes the YAML invalid, which must surface as a parse
+	// error in the report rather than as a silent partial success.
+	t.Run("an oversized body cannot exhaust memory", func(t *testing.T) {
+		huge := "kind: ConfigMap\nmetadata:\n  name: " + strings.Repeat("x", maxManifestBytes+4096) + "\n"
+		response := httptest.NewRecorder()
+		server.k8sImport(response, httptest.NewRequest("POST", "/api/v1/import/kubernetes", strings.NewReader(huge)), auth.Claims{})
+		if response.Code != http.StatusOK && response.Code != http.StatusBadRequest {
+			t.Fatalf("status %d", response.Code)
+		}
+		if response.Body.Len() > maxManifestBytes {
+			t.Fatal("the response echoed more than the limit")
+		}
+	})
 }

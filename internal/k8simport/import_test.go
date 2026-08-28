@@ -150,3 +150,19 @@ func TestMalformedYAMLIsReportedNotSwallowed(t *testing.T) {
 		t.Fatal("a report with parse errors is not safe")
 	}
 }
+
+// An object name longer than Kubernetes permits is invalid input, and echoing
+// it verbatim would let a large paste produce a large response — the request
+// limit bounds what is read, not what is returned.
+func TestOversizedNameIsBounded(t *testing.T) {
+	got, _ := ParseString("kind: ConfigMap\nmetadata:\n  name: " + strings.Repeat("x", 5000) + "\n")
+	if len(got.Mappings) != 1 {
+		t.Fatalf("want one mapping, got %+v", got)
+	}
+	if len(got.Mappings[0].From) > 400 {
+		t.Fatalf("the name was echoed unbounded: %d chars", len(got.Mappings[0].From))
+	}
+	if !strings.Contains(got.Mappings[0].From, "truncated") {
+		t.Fatal("truncation must be visible, not silent")
+	}
+}

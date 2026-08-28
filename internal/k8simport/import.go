@@ -85,11 +85,12 @@ func Parse(r io.Reader) (Report, error) {
 		if doc.Kind == "" {
 			continue
 		}
-		name := doc.Metadata.Name
-		if name == "" {
-			name = "unnamed"
-		}
-		ref := doc.Kind + "/" + name
+		// A Kubernetes name is at most 253 characters by spec, so anything
+		// longer is invalid input. Bound it before it reaches the report:
+		// otherwise a large paste is echoed back verbatim, and the request
+		// limit bounds what is read without bounding what is returned.
+		name := boundedName(doc.Metadata.Name)
+		ref := boundedName(doc.Kind) + "/" + name
 
 		switch doc.Kind {
 		case "Deployment", "StatefulSet", "DaemonSet":
@@ -139,6 +140,20 @@ func Parse(r io.Reader) (Report, error) {
 		report.Compose = renderCompose(services)
 	}
 	return report, nil
+}
+
+// maxNameLength is the Kubernetes limit for an object name.
+const maxNameLength = 253
+
+func boundedName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unnamed"
+	}
+	if len(value) > maxNameLength {
+		return value[:maxNameLength] + "…(truncated)"
+	}
+	return value
 }
 
 // ParseString is Parse over a string, which is how the console calls it.
