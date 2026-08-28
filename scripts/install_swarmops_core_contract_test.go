@@ -32,6 +32,7 @@ func TestCoreInstallerReportsProgressAndPrintsTheProductionUsername(t *testing.T
 		`--allow-cidr must not permit every address; use a specific trusted operator network`,
 		`0.0.0.0/32 permits only the unspecified address; use a specific trusted IPv4 network`,
 		`Change operator access later with: sudo swarmops-core access set-cidrs <CIDR> [CIDR...]`,
+		`OnActiveSec=15m`,
 		"Waiting for the local Core readiness check.",
 		"failed during $bootstrap_phase (exit $status); no URL or credentials were printed.",
 		"SWARMOPS_ADMIN_USERNAME=operator",

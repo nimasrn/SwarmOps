@@ -11,6 +11,15 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.5 — 2026-08-28
+
+This patch makes automatic Core updates schedule correctly even when the
+Warden timer is installed or enabled long after the host booted.
+
+- **Reliable timer activation** — the Core Warden uses `OnActiveSec=15m`
+  followed by its 12-hour interval, so enabling the timer always produces a
+  future trigger instead of an already-elapsed unit with no next run.
+
 ## 0.7.4 — 2026-08-28
 
 This patch completes the native update path for outbound machine agents.

@@ -620,7 +620,7 @@ write_warden_service() {
       'Description=Check for a SwarmOps Core release every 12 hours' \
       '' \
       '[Timer]' \
-      'OnBootSec=15m' \
+      'OnActiveSec=15m' \
       'OnUnitActiveSec=12h' \
       'Persistent=true' \
       "Unit=$warden_service_name" \
