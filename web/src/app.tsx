@@ -45,6 +45,7 @@ import {
   useToast,
 } from '@nim.zone/ui'
 import type { BadgeVariant, TableColumn } from '@nim.zone/ui'
+import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 import { APIError, api } from './api'
 import { OverviewDashboard } from './dashboard'
 import { Brand, SwarmOpsMark } from './brand'
@@ -1331,6 +1332,14 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
   const [replicas, setReplicas] = useState(String(services[0]?.desiredTasks ?? 0))
   const [scaleError, setScaleError] = useState('')
   const selected = services.find((service) => service.id === selectedID) ?? services[0]
+  // A degraded service is the only reason anyone opens this page in a hurry, so
+  // the diagnosis is fetched for the selected service rather than hidden behind
+  // a button — the question "why" is already the reason they are here.
+  const degraded = selected ? selected.runningTasks < selected.desiredTasks : false
+  const diagnosis = useServiceDiagnosis(
+    degraded && selected ? selected.id : null,
+    (id) => api.serviceDiagnosis(id),
+  )
 
   useEffect(() => {
     if (selected) setReplicas(String(selected.desiredTasks))
@@ -1371,6 +1380,13 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
     <Page>
       <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Long-running processes scheduled by Docker Swarm. Compose and standalone containers are listed under Cluster → Docker resources. Restarts and rollbacks use fixed audited command shapes." title="Swarm services" />
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
+      {degraded && diagnosis.result ? (
+        <ServiceDiagnosis
+          onAction={(kind) => toast({ message: `The chain names "${kind}" as the fix, but the console does not run it yet.`, tone: 'neutral' })}
+          result={diagnosis.result}
+          serviceName={selected.name}
+        />
+      ) : null}
       <Columns>
         <Panel eyebrow={selected.stack ?? 'No stack label'} title={selected.name}>
           <Facts items={[{ label: 'Image', mono: true, value: selected.image ?? '—' }, { label: 'Desired tasks', value: String(selected.desiredTasks) }, { label: 'Running tasks', value: String(selected.runningTasks) }, { label: 'Last updated', value: formatDateTime(selected.updatedAt) }]} />
