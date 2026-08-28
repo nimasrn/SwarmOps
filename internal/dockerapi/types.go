@@ -85,6 +85,21 @@ type Service struct {
 				Constraints []string `json:"Constraints"`
 			} `json:"Placement"`
 		} `json:"TaskTemplate"`
+		// UpdateConfig and RollbackConfig are what Swarm will ACTUALLY do on a
+		// change. A preview that describes a rollout policy without reading
+		// them is describing a policy the cluster has not agreed to.
+		UpdateConfig *struct {
+			Parallelism   uint64  `json:"Parallelism"`
+			Delay         int64   `json:"Delay"`
+			FailureAction string  `json:"FailureAction"`
+			Monitor       int64   `json:"Monitor"`
+			Order         string  `json:"Order"`
+			MaxFailRatio  float64 `json:"MaxFailureRatio"`
+		} `json:"UpdateConfig"`
+		RollbackConfig *struct {
+			Parallelism uint64 `json:"Parallelism"`
+			Order       string `json:"Order"`
+		} `json:"RollbackConfig"`
 	} `json:"Spec"`
 	UpdateStatus *struct {
 		Message string `json:"Message"`

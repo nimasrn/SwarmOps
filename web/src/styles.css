@@ -107,3 +107,65 @@ body {
   font-size: var(--nim-text-11);
   color: var(--nim-ink-tertiary);
 }
+
+/* Change preview. The grid and the step list are the only two arrangements the
+   kit has no component for yet; if either grows a variant it has become one. */
+.swarmops-preview__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--nim-space-3);
+}
+
+.swarmops-preview__cell {
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+  padding: var(--nim-space-3) var(--nim-space-4);
+  background: var(--nim-surface);
+}
+
+/* Only a consequence that should reassure gets colour. If every cell were
+   toned, none of them would carry meaning. */
+.swarmops-preview__cell[data-tone='good'] {
+  border-color: var(--nim-success);
+  background: var(--nim-success-soft);
+}
+
+.swarmops-preview__cell[data-tone='caution'] {
+  border-color: var(--nim-warning);
+  background: var(--nim-warning-soft);
+}
+
+.swarmops-preview__value {
+  margin: var(--nim-space-1) 0;
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-20);
+  font-variant-numeric: var(--nim-font-numeric);
+  color: var(--nim-ink);
+}
+
+.swarmops-preview__steps {
+  margin: var(--nim-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.swarmops-preview__steps li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  gap: var(--nim-space-3);
+  align-items: baseline;
+  padding-block: var(--nim-space-3);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  counter-increment: step;
+}
+
+.swarmops-preview__steps li::before {
+  content: counter(step, decimal-leading-zero);
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-tertiary);
+}
+
+.swarmops-preview__step-title { font-size: var(--nim-text-13); color: var(--nim-ink); }
+.swarmops-preview__step-detail { display: block; font-size: var(--nim-text-12); color: var(--nim-ink-tertiary); }

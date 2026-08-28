@@ -1093,3 +1093,32 @@ export interface ImportReport {
   errors?: string[]
   compose?: string
 }
+
+export interface PreviewStep {
+  title: string
+  detail?: string
+  mark?: string
+}
+
+/** One blast-radius figure. `tone: "good"` is reserved for a consequence that
+ *  should reassure — zero interruptions, chiefly — and has to be earned. */
+export interface PreviewConsequence {
+  label: string
+  value: string
+  note?: string
+  tone?: 'caution' | 'good' | 'neutral'
+}
+
+export interface ChangePreview {
+  service: string
+  from?: string
+  to?: string
+  consequences: PreviewConsequence[]
+  steps: PreviewStep[]
+  /** What happens when a step fails, read from the service's own failure
+   *  action rather than assumed. */
+  rollback: string
+  /** Never empty: whether a new image starts cleanly is only knowable by
+   *  running it. A preview that promises everything is lying. */
+  unknowns: string[]
+}

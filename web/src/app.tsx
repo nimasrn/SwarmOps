@@ -49,6 +49,7 @@ import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 import { APIError, api } from './api'
 import { OverviewDashboard } from './dashboard'
 import { Brand, SwarmOpsMark } from './brand'
+import { ChangePreviewPanel } from './change-preview'
 import { KubernetesImportPage } from './kubernetes-import'
 import { SourceDeployPage } from './source-deploy'
 import { ServerReadinessPage } from './server-readiness'
@@ -1410,6 +1411,7 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
             {scaleError ? <Banner tone="warning">{scaleError}</Banner> : null}
           </Rows>
         </Panel>
+        <ChangePreviewPanel currentImage={selected.image} serviceID={selected.id} />
         <Panel eyebrow="Last 200 lines" title="Service logs">
           {logsError ? <Banner tone="danger">{logsError}</Banner> : null}
           {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Select a service name or use Read logs to fetch an on-demand, bounded log tail." icon="document" title="Logs are not loaded" />}

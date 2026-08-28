@@ -1,4 +1,5 @@
 import type {
+  ChangePreview,
   DiagnosisResult,
   ImportReport,
 	AgentEnrollmentToken,
@@ -198,6 +199,13 @@ export class SwarmOpsAPI {
 	  method: 'POST',
 	  body: manifests,
 	  headers: { 'Content-Type': 'application/yaml' },
+	})
+  }
+
+  changePreview(id: string, image: string) {
+	return this.request<ChangePreview>(`/api/v1/services/${encodeURIComponent(id)}/change-preview`, {
+	  method: 'POST',
+	  body: JSON.stringify({ image }),
 	})
   }
 
