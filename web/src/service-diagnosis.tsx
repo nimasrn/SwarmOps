@@ -5,6 +5,7 @@ import {
   Button,
   CausalChain,
   Caveat,
+  EvidenceTrail,
   EmptyState,
   Mono,
   Panel,
@@ -164,14 +165,13 @@ export function ServiceDiagnosis({
             <section>
               <p className="swarmops-diagnosis__rail-head">Evidence trail</p>
               <Body size="sm">Every measurement this chain used, with when it was taken.</Body>
-              <dl className="swarmops-diagnosis__trail">
-                {chain.evidence.map((item, index) => (
-                  <div key={`${item.source}-${index}`}>
-                    <dt>{item.label}<span>{item.source}</span></dt>
-                    <dd><Mono>{age(item.observedAt)}</Mono></dd>
-                  </div>
-                ))}
-              </dl>
+              <EvidenceTrail
+                entries={chain.evidence.map((item) => ({
+                  age: age(item.observedAt),
+                  label: item.label,
+                  source: item.source,
+                }))}
+              />
             </section>
           ) : null}
         </aside>

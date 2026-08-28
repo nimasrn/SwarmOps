@@ -7,6 +7,8 @@ import {
   Diff,
   Input,
   Label,
+  Metric,
+  MetricGrid,
   Mono,
   Panel,
   Stack as Rows,
@@ -18,17 +20,10 @@ function messageOf(reason: unknown): string {
   return reason instanceof Error ? reason.message : 'Could not compute the preview'
 }
 
-/** A consequence card. `good` earns the accent; everything else stays quiet so
- *  the one figure that should reassure is the one that does. */
-function Consequence({ item }: { item: PreviewConsequence }) {
-  return (
-    <div className="swarmops-preview__cell" data-tone={item.tone ?? 'neutral'}>
-      <Label as="p">{item.label}</Label>
-      <p className="swarmops-preview__value">{item.value}</p>
-      {item.note ? <Body size="sm">{item.note}</Body> : null}
-    </div>
-  )
-}
+/** The preview's tones name what a figure MEANS; the kit's name how it should
+ *  read. "good" is reserved for the figure that should reassure, which is
+ *  success in the kit's vocabulary. */
+const metricTone = { caution: 'warning', good: 'success', neutral: 'neutral' } as const
 
 export function ChangePreviewPanel({
   currentImage,
@@ -81,9 +76,17 @@ export function ChangePreviewPanel({
 
         {preview ? (
           <>
-            <div className="swarmops-preview__grid">
-              {preview.consequences.map((item) => <Consequence item={item} key={item.label} />)}
-            </div>
+            <MetricGrid aria-label="What this change touches" columns={4}>
+              {preview.consequences.map((item: PreviewConsequence) => (
+                <Metric
+                  hint={item.note}
+                  key={item.label}
+                  label={item.label}
+                  tone={metricTone[item.tone ?? 'neutral']}
+                  value={item.value}
+                />
+              ))}
+            </MetricGrid>
 
             <div>
               <Label as="p">The sequence, in the order Swarm will perform it</Label>

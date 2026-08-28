@@ -1,4 +1,4 @@
-import { Body, Button, Caveat, Mono, Panel } from '@nim.zone/ui'
+import { Body, Button, Caveat, EvidenceLedger as Ledger, Panel } from '@nim.zone/ui'
 import type { Node, ObservabilityStatus, Overview, TraefikStatus } from './types'
 
 /** One row of either column.
@@ -122,37 +122,11 @@ export function EvidenceLedger({
         description="Everything on the left is measured, with the thing that produced it named. Everything on the right is not yet evidence — shown so the gap is visible, never averaged into the figures beside it."
         title="Cluster state"
       >
-        <div className="swarmops-ledger">
-          <section className="swarmops-ledger__col" data-kind="measured">
-            <header>
-              <span>Measured</span>
-              <Mono>{probes.healthy}/{probes.total} probes healthy</Mono>
-            </header>
-            <dl>
-              {measured.map((row) => (
-                <div key={row.label}>
-                  <dt>{row.label}<span>{row.source}</span></dt>
-                  <dd><Mono>{row.value}</Mono></dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-
-          <section className="swarmops-ledger__col" data-kind="absent">
-            <header>
-              <span>Not evidence</span>
-              <Mono>excluded from every figure</Mono>
-            </header>
-            <dl>
-              {absent.map((row) => (
-                <div key={row.label}>
-                  <dt>{row.label}<span>{row.why}</span></dt>
-                  <dd><Mono>{row.value}</Mono></dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        </div>
+        <Ledger
+          absent={absent.map((row) => ({ label: row.label, value: row.value, why: row.why }))}
+          coverage={`${probes.healthy}/${probes.total} probes healthy`}
+          measured={measured.map((row) => ({ label: row.label, source: row.source, value: row.value }))}
+        />
       </Panel>
 
       {closers.length ? (

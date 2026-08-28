@@ -110,38 +110,9 @@ body {
 
 /* Change preview. The grid and the step list are the only two arrangements the
    kit has no component for yet; if either grows a variant it has become one. */
-.swarmops-preview__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--nim-space-3);
-}
-
-.swarmops-preview__cell {
-  border: var(--nim-border-width) solid var(--nim-line);
-  border-radius: var(--nim-radius-lg);
-  padding: var(--nim-space-3) var(--nim-space-4);
-  background: var(--nim-surface);
-}
 
 /* Only a consequence that should reassure gets colour. If every cell were
    toned, none of them would carry meaning. */
-.swarmops-preview__cell[data-tone='good'] {
-  border-color: var(--nim-success);
-  background: var(--nim-success-soft);
-}
-
-.swarmops-preview__cell[data-tone='caution'] {
-  border-color: var(--nim-warning);
-  background: var(--nim-warning-soft);
-}
-
-.swarmops-preview__value {
-  margin: var(--nim-space-1) 0;
-  font-family: var(--nim-font-mono);
-  font-size: var(--nim-text-20);
-  font-variant-numeric: var(--nim-font-numeric);
-  color: var(--nim-ink);
-}
 
 .swarmops-preview__steps {
   margin: var(--nim-space-2) 0 0;
@@ -191,111 +162,8 @@ body {
   color: var(--nim-ink-secondary);
 }
 
-/* The evidence ledger. Two columns whose asymmetry is the message: on a fresh
-   install the right one is longer, and that is the honest first impression of
-   a cluster nobody has instrumented. */
-.swarmops-ledger {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--nim-space-4);
-  align-items: start;
-}
-
-.swarmops-ledger__col {
-  border: var(--nim-border-width) solid var(--nim-line);
-  border-radius: var(--nim-radius-lg);
-  overflow: hidden;
-}
-
-.swarmops-ledger__col > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--nim-space-3);
-  padding: var(--nim-space-3) var(--nim-space-4);
-  border-block-end: var(--nim-border-width) solid var(--nim-line);
-  font-size: var(--nim-text-13);
-  font-weight: var(--nim-weight-semibold);
-}
-
-.swarmops-ledger__col[data-kind='measured'] {
-  border-color: var(--nim-accent-line);
-}
-
-.swarmops-ledger__col[data-kind='measured'] > header {
-  background: var(--nim-accent-soft);
-  border-block-end-color: var(--nim-accent-line);
-  color: var(--nim-accent-strong);
-}
-
-.swarmops-ledger__col[data-kind='absent'] > header {
-  background: var(--nim-surface-muted);
-  color: var(--nim-ink-secondary);
-}
-
 /* Hatched, for the same reason Caveat is: the absence has to survive
    greyscale, print, and a screenshot in an incident channel. */
-.swarmops-ledger__col[data-kind='absent'] dl {
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--nim-line-soft) 0 1px,
-    transparent 1px 7px
-  );
-}
-
-.swarmops-ledger__col dl { margin: 0; }
-
-.swarmops-ledger__col dl > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--nim-space-4);
-  padding: var(--nim-space-3) var(--nim-space-4);
-  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
-}
-
-.swarmops-ledger__col dl > div:last-child { border-block-end: 0; }
-
-.swarmops-ledger__col dt {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--nim-text-13);
-  color: var(--nim-ink);
-}
-
-.swarmops-ledger__col dt > span {
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-tertiary);
-}
-
-.swarmops-ledger__col dd {
-  margin: 0;
-  font-size: var(--nim-text-13);
-  font-weight: var(--nim-weight-medium);
-  white-space: nowrap;
-}
-
-.swarmops-ledger__col[data-kind='absent'] dd { color: var(--nim-ink-tertiary); }
-
-.swarmops-ledger__closers {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--nim-space-4);
-}
-
-.swarmops-ledger__closers > div {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--nim-space-2);
-}
-
-.swarmops-ledger__closer-title {
-  margin: 0;
-  font-size: var(--nim-text-13);
-  font-weight: var(--nim-weight-semibold);
-}
 
 /* The decide row. Discard is not destructive — it clears a computed preview,
    nothing more — so it takes the quiet variant and Apply carries the accent. */
@@ -375,37 +243,6 @@ body {
 /* The last step is the one that costs judgement rather than a query, so it is
    the one that should catch the eye. */
 .swarmops-diagnosis__commands li:last-child { color: var(--nim-danger); }
-
-.swarmops-diagnosis__trail { margin: var(--nim-space-2) 0 0; }
-
-.swarmops-diagnosis__trail > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--nim-space-3);
-  padding-block: var(--nim-space-2);
-  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
-}
-
-.swarmops-diagnosis__trail dt {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: var(--nim-text-12);
-}
-
-.swarmops-diagnosis__trail dt > span {
-  font-family: var(--nim-font-mono);
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-tertiary);
-}
-
-.swarmops-diagnosis__trail dd {
-  margin: 0;
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-tertiary);
-  white-space: nowrap;
-}
 
 @media (max-width: 1080px) {
   .swarmops-diagnosis__layout { grid-template-columns: minmax(0, 1fr); }
