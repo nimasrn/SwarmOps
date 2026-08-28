@@ -63,6 +63,7 @@ import type {
   ServiceRouteRole,
   TraefikLogRecord,
   TraefikInstallPreflight,
+	TraefikPrerequisiteRepairResponse,
   TraefikSettings,
   LogPage,
   LogStatus,
@@ -435,6 +436,10 @@ export class SwarmOpsAPI {
   }
 
   traefikPreflight() { return this.request<TraefikInstallPreflight>('/api/v1/traefik/preflight') }
+
+	repairTraefikPrerequisites() {
+		return this.commandRequest<TraefikPrerequisiteRepairResponse>('/api/v1/traefik/prerequisites/repair', { method: 'POST' })
+	}
 
   traefikRoutingState(refresh = false) {
     return this.request<RoutingState>(`/api/v1/traefik/state?refresh=${String(refresh)}`)

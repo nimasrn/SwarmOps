@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -276,7 +277,11 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	}
 
 	networkReady := false
+	networkNameTaken := false
 	for _, network := range networks {
+		if network.Name == "traefik" {
+			networkNameTaken = true
+		}
 		_, encrypted := network.Options["encrypted"]
 		if network.Name == "traefik" && network.Driver == "overlay" && network.Scope == "swarm" && network.Attachable && encrypted {
 			networkReady = true
@@ -285,6 +290,7 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	}
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
 		Detail:   choose(networkReady, "External attachable Swarm overlay traefik is ready.", "No compatible external traefik overlay network exists."),
+		Fixable:  !networkReady && !networkNameTaken,
 		ID:       "edge-network",
 		Label:    "External traefik network",
 		Recovery: choose(networkReady, "", "Create an attachable encrypted overlay named traefik in Docker resources."),
@@ -293,7 +299,11 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	})
 
 	edgeReady := false
+	edgeCandidate := false
 	for _, node := range nodes {
+		if node.Spec.Role == "manager" && node.Spec.Availability == "active" && node.Status.State == "ready" {
+			edgeCandidate = true
+		}
 		if node.Spec.Role == "manager" && node.Spec.Availability == "active" && node.Status.State == "ready" && node.Spec.Labels["nim.edge"] == "true" {
 			edgeReady = true
 			break
@@ -301,6 +311,7 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	}
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
 		Detail:   choose(edgeReady, "A ready active manager has nim.edge=true.", "No ready active manager has nim.edge=true, so the singleton has nowhere to run."),
+		Fixable:  !edgeReady && edgeCandidate,
 		ID:       "edge-placement",
 		Label:    "Edge manager placement",
 		Recovery: choose(edgeReady, "", "Open Swarm & placement and set nim.edge=true on the reviewed manager."),
@@ -313,8 +324,15 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 		configNames[config.Spec.Name] = true
 	}
 	dynamicReady := configNames[settings.DynamicConfigName]
+	dynamicAssetReady := false
+	if !dynamicReady && regexp.MustCompile(`^nim_traefik_dynamic_v[1-9][0-9]*$`).MatchString(settings.DynamicConfigName) {
+		if data, readErr := os.ReadFile(c.TraefikDynamicConfigFile); readErr == nil && len(data) > 0 && len(data) <= 64<<10 && !strings.ContainsRune(string(data), 0) {
+			dynamicAssetReady = true
+		}
+	}
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
 		Detail:   choose(dynamicReady, "The reviewed dynamic file-provider config is present.", "The reviewed Traefik dynamic config is missing."),
+		Fixable:  !dynamicReady && dynamicAssetReady,
 		ID:       "dynamic-config",
 		Label:    "Dynamic Traefik config",
 		Recovery: choose(dynamicReady, "", "Create the reviewed dynamic config before installing Traefik."),
@@ -332,6 +350,7 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	dashboardReady := secretNames[settings.DashboardAuthSecret]
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
 		Detail:   choose(dashboardReady, "The dashboard-auth secret is present.", "The dashboard is protected by a required htpasswd secret, which is missing."),
+		Fixable:  !dashboardReady && regexp.MustCompile(`^traefik_dashboard_auth_v[1-9][0-9]*$`).MatchString(settings.DashboardAuthSecret),
 		ID:       "dashboard-auth",
 		Label:    "Dashboard authentication",
 		Recovery: choose(dashboardReady, "", "Create the configured Traefik dashboard-auth Swarm secret."),
@@ -375,7 +394,29 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 		Detail: choose(emailReady, "A valid ACME contact email is configured.", "A valid ACME contact email is required for certificate issuance."),
 		ID:     "acme-email", Label: "ACME contact email", Recovery: choose(emailReady, "", "Enter the email under static settings and apply it."), Required: true, State: choose(emailReady, "ready", "blocked"),
 	})
+	FinalizeTraefikInstallPreflight(&preflight)
 	return preflight, nil
+}
+
+// FinalizeTraefikInstallPreflight recomputes the aggregate flags after Core
+// or an API boundary appends capability checks to the controller-owned list.
+func FinalizeTraefikInstallPreflight(preflight *TraefikInstallPreflight) {
+	preflight.Ready = true
+	blocked := false
+	preflight.Repairable = true
+	for _, check := range preflight.Checks {
+		if !check.Required || check.State != "blocked" {
+			continue
+		}
+		blocked = true
+		preflight.Ready = false
+		if !check.Fixable {
+			preflight.Repairable = false
+		}
+	}
+	if !blocked {
+		preflight.Repairable = false
+	}
 }
 
 func appendTraefikCheck(preflight *TraefikInstallPreflight, check TraefikInstallCheck) {

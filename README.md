@@ -304,7 +304,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.9.2`. Release history is in
+The current version is `0.9.3`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -871,14 +871,14 @@ replica profiles are considered protected.
 
 ## DNS, certificates, registry, and cache
 
-Traefik has three reviewed resolver names: `le` (Cloudflare DNS), `arvan`
-(ArvanCloud DNS), and `http` (HTTP-01 on public port 80). Each DNS resolver
-uses one provider; use a CNAME delegation when a domain needs validation in a
-different DNS authority. The platform phase requires both
-`traefik_cf_dns_token_v1` and `traefik_arvan_api_key_v1` to exist as versioned
-external secrets, plus dashboard credentials. The HTTP resolver remains
-appropriate only when the declared public ingress is really reachable on port
-80.
+Traefik has three reviewed resolver names: `le`, `arvan`, and `http`. `le` uses
+Cloudflare DNS-01 when its versioned credential exists, and `arvan` does the
+same for ArvanCloud. A resolver whose usable DNS credential is absent is
+rendered as HTTP-01 on public port 80 instead, so neither DNS provider secret
+is an installation prerequisite. Wildcard certificates still require DNS-01;
+their preflight remains blocked until the selected resolver has a credential.
+The dashboard-auth secret remains required because the dashboard is never
+published without authentication.
 
 The preflight manifest accepts GHCR or a private registry and names the
 versioned private-registry auth secret when needed. SwarmOps' own image build
@@ -904,10 +904,11 @@ the GUI machine.
    be operated. Sign in through the active API, install the native Ubuntu agent
    on each selected host through either certificate flow, and wait for its
    outbound health report. Select the target only after it is a Swarm manager.
-2. Form the Swarm with typed init/join/manager-promotion operations and create
-   the encrypted `traefik` overlay if the target cluster is not already formed.
-   One manager is allowed and shown as non-resilient; three managers are the
-   recommended target.
+2. Form the Swarm with typed init/join/manager-promotion operations. In
+   **Traffic → Gateway & ports**, the **Fix all prerequisites** action can
+   create the encrypted `traefik` overlay and set `nim.edge=true` on the
+   deterministic ready manager. One manager is allowed and shown as
+   non-resilient; three managers are the recommended target.
 3. Build and push the immutable API and agent images through the root Makefile.
 4. Create the versioned external secrets from permission-restricted files
    outside this repository. The API needs a bcrypt hash (not a cleartext
@@ -917,9 +918,12 @@ the GUI machine.
    That JSON is sent over the encrypted Docker API stream for the build and
    never reaches the browser. Remote Swarm nodes use their own reviewed image
    pull credentials for private-stack deployments.
-5. Create the Traefik Cloudflare DNS-token, ArvanCloud API-key, and
-   `htpasswd`-format dashboard-auth secrets. The dashboard is routed to
-   `api@internal`; port `8080` is never published.
+5. Use **Fix all prerequisites** to copy the mounted reviewed dynamic config
+   and generate the required `htpasswd` dashboard-auth secret; save the
+   one-time dashboard login shown by the panel. Add a Cloudflare DNS-token or
+   ArvanCloud API-key secret only when DNS-01 is wanted; without one, SwarmOps
+   uses HTTP-01. The dashboard is routed to `api@internal`; port `8080` is
+   never published.
 6. Configure a reviewed Alertmanager receiver before
    relying on notifications; the committed baseline uses a blackhole receiver.
    Jaeger uses the checked-in v2.20 Badger config on the labelled stateful

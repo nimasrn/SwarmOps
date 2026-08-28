@@ -53,6 +53,7 @@ services:
       SWARMOPS_SOURCE_ENABLED: ${SWARMOPS_SOURCE_ENABLED:-false}
       SWARMOPS_SOURCE_IMAGE_PREFIX: ${SWARMOPS_SOURCE_IMAGE_PREFIX:-}
       SWARMOPS_TRAEFIK_DASHBOARD_URL: ${TRAEFIK_DASHBOARD_URL:-https://traefik.nim.zone/dashboard/}
+      SWARMOPS_TRAEFIK_DYNAMIC_CONFIG_FILE: /opt/swarmops/traefik-dynamic.yml
       TAG: ${TAG:?set TAG}
       # The checked-in Traefik asset itself requires this at reconcile time.
       # Keeping it optional here lets SwarmOps start in inventory-only mode.
@@ -102,6 +103,9 @@ services:
         mode: 0444
       - source: swarmops_traefik_stack
         target: /opt/swarmops/traefik.yml
+        mode: 0444
+      - source: swarmops_traefik_dynamic
+        target: /opt/swarmops/traefik-dynamic.yml
         mode: 0444
       - source: swarmops_postgres_stack
         target: /opt/swarmops/postgres.yml
@@ -267,6 +271,11 @@ configs:
   swarmops_traefik_stack:
     file: ./traefik.yml
     name: ${SWARMOPS_TRAEFIK_STACK_CONFIG_NAME:-swarmops_traefik_stack_v1}
+  # The controller copies this exact reviewed content into the selected Swarm
+  # only when the Traefik dynamic config is missing.
+  swarmops_traefik_dynamic:
+    file: ../traefik/dynamic.yml
+    name: ${SWARMOPS_TRAEFIK_DYNAMIC_ASSET_CONFIG_NAME:-swarmops_traefik_dynamic_asset_v1}
 
 secrets:
   swarmops_admin_password_hash:

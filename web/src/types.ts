@@ -395,6 +395,7 @@ export interface TraefikSettings {
 
 export interface TraefikInstallCheck {
   detail: string
+	fixable: boolean
   id: string
   label: string
   recovery?: string
@@ -406,6 +407,13 @@ export interface TraefikInstallPreflight {
   challenge: 'dns-01' | 'http-01'
   checks: TraefikInstallCheck[]
   ready: boolean
+	repairable: boolean
+}
+
+export interface TraefikPrerequisiteRepairResponse {
+	command: Command
+	dashboardPassword?: string
+	dashboardUsername?: string
 }
 
 export interface DNSCredentialMetadata {

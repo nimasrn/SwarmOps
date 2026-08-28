@@ -3,6 +3,8 @@ package apihttp
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,25 +22,27 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/source"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
-	commandNodeAvailability  = "node.availability"
-	commandStackDeploy       = "stack.deploy"
-	commandServiceRestart    = "service.restart"
-	commandServiceRollback   = "service.rollback"
-	commandServiceScale      = "service.scale"
-	commandImageBuild        = "image.build"
-	commandTraefikReconcile  = "traefik.reconcile"
-	commandNodeAgent         = "observability.node-agent"
-	commandLogs              = "observability.logs"
-	commandObservability     = "observability.core"
-	commandDatabase          = "database.set"
-	commandApplicationDeploy = "application.deploy"
-	commandApplicationDomain = "application.domain"
-	commandApplicationRemove = "application.remove"
-	commandSourceDeploy      = "source.deploy"
-	commandServerReadiness   = "server.readiness"
+	commandNodeAvailability     = "node.availability"
+	commandStackDeploy          = "stack.deploy"
+	commandServiceRestart       = "service.restart"
+	commandServiceRollback      = "service.rollback"
+	commandServiceScale         = "service.scale"
+	commandImageBuild           = "image.build"
+	commandTraefikReconcile     = "traefik.reconcile"
+	commandTraefikPrerequisites = "traefik.prerequisites.repair"
+	commandNodeAgent            = "observability.node-agent"
+	commandLogs                 = "observability.logs"
+	commandObservability        = "observability.core"
+	commandDatabase             = "database.set"
+	commandApplicationDeploy    = "application.deploy"
+	commandApplicationDomain    = "application.domain"
+	commandApplicationRemove    = "application.remove"
+	commandSourceDeploy         = "source.deploy"
+	commandServerReadiness      = "server.readiness"
 
 	maxAutomaticAttempts = 8
 )
@@ -103,6 +107,12 @@ type sourceDeployCommand struct {
 
 type traefikCommand struct {
 	Confirmation string `json:"confirmation"`
+}
+
+type traefikPrerequisiteResponse struct {
+	Command           domain.Command `json:"command"`
+	DashboardPassword string         `json:"dashboardPassword,omitempty"`
+	DashboardUsername string         `json:"dashboardUsername,omitempty"`
 }
 
 func (s *Server) commandsList(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
@@ -251,6 +261,46 @@ func (s *Server) submitTraefik(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	s.submitCommand(response, request, claims, commandTraefikReconcile, "stack/traefik", traefikCommand{Confirmation: confirmation}, true)
+}
+
+func (s *Server) submitTraefikPrerequisites(response http.ResponseWriter, request *http.Request, claims auth.Claims, repair ops.TraefikPrerequisiteRepair, username, password string) {
+	serverID, idempotencyKey, ok := s.commandSubmissionContext(response, request)
+	if !ok {
+		return
+	}
+	payload, err := json.Marshal(repair)
+	if err != nil {
+		writeError(response, http.StatusInternalServerError, "Prerequisite repair could not be queued")
+		return
+	}
+	submission, err := s.commands.SubmitWithResult(queue.SubmitInput{
+		Action: commandTraefikPrerequisites, Actor: claims.Username, AuthorityEpoch: s.core.AuthorityEpoch(),
+		AutoRetry: true, ClusterID: "default", IdempotencyKey: idempotencyKey, MaxAttempts: maxAutomaticAttempts,
+		Payload: payload, RequestID: requestID(request), ServerID: serverID, Target: "stack/traefik",
+	})
+	if err != nil {
+		if errors.Is(err, queue.ErrIdempotencyConflict) {
+			writeError(response, http.StatusConflict, "Idempotency key was already used for a different command")
+			return
+		}
+		s.commandStoreError(response, request, err)
+		return
+	}
+	s.recordCommandSubmission(claims, request, submission)
+	writeJSON(response, http.StatusAccepted, traefikPrerequisiteResponse{Command: submission.Command, DashboardUsername: username, DashboardPassword: password})
+}
+
+func generateDashboardCredential() (password, htpasswd string, err error) {
+	raw := make([]byte, 24)
+	if _, err = rand.Read(raw); err != nil {
+		return "", "", fmt.Errorf("generate dashboard password")
+	}
+	password = base64.RawURLEncoding.EncodeToString(raw)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", "", fmt.Errorf("hash dashboard password")
+	}
+	return password, "operator:" + string(hash), nil
 }
 
 func (s *Server) submitNodeAgent(response http.ResponseWriter, request *http.Request, claims auth.Claims, input confirmationCommand) {
@@ -639,6 +689,12 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(err)
 		}
 		return classifyCommandError(target.Control.ReconcileTraefik(ctx, record.Command.Actor, record.Command.RequestID, input.Confirmation))
+	case commandTraefikPrerequisites:
+		var input ops.TraefikPrerequisiteRepair
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RepairTraefikPrerequisites(ctx, record.Command.Actor, record.Command.RequestID, input))
 	case commandTraefikRouteApply:
 		var input traefikRouteCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {

@@ -16,51 +16,53 @@ import (
 )
 
 type ControlPlane struct {
-	Agent                  AgentReader
-	AgentService           string
-	AgentStackFile         string
-	Admission              *PlatformAdmission
-	Apps                   *ApplicationStore
-	Audit                  *audit.Store
-	CLI                    DockerCLI
-	Credentials            *CredentialStore
-	DatabaseSettings       DatabaseSettings
-	DNSProviders           DNSProviderService
-	DNSVerifier            DNSPropagationVerifier
-	Docker                 *dockerapi.Client
-	LogsStackFile          string
-	Mutations              bool
-	ObservabilityStackFile string
-	Routing                *RoutingStore
-	ServerID               string
-	StackDeployer          StackDeployer
-	TraefikStackFile       string
-	TraefikSettings        TraefikStackSettings
-	TrustedStackSettings   TrustedStackSettings
-	TLSInspector           TLSCertificateInspector
-	now                    func() time.Time
+	Agent                    AgentReader
+	AgentService             string
+	AgentStackFile           string
+	Admission                *PlatformAdmission
+	Apps                     *ApplicationStore
+	Audit                    *audit.Store
+	CLI                      DockerCLI
+	Credentials              *CredentialStore
+	DatabaseSettings         DatabaseSettings
+	DNSProviders             DNSProviderService
+	DNSVerifier              DNSPropagationVerifier
+	Docker                   *dockerapi.Client
+	LogsStackFile            string
+	Mutations                bool
+	ObservabilityStackFile   string
+	Routing                  *RoutingStore
+	ServerID                 string
+	StackDeployer            StackDeployer
+	TraefikStackFile         string
+	TraefikDynamicConfigFile string
+	TraefikSettings          TraefikStackSettings
+	TrustedStackSettings     TrustedStackSettings
+	TLSInspector             TLSCertificateInspector
+	now                      func() time.Time
 }
 
 type ControlPlaneOptions struct {
-	Agent                  AgentReader
-	AgentService           string
-	AgentStackFile         string
-	Admission              *PlatformAdmission
-	Apps                   *ApplicationStore
-	Credentials            *CredentialStore
-	DatabaseSettings       DatabaseSettings
-	DataDir                string
-	DNSProviders           DNSProviderService
-	DNSVerifier            DNSPropagationVerifier
-	LogsStackFile          string
-	Mutations              bool
-	ObservabilityStackFile string
-	Routing                *RoutingStore
-	ServerID               string
-	TraefikSettings        TraefikStackSettings
-	TraefikStackFile       string
-	TrustedStackSettings   TrustedStackSettings
-	TLSInspector           TLSCertificateInspector
+	Agent                    AgentReader
+	AgentService             string
+	AgentStackFile           string
+	Admission                *PlatformAdmission
+	Apps                     *ApplicationStore
+	Credentials              *CredentialStore
+	DatabaseSettings         DatabaseSettings
+	DataDir                  string
+	DNSProviders             DNSProviderService
+	DNSVerifier              DNSPropagationVerifier
+	LogsStackFile            string
+	Mutations                bool
+	ObservabilityStackFile   string
+	Routing                  *RoutingStore
+	ServerID                 string
+	TraefikSettings          TraefikStackSettings
+	TraefikStackFile         string
+	TraefikDynamicConfigFile string
+	TrustedStackSettings     TrustedStackSettings
+	TLSInspector             TLSCertificateInspector
 }
 
 func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.Store, options ControlPlaneOptions) *ControlPlane {
@@ -77,29 +79,30 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		tlsInspector = NetTLSCertificateInspector{}
 	}
 	return &ControlPlane{
-		Agent:                  options.Agent,
-		AgentService:           options.AgentService,
-		AgentStackFile:         options.AgentStackFile,
-		Admission:              options.Admission,
-		Apps:                   options.Apps,
-		Audit:                  auditStore,
-		CLI:                    cli,
-		Credentials:            options.Credentials,
-		DatabaseSettings:       options.DatabaseSettings,
-		DNSProviders:           dnsProviders,
-		DNSVerifier:            dnsVerifier,
-		Docker:                 docker,
-		LogsStackFile:          options.LogsStackFile,
-		Mutations:              options.Mutations,
-		ObservabilityStackFile: options.ObservabilityStackFile,
-		Routing:                options.Routing,
-		ServerID:               options.ServerID,
-		StackDeployer:          StackDeployer{CLI: cli, DataDir: options.DataDir, Enabled: options.Mutations},
-		TraefikSettings:        options.TraefikSettings,
-		TraefikStackFile:       options.TraefikStackFile,
-		TrustedStackSettings:   options.TrustedStackSettings,
-		TLSInspector:           tlsInspector,
-		now:                    time.Now,
+		Agent:                    options.Agent,
+		AgentService:             options.AgentService,
+		AgentStackFile:           options.AgentStackFile,
+		Admission:                options.Admission,
+		Apps:                     options.Apps,
+		Audit:                    auditStore,
+		CLI:                      cli,
+		Credentials:              options.Credentials,
+		DatabaseSettings:         options.DatabaseSettings,
+		DNSProviders:             dnsProviders,
+		DNSVerifier:              dnsVerifier,
+		Docker:                   docker,
+		LogsStackFile:            options.LogsStackFile,
+		Mutations:                options.Mutations,
+		ObservabilityStackFile:   options.ObservabilityStackFile,
+		Routing:                  options.Routing,
+		ServerID:                 options.ServerID,
+		StackDeployer:            StackDeployer{CLI: cli, DataDir: options.DataDir, Enabled: options.Mutations},
+		TraefikSettings:          options.TraefikSettings,
+		TraefikStackFile:         options.TraefikStackFile,
+		TraefikDynamicConfigFile: options.TraefikDynamicConfigFile,
+		TrustedStackSettings:     options.TrustedStackSettings,
+		TLSInspector:             tlsInspector,
+		now:                      time.Now,
 	}
 }
 

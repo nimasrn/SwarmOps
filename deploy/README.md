@@ -393,7 +393,10 @@ a secret name in place.
 
 Docker Swarm configs are immutable too. The `swarmops` core stack creates the
 versioned config objects consumed by its optional agent, logs, and monitoring
-stacks. When changing one of those checked-in config assets, bump the matching
+stacks. It also mounts `deploy/traefik/dynamic.yml` read-only as the reviewed
+source for the Gateway panel's one-button prerequisite repair; the repair can
+create that exact config on a selected cluster but cannot accept browser-authored
+YAML. When changing one of those checked-in config assets, bump the matching
 `SWARMOPS_*_CONFIG_NAME` value in the ignored host file (the full list is in
 `hosts/example.env`), validate `swarmops`, deploy that core stack, and then
 reconcile the affected optional stack. Keep the former config until every task

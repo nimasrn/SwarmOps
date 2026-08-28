@@ -183,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/builds", s.withActiveAuth(s.buildImage))
 	mux.HandleFunc("GET /api/v1/traefik/status", s.withAuth(false, s.traefikStatus))
 	mux.HandleFunc("GET /api/v1/traefik/preflight", s.withAuth(false, s.traefikPreflight))
+	mux.HandleFunc("POST /api/v1/traefik/prerequisites/repair", s.withActiveAuth(s.traefikPrerequisitesRepair))
 	mux.HandleFunc("POST /api/v1/traefik/reconcile", s.withActiveAuth(s.traefikReconcile))
 	mux.HandleFunc("GET /api/v1/traefik/state", s.withAuth(false, s.traefikRoutingState))
 	mux.HandleFunc("GET /api/v1/traefik/routes", s.withAuth(false, s.traefikRoutes))
@@ -717,6 +718,37 @@ func (s *Server) traefikPreflight(response http.ResponseWriter, request *http.Re
 	writeJSON(response, http.StatusOK, preflight)
 }
 
+func (s *Server) traefikPrerequisitesRepair(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	preflight, err := s.traefikPreflightFor(request, target)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if !preflight.Repairable {
+		writeError(response, http.StatusUnprocessableEntity, "The incomplete Traefik prerequisites cannot all be repaired automatically")
+		return
+	}
+	repair, err := target.Control.PlanTraefikPrerequisiteRepair(request.Context())
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	username, password := "", ""
+	if repair.CreateDashboardAuth {
+		username = "operator"
+		password, repair.DashboardAuth, err = generateDashboardCredential()
+		if err != nil {
+			writeError(response, http.StatusInternalServerError, "Dashboard credentials could not be generated")
+			return
+		}
+	}
+	s.submitTraefikPrerequisites(response, request, claims, repair, username, password)
+}
+
 func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.TraefikInstallPreflight, error) {
 	preflight, err := target.Control.TraefikInstallPreflight(request.Context())
 	if err != nil {
@@ -734,9 +766,9 @@ func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.
 			break
 		}
 	}
-	compatible := protocol == agentpull.ProtocolVersion
+	compatible := protocol == agentpull.ProtocolVersion && agentVersionAtLeast(version, 0, 9, 3)
 	check := ops.TraefikInstallCheck{
-		Detail:   fmt.Sprintf("Agent %s reports protocol %d; Core requires protocol %d.", version, protocol, agentpull.ProtocolVersion),
+		Detail:   fmt.Sprintf("Agent %s reports protocol %d; one-button Traefik repair requires Agent v0.9.3 or newer on Core protocol %d.", version, protocol, agentpull.ProtocolVersion),
 		ID:       "agent-version",
 		Label:    "Machine agent compatibility",
 		Recovery: "Update the selected server's agent before installing Traefik.",
@@ -748,10 +780,22 @@ func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.
 		check.Recovery = ""
 	}
 	preflight.Checks = append(preflight.Checks, check)
-	if !compatible {
-		preflight.Ready = false
-	}
+	ops.FinalizeTraefikInstallPreflight(&preflight)
 	return preflight, nil
+}
+
+func agentVersionAtLeast(value string, requiredMajor, requiredMinor, requiredPatch int) bool {
+	var major, minor, patch int
+	if _, err := fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(value), "v"), "%d.%d.%d", &major, &minor, &patch); err != nil {
+		return false
+	}
+	if major != requiredMajor {
+		return major > requiredMajor
+	}
+	if minor != requiredMinor {
+		return minor > requiredMinor
+	}
+	return patch >= requiredPatch
 }
 
 // metricsTargets serves the Prometheus HTTP service-discovery document for

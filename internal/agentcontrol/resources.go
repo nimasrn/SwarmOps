@@ -99,6 +99,12 @@ func resourceArgs(request Request) ([]string, []byte, bool, error) {
 		if request.Internal {
 			args = append(args, "--internal")
 		}
+		if request.Encrypted {
+			if request.Driver != "overlay" {
+				return nil, nil, true, fmt.Errorf("only overlay networks can be encrypted")
+			}
+			args = append(args, "--opt", "encrypted=true")
+		}
 		return append(args, request.Name), nil, true, nil
 	case OperationNetworkRemove:
 		if !resourceNamePattern.MatchString(request.Name) {
@@ -212,6 +218,12 @@ func resourceRequest(args []string, input []byte) (Request, bool, error) {
 					request.Attachable = true
 				case "--internal":
 					request.Internal = true
+				case "--opt":
+					if index+1 >= len(args)-1 || args[index+1] != "encrypted=true" {
+						return Request{}, true, fmt.Errorf("unsupported network driver option")
+					}
+					request.Encrypted = true
+					index++
 				default:
 					return Request{}, true, fmt.Errorf("unsupported network option")
 				}

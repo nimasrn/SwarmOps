@@ -3,6 +3,8 @@ package agentcontrol
 import (
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestSecretVocabularyAcceptsOnlySwarmOpsGeneratedCredentials(t *testing.T) {
@@ -16,6 +18,42 @@ func TestSecretVocabularyAcceptsOnlySwarmOpsGeneratedCredentials(t *testing.T) {
 	}
 	if strings.Join(args, " ") != "secret create swarmops_postgres_password_v1 -" || string(stdin) != "Zm9vYmFyLXBhc3N3b3JkLXZhbHVl" {
 		t.Fatalf("unexpected argv %q or stdin %q", args, stdin)
+	}
+}
+
+func TestSecretVocabularyAcceptsOnlyBcryptDashboardAuthentication(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("dashboard-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := "operator:" + string(hash)
+	request, err := FromDockerCLI("docker", []string{"secret", "create", "traefik_dashboard_auth_v1", "-"}, []byte(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, stdin, err := DockerArgs(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(args, " ") != "secret create traefik_dashboard_auth_v1 -" || string(stdin) != value {
+		t.Fatalf("dashboard secret render = %q, %q", args, stdin)
+	}
+	for _, invalid := range []string{"admin:" + string(hash), "operator:plaintext-password"} {
+		if _, _, err := DockerArgs(Request{Name: "traefik_dashboard_auth_v1", Operation: OperationSecretCreate, Secret: invalid}); err == nil {
+			t.Fatalf("invalid dashboard auth was accepted: %q", invalid)
+		}
+	}
+}
+
+func TestConfigVocabularyAcceptsReviewedTraefikDynamicConfig(t *testing.T) {
+	content := "http:\n  middlewares: {}\n"
+	request, err := FromDockerCLI("docker", []string{"config", "create", "nim_traefik_dynamic_v1", "-"}, []byte(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, stdin, err := DockerArgs(request)
+	if err != nil || strings.Join(args, " ") != "config create nim_traefik_dynamic_v1 -" || string(stdin) != content {
+		t.Fatalf("dynamic config render = %q, %q, %v", args, stdin, err)
 	}
 }
 

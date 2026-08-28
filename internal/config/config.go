@@ -91,6 +91,7 @@ type Config struct {
 	TraefikDashboardAuthSecret    string
 	TraefikDashboardHost          string
 	TraefikDynamicConfigName      string
+	TraefikDynamicConfigFile      string
 	TraefikImage                  string
 	TraefikStackFile              string
 	TrustedAgentTokenSecret       string
@@ -174,6 +175,7 @@ func Load() (Config, error) {
 		TraefikDashboardAuthSecret:    env("TRAEFIK_DASHBOARD_AUTH_SECRET", "traefik_dashboard_auth_v1"),
 		TraefikDashboardHost:          env("TRAEFIK_DASHBOARD_HOST", ""),
 		TraefikDynamicConfigName:      env("TRAEFIK_DYNAMIC_CONFIG_NAME", "nim_traefik_dynamic_v1"),
+		TraefikDynamicConfigFile:      env("SWARMOPS_TRAEFIK_DYNAMIC_CONFIG_FILE", filepath.Join(assetDir, "traefik-dynamic.yml")),
 		TraefikImage:                  env("TRAEFIK_IMAGE", "traefik:v3.6.13"),
 		TraefikStackFile:              env("SWARMOPS_TRAEFIK_STACK_FILE", filepath.Join(assetDir, "traefik.yml")),
 		TrustedAgentTokenSecret:       env("SWARMOPS_AGENT_TOKEN_SECRET", "swarmops_agent_token_v1"),

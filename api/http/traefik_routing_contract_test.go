@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
@@ -286,6 +287,79 @@ func TestTraefikPreflightUsesExplicitTargetAndReturnsSafeChecklist(t *testing.T)
 	}
 }
 
+func TestTraefikRepairCapabilityRequiresAgentVersionWithoutChangingProtocol(t *testing.T) {
+	t.Parallel()
+	for version, want := range map[string]bool{"v0.8.0": false, "v0.9.2": false, "v0.9.3": true, "0.10.0": true, "dev": false} {
+		if got := agentVersionAtLeast(version, 0, 9, 3); got != want {
+			t.Fatalf("agentVersionAtLeast(%q) = %v, want %v", version, got, want)
+		}
+	}
+	if agentpull.ProtocolVersion != 1 {
+		t.Fatalf("existing agent transport protocol changed to %d", agentpull.ProtocolVersion)
+	}
+}
+
+func TestTraefikPrerequisiteRepairQueuesOneCommandAndReturnsPasswordOnce(t *testing.T) {
+	t.Parallel()
+	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
+	machine := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/networks", "/configs", "/secrets":
+			_, _ = response.Write([]byte("[]"))
+		case "/nodes":
+			_, _ = response.Write([]byte(`[{"ID":"manager-1","Description":{"Hostname":"manager-1"},"ManagerStatus":{"Leader":true},"Spec":{"Availability":"active","Labels":{},"Role":"manager"},"Status":{"State":"ready"}}]`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(machine.Close)
+	docker, err := dockerapi.NewForURL(machine.URL, machine.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dynamicPath := filepath.Join(t.TempDir(), "traefik-dynamic.yml")
+	if err := os.WriteFile(dynamicPath, []byte("http:\n  middlewares: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	control := ops.NewControlPlane(docker, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
+		Mutations: true, TraefikDynamicConfigFile: dynamicPath,
+		TraefikSettings: ops.TraefikStackSettings{
+			ACMEEmail: "ops@example.com", ArvanAPIKeySecret: "traefik_arvan_api_key_v1", CFDNSTokenSecret: "traefik_cf_dns_token_v1",
+			DashboardAuthSecret: "traefik_dashboard_auth_v1", DashboardHost: "traefik.example.com", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
+		},
+	})
+	server.targets = TargetResolverFunc(func(id string) (Target, error) {
+		if id != "manager-1" {
+			return Target{}, fmt.Errorf("select a connected server")
+		}
+		return Target{Control: control}, nil
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/traefik/prerequisites/repair", nil)
+	request.Header.Set("Idempotency-Key", "repair-traefik-prerequisites")
+	request.Header.Set("X-SwarmOps-Cluster-ID", "default")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.Header.Set("X-SwarmOps-Server-ID", "manager-1")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	body := response.Body.Bytes()
+	var payload traefikPrerequisiteResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Command.Action != commandTraefikPrerequisites || payload.DashboardUsername != "operator" || len(payload.DashboardPassword) < 24 {
+		t.Fatalf("repair response = %#v", payload)
+	}
+	if bytes.Contains(body, []byte("$2")) {
+		t.Fatal("dashboard bcrypt hash leaked into the public response")
+	}
+}
+
 func TestTraefikBindingRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
@@ -399,6 +473,7 @@ func writeLegacyServersFile(dataDir, serverID string) error {
 	profiles := map[string]any{
 		"version": 1,
 		"servers": []map[string]any{{
+			"agentHealth":           map[string]any{"agentVersion": "v0.9.3", "protocolVersion": agentpull.ProtocolVersion},
 			"authentication":        remote.AuthenticationPassword,
 			"connectionState":       "connected",
 			"dockerAvailable":       true,

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const MaxComposeBytes = 1 << 20
@@ -38,10 +40,11 @@ var (
 	stackNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 	// Only SwarmOps' own generated credentials may be created through this
 	// vocabulary, so the name is confined to the swarmops_ prefix.
-	managedSecretPattern = regexp.MustCompile(`^(swarmops_[a-z0-9][a-z0-9_]{0,54}|traefik_dns_[a-z0-9][a-z0-9_]{0,72}_v[1-9][0-9]*)$`)
+	managedSecretPattern = regexp.MustCompile(`^(swarmops_[a-z0-9][a-z0-9_]{0,54}|traefik_dns_[a-z0-9][a-z0-9_]{0,72}_v[1-9][0-9]*|traefik_dashboard_auth_v[1-9][0-9]*)$`)
 	removableDNSSecret   = regexp.MustCompile(`^traefik_dns_(cloudflare|arvan)_[a-z0-9][a-z0-9_]{0,62}_v[1-9][0-9]*$`)
-	managedConfigPattern = regexp.MustCompile(`^swarmops_traefik_static_v1_[a-f0-9]{16}$`)
+	managedConfigPattern = regexp.MustCompile(`^(swarmops_traefik_static_v1_[a-f0-9]{16}|nim_traefik_dynamic_v[1-9][0-9]*)$`)
 	secretValuePattern   = regexp.MustCompile(`^[A-Za-z0-9+/=_.:@?&-]{16,512}$`)
+	dashboardAuthPattern = regexp.MustCompile(`^operator:\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$`)
 )
 
 // Request is intentionally structured rather than an argv pass-through. The
@@ -52,6 +55,7 @@ type Request struct {
 	Availability        string `json:"availability,omitempty"`
 	CPULimit            string `json:"cpuLimit,omitempty"`
 	Driver              string `json:"driver,omitempty"`
+	Encrypted           bool   `json:"encrypted,omitempty"`
 	Image               string `json:"image,omitempty"`
 	Internal            bool   `json:"internal,omitempty"`
 	Key                 string `json:"key,omitempty"`
@@ -253,7 +257,13 @@ func DockerArgs(request Request) ([]string, []byte, error) {
 		args = append(args, "--compose-file", "-", request.Name)
 		return args, compose, nil
 	case OperationSecretCreate:
-		if !managedSecretPattern.MatchString(request.Name) || !secretValuePattern.MatchString(request.Secret) {
+		validValue := secretValuePattern.MatchString(request.Secret)
+		if strings.HasPrefix(request.Name, "traefik_dashboard_auth_v") {
+			_, hash, found := strings.Cut(request.Secret, ":")
+			cost, err := bcrypt.Cost([]byte(hash))
+			validValue = found && dashboardAuthPattern.MatchString(request.Secret) && err == nil && cost >= bcrypt.MinCost
+		}
+		if !managedSecretPattern.MatchString(request.Name) || !validValue {
 			return nil, nil, fmt.Errorf("invalid managed secret operation")
 		}
 		return []string{"secret", "create", request.Name, "-"}, []byte(request.Secret), nil

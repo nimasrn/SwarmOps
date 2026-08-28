@@ -11,6 +11,27 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.9.3 — 2026-08-28
+
+Traefik's four safe installation blockers can now be repaired from one button.
+
+- **One reviewed repair** — Gateway & ports queues one durable action that
+  creates the encrypted attachable `traefik` overlay, labels a deterministic
+  ready manager `nim.edge=true`, creates the mounted reviewed dynamic config,
+  and generates the dashboard-auth secret.
+- **One-time dashboard login** — Core generates a random dashboard password,
+  queues only its bcrypt htpasswd line inside the encrypted command payload,
+  and shows the password once in the initiating panel. It never enters audit
+  metadata or the public command record.
+- **Retry-safe fixed vocabulary** — the repair re-reads every resource before
+  acting and the agent accepts only the exact encrypted-network option,
+  versioned dynamic-config name, and bcrypt dashboard-secret shape.
+- **Honest agent gate without disconnection** — protocol 1 remains compatible
+  for existing operations, while the repair button requires Agent v0.9.3 or
+  newer. Core no longer claims an old agent can execute the new vocabulary.
+- **HTTP-01 remains automatic** — DNS credentials are still optional for
+  ordinary host certificates. Wildcards remain the only DNS-01 requirement.
+
 ## 0.9.2 — 2026-08-28
 
 Traefik installation now explains its live prerequisites before queueing and

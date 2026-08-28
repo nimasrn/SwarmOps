@@ -26,7 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.9.2"
+const version = "0.9.3"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -186,18 +186,19 @@ func main() {
 				RedisPasswordSecret:    cfg.RedisPasswordSecret,
 				RedisStackFile:         cfg.RedisStackFile,
 			},
-			Agent:                  agentReader,
-			AgentService:           cfg.AgentService,
-			AgentStackFile:         cfg.AgentStackFile,
-			DataDir:                cfg.DataDir,
-			LogsStackFile:          cfg.LogsStackFile,
-			Mutations:              cfg.MutationEnabled,
-			ObservabilityStackFile: cfg.ObservabilityStackFile,
-			Routing:                routing,
-			ServerID:               id,
-			TraefikSettings:        traefikSettings,
-			TraefikStackFile:       cfg.TraefikStackFile,
-			TrustedStackSettings:   trustedStackSettings,
+			Agent:                    agentReader,
+			AgentService:             cfg.AgentService,
+			AgentStackFile:           cfg.AgentStackFile,
+			DataDir:                  cfg.DataDir,
+			LogsStackFile:            cfg.LogsStackFile,
+			Mutations:                cfg.MutationEnabled,
+			ObservabilityStackFile:   cfg.ObservabilityStackFile,
+			Routing:                  routing,
+			ServerID:                 id,
+			TraefikSettings:          traefikSettings,
+			TraefikDynamicConfigFile: cfg.TraefikDynamicConfigFile,
+			TraefikStackFile:         cfg.TraefikStackFile,
+			TrustedStackSettings:     trustedStackSettings,
 		})
 		target.Build = build.Service{
 			Docker:        connection.Docker,
