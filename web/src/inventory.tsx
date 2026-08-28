@@ -115,7 +115,7 @@ export function InsightsPage({ toast }: { toast: Toast }) {
 
   if (loading && !insights) return <Spinner label="Reading cluster insights" />
   if (error && !insights) return <Banner tone="danger" title="Insights are unavailable">{error}</Banner>
-  if (!insights) return <EmptyState description="The Engine returned no inventory." icon="sparkle" title="No insights" />
+  if (!insights) return <EmptyState description="The Engine returned no inventory. That may mean nothing is running, or that this manager cannot see it — the two are not distinguishable from here." icon="sparkle" reason="unknown" title="No insights" />
   const liveInsights: Insights = insights
 
   const reclaimable = liveInsights.storage.reclaimableImageBytes + liveInsights.storage.reclaimableVolumeBytes + liveInsights.storage.reclaimableBuildCacheBytes
@@ -615,9 +615,9 @@ function ContainersTab({ toast }: { toast: Toast }) {
         {detailError ? <Banner tone="danger">{detailError}</Banner> : null}
         {detailTab === 'overview' || detailTab === 'metrics' ? <>
           <MetricGrid columns={4}>
-            <Metric hint="One live sample" icon="activity" label="CPU" value={stats ? `${stats.cpuPercent.toFixed(2)}%` : '—'} />
-            <Metric hint={stats?.memoryLimitBytes ? `of ${formatBytes(stats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" value={stats ? formatBytes(stats.memoryUsedBytes) : '—'} />
-            <Metric hint={stats ? `${formatBytes(stats.networkTxBytes)} egress` : 'No sample'} icon="cloud" label="Network ingress" value={stats ? formatBytes(stats.networkRxBytes) : '—'} />
+            <Metric hint="One live sample" icon="activity" label="CPU" source={stats ? 'docker stats' : undefined} unmeasured={!stats} value={stats ? `${stats.cpuPercent.toFixed(2)}%` : 'no sample'} />
+            <Metric hint={stats?.memoryLimitBytes ? `of ${formatBytes(stats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" source={stats ? 'docker stats' : undefined} unmeasured={!stats} value={stats ? formatBytes(stats.memoryUsedBytes) : 'no sample'} />
+            <Metric hint={stats ? `${formatBytes(stats.networkTxBytes)} egress` : undefined} icon="cloud" label="Network ingress" source={stats ? 'docker stats' : undefined} unmeasured={!stats} value={stats ? formatBytes(stats.networkRxBytes) : 'no sample'} />
             <Metric hint="Engine restart counter" icon="refresh" label="Restart count" value={String(selected.RestartCount)} />
           </MetricGrid>
           <DetailLayout aside={<Rail title="Container inspector">
@@ -656,11 +656,11 @@ function ContainersTab({ toast }: { toast: Toast }) {
                 { label: 'Created', value: formatDateTime(selected.Created) },
                 { label: 'Started', value: formatDateTime(selected.State.StartedAt) },
                 { label: 'Restarts', value: String(selected.RestartCount) },
-                { label: 'Last sample', value: stats ? formatDateTime(stats.sampledAt) : '—' },
+                { label: 'Last sample', unmeasured: !stats, value: stats ? formatDateTime(stats.sampledAt) : 'never', why: stats ? undefined : 'no stats sample has been taken for this container' },
               ]} />
             </Panel>
           </DetailLayout>
-        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Monitoring → Logs for collected records.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: stats ? formatBytes(stats.networkRxBytes) : '—' }, { label: 'Egress sample', value: stats ? formatBytes(stats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Monitoring → Logs for collected records.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', source: stats ? 'docker stats' : undefined, unmeasured: !stats, value: stats ? formatBytes(stats.networkRxBytes) : 'no sample', why: stats ? undefined : 'no stats sample has been taken' }, { label: 'Egress sample', source: stats ? 'docker stats' : undefined, unmeasured: !stats, value: stats ? formatBytes(stats.networkTxBytes) : 'no sample', why: stats ? undefined : 'no stats sample has been taken' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
       </Rows>
     )
   }

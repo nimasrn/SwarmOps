@@ -1442,7 +1442,7 @@ function ServicesPage({ onDiagnosisAction, services, toast }: { onDiagnosisActio
         />
         <Panel eyebrow="Last 200 lines" title="Service logs">
           {logsError ? <Banner tone="danger">{logsError}</Banner> : null}
-          {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Select a service name or use Read logs to fetch an on-demand, bounded log tail." icon="document" title="Logs are not loaded" />}
+          {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Nothing has been fetched yet. Use Read logs for an on-demand, bounded tail — this is not a statement that the service produced none." icon="document" reason="unknown" title="Logs are not loaded" />}
         </Panel>
       </Columns>
     </Page>
