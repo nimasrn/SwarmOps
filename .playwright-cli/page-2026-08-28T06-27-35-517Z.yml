@@ -1,0 +1,220 @@
+- generic [ref=f1e4]:
+  - generic [ref=f1e376]:
+    - generic [ref=f1e377]:
+      - generic [ref=f1e378]:
+        - img "SwarmOps" [ref=f1e380]
+        - strong [ref=f1e385]: SwarmOps
+      - button "Close menu" [ref=f1e386] [cursor=pointer]
+    - navigation "Admin navigation" [ref=f1e390]:
+      - generic [ref=f1e391]:
+        - button "Overview" [ref=f1e392] [cursor=pointer]
+        - button "Cluster" [ref=f1e394] [cursor=pointer]
+        - button "Workloads" [ref=f1e396] [cursor=pointer]
+        - button "Network" [ref=f1e398] [cursor=pointer]
+        - button "Monitoring" [ref=f1e400] [cursor=pointer]
+        - button "Activity" [ref=f1e402] [cursor=pointer]
+        - button "Settings" [ref=f1e404] [cursor=pointer]
+  - generic [ref=f1e5]:
+    - banner [ref=f1e6]:
+      - button "Open menu" [expanded] [active] [ref=f1e7] [cursor=pointer]
+      - generic [ref=f1e10]:
+        - img "SwarmOps" [ref=f1e12]
+        - strong [ref=f1e17]: SwarmOps
+      - generic [ref=f1e19]:
+        - generic [ref=f1e20]: Environment
+        - button "Production · connect server" [ref=f1e21] [cursor=pointer]
+      - generic [ref=f1e26]:
+        - combobox "Find a feature or setting" [ref=f1e30]
+        - generic [ref=f1e31]: Controller ready
+        - button "Refresh server profiles" [ref=f1e33] [cursor=pointer]
+        - generic [ref=f1e39]:
+          - generic [ref=f1e40]:
+            - generic [ref=f1e41]: A
+            - generic [ref=f1e42]: admin
+          - button "Sign out admin" [ref=f1e43] [cursor=pointer]
+    - generic [ref=f1e47]:
+      - complementary [ref=f1e48]:
+        - navigation "Admin navigation · current section" [ref=f1e50]:
+          - button "Command center" [ref=f1e52] [cursor=pointer]
+      - main [ref=f1e54]:
+        - generic [ref=f1e55]:
+          - generic [ref=f1e57]:
+            - generic [ref=f1e58]:
+              - heading "Command center" [level=1] [ref=f1e60]
+              - paragraph [ref=f1e61]: Health, risk, and the next operator decision. Every signal names the source that produced it.
+              - generic [ref=f1e62]: Waiting for production evidence
+            - generic [ref=f1e66]:
+              - button "Deploy application" [ref=f1e67] [cursor=pointer]
+              - button "Add node" [ref=f1e71] [cursor=pointer]
+          - generic [ref=f1e78]:
+            - strong [ref=f1e79]: Production evidence is incomplete
+            - paragraph [ref=f1e80]: Connect an outbound machine agent to begin production inspection.
+          - generic "Production signal summary" [ref=f1e81]:
+            - generic [ref=f1e82]:
+              - generic [ref=f1e83]: Controller
+              - generic [ref=f1e87]: Ready
+              - generic [ref=f1e88]: SwarmOps control plane
+            - generic [ref=f1e90]:
+              - generic [ref=f1e91]: Agent connection
+              - generic [ref=f1e95]: Not connected
+              - generic [ref=f1e96]: Authenticated outbound TLS; no inbound agent port
+            - generic [ref=f1e98]:
+              - generic [ref=f1e99]: Docker Engine
+              - generic [ref=f1e104]: Unavailable
+              - generic [ref=f1e105]: No current Engine version
+            - generic [ref=f1e107]:
+              - generic [ref=f1e108]: Docker Swarm
+              - generic [ref=f1e113]: Unknown
+              - generic [ref=f1e114]: Docker can run without Swarm services
+          - generic [ref=f1e116]:
+            - generic [ref=f1e117]:
+              - generic [ref=f1e118]:
+                - generic [ref=f1e120]:
+                  - heading "Cluster manager is not connected" [level=2] [ref=f1e121]
+                  - paragraph [ref=f1e122]: 4 open decisions
+                - generic [ref=f1e124]:
+                  - button "Review recovery" [ref=f1e125] [cursor=pointer]
+                  - button "Open evidence" [ref=f1e127] [cursor=pointer]
+              - generic [ref=f1e130]:
+                - paragraph [ref=f1e131]: Select a connected Swarm manager to resume cluster reads and operations.
+                - generic [ref=f1e132]:
+                  - generic [ref=f1e133]:
+                    - generic [ref=f1e137]:
+                      - generic [ref=f1e138]: Cluster manager is not connected
+                      - generic [ref=f1e139]: Select a connected Swarm manager to resume cluster reads and operations.
+                    - generic [ref=f1e140]: Review
+                  - generic [ref=f1e143]:
+                    - generic [ref=f1e147]:
+                      - generic [ref=f1e148]: Local machine needs connectivity review
+                      - generic [ref=f1e149]: Machine API is unreachable
+                    - generic [ref=f1e150]: Review
+                  - generic [ref=f1e153]:
+                    - generic [ref=f1e157]:
+                      - generic [ref=f1e158]: law needs connectivity review
+                      - generic [ref=f1e159]: Machine API is unreachable
+                    - generic [ref=f1e160]: Review
+                  - generic [ref=f1e163]:
+                    - generic [ref=f1e167]:
+                      - generic [ref=f1e168]: Monitoring deployment needs review
+                      - generic [ref=f1e169]: Execution did not complete; inspect the target before retrying.
+                    - generic [ref=f1e170]: Review
+            - generic [ref=f1e173]:
+              - heading "Where the signal comes from" [level=2] [ref=f1e177]
+              - generic [ref=f1e179]:
+                - generic [ref=f1e180]:
+                  - generic [ref=f1e185]:
+                    - generic [ref=f1e186]: Controller
+                    - generic [ref=f1e187]: Stores authority and durable operations
+                  - generic [ref=f1e188]: Ready
+                - generic [ref=f1e191]:
+                  - generic [ref=f1e196]:
+                    - generic [ref=f1e197]: Outbound agent
+                    - generic [ref=f1e198]: Maintains authenticated long polling
+                  - generic [ref=f1e199]: Missing
+                - generic [ref=f1e202]:
+                  - generic [ref=f1e208]:
+                    - generic [ref=f1e209]: Docker Engine
+                    - generic [ref=f1e210]: Reports local containers and Swarm state
+                  - generic [ref=f1e211]: Unavailable
+                - generic [ref=f1e214]:
+                  - generic [ref=f1e220]:
+                    - generic [ref=f1e221]: Swarm manager
+                    - generic [ref=f1e222]: Leads the explicitly selected cluster
+                  - generic [ref=f1e223]: Not active
+          - generic [ref=f1e226]:
+            - generic [ref=f1e227]:
+              - heading "What actually runs on this server" [level=2] [ref=f1e230]
+              - button "Browse resources" [ref=f1e232] [cursor=pointer]
+            - generic [ref=f1e235]:
+              - generic [ref=f1e236]:
+                - generic [ref=f1e237]: Compose and Engine containers
+                - generic [ref=f1e238]: —
+                - generic [ref=f1e239]: Open Docker resources for current evidence
+              - generic [ref=f1e241]:
+                - generic [ref=f1e242]: Swarm services
+                - generic [ref=f1e243]: "0"
+                - generic [ref=f1e244]: Swarm can be active while running zero services
+              - generic [ref=f1e246]:
+                - generic [ref=f1e247]: Swarm stacks
+                - generic [ref=f1e248]: "0"
+                - generic [ref=f1e249]: No namespaced service groups
+          - generic [ref=f1e251]:
+            - generic [ref=f1e252]:
+              - generic [ref=f1e253]:
+                - heading "Application, service, or stack?" [level=2] [ref=f1e256]
+                - button "Open workloads" [ref=f1e258] [cursor=pointer]
+              - generic [ref=f1e261]:
+                - generic [ref=f1e262]:
+                  - term [ref=f1e263]: Application
+                  - definition [ref=f1e264]: The product you deploy and operate as one lifecycle.
+                - generic [ref=f1e265]:
+                  - term [ref=f1e266]: Service
+                  - definition [ref=f1e267]: A long-running Swarm process inside an application or stack.
+                - generic [ref=f1e268]:
+                  - term [ref=f1e269]: Stack
+                  - definition [ref=f1e270]: An advanced group of services, networks, configs, and secrets.
+                - generic [ref=f1e271]:
+                  - term [ref=f1e272]: Managed database
+                  - definition [ref=f1e273]: A stateful dependency whose placement, credentials, backup posture, and lifecycle SwarmOps owns.
+            - generic [ref=f1e274]:
+              - generic [ref=f1e275]:
+                - heading "Recommended sequence" [level=2] [ref=f1e278]
+                - button "Open gateway" [ref=f1e280] [cursor=pointer]
+              - generic [ref=f1e283]:
+                - generic [ref=f1e289]:
+                  - generic [ref=f1e290]: 1. Read the run evidence
+                  - generic [ref=f1e291]: Confirm the failure is feature-specific, not an agent outage.
+                - generic [ref=f1e298]:
+                  - generic [ref=f1e299]: 2. Resolve gateway ownership
+                  - generic [ref=f1e300]: Choose the existing production gateway or install the managed one.
+                - generic [ref=f1e306]:
+                  - generic [ref=f1e307]: 3. Confirm placement
+                  - generic [ref=f1e308]: Approve stateful and edge placement before retrying shared workloads.
+          - generic [ref=f1e309]:
+            - generic [ref=f1e310]:
+              - heading "Recent operations" [level=2] [ref=f1e313]
+              - button "View all runs" [ref=f1e315] [cursor=pointer]
+            - table [ref=f1e319]:
+              - rowgroup [ref=f1e320]:
+                - row [ref=f1e321]:
+                  - columnheader "Action" [ref=f1e322]
+                  - columnheader "Target" [ref=f1e323]
+                  - columnheader "State" [ref=f1e324]
+                  - columnheader "Actor" [ref=f1e325]
+              - rowgroup [ref=f1e326]:
+                - row [ref=f1e327]:
+                  - cell "observability.core" [ref=f1e328]
+                  - cell [ref=f1e329]:
+                    - code [ref=f1e330]: stack/swarmops-observability
+                  - cell "Needs Attention" [ref=f1e331]
+                  - cell "admin" [ref=f1e334]
+                - row [ref=f1e335]:
+                  - cell "observability.logs" [ref=f1e336]
+                  - cell [ref=f1e337]:
+                    - code [ref=f1e338]: stack/swarmops-logs
+                  - cell "Needs Attention" [ref=f1e339]
+                  - cell "admin" [ref=f1e342]
+                - row [ref=f1e343]:
+                  - cell "server.readiness" [ref=f1e344]
+                  - cell [ref=f1e345]:
+                    - code [ref=f1e346]: server/server-06b5ec55df3a1cd2e4fb925e/readiness
+                  - cell "Needs Attention" [ref=f1e347]
+                  - cell "admin" [ref=f1e350]
+                - row [ref=f1e351]:
+                  - cell "node.availability" [ref=f1e352]
+                  - cell [ref=f1e353]:
+                    - code [ref=f1e354]: node/r75jwthb8i9cb71si8jrgzrb5
+                  - cell "Needs Attention" [ref=f1e355]
+                  - cell "admin" [ref=f1e358]
+                - row [ref=f1e359]:
+                  - cell "node.availability" [ref=f1e360]
+                  - cell [ref=f1e361]:
+                    - code [ref=f1e362]: node/r75jwthb8i9cb71si8jrgzrb5
+                  - cell "Needs Attention" [ref=f1e363]
+                  - cell "admin" [ref=f1e366]
+                - row [ref=f1e367]:
+                  - cell "observability.logs" [ref=f1e368]
+                  - cell [ref=f1e369]:
+                    - code [ref=f1e370]: stack/swarmops-logs
+                  - cell "Needs Attention" [ref=f1e371]
+                  - cell "admin" [ref=f1e374]

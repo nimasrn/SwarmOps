@@ -2,7 +2,10 @@ package apihttp
 
 import (
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/diagnosis"
@@ -17,11 +20,13 @@ import (
 // than defaulted: the rules treat "unknown" and "zero" as different, and
 // filling a gap with a plausible number here would defeat the entire design.
 //
-// Two inputs the control plane does not yet expose — the service's placement
-// constraints and its image size — are therefore absent, and the rules that
-// need them decline. That is the intended behaviour while those are added,
-// not a stub: the operator sees a refusal listing what was measured instead of
-// a confident answer built on a guess.
+// Image size is read from the manager's own image list rather than from a
+// registry manifest. That is deliberate and it is also a limitation worth
+// stating: it is the size of the image AS PULLED HERE, so a tag the cluster has
+// never pulled has no size and the rule that needs one declines. Asking the
+// registry instead would be a network round-trip on every page open, and would
+// still not answer the question the rule actually asks, which is how much room
+// this cluster needs to hold the thing.
 func (s *Server) serviceDiagnosis(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	target, ok := s.targetFor(response, request)
 	if !ok {
@@ -61,18 +66,28 @@ func (s *Server) serviceDiagnosis(response http.ResponseWriter, request *http.Re
 		tasks = nil
 	}
 
+	// Same posture for the image list. A failure here means the size is unknown,
+	// which the engine already treats as "decline" rather than "zero".
+	imageBytes, imageKnown := uint64(0), false
+	if images, imageErr := target.Control.Images(ctx); imageErr == nil {
+		imageBytes, imageKnown = imageSizeFor(service.Image, images)
+	}
+
 	// The probe timestamp is the OLDEST healthy reading, not the newest. A
 	// chain is only as fresh as the stalest measurement it reasoned from, and
 	// taking the newest here would let one recent probe vouch for four old ones.
 	probedAt := oldestProbe(overview.Nodes, clusterAt)
 
 	result := diagnosis.NewEngine().Diagnose(diagnosis.Facts{
-		Service:   service,
-		Tasks:     tasks,
-		Nodes:     overview.Nodes,
-		ProbedAt:  probedAt,
-		ClusterAt: clusterAt,
-		Now:       time.Now(),
+		Service:     service,
+		Constraints: service.Constraints,
+		ImageBytes:  imageBytes,
+		ImageKnown:  imageKnown,
+		Tasks:       tasks,
+		Nodes:       overview.Nodes,
+		ProbedAt:    probedAt,
+		ClusterAt:   clusterAt,
+		Now:         time.Now(),
 	})
 	writeJSON(response, http.StatusOK, result)
 }
@@ -82,6 +97,31 @@ func (s *Server) serviceDiagnosis(response http.ResponseWriter, request *http.Re
 // show an operator the list beside any refusal.
 func (s *Server) diagnosisRules(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
 	writeJSON(response, http.StatusOK, map[string]any{"rules": diagnosis.NewEngine().Rules()})
+}
+
+// imageSizeFor finds the pulled size of a service's image.
+//
+// Matching is exact on the tag as the service names it. A near-match would be
+// worse than no match: reporting the size of :latest when the service asks for
+// :9f2c1ab would put a wrong number inside a claim that reads as measured.
+func imageSizeFor(image string, images []dockerapi.Image) (uint64, bool) {
+	if image == "" {
+		return 0, false
+	}
+	// Swarm pins the image to a digest in the running spec — "repo:tag@sha256:…"
+	// — while the local list carries the tag. Compare on the tag half.
+	name := image
+	if at := strings.Index(name, "@"); at > 0 {
+		name = name[:at]
+	}
+	for _, candidate := range images {
+		for _, tag := range candidate.RepoTags {
+			if tag == name && candidate.Size > 0 {
+				return uint64(candidate.Size), true
+			}
+		}
+	}
+	return 0, false
 }
 
 func oldestProbe(nodes []domain.Node, fallback time.Time) time.Time {

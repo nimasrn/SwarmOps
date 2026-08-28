@@ -1,0 +1,96 @@
+[     248ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[     309ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:5284/api/v1/auth/me:0
+[     309ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:5284/api/v1/auth/me:0
+[  100728ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[  670147ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[21899993ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[21911547ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[22857574ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[22968227ms] ReferenceError: WORKSPACE_SECTION is not defined
+    at Console (http://127.0.0.1:5284/src/app.tsx?t=1787921278390:733:24)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:12866:12)
+    at renderWithHooks (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4213:19)
+    at updateFunctionComponent (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:5569:16)
+    at beginWork (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:6140:20)
+    at runWithFiberInDEV (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:851:66)
+    at performUnitOfWork (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:8429:92)
+    at workLoopSync (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:8325:37)
+    at renderRootSync (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:8309:6)
+    at performWorkOnRoot (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:7994:27)
+[22968225ms] [WARNING] %s
+
+%s
+ An error occurred in the <Console> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://127.0.0.1:5284/@vite/client:532
+[22976056ms] ReferenceError: PAGES is not defined
+    at read (http://127.0.0.1:5284/src/app.tsx?t=1787921286208:7147:44)
+    at mountStateImpl (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4588:20)
+    at mountState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4609:19)
+    at Object.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:13049:13)
+    at exports.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react.js?v=f78cee13:748:31)
+    at useHashWorkspace (http://127.0.0.1:5284/src/app.tsx?t=1787921286208:7150:26)
+    at Console (http://127.0.0.1:5284/src/app.tsx?t=1787921286208:495:36)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:12866:12)
+    at renderWithHooks (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4213:19)
+    at updateFunctionComponent (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:5569:16)
+[22976055ms] [WARNING] %s
+
+%s
+ An error occurred in the <Console> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://127.0.0.1:5284/@vite/client:532
+[22989489ms] ReferenceError: PAGES is not defined
+    at read (http://127.0.0.1:5284/src/app.tsx?t=1787921299648:6935:44)
+    at mountStateImpl (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4588:20)
+    at mountState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4609:19)
+    at Object.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:13049:13)
+    at exports.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react.js?v=f78cee13:748:31)
+    at useHashWorkspace (http://127.0.0.1:5284/src/app.tsx?t=1787921299648:6938:26)
+    at Console (http://127.0.0.1:5284/src/app.tsx?t=1787921299648:495:36)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:12866:12)
+    at renderWithHooks (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4213:19)
+    at updateFunctionComponent (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:5569:16)
+[22989489ms] [WARNING] %s
+
+%s
+ An error occurred in the <Console> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://127.0.0.1:5284/@vite/client:532
+[23018901ms] ReferenceError: PAGES is not defined
+    at read (http://127.0.0.1:5284/src/app.tsx?t=1787921329064:7010:44)
+    at mountStateImpl (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4588:20)
+    at mountState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4609:19)
+    at Object.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:13049:13)
+    at exports.useState (http://127.0.0.1:5284/node_modules/.vite/deps/react.js?v=f78cee13:748:31)
+    at useHashWorkspace (http://127.0.0.1:5284/src/app.tsx?t=1787921329064:7013:26)
+    at Console (http://127.0.0.1:5284/src/app.tsx?t=1787921329064:496:36)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:12866:12)
+    at renderWithHooks (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:4213:19)
+    at updateFunctionComponent (http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:5569:16)
+[23018900ms] [WARNING] %s
+
+%s
+ An error occurred in the <Console> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries. @ http://127.0.0.1:5284/@vite/client:532
+[23190893ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23264688ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23453207ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23458320ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23567970ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23573276ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23635442ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23663392ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23771033ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23862597ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[23878660ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24280822ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24404808ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24411708ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24574976ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24857614ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[24870651ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[25677999ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:5284/@fs/Users/nima/go/pkg/nim/nim-ui/dist/nim.css?t=1787923988178:0
+[25678004ms] [ERROR] [vite] Failed to reload /@fs/Users/nima/go/pkg/nim/nim-ui/dist/nim.css. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://127.0.0.1:5284/@vite/client:532
+[25678033ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:5284/@fs/Users/nima/go/pkg/nim/nim-ui/dist/nim.js?t=1787923988183:0
+[25678034ms] [ERROR] [vite] Failed to reload /@fs/Users/nima/go/pkg/nim/nim-ui/dist/nim.js. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://127.0.0.1:5284/@vite/client:532
+[25679327ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[26984281ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335
+[29643641ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:5284/node_modules/.vite/deps/react-dom_client.js?v=f78cee13:14335

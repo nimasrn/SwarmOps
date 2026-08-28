@@ -1,0 +1,347 @@
+- generic [ref=f1e5]:
+  - banner [ref=f1e6]:
+    - button "Open menu" [ref=f1e7] [cursor=pointer]
+    - generic [ref=f1e10]:
+      - img "SwarmOps" [ref=f1e12]
+      - strong [ref=f1e17]: SwarmOps
+    - generic [ref=f1e19]:
+      - generic [ref=f1e20]: Environment
+      - button "Production · connect server" [ref=f1e21] [cursor=pointer]
+    - generic [ref=f1e26]:
+      - combobox "Find a feature or setting" [ref=f1e30]
+      - generic [ref=f1e31]: Controller ready
+      - button "Refresh command queue" [ref=f1e539] [cursor=pointer]
+      - generic [ref=f1e39]:
+        - generic [ref=f1e40]:
+          - generic [ref=f1e41]: A
+          - generic [ref=f1e42]: admin
+        - button "Sign out admin" [ref=f1e43] [cursor=pointer]
+  - generic [ref=f1e47]:
+    - complementary [ref=f1e48]:
+      - navigation "Admin navigation · current section" [ref=f1e50]:
+        - generic [ref=f1e540]:
+          - button "Runs" [ref=f1e541] [cursor=pointer]
+          - button "Action catalog" [ref=f1e543] [cursor=pointer]
+          - button "Audit trail" [ref=f1e545] [cursor=pointer]
+    - main [ref=f1e54]:
+      - generic [ref=f1e547]:
+        - generic [ref=f1e550]:
+          - generic [ref=f1e551]:
+            - heading "Runs" [level=1] [ref=f1e552]
+            - generic [ref=f1e553]: 9 need attention
+          - paragraph [ref=f1e556]: Durable, explicitly targeted operations with ordered attempts and bounded retries.
+        - generic [ref=f1e557]:
+          - generic [ref=f1e558]:
+            - generic [ref=f1e559]: Queued
+            - generic [ref=f1e560]: "0"
+          - generic [ref=f1e561]:
+            - generic [ref=f1e562]: Running
+            - generic [ref=f1e563]: "0"
+          - generic [ref=f1e564]:
+            - generic [ref=f1e565]: Retry scheduled
+            - generic [ref=f1e566]: "0"
+          - generic [ref=f1e567]:
+            - generic [ref=f1e568]: Needs attention
+            - generic [ref=f1e569]: "9"
+          - generic [ref=f1e570]:
+            - generic [ref=f1e571]: Completed
+            - generic [ref=f1e572]: "0"
+        - generic [ref=f1e573]:
+          - generic [ref=f1e575]:
+            - generic [ref=f1e578]:
+              - heading "Command ledger" [level=2] [ref=f1e579]
+              - paragraph [ref=f1e580]: 9 retained commands
+            - generic [ref=f1e581]:
+              - toolbar [ref=f1e582]:
+                - generic [ref=f1e583]:
+                  - textbox "Search runs" [ref=f1e586]:
+                    - /placeholder: Search action, target, or run ID
+                  - combobox "Filter commands by state" [ref=f1e589]:
+                    - 'option "State: All" [selected]'
+                    - option "Needs attention"
+                  - combobox "Filter commands by target" [ref=f1e592]:
+                    - 'option "Target: All" [selected]'
+                    - option "stack/swarmops-observability"
+                    - option "stack/swarmops-logs"
+                    - option "server/server-06b5ec55df3a1cd2e4fb925e/readiness"
+                    - option "node/r75jwthb8i9cb71si8jrgzrb5"
+                  - combobox "Filter commands by action" [ref=f1e595]:
+                    - 'option "Action: All" [selected]'
+                    - option "observability.core"
+                    - option "observability.logs"
+                    - option "server.readiness"
+                    - option "node.availability"
+                  - combobox "Filter commands by time" [ref=f1e598]:
+                    - 'option "Time: All retained" [selected]'
+                    - option "Last hour"
+                    - option "Last 24 hours"
+                    - option "Last 7 days"
+                - button "Refresh" [ref=f1e600] [cursor=pointer]
+              - table [ref=f1e610]:
+                - rowgroup [ref=f1e611]:
+                  - row [ref=f1e612]:
+                    - columnheader "Command" [ref=f1e613]
+                    - columnheader "Target" [ref=f1e614]
+                    - columnheader "Server" [ref=f1e615]
+                    - columnheader "State" [ref=f1e616]
+                    - columnheader "Attempts" [ref=f1e617]
+                    - columnheader "Next attempt" [ref=f1e618]
+                    - columnheader "Updated" [ref=f1e619]
+                    - columnheader "Action" [ref=f1e620]
+                - rowgroup [ref=f1e621]:
+                  - row [ref=f1e622]:
+                    - cell "observability.core cmd-b653c690" [ref=f1e623]:
+                      - generic [ref=f1e624]:
+                        - strong [ref=f1e625]: observability.core
+                        - generic [ref=f1e626]: cmd-b653c690
+                    - cell [ref=f1e627]:
+                      - code [ref=f1e628]: stack/swarmops-observability
+                    - cell "law" [ref=f1e629]
+                    - cell "needs attention" [ref=f1e630]
+                    - cell "1 / 8" [ref=f1e633]
+                    - cell "—" [ref=f1e634]
+                    - cell "Aug 26, 2026, 3:06 AM" [ref=f1e635]
+                    - cell [ref=f1e636]:
+                      - button "Selected" [ref=f1e637] [cursor=pointer]
+                  - row [ref=f1e639]:
+                    - cell "observability.logs cmd-51c16684" [ref=f1e640]:
+                      - generic [ref=f1e641]:
+                        - strong [ref=f1e642]: observability.logs
+                        - generic [ref=f1e643]: cmd-51c16684
+                    - cell [ref=f1e644]:
+                      - code [ref=f1e645]: stack/swarmops-logs
+                    - cell "law" [ref=f1e646]
+                    - cell "needs attention" [ref=f1e647]
+                    - cell "1 / 8" [ref=f1e650]
+                    - cell "—" [ref=f1e651]
+                    - cell "Aug 26, 2026, 2:58 AM" [ref=f1e652]
+                    - cell [ref=f1e653]:
+                      - button "Inspect" [ref=f1e654] [cursor=pointer]
+                  - row [ref=f1e656]:
+                    - cell "server.readiness cmd-08e27ff1" [ref=f1e657]:
+                      - generic [ref=f1e658]:
+                        - strong [ref=f1e659]: server.readiness
+                        - generic [ref=f1e660]: cmd-08e27ff1
+                    - cell [ref=f1e661]:
+                      - code [ref=f1e662]: server/server-06b5ec55df3a1cd2e4fb925e/readiness
+                    - cell "law" [ref=f1e663]
+                    - cell "needs attention" [ref=f1e664]
+                    - cell "1 / 1" [ref=f1e667]
+                    - cell "—" [ref=f1e668]
+                    - cell "Aug 26, 2026, 2:46 AM" [ref=f1e669]
+                    - cell [ref=f1e670]:
+                      - button "Inspect" [ref=f1e671] [cursor=pointer]
+                  - row [ref=f1e673]:
+                    - cell "node.availability cmd-956839aa" [ref=f1e674]:
+                      - generic [ref=f1e675]:
+                        - strong [ref=f1e676]: node.availability
+                        - generic [ref=f1e677]: cmd-956839aa
+                    - cell [ref=f1e678]:
+                      - code [ref=f1e679]: node/r75jwthb8i9cb71si8jrgzrb5
+                    - cell "law" [ref=f1e680]
+                    - cell "needs attention" [ref=f1e681]
+                    - cell "1 / 8" [ref=f1e684]
+                    - cell "—" [ref=f1e685]
+                    - cell "Aug 26, 2026, 2:22 AM" [ref=f1e686]
+                    - cell [ref=f1e687]:
+                      - button "Inspect" [ref=f1e688] [cursor=pointer]
+                  - row [ref=f1e690]:
+                    - cell "node.availability cmd-671f9a63" [ref=f1e691]:
+                      - generic [ref=f1e692]:
+                        - strong [ref=f1e693]: node.availability
+                        - generic [ref=f1e694]: cmd-671f9a63
+                    - cell [ref=f1e695]:
+                      - code [ref=f1e696]: node/r75jwthb8i9cb71si8jrgzrb5
+                    - cell "law" [ref=f1e697]
+                    - cell "needs attention" [ref=f1e698]
+                    - cell "1 / 8" [ref=f1e701]
+                    - cell "—" [ref=f1e702]
+                    - cell "Aug 26, 2026, 2:22 AM" [ref=f1e703]
+                    - cell [ref=f1e704]:
+                      - button "Inspect" [ref=f1e705] [cursor=pointer]
+                  - row [ref=f1e707]:
+                    - cell "observability.logs cmd-e6be4150" [ref=f1e708]:
+                      - generic [ref=f1e709]:
+                        - strong [ref=f1e710]: observability.logs
+                        - generic [ref=f1e711]: cmd-e6be4150
+                    - cell [ref=f1e712]:
+                      - code [ref=f1e713]: stack/swarmops-logs
+                    - cell "law" [ref=f1e714]
+                    - cell "needs attention" [ref=f1e715]
+                    - cell "1 / 8" [ref=f1e718]
+                    - cell "—" [ref=f1e719]
+                    - cell "Aug 26, 2026, 2:04 AM" [ref=f1e720]
+                    - cell [ref=f1e721]:
+                      - button "Inspect" [ref=f1e722] [cursor=pointer]
+                  - row [ref=f1e724]:
+                    - cell "observability.logs cmd-aa18c90d" [ref=f1e725]:
+                      - generic [ref=f1e726]:
+                        - strong [ref=f1e727]: observability.logs
+                        - generic [ref=f1e728]: cmd-aa18c90d
+                    - cell [ref=f1e729]:
+                      - code [ref=f1e730]: stack/swarmops-logs
+                    - cell "law" [ref=f1e731]
+                    - cell "needs attention" [ref=f1e732]
+                    - cell "1 / 8" [ref=f1e735]
+                    - cell "—" [ref=f1e736]
+                    - cell "Aug 25, 2026, 11:13 PM" [ref=f1e737]
+                    - cell [ref=f1e738]:
+                      - button "Inspect" [ref=f1e739] [cursor=pointer]
+                  - row [ref=f1e741]:
+                    - cell "observability.logs cmd-7621a6be" [ref=f1e742]:
+                      - generic [ref=f1e743]:
+                        - strong [ref=f1e744]: observability.logs
+                        - generic [ref=f1e745]: cmd-7621a6be
+                    - cell [ref=f1e746]:
+                      - code [ref=f1e747]: stack/swarmops-logs
+                    - cell "law" [ref=f1e748]
+                    - cell "needs attention" [ref=f1e749]
+                    - cell "1 / 8" [ref=f1e752]
+                    - cell "—" [ref=f1e753]
+                    - cell "Aug 25, 2026, 11:12 PM" [ref=f1e754]
+                    - cell [ref=f1e755]:
+                      - button "Inspect" [ref=f1e756] [cursor=pointer]
+                  - row [ref=f1e758]:
+                    - cell "observability.core cmd-494ede9b" [ref=f1e759]:
+                      - generic [ref=f1e760]:
+                        - strong [ref=f1e761]: observability.core
+                        - generic [ref=f1e762]: cmd-494ede9b
+                    - cell [ref=f1e763]:
+                      - code [ref=f1e764]: stack/swarmops-observability
+                    - cell "law" [ref=f1e765]
+                    - cell "needs attention" [ref=f1e766]
+                    - cell "1 / 8" [ref=f1e769]
+                    - cell "—" [ref=f1e770]
+                    - cell "Aug 25, 2026, 9:34 PM" [ref=f1e771]
+                    - cell [ref=f1e772]:
+                      - button "Inspect" [ref=f1e773] [cursor=pointer]
+          - complementary [ref=f1e775]:
+            - generic [ref=f1e776]:
+              - generic [ref=f1e777]:
+                - generic [ref=f1e779]:
+                  - heading "Core monitoring change" [level=2] [ref=f1e780]
+                  - paragraph [ref=f1e781]:
+                    - generic [ref=f1e782]: needs attention
+                - button "Close command details" [ref=f1e785] [cursor=pointer]:
+                  - generic [ref=f1e789]: Close
+              - generic [ref=f1e791]:
+                - status [ref=f1e792]:
+                  - generic [ref=f1e795]:
+                    - paragraph [ref=f1e796]: Why this needs attention
+                    - generic [ref=f1e798]:
+                      - paragraph [ref=f1e799]: SwarmOps started the core monitoring change but could not prove that Prometheus, Alertmanager, and Jaeger completed. Automatic replay stopped to avoid duplicating an uncertain cluster mutation.
+                      - generic [ref=f1e800]:
+                        - generic [ref=f1e802]:
+                          - generic [ref=f1e803]: Current blocker
+                          - generic [ref=f1e804]: The selected server is not currently reachable through a healthy agent connection.
+                        - generic [ref=f1e806]:
+                          - generic [ref=f1e807]: Current blocker
+                          - generic [ref=f1e808]: No current cluster snapshot is available, so SwarmOps cannot verify monitoring prerequisites.
+                      - paragraph [ref=f1e809]:
+                        - strong [ref=f1e810]: "How to recover:"
+                        - text: Restore the agent connection, install the managed gateway, assign stateful placement, then retry. SwarmOps will stop again if its reviewed assets or Swarm configs are missing.
+                      - generic [ref=f1e811]:
+                        - button "Gateway setup" [ref=f1e812] [cursor=pointer]
+                        - button "Swarm placement" [ref=f1e814] [cursor=pointer]
+                        - button "Agent diagnostics" [ref=f1e816] [cursor=pointer]
+                - generic [ref=f1e818]:
+                  - generic [ref=f1e819]:
+                    - term [ref=f1e820]: Command ID
+                    - definition [ref=f1e821]: cmd-b653c6905884e9eb0b2057589749219b
+                  - generic [ref=f1e822]:
+                    - term [ref=f1e823]: Explicit target
+                    - definition [ref=f1e824]: stack/swarmops-observability
+                  - generic [ref=f1e825]:
+                    - term [ref=f1e826]: Server
+                    - definition [ref=f1e827]: law
+                  - generic [ref=f1e828]:
+                    - term [ref=f1e829]: Actor
+                    - definition [ref=f1e830]: admin
+                  - generic [ref=f1e831]:
+                    - term [ref=f1e832]: Authority epoch
+                    - definition [ref=f1e833]: "0"
+                  - generic [ref=f1e834]:
+                    - term [ref=f1e835]: Attempt
+                    - definition [ref=f1e836]: 1 / 8
+                  - generic [ref=f1e837]:
+                    - term [ref=f1e838]: Queued
+                    - definition [ref=f1e839]: Aug 26, 2026, 3:06 AM
+                  - generic [ref=f1e840]:
+                    - term [ref=f1e841]: Last attempt
+                    - definition [ref=f1e842]: Aug 26, 2026, 3:06 AM
+                  - generic [ref=f1e843]:
+                    - term [ref=f1e844]: Updated
+                    - definition [ref=f1e845]: Aug 26, 2026, 3:06 AM
+                - figure "Latest result summary Copy" [ref=f1e846]:
+                  - generic [ref=f1e847]:
+                    - generic [ref=f1e848]: Latest result summary
+                    - button "Copy" [ref=f1e849] [cursor=pointer]
+                  - generic [ref=f1e853]: Execution did not complete; inspect the target before retrying.
+                - button "Resolve prerequisites before retrying" [disabled] [ref=f1e854]
+        - generic [ref=f1e856]:
+          - heading "Audit timeline" [level=2] [ref=f1e860]
+          - list [ref=f1e862]:
+            - listitem [ref=f1e863]:
+              - generic [ref=f1e865]:
+                - paragraph [ref=f1e866]:
+                  - strong [ref=f1e867]: admin
+                  - text: requested command stack/swarmops-observability
+                - time [ref=f1e868]: Aug 26, 03:06 AM
+            - listitem [ref=f1e869]:
+              - generic [ref=f1e871]:
+                - paragraph [ref=f1e872]: attempt 1 started observability.core
+                - time [ref=f1e873]: Aug 26, 03:06 AM
+            - listitem [ref=f1e874]:
+              - generic [ref=f1e876]:
+                - paragraph [ref=f1e877]: recorded needs attention observability.core
+                - time [ref=f1e878]: Aug 26, 03:06 AM
+        - generic [ref=f1e879]:
+          - generic [ref=f1e882]:
+            - heading "Failure evidence" [level=2] [ref=f1e883]
+            - paragraph [ref=f1e884]: Uncertain outcomes are never replayed blindly
+          - generic [ref=f1e886]:
+            - generic [ref=f1e887]:
+              - generic [ref=f1e888]:
+                - generic [ref=f1e889]: observability.core · stack/swarmops-observability
+                - generic [ref=f1e890]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e891]: needs attention
+            - generic [ref=f1e894]:
+              - generic [ref=f1e895]:
+                - generic [ref=f1e896]: observability.logs · stack/swarmops-logs
+                - generic [ref=f1e897]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e898]: needs attention
+            - generic [ref=f1e901]:
+              - generic [ref=f1e902]:
+                - generic [ref=f1e903]: server.readiness · server/server-06b5ec55df3a1cd2e4fb925e/readiness
+                - generic [ref=f1e904]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e905]: needs attention
+            - generic [ref=f1e908]:
+              - generic [ref=f1e909]:
+                - generic [ref=f1e910]: node.availability · node/r75jwthb8i9cb71si8jrgzrb5
+                - generic [ref=f1e911]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e912]: needs attention
+            - generic [ref=f1e915]:
+              - generic [ref=f1e916]:
+                - generic [ref=f1e917]: node.availability · node/r75jwthb8i9cb71si8jrgzrb5
+                - generic [ref=f1e918]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e919]: needs attention
+            - generic [ref=f1e922]:
+              - generic [ref=f1e923]:
+                - generic [ref=f1e924]: observability.logs · stack/swarmops-logs
+                - generic [ref=f1e925]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e926]: needs attention
+            - generic [ref=f1e929]:
+              - generic [ref=f1e930]:
+                - generic [ref=f1e931]: observability.logs · stack/swarmops-logs
+                - generic [ref=f1e932]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e933]: needs attention
+            - generic [ref=f1e936]:
+              - generic [ref=f1e937]:
+                - generic [ref=f1e938]: observability.logs · stack/swarmops-logs
+                - generic [ref=f1e939]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e940]: needs attention
+            - generic [ref=f1e943]:
+              - generic [ref=f1e944]:
+                - generic [ref=f1e945]: observability.core · stack/swarmops-observability
+                - generic [ref=f1e946]: Execution did not complete; inspect the target before retrying.
+              - generic [ref=f1e947]: needs attention

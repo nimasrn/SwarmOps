@@ -705,7 +705,7 @@ func fromDockerService(raw dockerapi.Service, tasks []dockerapi.Task, nodes int)
 	if raw.UpdateStatus != nil {
 		update = raw.UpdateStatus.State
 	}
-	return domain.Service{CreatedAt: raw.CreatedAt, DesiredTasks: desired, Health: status, ID: raw.ID, Image: raw.Spec.TaskTemplate.ContainerSpec.Image, Labels: raw.Spec.Labels, Mode: mode, Name: raw.Spec.Name, RunningTasks: running, Stack: stack, UpdatedAt: raw.UpdatedAt, UpdateState: update}
+	return domain.Service{Constraints: raw.Spec.TaskTemplate.Placement.Constraints, CreatedAt: raw.CreatedAt, DesiredTasks: desired, Health: status, ID: raw.ID, Image: raw.Spec.TaskTemplate.ContainerSpec.Image, Labels: raw.Spec.Labels, Mode: mode, Name: raw.Spec.Name, RunningTasks: running, Stack: stack, UpdatedAt: raw.UpdatedAt, UpdateState: update}
 }
 
 func fromDockerTask(raw dockerapi.Task) domain.Task {

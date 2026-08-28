@@ -1,0 +1,22 @@
+- main [ref=e4]:
+  - generic [ref=e6]:
+    - generic [ref=e8]:
+      - img "SwarmOps" [ref=e10]
+      - generic [ref=e14]:
+        - strong [ref=e15]: SwarmOps
+        - generic [ref=e16]: Remote Docker Swarm operations
+    - generic [ref=e17]:
+      - heading "Remote operations, with a boundary." [level=1] [ref=e18]
+      - paragraph [ref=e19]: Audited operations for remote Docker Swarm servers.
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: Username*
+          - textbox "Username" [ref=e24]
+        - generic [ref=e25]:
+          - generic [ref=e26]: Password*
+          - textbox "Password" [ref=e28]
+    - generic [ref=e29]:
+      - button "Sign in to SwarmOps" [disabled] [ref=e30]
+      - generic [ref=e33]:
+        - generic [ref=e34]: Use the configured operator account.
+        - button "Install and connect a server" [ref=e35] [cursor=pointer]

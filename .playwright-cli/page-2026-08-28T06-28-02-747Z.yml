@@ -1,0 +1,132 @@
+- generic [ref=f1e4]:
+  - generic [ref=f1e376]:
+    - generic [ref=f1e377]:
+      - generic [ref=f1e378]:
+        - img "SwarmOps" [ref=f1e380]
+        - strong [ref=f1e385]: SwarmOps
+      - button "Close menu" [ref=f1e386] [cursor=pointer]
+    - navigation "Admin navigation" [ref=f1e390]:
+      - generic [ref=f1e391]:
+        - button "Overview" [ref=f1e392] [cursor=pointer]
+        - button "Cluster" [ref=f1e394] [cursor=pointer]
+        - button "Workloads" [ref=f1e396] [cursor=pointer]
+        - button "Network" [ref=f1e398] [cursor=pointer]
+        - button "Monitoring" [ref=f1e400] [cursor=pointer]
+        - button "Activity" [ref=f1e402] [cursor=pointer]
+        - button "Settings" [ref=f1e404] [cursor=pointer]
+  - generic [ref=f1e5]:
+    - banner [ref=f1e6]:
+      - button "Open menu" [expanded] [active] [ref=f1e7] [cursor=pointer]
+      - generic [ref=f1e10]:
+        - img "SwarmOps" [ref=f1e12]
+        - strong [ref=f1e17]: SwarmOps
+      - generic [ref=f1e19]:
+        - generic [ref=f1e20]: Environment
+        - button "Production · connect server" [ref=f1e21] [cursor=pointer]
+      - generic [ref=f1e26]:
+        - combobox "Find a feature or setting" [ref=f1e30]
+        - generic [ref=f1e31]: Controller ready
+        - button "Refresh servers" [ref=f1e406] [cursor=pointer]
+        - generic [ref=f1e39]:
+          - generic [ref=f1e40]:
+            - generic [ref=f1e41]: A
+            - generic [ref=f1e42]: admin
+          - button "Sign out admin" [ref=f1e43] [cursor=pointer]
+    - generic [ref=f1e47]:
+      - complementary [ref=f1e48]:
+        - navigation "Admin navigation · current section" [ref=f1e50]:
+          - generic [ref=f1e407]:
+            - button "Servers" [ref=f1e408] [cursor=pointer]
+            - button "Swarm & placement" [ref=f1e410] [cursor=pointer]
+            - button "Host setup" [ref=f1e412] [cursor=pointer]
+            - button "Docker resources" [ref=f1e414] [cursor=pointer]
+      - main [ref=f1e54]:
+        - generic [ref=f1e416]:
+          - generic [ref=f1e419]:
+            - heading "Servers" [level=1] [ref=f1e421]
+            - paragraph [ref=f1e422]: Connect servers, understand their Docker and Swarm role, and open setup or diagnostics from one place.
+          - generic [ref=f1e423]:
+            - generic [ref=f1e424]:
+              - generic [ref=f1e426]:
+                - paragraph [ref=f1e427]: Recommended · outbound HTTPS
+                - heading "Install and enroll with one command" [level=2] [ref=f1e429]
+              - generic [ref=f1e431]:
+                - paragraph [ref=f1e432]: The controller creates a short-lived, one-time certificate grant. The Ubuntu agent generates its private key locally, pins this controller, installs as a systemd service, and reconnects through outbound long polls. No inbound agent port or SSH access is required.
+                - status [ref=f1e433]:
+                  - generic [ref=f1e436]:
+                    - paragraph [ref=f1e437]: HTTPS is required
+                    - generic [ref=f1e438]: Open the production HTTPS controller URL to generate an install command. Loopback HTTP remains available only for local development.
+                - generic [ref=f1e439]:
+                  - generic [ref=f1e440]: Agent name
+                  - textbox "Agent name" [ref=f1e442]
+                  - paragraph [ref=f1e443]: Optional. The host name is used when this is empty.
+                - button "Generate one-time install command" [disabled] [ref=f1e444]
+            - generic [ref=f1e446]:
+              - generic [ref=f1e448]:
+                - paragraph [ref=f1e449]: Standalone · install first
+                - heading "Enter the code printed by the agent" [level=2] [ref=f1e451]
+              - generic [ref=f1e453]:
+                - paragraph [ref=f1e454]: Run the installer with the controller certificate pin. The agent keeps its private key and redemption secret, prints a short-lived code, and waits. Approving the code issues the same renewable client certificate as the dashboard-generated flow.
+                - figure "Install first on Ubuntu 22.04 or 24.04 Copy" [ref=f1e455]:
+                  - generic [ref=f1e456]:
+                    - generic [ref=f1e457]: Install first on Ubuntu 22.04 or 24.04
+                    - button "Copy" [ref=f1e458] [cursor=pointer]
+                  - generic [ref=f1e462]: Reading the pinned controller identity…
+                - generic [ref=f1e463]:
+                  - generic [ref=f1e464]: Agent enrollment code*
+                  - textbox "Agent enrollment code" [ref=f1e466]:
+                    - /placeholder: ABCD-EFGH-JKLM-NPQR
+                  - paragraph [ref=f1e467]: Four groups of four characters; expires after 15 minutes.
+                - button "Approve and enroll agent" [disabled] [ref=f1e468]
+          - generic [ref=f1e470]:
+            - generic [ref=f1e472]:
+              - paragraph [ref=f1e473]: Migration only
+              - heading "Existing inbound machine API" [level=2] [ref=f1e475]
+            - generic [ref=f1e477]:
+              - paragraph [ref=f1e478]: New agents must use one of the outbound certificate flows above. Open this only to reconnect an older pinned HTTPS machine API while it is being migrated.
+              - button "Open legacy connection details" [ref=f1e479] [cursor=pointer]
+          - generic [ref=f1e481]:
+            - generic [ref=f1e483]:
+              - paragraph [ref=f1e484]: Connected infrastructure
+              - heading "Managed servers" [level=2] [ref=f1e486]
+            - generic [ref=f1e487]:
+              - status [ref=f1e488]:
+                - generic [ref=f1e491]:
+                  - paragraph [ref=f1e492]: How a server connects
+                  - generic [ref=f1e493]: Each server initiates an encrypted connection to SwarmOps, so the agent does not expose an inbound port. The computer running this controller appears here only if you also install and enroll an agent on it.
+              - table [ref=f1e497]:
+                - caption [ref=f1e498]: Remote server profiles
+                - rowgroup [ref=f1e499]:
+                  - row [ref=f1e500]:
+                    - columnheader "Server" [ref=f1e501]
+                    - columnheader "Connection" [ref=f1e502]
+                    - columnheader "Docker" [ref=f1e503]
+                    - columnheader "Swarm" [ref=f1e504]
+                    - columnheader "Agent" [ref=f1e505]
+                    - columnheader "Status" [ref=f1e506]
+                    - columnheader "Action" [ref=f1e507]
+                - rowgroup [ref=f1e508]:
+                  - row [ref=f1e509]:
+                    - cell "Local machine https://127.0.0.1:9180" [ref=f1e510]:
+                      - generic [ref=f1e511]:
+                        - strong [ref=f1e512]: Local machine
+                        - generic [ref=f1e513]: https://127.0.0.1:9180
+                    - cell "Direct secure connection" [ref=f1e514]
+                    - cell "Not detected" [ref=f1e515]
+                    - cell "Bootstrap required" [ref=f1e516]
+                    - cell "v0.7.6" [ref=f1e517]
+                    - cell "Machine API is unreachable" [ref=f1e518]
+                    - cell [ref=f1e521]:
+                      - button "Reconnect" [ref=f1e522] [cursor=pointer]
+                  - row [ref=f1e524]:
+                    - cell "law https://109.122.247.57:9180" [ref=f1e525]:
+                      - generic [ref=f1e526]:
+                        - strong [ref=f1e527]: law
+                        - generic [ref=f1e528]: https://109.122.247.57:9180
+                    - cell "Direct secure connection" [ref=f1e529]
+                    - cell "Not detected" [ref=f1e530]
+                    - cell "Bootstrap required" [ref=f1e531]
+                    - cell "v0.4.2" [ref=f1e532]
+                    - cell "Machine API is unreachable" [ref=f1e533]
+                    - cell [ref=f1e536]:
+                      - button "Reconnect" [ref=f1e537] [cursor=pointer]

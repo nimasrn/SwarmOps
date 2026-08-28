@@ -1,0 +1,4 @@
+# Local frontend build output and presentation inspection data.
+web/node_modules/
+web/dist/
+docs/*.pptx.inspect.ndjson
