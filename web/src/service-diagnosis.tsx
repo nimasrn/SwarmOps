@@ -70,6 +70,11 @@ export function ServiceDiagnosis({
                 <p className="swarmops-diagnosis__fix-label">{primary.label}</p>
                 {primary.detail ? <p className="swarmops-diagnosis__fix-detail">{primary.detail}</p> : null}
                 <div className="swarmops-diagnosis__fix-actions">
+                  {/* These take you to the screen that owns the action rather
+                      than performing it here. Prune is gated behind an explicit
+                      confirmation, and running a destructive command from the
+                      panel that just diagnosed the problem would bypass the
+                      deliberation that gate exists to force. */}
                   <Button onClick={() => onAction?.(primary.kind)} size="sm" variant="accent">
                     {primary.label}
                   </Button>

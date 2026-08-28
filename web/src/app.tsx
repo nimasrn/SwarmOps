@@ -605,6 +605,23 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 			commands={commands}
 			data={data}
 			onAddNode={() => setWorkspace('servers')}
+			onDiagnosisAction={(kind) => {
+			  // A diagnosis hands off to the screen that owns the action; it
+			  // does not perform it. Prune in particular is gated behind an
+			  // explicit confirmation, and a destructive command run from a
+			  // panel that just told you what was wrong would bypass exactly
+			  // the deliberation that gate exists to force.
+			  const destination: Record<string, WorkspacePage> = {
+			    'edit-constraint': 'services',
+			    'label-node': 'nodes',
+			    logs: 'logs',
+			    prune: 'resources',
+			    reschedule: 'nodes',
+			  }
+			  const next = destination[kind]
+			  if (next) setWorkspace(next)
+			  else toast({ message: `No screen owns "${kind}" yet.`, tone: 'neutral' })
+			}}
 			onDiagnostics={() => setWorkspace('agent-diagnostics')}
 			onReadiness={() => setWorkspace('provisioning')}
 			page={workspace as ClusterPage}
@@ -622,12 +639,14 @@ function PageRouter({
   onAddNode,
   onDiagnostics,
   onReadiness,
+  onDiagnosisAction,
   page,
   toast,
 }: {
   commands: Command[]
   data: DashboardData
   onAddNode: () => void
+  onDiagnosisAction: (kind: string) => void
   onDiagnostics: () => void
   onReadiness: () => void
   page: ClusterPage
@@ -636,7 +655,7 @@ function PageRouter({
   switch (page) {
     case 'nodes': return <NodesPage commands={commands} nodes={data.nodes} onAddNode={onAddNode} onDiagnostics={onDiagnostics} onReadiness={onReadiness} overview={data.overview} toast={toast} />
     case 'stacks': return <StacksPage nodes={data.nodes} stacks={data.stacks} toast={toast} />
-    case 'services': return <ServicesPage services={data.services} toast={toast} />
+    case 'services': return <ServicesPage onDiagnosisAction={onDiagnosisAction} services={data.services} toast={toast} />
     case 'builds': return <BuildsPage toast={toast} />
     case 'gateway': return <TraefikControlPage initialTab="overview" status={data.traefik} toast={toast} />
     case 'routes': return <TraefikControlPage initialTab="routes" status={data.traefik} toast={toast} />
@@ -1328,7 +1347,7 @@ function StacksPage({ nodes, stacks, toast }: { nodes: Node[]; stacks: Stack[]; 
   )
 }
 
-function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnType<typeof useToast> }) {
+function ServicesPage({ onDiagnosisAction, services, toast }: { onDiagnosisAction: (kind: string) => void; services: Service[]; toast: ReturnType<typeof useToast> }) {
   const [selectedID, setSelectedID] = useState(services[0]?.id ?? '')
   const [logs, setLogs] = useState('')
   const [logsError, setLogsError] = useState('')
@@ -1386,7 +1405,7 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
       {degraded && diagnosis.result ? (
         <ServiceDiagnosis
-          onAction={(kind) => toast({ message: `The chain names "${kind}" as the fix, but the console does not run it yet.`, tone: 'neutral' })}
+          onAction={onDiagnosisAction}
           result={diagnosis.result}
           serviceName={selected.name}
         />
