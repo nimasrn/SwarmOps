@@ -50,6 +50,8 @@ export { Chip, ChipInput } from './components/chip';
 export type { ChipInputProps, ChipProps, ChipTone } from './components/chip';
 export { DataList } from './components/data-list';
 export type { DataListProps, DataListRow } from './components/data-list';
+export { CommandPalette } from './components/command-palette';
+export type { CommandPaletteProps, PaletteCommand } from './components/command-palette';
 export { Combobox } from './components/combobox';
 export type { ComboboxOption, ComboboxProps } from './components/combobox';
 export { Calendar, DateField, DatePicker } from './components/date-field';

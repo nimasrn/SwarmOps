@@ -11,6 +11,46 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.9.0 — 2026-08-28
+
+The console's information architecture is rebuilt around what an operator is
+trying to DO, and it now lives in one file rather than five.
+
+- **One source for the IA** — `web/src/navigation.ts` holds the areas, the
+  screens, their icons, their one-line purpose, and the retired hashes that must
+  keep resolving. Both navigation tiers, the breadcrumb, the palette, and the
+  cluster-gating rule are built from it, so they can no longer disagree. This is
+  what makes Connection diagnostics reachable: it had a title and a section for
+  three releases and appeared in no navigation tree at all.
+- **Deploying is a first-class area** — source deployment, applications, images
+  and builds, and the container registry were split between "Settings" and
+  "Workloads", which filed the act of shipping under configuration. They are one
+  area, Deliver, and it is the second thing in the rail.
+- **Eight areas named for the job** — Overview, Deliver, Fleet, Workloads,
+  Traffic, Observe, Activity, Control. Each opens on the screen that answers its
+  first question, and each screen states the decision it serves under the area
+  heading.
+- **A command palette that acts** — ⌘K searches every screen AND runs the
+  operations an operator reaches for under pressure: deploy from source, add a
+  server, refresh, diagnose a connection, review runs, sign out, and switch the
+  console to another cluster. The finder it replaces could only navigate.
+- **The target and its evidence in one control** — the cluster selector carries
+  the agent's connection state beside it. The two used to sit at opposite ends
+  of the chrome, so answering one question meant looking in two places.
+- **A command center that recommends** — the hero states the verdict and hands
+  back the single next action, chosen in dependency order: authority, then a
+  connected agent, then an open decision, then a selected cluster, then the
+  edge, then a deployment.
+- **A first-run screen that knows which run it is** — no server, no answering
+  agent, a host that is not a manager, and a manager that is not selected are
+  four different situations; each now has its own heading, reason, and button.
+- **Observed scope in the chrome** — the sidebar footer names the controller's
+  authority and when the current cluster snapshot was actually read, rather than
+  restating a connection state shown elsewhere.
+- **Kit corrections consumed** — nim-ui 0.15 (`CommandPalette`, `StatusHero`
+  actions, un-underlined linked list rows, a wrapped console toolbar that starts
+  at the reading edge).
+
 ## 0.8.0 — 2026-08-28
 
 This release turns the console redesign into the product’s real information

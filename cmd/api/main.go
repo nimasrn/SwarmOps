@@ -22,7 +22,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/source"
 )
 
-const version = "0.8.0"
+const version = "0.9.0"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))

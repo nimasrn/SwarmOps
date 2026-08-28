@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  Body,
   Button,
   Columns,
   DetailHeader,
   EmptyState,
-  Facts,
   Icon,
   Inline,
   List,
@@ -15,7 +13,6 @@ import {
   Mono,
   Page,
   Panel,
-  Stack as Rows,
   StatusHero,
   StatusDot,
   Table,
@@ -90,8 +87,10 @@ export function HomePage({
   const [containers, setContainers] = useState<ContainerSummary[]>([])
   const [containerEvidence, setContainerEvidence] = useState<'available' | 'loading' | 'unavailable'>('loading')
   const operating = core.controlEnabled && connectedServer?.connectionState === 'connected' && cluster?.overview.health !== 'unhealthy'
+  const running = commands.filter((command) => command.state === 'running' || command.state === 'preparing' || command.state === 'leased')
   const visibleCommands = commands.slice(0, 6)
   const primaryAttention = attention[0]
+  const next = nextStep({ attention: primaryAttention, cluster, connectedServer, core, servers })
 
   useEffect(() => {
     let cancelled = false
@@ -115,79 +114,186 @@ export function HomePage({
     return () => { cancelled = true }
   }, [cluster?.overview.generatedAt])
 
+  const run = {
+    deploy: onDeploy,
+    diagnose: onDiagnose,
+    operations: onOpenOperations,
+    servers: onAddNode,
+    traffic: onOpenTraffic,
+  }[next.action]
+
   return (
     <Page width="full">
       <DetailHeader
-        actions={<Inline><Button iconStart="play" onClick={onDeploy} variant="accent">Deploy application</Button><Button iconStart="plus" onClick={onAddNode} variant="secondary">Add node</Button></Inline>}
-        meta={cluster ? <StatusDot tone="success">Production snapshot · {formatTime(cluster.overview.generatedAt)}</StatusDot> : <StatusDot tone="neutral">Waiting for production evidence</StatusDot>}
-        subtitle="Health, risk, and the next operator decision. Every signal names the source that produced it."
+        actions={
+          <Inline>
+            <Button iconStart="play" onClick={onDeploy} variant="accent">Deploy from source</Button>
+            <Button iconStart="plus" onClick={onAddNode} variant="secondary">Add a server</Button>
+          </Inline>
+        }
+        meta={
+          <Inline gap="tight">
+            {cluster
+              ? <StatusDot tone="success">Snapshot read {formatTime(cluster.overview.generatedAt)}</StatusDot>
+              : <StatusDot tone="neutral">No cluster snapshot</StatusDot>}
+            {running.length ? <StatusDot pulse tone="accent">{running.length} operation{running.length === 1 ? '' : 's'} running</StatusDot> : null}
+          </Inline>
+        }
+        subtitle="What production is doing, and the one thing worth doing about it. Every signal below names the layer that produced it."
         title="Command center"
       />
 
+      {/* The hero used to state a verdict and stop. A console read under
+          pressure should hand back the NEXT ACTION with the verdict, so the
+          decision and the button that serves it are one glance apart. */}
       <StatusHero
-        description={operating ? `Agent, Docker, and Swarm are responding${attention.length ? `; ${attention.length} reviewed operation${attention.length === 1 ? '' : 's'} still need an operator decision.` : '.'}` : connectedServer ? 'The agent connection or cluster evidence is incomplete. Open the attention item below for the exact failing layer.' : 'Connect an outbound machine agent to begin production inspection.'}
+        actions={<Button iconStart={next.icon} onClick={run} variant={operating && !primaryAttention ? 'secondary' : 'accent'}>{next.label}</Button>}
+        description={next.detail}
         icon={operating ? 'check' : 'alert'}
         title={operating ? 'Production is operating' : 'Production evidence is incomplete'}
         tone={operating ? 'success' : 'warning'}
       />
 
-      <MetricGrid aria-label="Production signal summary" columns={4} dense>
-        <Metric hint={activeCore ? 'Owns durable operations and policy' : `Local identity ${core.localId}`} icon="shield" label="Controller" tone={core.controlEnabled ? 'success' : 'warning'} value={core.controlEnabled ? 'Ready' : 'Standby'} />
-        <Metric hint="Authenticated outbound TLS; no inbound agent port" icon="link" label="Agent connection" tone={connectedServer ? 'success' : 'warning'} value={connectedServer ? 'Connected' : 'Not connected'} />
-        <Metric hint={connectedServer?.dockerVersion || 'No current Engine version'} icon="package" label="Docker Engine" tone={connectedServer?.dockerAvailable ? 'success' : 'warning'} value={connectedServer?.dockerAvailable ? 'Healthy' : 'Unavailable'} />
-        <Metric hint={connectedServer?.swarmControlAvailable ? `${nodes.length} node${nodes.length === 1 ? '' : 's'} · selected manager` : 'Docker can run without Swarm services'} icon="layers" label="Docker Swarm" tone={connectedServer?.swarmControlAvailable ? 'success' : 'neutral'} value={connectedServer?.swarmControlAvailable ? 'Active' : connectedServer ? 'Not initialized' : 'Unknown'} />
-      </MetricGrid>
-
-      <Columns template="two-thirds">
+      <Columns align="start" template="two-thirds">
         <Panel
-          actions={primaryAttention ? <Inline><Button onClick={onOpenOperations} size="sm" variant="accent">Review recovery</Button><Button onClick={onDiagnose} size="sm" variant="secondary">Open evidence</Button></Inline> : undefined}
-          caption={attention.length ? `${attention.length} open decision${attention.length === 1 ? '' : 's'}` : 'No open decision'}
-          title={primaryAttention?.label ?? 'No operator action required'}
+          actions={attention.length ? <Button onClick={onOpenOperations} size="sm" variant="secondary">Open runs</Button> : undefined}
+          caption={attention.length ? `${attention.length} open decision${attention.length === 1 ? '' : 's'}` : undefined}
+          title={attention.length ? 'Needs an operator decision' : 'Nothing needs a decision'}
         >
-          {primaryAttention ? <Rows gap="tight"><Body>{primaryAttention.detail}</Body><List plain>{attention.map((item) => <ListRow key={item.id} leading={<Icon name={item.tone === 'danger' ? 'alert' : 'activity'} size="sm" tone={item.tone === 'danger' ? 'danger' : 'warning'} />} subtitle={item.detail} title={item.label} trailing={<StatusDot tone={item.tone}>Review</StatusDot>} />)}</List></Rows> : <Body size="sm" tone="muted">The current controller, agent, cluster, and durable command evidence contains no condition requiring intervention.</Body>}
+          {attention.length ? (
+            <List plain>
+              {attention.map((item) => (
+                <ListRow
+                  key={item.id}
+                  leading={<Icon name={item.tone === 'danger' ? 'alert' : 'activity'} size="sm" tone={item.tone === 'danger' ? 'danger' : 'warning'} />}
+                  subtitle={item.detail}
+                  title={item.label}
+                  trailing={<StatusDot tone={item.tone}>{item.tone === 'danger' ? 'Blocking' : 'Review'}</StatusDot>}
+                />
+              ))}
+            </List>
+          ) : (
+            <EmptyState
+              description="The current controller, agent, cluster, and durable command evidence contains no condition that requires intervention."
+              icon="check-circle"
+              title="Clear"
+            />
+          )}
         </Panel>
-        <Panel title="Where the signal comes from">
+
+        {/* The four layers a claim about production passes through, in the
+            order they fail in. Reading it top to bottom is the diagnosis:
+            the first row that is not green is the layer to open. */}
+        <Panel description="The first row that is not healthy is the layer to open." title="Where the signal comes from">
           <List plain>
-            <ListRow leading={<Icon name="shield" size="sm" />} subtitle="Stores authority and durable operations" title="Controller" trailing={<StatusDot tone={core.controlEnabled ? 'success' : 'warning'}>{core.controlEnabled ? 'Ready' : 'Standby'}</StatusDot>} />
-            <ListRow leading={<Icon name="link" size="sm" />} subtitle="Maintains authenticated long polling" title="Outbound agent" trailing={<StatusDot tone={connectedServer ? 'success' : 'warning'}>{connectedServer ? 'Connected' : 'Missing'}</StatusDot>} />
-            <ListRow leading={<Icon name="package" size="sm" />} subtitle="Reports local containers and Swarm state" title="Docker Engine" trailing={<StatusDot tone={connectedServer?.dockerAvailable ? 'success' : 'warning'}>{connectedServer?.dockerAvailable ? 'Healthy' : 'Unavailable'}</StatusDot>} />
-            <ListRow leading={<Icon name="layers" size="sm" />} subtitle="Leads the explicitly selected cluster" title="Swarm manager" trailing={<StatusDot tone={connectedServer?.swarmControlAvailable ? 'success' : 'neutral'}>{connectedServer?.swarmControlAvailable ? 'Active' : 'Not active'}</StatusDot>} />
+            <ListRow
+              leading={<Icon name="shield" size="sm" />}
+              subtitle={activeCore ? 'Owns durable operations and policy' : `Local identity ${core.localId}`}
+              title="Controller"
+              trailing={<StatusDot tone={core.controlEnabled ? 'success' : 'warning'}>{core.controlEnabled ? 'Ready' : 'Standby'}</StatusDot>}
+            />
+            <ListRow
+              leading={<Icon name="link" size="sm" />}
+              subtitle="Authenticated outbound TLS; no inbound agent port"
+              title="Outbound agent"
+              trailing={<StatusDot tone={connectedServer ? 'success' : 'warning'}>{connectedServer ? 'Connected' : 'Missing'}</StatusDot>}
+            />
+            <ListRow
+              leading={<Icon name="package" size="sm" />}
+              subtitle={connectedServer?.dockerVersion ? `Engine ${connectedServer.dockerVersion}` : 'Reports local containers and Swarm state'}
+              title="Docker Engine"
+              trailing={<StatusDot tone={connectedServer?.dockerAvailable ? 'success' : 'warning'}>{connectedServer?.dockerAvailable ? 'Healthy' : 'Unavailable'}</StatusDot>}
+            />
+            <ListRow
+              leading={<Icon name="layers" size="sm" />}
+              subtitle={connectedServer?.swarmControlAvailable ? `${nodes.length} node${nodes.length === 1 ? '' : 's'} in the selected cluster` : 'Docker can run without Swarm services'}
+              title="Swarm manager"
+              trailing={<StatusDot tone={connectedServer?.swarmControlAvailable ? 'success' : 'neutral'}>{connectedServer?.swarmControlAvailable ? 'Active' : 'Not active'}</StatusDot>}
+            />
           </List>
         </Panel>
       </Columns>
 
-      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">Browse resources</Button>} title="What actually runs on this server">
-        <MetricGrid columns={3} dense>
-          <Metric hint={containerEvidence === 'available' ? 'Docker containers, including Compose workloads' : containerEvidence === 'loading' ? 'Reading Docker container inventory' : 'Open Docker resources for current evidence'} label="Compose and Engine containers" value={containerEvidence === 'available' ? String(containers.length) : '—'} />
-          <Metric hint={cluster?.overview.summary.services ? 'Services scheduled by Docker Swarm' : 'Swarm can be active while running zero services'} label="Swarm services" value={String(cluster?.overview.summary.services ?? 0)} />
-          <Metric hint={cluster?.stacks.length ? 'Namespaces grouping Swarm services' : 'No namespaced service groups'} label="Swarm stacks" value={String(cluster?.stacks.length ?? 0)} />
+      <Panel
+        actions={<Inline><Button onClick={onOpenApplications} size="sm" variant="ghost">Applications</Button><Button onClick={onOpenInfrastructure} size="sm" variant="ghost">Swarm & placement</Button><Button onClick={onOpenTraffic} size="sm" variant="ghost">Traffic</Button></Inline>}
+        description="Counted from the selected cluster's own last report, not from what SwarmOps was asked to create."
+        title="What is actually running"
+      >
+        <MetricGrid columns={4} dense>
+          <Metric
+            hint={containerEvidence === 'available' ? 'Docker containers, including Compose workloads' : containerEvidence === 'loading' ? 'Reading Docker container inventory' : 'Open Docker resources for current evidence'}
+            icon="package"
+            label="Containers"
+            value={containerEvidence === 'available' ? String(containers.length) : '—'}
+          />
+          <Metric
+            hint={cluster?.overview.summary.services ? 'Processes scheduled by Docker Swarm' : 'Swarm can be active while running zero services'}
+            icon="terminal"
+            label="Swarm services"
+            value={String(cluster?.overview.summary.services ?? 0)}
+          />
+          <Metric hint={cluster?.stacks.length ? 'Namespaces grouping Swarm services' : 'No namespaced service groups'} icon="layers" label="Stacks" value={String(cluster?.stacks.length ?? 0)} />
+          <Metric
+            hint={cluster?.traefik.service ? 'The managed gateway is scheduled and owns the edge' : 'Deployed applications have no public hostname until a gateway owns the edge'}
+            icon="globe"
+            label="Edge gateway"
+            tone={cluster ? (cluster.traefik.service ? 'success' : 'warning') : undefined}
+            value={cluster ? (cluster.traefik.service ? 'Running' : 'None') : '—'}
+          />
         </MetricGrid>
       </Panel>
 
-      <Columns>
-        <Panel actions={<Button onClick={onOpenApplications} size="sm" variant="ghost">Open workloads</Button>} title="Application, service, or stack?">
-          <Facts items={[
-            { label: 'Application', value: 'The product you deploy and operate as one lifecycle.' },
-            { label: 'Service', value: 'A long-running Swarm process inside an application or stack.' },
-            { label: 'Stack', value: 'An advanced group of services, networks, configs, and secrets.' },
-            { label: 'Managed database', value: 'A stateful dependency whose placement, credentials, backup posture, and lifecycle SwarmOps owns.' },
-          ]} />
-        </Panel>
-        <Panel actions={<Button onClick={onOpenTraffic} size="sm" variant="ghost">Open gateway</Button>} title="Recommended sequence">
-          <List plain>
-            <ListRow leading={<Icon name="document" size="sm" />} subtitle="Confirm the failure is feature-specific, not an agent outage." title="1. Read the run evidence" />
-            <ListRow leading={<Icon name="external" size="sm" />} subtitle="Choose the existing production gateway or install the managed one." title="2. Resolve gateway ownership" />
-            <ListRow leading={<Icon name="server" size="sm" />} subtitle="Approve stateful and edge placement before retrying shared workloads." title="3. Confirm placement" />
-          </List>
-        </Panel>
-      </Columns>
-
       <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View all runs</Button>} flush title="Recent operations">
-        {visibleCommands.length ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} /> : <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations" />}
+        {visibleCommands.length
+          ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} />
+          : <EmptyState description="Queued, running, retrying, and completed operations appear here as they are recorded." icon="terminal" title="No operations yet" />}
       </Panel>
-
     </Page>
   )
+}
+
+interface NextStep {
+  action: 'deploy' | 'diagnose' | 'operations' | 'servers' | 'traffic'
+  detail: string
+  icon: 'activity' | 'external' | 'link' | 'play' | 'plus'
+  label: string
+}
+
+/**
+ * One recommendation, chosen in the order a failure actually blocks work.
+ *
+ * A console that lists six things an operator could do has left the ranking —
+ * the hard part — to the person under pressure. The order here is the order of
+ * dependency: without authority nothing may be changed, without an agent
+ * nothing may be read, without a cluster nothing may be scheduled, and a
+ * failed run outranks new work because it is already someone's outage.
+ */
+function nextStep({ attention, cluster, connectedServer, core, servers }: {
+  attention?: AttentionItem
+  cluster?: HomeClusterData
+  connectedServer?: Server
+  core: CoreTopology
+  servers: Server[]
+}): NextStep {
+  if (!core.controlEnabled) {
+    return { action: 'operations', detail: 'This controller does not hold the active authority epoch, so every change is fenced. Resolve the handoff before anything else — no other step can complete while it stands.', icon: 'activity', label: 'Open controller recovery' }
+  }
+  if (!servers.length) {
+    return { action: 'servers', detail: 'No host is enrolled yet. Enrollment is one outbound command on Ubuntu; the agent keeps its own key and waits for you to approve its code.', icon: 'plus', label: 'Connect your first server' }
+  }
+  if (!connectedServer) {
+    return { action: 'diagnose', detail: 'No agent is answering the controller, so nothing on this screen is current. Diagnostics names the layer that stopped — transport, Docker, or Swarm.', icon: 'link', label: 'Diagnose the connection' }
+  }
+  if (attention) {
+    return { action: 'operations', detail: `${attention.label}. ${attention.detail}`, icon: 'activity', label: 'Review the open decision' }
+  }
+  if (!cluster) {
+    return { action: 'servers', detail: 'An agent is connected but this console is not pointed at a Swarm manager. Selection is deliberate: reads and changes stay scoped to one explicit cluster.', icon: 'plus', label: 'Choose a cluster' }
+  }
+  if (!cluster.traefik.service) {
+    return { action: 'traffic', detail: 'The cluster is healthy and nothing needs a decision. No gateway owns the edge yet, so a deployed application has no public hostname until one does.', icon: 'external', label: 'Set up the gateway' }
+  }
+  return { action: 'deploy', detail: 'Controller, agent, Docker, and Swarm are all answering, and no run is waiting on a decision. The cluster is ready for a deployment.', icon: 'play', label: 'Deploy from source' }
 }
 
 function attentionItems(core: CoreTopology, cluster: HomeClusterData | undefined, servers: Server[], commands: Command[]): AttentionItem[] {

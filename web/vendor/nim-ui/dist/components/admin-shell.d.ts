@@ -45,8 +45,10 @@ export interface AdminShellProps {
     };
     /** `sidebar` is the conventional deep console hierarchy. `sections` is a
         shallow control-plane shell: brand, scope, and actions share the
-        masthead while primary destinations form a horizontal section bar. */
-    navigation?: 'sections' | 'sidebar';
+        masthead while primary destinations form a horizontal section bar.
+        `rail` keeps primary areas as an icon-only first tier beside the
+        contextual destination sidebar. Rail items must provide an icon. */
+    navigation?: 'rail' | 'sections' | 'sidebar';
     /** `key` of the active item. */
     value: string;
     /** Search field, status pills, the signed-in operator. */

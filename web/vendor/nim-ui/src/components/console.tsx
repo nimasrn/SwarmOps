@@ -305,21 +305,34 @@ export function Facts({ className, columns = 2, items, ...props }: FactsProps) {
 export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'one-third' | 'quarters' | 'thirds' | 'two-fifths' | 'two-thirds'
 
 export interface ColumnsProps extends HTMLAttributes<HTMLDivElement> {
+  /** `stretch` (the default) gives both columns the row's height, which is
+      right when they are two halves of one object. `start` sizes each to its
+      own content — use it when the columns are INDEPENDENT panels whose
+      lengths have no reason to agree, such as a list that varies from zero to
+      four rows beside a fixed set of four. Stretched, the shorter one becomes
+      a tall box with its content stranded at the top. */
+  align?: 'start' | 'stretch'
   children: ReactNode
   /** `aside` is a main column plus a fixed rail; `halves` and `thirds` are
       equal tracks. All of them collapse to one column in a narrow container. */
   template?: ColumnsTemplate
 }
 
-export function Columns({ children, className, template = 'halves', ...props }: ColumnsProps) {
+export function Columns({ align = 'stretch', children, className, template = 'halves', ...props }: ColumnsProps) {
   return (
-    <div className={cn('nim-columns', className)} data-template={template} {...props}>
+    <div className={cn('nim-columns', className)} data-align={align === 'start' ? 'start' : undefined} data-template={template} {...props}>
       {children}
     </div>
   )
 }
 
 export interface StatusHeroProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  /** What to DO about the verdict. A control room that states a condition and
+      offers nothing has left the reader to go and find the screen themselves,
+      which is the moment an incident costs its first minutes. Keep it to the
+      one recommended action; a hero with a row of equal buttons has ranked
+      nothing. */
+  actions?: ReactNode
   description?: ReactNode
   icon: IconName
   title: ReactNode
@@ -327,7 +340,7 @@ export interface StatusHeroProps extends Omit<HTMLAttributes<HTMLElement>, 'titl
 }
 
 /** A large first-glance health statement for a control-room overview. */
-export function StatusHero({ className, description, icon, title, tone = 'neutral', ...props }: StatusHeroProps) {
+export function StatusHero({ actions, className, description, icon, title, tone = 'neutral', ...props }: StatusHeroProps) {
   return (
     <section className={cn('nim-status-hero', className)} data-tone={tone} {...props}>
       <span className="nim-status-hero__mark"><Icon name={icon} size="xl" /></span>
@@ -335,6 +348,7 @@ export function StatusHero({ className, description, icon, title, tone = 'neutra
         <strong className="nim-status-hero__title">{title}</strong>
         {description ? <p className="nim-status-hero__description">{description}</p> : null}
       </div>
+      {actions ? <div className="nim-status-hero__actions">{actions}</div> : null}
     </section>
   )
 }

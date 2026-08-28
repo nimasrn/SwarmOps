@@ -13,6 +13,18 @@ Read [README.md](README.md) before changing this application. Root
 - Never put a password, private key/passphrase, session key, registry config,
   cloud token, Compose content, build context, or service-log content into an
   audit record or log. Persist only non-secret remote-server profile metadata.
+- `web/src/navigation.ts` is the console's information architecture and the
+  ONLY place it is written down: areas, screens, icons, the one line each
+  screen exists to answer, retired hashes, and the set that needs a selected
+  cluster. Both navigation tiers, the breadcrumb, the palette, and the gating
+  rule are derived from it. Adding a screen means adding it there — a routable
+  screen in no area is a test failure, and is exactly how
+  `agent-diagnostics` shipped for three releases with a title, a section, and
+  no way to reach it. Never reintroduce a second list of pages.
+- The palette's CONTENTS are this product's (`web/src/palette.tsx`); its
+  surface is the kit's `CommandPalette`. The ⌘K binding lives in the app for
+  the same reason: a kit component binding a global chord collides with every
+  other consumer on the page.
 - The React console consumes `nim`'s **console layer** and holds no UI
   components of its own. `web/src/styles.css` is app chrome only — the mark,
   the wordmark, and the two full-viewport screens that exist before the shell

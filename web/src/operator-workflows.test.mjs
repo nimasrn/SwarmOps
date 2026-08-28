@@ -4,19 +4,62 @@ import test from 'node:test'
 
 const source = (name) => readFile(new URL(name, import.meta.url), 'utf8')
 
-test('navigation uses operator tasks and keeps every workspace directly reachable', async () => {
-  const app = await source('app.tsx')
-  for (const group of ['Cluster', 'Workloads', 'Network', 'Monitoring', 'Activity', 'Settings']) {
-    assert.match(app, new RegExp(`label: '${group}'`))
+test('the information architecture is one source, and every screen is reachable from it', async () => {
+  const [nav, app] = await Promise.all([source('navigation.ts'), source('app.tsx')])
+
+  // Areas are named for the operator's job, not the system's object model.
+  for (const area of ['Overview', 'Deliver', 'Fleet', 'Workloads', 'Traffic', 'Observe', 'Activity', 'Control']) {
+    assert.match(nav, new RegExp(`label: '${area}'`))
   }
-  for (const destination of ['servers', 'nodes', 'resources', 'applications', 'databases', 'services', 'stacks', 'builds', 'gateway', 'routes', 'dns', 'tls', 'insights', 'logs', 'observability', 'commands', 'catalogue', 'audit', 'core', 'source-deploy', 'registry']) {
-    assert.match(app, new RegExp(`${destination.replace('-', "['-]")}.*:`))
+
+  // Every screen the console can route to must appear in an area. A screen
+  // with a title and no group is the bug this file exists to catch:
+  // `agent-diagnostics` had both a label and a section for three releases and
+  // could not be opened from navigation at all.
+  const declared = [...nav.matchAll(/key: '([a-z-]+)', label:/g)].map((match) => match[1])
+  for (const destination of ['agent-diagnostics', 'applications', 'audit', 'builds', 'catalogue', 'commands', 'core', 'databases', 'dns', 'gateway', 'insights', 'logs', 'nodes', 'observability', 'overview', 'provisioning', 'registry', 'resources', 'routes', 'servers', 'services', 'source-deploy', 'stacks', 'tls']) {
+    assert.ok(declared.includes(destination), `${destination} is routable but appears in no area`)
   }
-  assert.match(app, /navigation="sections"/)
-  assert.match(app, /contextualGroups=/)
-  assert.match(app, /Find a feature or setting/)
-  assert.doesNotMatch(app, /label: 'Observe'/)
-  assert.doesNotMatch(app, /label: 'Control plane'/)
+
+  // Every page carries the one line that says what decision it serves; the
+  // contextual sidebar and the palette both read it.
+  assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 8, 'each page needs a summary and each of the 8 areas needs one too')
+
+  assert.match(app, /navigation="rail"/)
+  assert.match(app, /contextualGroups=\{contextualGroups\}/)
+  assert.match(app, /groups=\{areaGroups\}/)
+  // Both tiers are built from AREAS, so they cannot disagree.
+  assert.match(app, /items: AREAS\.map/)
+  assert.match(app, /items: area\.pages\.map/)
+})
+
+test('deploying is a first-class area, not a setting', async () => {
+  const nav = await source('navigation.ts')
+  const deliver = nav.slice(nav.indexOf("label: 'Deliver'"), nav.indexOf("label: 'Fleet'"))
+  // Source deployment, applications, builds and the registry used to be split
+  // between "Settings" and "Workloads" — the act of shipping was filed under
+  // configuration. The whole path is one area now, and deploying opens it.
+  for (const page of ['source-deploy', 'applications', 'builds', 'registry']) {
+    assert.match(deliver, new RegExp(`key: '${page}'`))
+  }
+  assert.match(nav, /key: 'source-deploy', label: 'Deploy from source'/)
+  const control = nav.slice(nav.indexOf("label: 'Control'"), nav.indexOf('export const PAGES'))
+  assert.doesNotMatch(control, /source-deploy|registry/)
+})
+
+test('the palette runs actions, not only navigation', async () => {
+  const [palette, app] = await Promise.all([source('palette.tsx'), source('app.tsx')])
+  for (const action of ['Deploy from source', 'Add a server', 'Refresh this screen', 'Diagnose a connection', 'Sign out']) {
+    assert.match(palette, new RegExp(`label: '${action}'`))
+  }
+  // Switching the target cluster is the change most likely to be made from the
+  // keyboard mid-incident, so each manager is its own row.
+  assert.match(palette, /Point the console at \$\{server\.name\}/)
+  assert.match(palette, /group: `Go to · \$\{area\.label\}`/)
+  // The chord belongs to the app, never to the kit.
+  assert.match(app, /event\.key\.toLowerCase\(\) === 'k'/)
+  assert.match(app, /<CommandPalette/)
+  assert.doesNotMatch(app, /<Combobox/)
 })
 
 test('catalog actions open a sheet and activity/resources expose working filters', async () => {
@@ -51,11 +94,11 @@ test('gateway and source dead ends have explicit setup actions', async () => {
 })
 
 test('gateway, routes, DNS, and certificates are separate operator destinations', async () => {
-  const [app, gateway] = await Promise.all([source('app.tsx'), source('traefik-page.tsx')])
-  assert.match(app, /gateway: 'Gateway & ports'/)
-  assert.match(app, /routes: 'Routes'/)
-  assert.match(app, /dns: 'DNS providers'/)
-  assert.match(app, /tls: 'TLS certificates'/)
+  const [nav, gateway] = await Promise.all([source('navigation.ts'), source('traefik-page.tsx')])
+  assert.match(nav, /key: 'gateway', label: 'Gateway & ports'/)
+  assert.match(nav, /key: 'routes', label: 'Routes'/)
+  assert.match(nav, /key: 'dns', label: 'DNS providers'/)
+  assert.match(nav, /key: 'tls', label: 'TLS certificates'/)
   assert.match(gateway, /scope="gateway"/)
   assert.match(gateway, /scope="dns"/)
 })

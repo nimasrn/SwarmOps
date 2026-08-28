@@ -25,7 +25,7 @@ as evidence that the authenticated agent or its network path is unreachable.
 
 ## Quick start
 
-In **Cluster → Servers**, generate a short-lived one-time installer
+In **Fleet → Servers**, generate a short-lived one-time installer
 command and run it on the Ubuntu host:
 
 ```sh
@@ -42,10 +42,10 @@ for the self-signed certificate created by the Docker-free Core installer. Docke
 Swarm initialization remain separate typed catalog operations after the agent
 is visible; the Core process itself never needs Docker. Alternatively, run the
 same command without `--enrollment-code`; the agent prints a short-lived code
-to approve in **Cluster → Servers** and retains the private redemption
+to approve in **Fleet → Servers** and retains the private redemption
 secret locally.
 
-After a native agent is enrolled, **Cluster → Setup & readiness** shows a
+After a native agent is enrolled, **Fleet → Host setup** shows a
 one-target checklist in the console. The page reads a bounded host snapshot first —
 hostname, operating system, kernel, architecture, CPU capacity and load,
 memory, root-disk capacity, uptime, agent version, Docker state, and Swarm
@@ -60,7 +60,7 @@ not exist.
 
 ### Control-plane placement and recovery
 
-**Settings → Controller & recovery** is deliberately separate from **Servers**.
+**Control → Controller & recovery** is deliberately separate from **Servers**.
 It reports the API process identity, whether this member is active or standby,
 and the recorded handoff state. The host serving the console never appears in
 the agent inventory by itself. If it must be operated as a Docker host, install
@@ -71,7 +71,7 @@ The normal deployment remains one active API task. A standby is a recovery
 candidate, not a second active controller: give it a unique
 `SWARMOPS_CORE_ID`, set `SWARMOPS_CORE_MODE=standby`, deploy the same reviewed
 release, and restore a complete encrypted controller-state copy plus its
-separately protected data-encryption key. The Control plane page records an
+separately protected data-encryption key. The Controller & recovery page records an
 operator-attested restore verification; it never copies state, secrets, or
 service binaries over an unpinned connection.
 
@@ -152,17 +152,31 @@ version is deployed.
 
 ## Console information architecture
 
-The console uses a two-level operator hierarchy. A persistent top row owns
-**Overview**, **Cluster**, **Workloads**, **Network**, **Monitoring**,
-**Activity**, and **Settings**; a contextual rail names the workspaces inside
-the active area. Overview answers what is healthy and what needs action.
-Cluster owns servers, Swarm placement, Docker resources, setup and diagnostics.
-Workloads owns applications, managed databases, Swarm services, stacks and
-image builds. Network gives gateway ports, routes, DNS providers and TLS their
-own destinations. Monitoring owns health, logs and collectors. Activity owns
-runs, the fixed action catalog and audit. Settings owns controller recovery,
-source deployment and registry policy. The masthead feature finder reaches any
-destination without requiring the operator to know its category first.
+The console uses a two-level operator hierarchy, and both levels are built
+from one file — `web/src/navigation.ts`, which holds the areas, the screens,
+their icons, the one line each screen exists to answer, and every retired hash
+that must keep resolving. A screen that is routable and appears in no area is a
+test failure, not a discovery an operator makes.
+
+The areas are named for the operator's job rather than the system's object
+model. A persistent icon rail owns **Overview**, **Deliver**, **Fleet**,
+**Workloads**, **Traffic**, **Observe**, **Activity**, and **Control**; a
+contextual sidebar names the screens inside the active area and states what the
+area is for. Overview answers what is healthy and what to do next. Deliver owns
+the whole path from source to running production — deploy from source,
+applications, images and builds, and the container registry. Fleet owns
+servers, host setup, Swarm placement, connection diagnostics, and Docker
+resources. Workloads owns what is scheduled right now: Swarm services, stacks,
+and managed databases. Traffic gives gateway ports, routes, DNS providers, and
+TLS their own destinations. Observe owns health, logs, and collectors. Activity
+owns runs, the fixed action catalog, and audit. Control owns controller
+authority and recovery.
+
+⌘K opens a command palette that both reaches any destination and runs the
+operations an operator reaches for under pressure — deploy from source, add a
+server, refresh, diagnose a connection, review runs, sign out, and point the
+console at another cluster. It ranks by where the match landed, so the thing
+whose name was started is the thing Enter is already on.
 
 A page may show a compact status owned elsewhere, but it must link to the
 owner for investigation or mutation. It must not recreate the owner's tables,
@@ -170,7 +184,8 @@ filters, charts, configuration, or action menus. Overview is the deliberate
 exception for summaries, never a second full workspace. Every destination is
 directly addressable and preserves the selected server.
 
-The complete ownership table, drill-down rules, and interaction rules are in
+The complete ownership table, drill-down rules, and cleanup acceptance criteria
+are in
 [console information architecture](docs/console-information-architecture.md).
 
 ## What it operates
@@ -289,7 +304,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.8.0`. Release history is in
+The current version is `0.9.0`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -309,6 +324,9 @@ tooling release and does not change the Core/Agent product version.
 
 ## Decision artifacts
 
+- [Console information architecture](docs/console-information-architecture.md)
+  defines the single-owner navigation model, contextual-summary boundary, and
+  acceptance criteria for removing legacy duplicate workspaces.
 - [System design](docs/SwarmOps-System-Design.docx) records the technical
   architecture, trust boundaries, rollout sequence, and test strategy.
 - [Platform expansion system design](docs/SwarmOps-Platform-Expansion-System-Design.docx)
@@ -352,22 +370,33 @@ targets and invalid TLS certificates. The production API remains the source of
 truth for cluster profiles, audit records, checked-in deployment assets, and
 the served production console.
 
-The console has seven stable areas: **Overview**, **Cluster**, **Workloads**,
-**Network**, **Monitoring**, **Activity**, and **Settings**. They appear in a
-persistent desktop section row and in the same order in the mobile drawer. A
-contextual rail shows the destinations owned by the active area and becomes a
-horizontal strip on narrow screens. The masthead keeps controller authority separate from the
-selected Swarm cluster, and every cluster read or mutation continues to carry
-that explicit manager target. Pages that require a
-manager show a selected-manager workspace with direct recovery paths instead
-of silently replacing the requested destination.
+The console has eight stable areas: **Overview**, **Deliver**, **Fleet**,
+**Workloads**, **Traffic**, **Observe**, **Activity**, and **Control**. They
+appear in a persistent desktop icon rail and in the same order with labels in
+the mobile drawer. A contextual sidebar shows the destinations owned by the
+active area and becomes a horizontal strip on narrow screens. The masthead
+keeps controller authority separate from the selected Swarm cluster, and every
+cluster read or mutation continues to carry that explicit manager target.
+Pages that require a manager show a selected-manager workspace with direct
+recovery paths instead of silently replacing the requested destination.
+
+The production console uses one calm command-center geometry at the 1536×1024
+reference viewport: a compact masthead, top-level icon rail, contextual sidebar,
+table-first evidence, and one malachite action language. Overview names the
+evidence path and hands back the single next operator decision; Fleet opens the
+topology and then a node; node container rows open health, resource sample,
+configuration, telemetry boundary, and fixed restart/stop actions. Deliver,
+Traffic, Observe, Activity, Workloads, and Control preserve the same header,
+breadcrumb, panel, table, and review-sheet hierarchy. A surface never invents
+missing logs, traces, scrape failures, routes, or telemetry: it labels the
+unavailable source and directs the operator to the owning collection view.
 
 ### First server onboarding
 
 The sign-in screen includes **Install and connect a server**, so an operator
 can discover the install-first flow before signing in. The Ubuntu agent prints
 a short-lived approval code, keeps its private key and redemption secret on the
-host, and waits. After sign-in, **Cluster → Servers** gives equal
+host, and waits. After sign-in, **Fleet → Servers** gives equal
 prominence to approving that code or generating a one-command certificate
 grant.
 
@@ -384,15 +413,15 @@ by SwarmOps, then approve the printed code within 15 minutes. After approval, th
 the certificate over the same pinned Core identity, installs its systemd
 service, and appears without an inbound port or manually handled credential.
 
-### Cluster overview
+### Command-center overview
 
-The Overview route is a summary-first, point-in-time operator dashboard. It
+Overview is a summary-first operator control room. It
 refreshes from the selected manager every 30 seconds and combines the current
 cluster snapshot with reviewed stack, Traefik, and observability status. Its
-cards distinguish cluster health, ready-node coverage, running-versus-desired
-tasks, host-probe coverage, and the tightest measured memory/disk headroom.
-The supporting lists put degraded nodes and services first, then retain stack
-and platform posture for follow-up.
+attention queue puts failed nodes, degraded applications, and commands needing
+review ahead of the fleet, application, traffic, and recent-operation tables.
+Observe → Health owns the bounded minute-sample charts and source-labelled
+Engine activity.
 
 Automatic refreshes are non-destructive: the console keeps the current
 workspace, selected manager, filters, and last successful data mounted while a
@@ -401,12 +430,11 @@ state in place; it does not send the operator back through the first-run screen
 or silently retarget the console. The selected manager is retained only for the
 current browser session and is cleared on sign-out.
 
-SwarmOps does not retain a performance time series, so Overview intentionally
-does not draw historical trends. CPU is shown as declared core capacity rather
-than inferring utilisation from load average. Memory and disk utilisation (and
-the headroom card) are shown only when every selected node has a healthy
-read-only host probe; otherwise the console labels the source-coverage gap and
-shows capacity without a misleading percentage.
+SwarmOps retains only a bounded in-memory operational series; it is not a
+long-range performance database and disappears when Core restarts. CPU remains
+declared core capacity rather than inferred utilisation from load average.
+Memory and disk figures are shown only from the selected manager and healthy
+read-only host probes; missing coverage stays visibly unknown.
 
 ### Local development
 
@@ -801,7 +829,7 @@ hooks, and a tested restore before it is deployed.
 
 Enroll a fresh Ubuntu server with the one-time installer command, wait for its
 agent health and compatibility report, then queue Docker installation and the
-appropriate Swarm init or join operation from **Cluster → Setup & readiness**.
+appropriate Swarm init or join operation from **Fleet → Host setup**.
 Every mutation carries an explicit Core, cluster, and node target and remains
 visible in **Activity → Runs** through disconnect, retry, or operator attention.
 

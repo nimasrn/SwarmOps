@@ -16,9 +16,10 @@ help:
 	  'Build:    make build [TARGET=api|agent|cli|fluentd|logs] [TAG=<immutable-tag>]' \
 	  'Push:     make registry-login && make push [TARGET=api|agent|cli|fluentd|logs]' \
 	  'Validate: make test | make stack-check STACK=<stack>' \
-	  'Local:    make local      # loopback Agent + Core + console' \
-	  'Dev:      make dev-agent  # source-built loopback machine API' \
-	  '          make dev        # local Core + console; attaches to dev-agent automatically' \
+	  'Local:    make local      # Core and console' \
+	  'Dev:      make dev-agent  # host machine agent only' \
+	  '          make dev        # Core and console' \
+	  '          make dev-api    # Core only; prepares a persistent local identity' \
 	  'Deploy:   make deploy STACK=<stack> HOST=<host>' \
 	  'Platform: make platform-deploy HOST=<host>  # Traefik, then SwarmOps' \
 	  'Bootstrap: make swarmops-provision' \
@@ -40,43 +41,31 @@ local:
 	  command -v curl >/dev/null 2>&1 || { echo 'curl is required for make local'; exit 1; }; \
 	  dev_root="$${SWARMOPS_DEV_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}"; \
 	  export SWARMOPS_DEV_DIR="$$dev_root"; \
-	  bash scripts/run-dev-machine-agent.sh --prepare; \
-	  agent_pid=''; \
-	  cleanup() { \
-	    if [ -n "$$agent_pid" ]; then \
-	      kill "$$agent_pid" >/dev/null 2>&1 || true; \
-	      wait "$$agent_pid" >/dev/null 2>&1 || true; \
-	    fi; \
-	  }; \
-	  trap cleanup EXIT; \
-	  trap 'exit 130' INT TERM; \
-	  bash scripts/run-dev-machine-agent.sh & agent_pid=$$!; \
-	  attempts=0; \
-	  until curl --insecure --fail --silent --max-time 1 "https://127.0.0.1:$${SWARMOPS_DEV_MACHINE_API_PORT:-9180}/healthz" >/dev/null; do \
-	    if ! kill -0 "$$agent_pid" 2>/dev/null; then wait "$$agent_pid" || true; echo 'local SwarmOps machine API exited before becoming healthy'; exit 1; fi; \
-	    attempts=$$((attempts + 1)); \
-	    if [ "$$attempts" -ge 150 ]; then echo 'local SwarmOps machine API did not become healthy within 30 seconds'; exit 1; fi; \
-	    sleep 0.2; \
-	  done; \
 	  $(MAKE) --no-print-directory dev
 
 dev:
 	@set -eu; \
 	  command -v curl >/dev/null 2>&1 || { echo 'curl is required for make dev'; exit 1; }; \
-	  $(MAKE) --no-print-directory dev-api & api_pid=$$!; \
-	  cleanup() { kill "$$api_pid" >/dev/null 2>&1 || true; wait "$$api_pid" >/dev/null 2>&1 || true; }; \
+	  api_addr="$${SWARMOPS_LISTEN_ADDR:-127.0.0.1:8084}"; \
+	  case "$$api_addr" in 127.0.0.1:[0-9]*) ;; *) echo 'make dev requires SWARMOPS_LISTEN_ADDR to use 127.0.0.1:<port>'; exit 1;; esac; \
+	  SWARMOPS_LISTEN_ADDR="$$api_addr" $(MAKE) --no-print-directory dev-api & api_pid=$$!; \
+	  cleanup() { \
+	    kill_tree() { local pid="$${1:-}" child children; children="$$(pgrep -P "$$pid" 2>/dev/null || true)"; for child in $$children; do kill_tree "$$child"; done; kill "$$pid" >/dev/null 2>&1 || true; }; \
+	    kill_tree "$$api_pid"; \
+	    wait "$$api_pid" >/dev/null 2>&1 || true; \
+	  }; \
 	  trap cleanup EXIT; \
 	  attempts=0; \
-	  until curl --fail --silent --show-error --max-time 1 http://127.0.0.1:8084/healthz >/dev/null; do \
+	  until curl --fail --silent --max-time 1 "http://$$api_addr/healthz" >/dev/null; do \
 	    if ! kill -0 "$$api_pid" 2>/dev/null; then wait "$$api_pid"; exit 1; fi; \
 	    attempts=$$((attempts + 1)); \
-	    if [ "$$attempts" -ge 100 ]; then echo 'local SwarmOps API did not become healthy on 127.0.0.1:8084'; exit 1; fi; \
+	    if [ "$$attempts" -ge 100 ]; then echo "local SwarmOps API did not become healthy on $$api_addr"; exit 1; fi; \
 	    sleep 0.2; \
 	  done; \
 	  $(MAKE) --no-print-directory web-dev
 
 dev-api:
-	@set -e; \
+	@set -eu; \
 	  dev_root="$${SWARMOPS_DEV_DIR:-$${TMPDIR:-/tmp}/swarmops-dev}"; \
 	  SWARMOPS_DEV_DIR="$$dev_root" bash scripts/run-dev-machine-agent.sh --prepare; \
 	  if [ -n "$${SWARMOPS_DEV_SESSION_KEY:-}" ]; then session_key="$${SWARMOPS_DEV_SESSION_KEY}"; else session_key="$$(tr -d '[:space:]' <"$$dev_root/core-session-key")"; fi; \
@@ -86,6 +75,7 @@ dev-api:
 	  SWARMOPS_DEV_PASSWORD_HASH= \
 	  SWARMOPS_DEV_SESSION_KEY="$$session_key" \
 	  SWARMOPS_DATA_DIR="$${SWARMOPS_DATA_DIR:-$$dev_root/core}" \
+	  SWARMOPS_SOURCE_ENABLED="$${SWARMOPS_SOURCE_ENABLED:-true}" \
 	  SWARMOPS_LISTEN_ADDR="$${SWARMOPS_LISTEN_ADDR:-127.0.0.1:8084}" \
 	  SWARMOPS_DEV_MACHINE_API_CERT_FILE="$${SWARMOPS_DEV_MACHINE_API_CERT_FILE:-$$dev_root/machine-agent/tls.crt}" \
 	  SWARMOPS_DEV_MACHINE_API_KEY_FILE="$${SWARMOPS_DEV_MACHINE_API_KEY_FILE:-$$dev_root/machine-agent/api-key}" \

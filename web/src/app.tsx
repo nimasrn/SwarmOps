@@ -3,14 +3,14 @@ import type { FormEvent } from 'react'
 import {
   ActivityFeed,
   AdminShell,
-  Avatar,
   AuthScreen,
   Badge,
   Banner,
   Button,
   CodeBlock,
-  Combobox,
+  CommandPalette,
   Columns,
+  Breadcrumb,
   DataTable,
   DetailHeader,
   DetailLayout,
@@ -23,6 +23,7 @@ import {
   Label,
   List,
   ListRow,
+  Menu,
   Metric,
   MetricGrid,
   Mono,
@@ -56,6 +57,17 @@ import { CommandCataloguePage, InsightsPage, ResourcesPage } from './inventory'
 import { HomePage } from './home'
 import { LogsPage } from './logs-page'
 import { isNativeAgent, serverConnectionLabel, serverEndpointLabel } from './server-connection'
+import {
+  AREAS,
+  CLUSTER_PAGES,
+  LEGACY_ROUTES,
+  areaOf,
+  isWorkspacePage,
+  landingPage,
+  pageEntry,
+} from './navigation'
+import type { WorkspacePage } from './navigation'
+import { paletteCommands } from './palette'
 import type {
 	AgentEnrollmentToken,
   AuditEvent,
@@ -83,9 +95,7 @@ import type {
   TraefikStatus,
 } from './types'
 
-type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'dns' | 'gateway' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'registry' | 'resources' | 'routes' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'tls'
-type WorkspaceSection = 'activity' | 'cluster' | 'monitoring' | 'network' | 'overview' | 'settings' | 'workloads'
-type ClusterPage = Exclude<WorkspacePage, 'agent-diagnostics' | 'audit' | 'catalogue' | 'commands' | 'core' | 'provisioning' | 'registry' | 'servers' | 'source-deploy'>
+type ClusterPage = Extract<WorkspacePage, 'applications' | 'builds' | 'databases' | 'dns' | 'gateway' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'resources' | 'routes' | 'services' | 'stacks' | 'tls'>
 
 interface DashboardData {
   nodes: Node[]
@@ -100,42 +110,6 @@ interface ConnectionError {
   detail?: string
   message: string
   requestID?: string
-}
-
-const PAGES: Record<WorkspacePage, string> = {
-  'agent-diagnostics': 'Server diagnostics',
-  applications: 'Applications',
-  audit: 'Audit trail',
-  builds: 'Image builds',
-  catalogue: 'Action catalog',
-  commands: 'Runs',
-  core: 'Controller & recovery',
-  databases: 'Managed databases',
-  dns: 'DNS providers',
-  gateway: 'Gateway & ports',
-  insights: 'Health',
-  logs: 'Logs',
-  nodes: 'Swarm & placement',
-  observability: 'Collectors',
-  overview: 'Overview',
-  provisioning: 'Setup & readiness',
-  registry: 'Container registry',
-  resources: 'Docker resources',
-  routes: 'Routes',
-  servers: 'Servers',
-  services: 'Swarm services',
-  'source-deploy': 'Source deployment',
-  stacks: 'Stacks',
-  tls: 'TLS certificates',
-}
-
-const LEGACY_ROUTES: Record<string, WorkspacePage> = {
-  home: 'overview', infrastructure: 'nodes', applications: 'applications', deploy: 'source-deploy',
-  traffic: 'gateway', traefik: 'gateway', observe: 'insights', operations: 'commands', settings: 'core',
-}
-
-const WORKSPACE_SECTION: Record<WorkspacePage, WorkspaceSection> = {
-  'agent-diagnostics': 'cluster', applications: 'workloads', audit: 'activity', builds: 'workloads', catalogue: 'activity', commands: 'activity', core: 'settings', databases: 'workloads', dns: 'network', gateway: 'network', insights: 'monitoring', logs: 'monitoring', nodes: 'cluster', observability: 'monitoring', overview: 'overview', provisioning: 'cluster', registry: 'settings', resources: 'cluster', routes: 'network', servers: 'cluster', services: 'workloads', 'source-deploy': 'settings', stacks: 'workloads', tls: 'network',
 }
 
 const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
@@ -260,7 +234,7 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
 		  {identityError ? <Banner title="Pinned controller identity unavailable" tone="danger">{identityError}</Banner> : null}
 		  <CodeBlock label="Ubuntu 22.04 or 24.04" wrap>{command}</CodeBlock>
 		  <Body size="sm">The agent creates its private key locally and waits for approval. It then receives a renewable client certificate and connects to the controller with outbound HTTPS long polls. No inbound agent port, SSH access, Docker socket proxy, or long-lived printed key is required.</Body>
-		  <TaskProgress steps={[{ id: 'install', label: 'Run the command on the host', status: 'active' }, { id: 'approve', label: 'Sign in and approve its code in Infrastructure → Agents', status: 'pending' }, { id: 'connect', label: 'Watch compatibility and host health appear', status: 'pending' }]} title="Install-first enrollment" />
+		  <TaskProgress steps={[{ id: 'install', label: 'Run the command on the host', status: 'active' }, { id: 'approve', label: 'Sign in and approve its code in Fleet → Servers', status: 'pending' }, { id: 'connect', label: 'Watch compatibility and host health appear', status: 'pending' }]} title="Install-first enrollment" />
 		</Rows>
       </AuthScreen>
     </main>
@@ -391,68 +365,36 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     onLogout()
   }
 
-	const workspaceGroups = useMemo(() => [
-    { key: 'overview', label: '', items: [
-      { icon: 'home' as const, key: 'overview', label: 'Command center', onSelect: () => setWorkspace('overview') },
-    ] },
-    { key: 'cluster', label: 'Cluster', items: [
-      { icon: 'server' as const, key: 'servers', label: 'Servers', onSelect: () => setWorkspace('servers') },
-      { icon: 'layers' as const, key: 'nodes', label: 'Swarm & placement', onSelect: () => setWorkspace('nodes') },
-      { icon: 'check-circle' as const, key: 'provisioning', label: 'Host setup', onSelect: () => setWorkspace('provisioning') },
-      { icon: 'package' as const, key: 'resources', label: 'Docker resources', onSelect: () => setWorkspace('resources') },
-    ] },
-    { key: 'workloads', label: 'Workloads', items: [
-      { icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setWorkspace('applications') },
-      { icon: 'database' as const, key: 'databases', label: 'Managed databases', onSelect: () => setWorkspace('databases') },
-      { icon: 'terminal' as const, key: 'services', label: 'Swarm services', onSelect: () => setWorkspace('services') },
-      { icon: 'layers' as const, key: 'stacks', label: 'Stacks', onSelect: () => setWorkspace('stacks') },
-      { icon: 'package' as const, key: 'builds', label: 'Images & builds', onSelect: () => setWorkspace('builds') },
-    ] },
-    { key: 'network', label: 'Network', items: [
-      { icon: 'external' as const, key: 'gateway', label: 'Gateway & ports', onSelect: () => setWorkspace('gateway') },
-      { icon: 'layers' as const, key: 'routes', label: 'Routes', onSelect: () => setWorkspace('routes') },
-      { icon: 'cloud' as const, key: 'dns', label: 'DNS providers', onSelect: () => setWorkspace('dns') },
-      { icon: 'shield' as const, key: 'tls', label: 'TLS certificates', onSelect: () => setWorkspace('tls') },
-    ] },
-    { key: 'monitoring', label: 'Monitoring', items: [
-      { icon: 'trend-up' as const, key: 'insights', label: 'Health', onSelect: () => setWorkspace('insights') },
-      { icon: 'document' as const, key: 'logs', label: 'Logs', onSelect: () => setWorkspace('logs') },
-      { icon: 'settings' as const, key: 'observability', label: 'Collectors', onSelect: () => setWorkspace('observability') },
-    ] },
-    { key: 'activity', label: 'Activity', items: [
-      { icon: 'play' as const, key: 'commands', label: 'Runs', onSelect: () => setWorkspace('commands') },
-      { icon: 'document' as const, key: 'catalogue', label: 'Action catalog', onSelect: () => setWorkspace('catalogue') },
-      { icon: 'shield' as const, key: 'audit', label: 'Audit trail', onSelect: () => setWorkspace('audit') },
-    ] },
-    { key: 'settings', label: 'Settings', items: [
-      { icon: 'settings' as const, key: 'core', label: 'Controller', onSelect: () => setWorkspace('core') },
-      { icon: 'cloud' as const, key: 'source-deploy', label: 'Source deployment', onSelect: () => setWorkspace('source-deploy') },
-      { icon: 'package' as const, key: 'registry', label: 'Container registry', onSelect: () => setWorkspace('registry') },
-    ] },
-  ], [setWorkspace])
+  const area = areaOf(workspace)
+  const page = pageEntry(workspace)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
-  const activeSection = WORKSPACE_SECTION[workspace]
-  const activeWorkspaceGroup = workspaceGroups.find((group) => group.key === activeSection) ?? workspaceGroups[0]!
-  const primaryGroups = useMemo(() => [{ key: 'primary', label: '', items: [
-    { key: 'overview', label: 'Overview', onSelect: () => setWorkspace('overview') },
-    { key: 'cluster', label: 'Cluster', onSelect: () => setWorkspace('servers') },
-    { key: 'workloads', label: 'Workloads', onSelect: () => setWorkspace('applications') },
-    { key: 'network', label: 'Network', onSelect: () => setWorkspace('gateway') },
-    { key: 'monitoring', label: 'Monitoring', onSelect: () => setWorkspace('insights') },
-    { key: 'activity', label: 'Activity', onSelect: () => setWorkspace('commands') },
-    { key: 'settings', label: 'Settings', onSelect: () => setWorkspace('core') },
-  ] }], [setWorkspace])
+  // The rail is the operator's JOB — deliver, fleet, workloads, traffic,
+  // observe, activity, control — and every area opens on the screen that
+  // answers its first question. Building both tiers from one source is why
+  // `agent-diagnostics` is now reachable: a screen that exists but appears in
+  // no group is a screen only its own author can find.
+  const areaGroups = useMemo(() => [{
+    key: 'areas',
+    label: '',
+    items: AREAS.map((entry) => ({
+      icon: entry.icon,
+      key: entry.key,
+      label: entry.label,
+      onSelect: () => setWorkspace(landingPage(entry)),
+    })),
+  }], [setWorkspace])
 
-  useEffect(() => {
-    const focusFinder = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        document.querySelector<HTMLInputElement>('.swarmops-feature-finder input')?.focus()
-      }
-    }
-    window.addEventListener('keydown', focusFinder)
-    return () => window.removeEventListener('keydown', focusFinder)
-  }, [])
+  const contextualGroups = useMemo(() => [{
+    key: area.key,
+    label: '',
+    items: area.pages.map((entry) => ({
+      icon: entry.icon,
+      key: entry.key,
+      label: entry.label,
+      onSelect: () => setWorkspace(entry.key),
+    })),
+  }], [area, setWorkspace])
 
 	const refreshAction = workspace === 'audit'
     ? refreshAudit
@@ -480,64 +422,133 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
           ? 'Refresh cluster snapshot'
           : 'Refresh server profiles'
 
+  // ⌘K belongs to the app, not to the kit: which chord a product spends is a
+  // product decision, and a component that bound a global key would collide
+  // with every other consumer on the page.
+  useEffect(() => {
+    const hotkey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setPaletteOpen(true)
+      }
+    }
+    window.addEventListener('keydown', hotkey)
+    return () => window.removeEventListener('keydown', hotkey)
+  }, [])
+
+  const commands_ = useMemo(() => paletteCommands({
+    managers,
+    onRefresh: () => void refreshAction(),
+    onSelectServer: selectServer,
+    onSignOut: () => void signOut(),
+    open: setWorkspace,
+    refreshLabel,
+    selectedServerID: activeServerID,
+  }), [activeServerID, managers, refreshAction, refreshLabel, selectServer, setWorkspace])
+
+  const agentTone = activeServer?.connectionState === 'connected' ? 'success' : activeServer ? 'warning' : 'neutral'
+  const agentLabel = activeServer?.connectionState === 'connected' ? 'Agent connected' : activeServer ? 'Agent reconnecting' : 'No target selected'
+
   return (
     <AdminShell
       brand={<Brand subtitle="" />}
       contextualFooter={
         <>
-          <StatusDot tone={activeServer?.connectionState === 'connected' ? 'success' : activeServer ? 'warning' : 'neutral'}>{activeServer?.connectionState === 'connected' ? 'Agent connected' : activeServer ? 'Agent reconnecting' : 'No agent selected'}</StatusDot>
-          <span>{activeServer?.connectionState === 'connected' ? 'The outbound transport is live. Feature-specific failures appear in their owning workspace.' : 'Choose Servers to inspect enrollment and safe connection evidence.'}</span>
+          {/* Observed scope only: what this console currently has authority
+              over and how fresh the last read of it is. An assurance claim
+              would be an unverified one, and this is the chrome an operator
+              looks at when deciding whether to believe the screen. */}
+          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>
+            {!core ? 'Controller checking' : core.controlEnabled ? 'Controller holds authority' : 'Controller on standby'}
+          </StatusDot>
+          <span>
+            {activeServer
+              ? data
+                ? `Snapshot of ${activeServer.name} read at ${formatClock(data.overview.generatedAt)}.`
+                : `${activeServer.name} selected; no cluster snapshot has been read yet.`
+              : 'No cluster is selected, so nothing on this screen is a claim about production.'}
+          </span>
         </>
       }
-      contextualGroups={[activeWorkspaceGroup]}
+      contextualGroups={contextualGroups}
       contextualHeader={
         <>
-          <Label>Selected environment</Label>
-          <strong>{activeServer?.name ?? 'Production'}</strong>
-          <span>{activeServer ? `${activeServer.host} · ${activeServer.swarmControlAvailable ? 'Swarm manager' : 'Host setup required'}` : 'Choose a server to inspect Docker and Swarm'}</span>
+          <Label>{area.label}</Label>
+          <strong>{page.label}</strong>
+          <span>{area.summary}</span>
         </>
       }
       contextualValue={workspace}
-      groups={primaryGroups}
-      navigation="sections"
+      groups={areaGroups}
+      navigation="rail"
       title={
-        <Inline wrap={false}>
-          <Label>Environment</Label>
+        // The target and the evidence that it is reachable belong in the same
+        // control. Before this the selector sat in the masthead and its
+        // connection state sat in the sidebar footer, which asked the operator
+        // to look in two places to answer one question.
+        <Inline gap="tight" wrap={false}>
+          <Label>Cluster</Label>
           {managers.length ? (
-            <Select
-              aria-label="Selected Docker Swarm cluster manager"
-				onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('servers')}
-              options={managers.map((server) => ({ label: server.name, value: server.id }))}
-              placeholder="Production · select server"
-              value={activeServerID}
-            />
+            <>
+              <Select
+                aria-label="Selected Docker Swarm cluster manager"
+                onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('servers')}
+                options={managers.map((server) => ({ label: server.name, value: server.id }))}
+                placeholder="Select a cluster"
+                value={activeServerID}
+              />
+              <StatusDot pulse={agentTone === 'warning'} tone={agentTone}>{agentLabel}</StatusDot>
+            </>
           ) : (
-			<Button iconStart="server" onClick={() => setWorkspace('servers')} size="sm" variant="ghost">Production · connect server</Button>
+            <Button iconStart="plus" onClick={() => setWorkspace('servers')} size="sm" variant="secondary">Connect a server</Button>
           )}
         </Inline>
       }
       titleRole="scope"
       toolbar={
         <>
-		  <Combobox<WorkspacePage>
-			ariaLabel="Find a feature or setting"
-			className="swarmops-feature-finder"
-			emptyState={(query) => `No feature matches “${query}”.`}
-			onChange={(next) => { if (next) setWorkspace(next) }}
-			options={(Object.entries(PAGES) as [WorkspacePage, string][]).map(([value, label]) => ({ label, meta: WORKSPACE_SECTION[value], value }))}
-			placeholder="Find anything…  ⌘K"
-			value={null}
-		  />
-		  <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Controller checking' : core.controlEnabled ? 'Controller ready' : 'Controller standby'}</StatusDot>
-		  <IconButton disabled={refreshLoading} label={refreshLabel} name="refresh" onClick={() => void refreshAction()} size="sm" variant="ghost" />
-          <Inline gap="tight">
-            <Avatar name={session.user.username} size="sm" />
-			<IconButton label={`Sign out ${session.user.username}`} name="sign-out" onClick={() => void signOut()} size="sm" variant="ghost" />
-          </Inline>
+          <Button iconStart="search" onClick={() => setPaletteOpen(true)} size="sm" variant="secondary">
+            Search or run…  ⌘K
+          </Button>
+          <IconButton disabled={refreshLoading} label={refreshLabel} name="refresh" onClick={() => void refreshAction()} size="sm" variant="ghost" />
+          <Menu
+            items={[
+              { kind: 'heading', label: session.user.username },
+              { icon: 'settings', label: 'Controller & recovery', onSelect: () => setWorkspace('core') },
+              { icon: 'shield', label: 'Audit trail', onSelect: () => setWorkspace('audit') },
+              { icon: 'link', label: 'Connection diagnostics', onSelect: () => setWorkspace('agent-diagnostics') },
+              { kind: 'separator' },
+              { icon: 'sign-out', label: 'Sign out', onSelect: () => void signOut() },
+            ]}
+            label={`Operator ${session.user.username}`}
+          >
+            {({ ref, toggle }) => (
+              <IconButton label={`Operator ${session.user.username}`} name="user" onClick={toggle} ref={ref} size="sm" variant="ghost" />
+            )}
+          </Menu>
         </>
       }
-      value={activeSection}
+      value={area.key}
     >
+      <CommandPalette
+        commands={commands_}
+        emptyLabel={(query) => `No screen or action matches “${query}”.`}
+        label="Search screens or run an action"
+        onClose={() => setPaletteOpen(false)}
+        open={paletteOpen}
+        placeholder="Search screens or run an action…"
+      />
+      {/* Two tiers of navigation still leave "where am I" unanswered on a
+          console with twenty-four screens; the crumb answers it in one line
+          and gives the area back as a target. */}
+      {workspace === 'overview' ? null : (
+        <Breadcrumb
+          items={[
+            { href: `#${landingPage(area)}`, label: area.label },
+            { label: page.label },
+          ]}
+        />
+      )}
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
 	  {workspace === 'servers' ? (
 		<ServersPage activeServerID={activeServerID} onConnected={connected} onDiagnostics={(id) => { selectServer(id); setWorkspace('agent-diagnostics') }} onProvision={() => setWorkspace('provisioning')} onRefresh={refreshServers} onSelect={selectServer} servers={servers} toast={toast} />
@@ -575,7 +586,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  onOpenTraffic={() => setWorkspace('gateway')}
 		  servers={servers}
 		/>
-	  ) : !activeServer ? (
+	  ) : CLUSTER_PAGES.has(workspace) && !activeServer ? (
         <ServerRequiredPage
 		  page={workspace as ClusterPage}
           servers={servers}
@@ -647,73 +658,82 @@ function ServerRequiredPage({
   page: ClusterPage
   servers: Server[]
 }) {
+  const entry = pageEntry(page)
   const connected = servers.filter((server) => server.connectionState === 'connected' && serverHealth(server) !== 'unhealthy')
   const managers = servers.filter(serverCanManage)
+
+  // Three genuinely different situations were previously one screen showing
+  // the same three counters. What the operator has to DO differs in each, so
+  // the heading, the button, and the reason differ with it.
+  const stage = managers.length ? 'select' : connected.length ? 'prepare' : servers.length ? 'reconnect' : 'install'
+  const copy = {
+    install: {
+      action: 'Connect your first server',
+      reason: 'SwarmOps has no enrolled host yet. Enrollment is one outbound command on Ubuntu — the agent generates its own key, pins this controller, and waits for you to approve its code. No inbound port and no SSH access is opened.',
+      title: 'No server is connected yet',
+    },
+    reconnect: {
+      action: 'Review server connections',
+      reason: `${servers.length === 1 ? 'The enrolled host is' : 'None of the enrolled hosts are'} currently answering the controller. Until an agent reconnects there is no evidence to read, and a screen drawn from stale evidence would be a claim SwarmOps cannot support.`,
+      title: 'No agent is answering',
+    },
+    prepare: {
+      action: 'Open host setup',
+      reason: 'A host is connected but is not a Docker Swarm manager, so there is no cluster to read. Host setup installs Docker, initialises Swarm, and settles the firewall through reviewed, audited fixes.',
+      title: 'The connected host is not a Swarm manager',
+    },
+    select: {
+      action: 'Choose a cluster',
+      reason: 'A Swarm manager is ready but this console is not pointed at one. Selection is deliberate: every read and every change stays scoped to one explicit target rather than fanning out across the fleet.',
+      title: 'Choose which cluster to operate',
+    },
+  }[stage]
+
   return (
     <Page>
       <DetailHeader
-        status={<StatusBadge health="unknown" label="Manager required" />}
-        subtitle={`${PAGES[page]} stays unavailable until SwarmOps has a connected remote Swarm manager. This is deliberate: every cluster read or change stays scoped to one explicit target.`}
-        title="Connect a Swarm manager"
+        meta={<StatusDot tone={stage === 'select' ? 'accent' : 'warning'}>{entry.label} needs a selected cluster</StatusDot>}
+        subtitle={copy.reason}
+        title={copy.title}
       />
-      <MetricGrid aria-label="Manager connection readiness" columns={3}>
-        <Metric
-          hint={servers.length ? `${servers.length} saved machine API profile${servers.length === 1 ? '' : 's'}` : 'No machine API profile has been saved yet'}
-          icon="server"
-          label="Saved targets"
-          tone={servers.length ? 'accent' : 'neutral'}
-          value={String(servers.length)}
-        />
-        <Metric
-          hint={connected.length ? `${connected.length} target${connected.length === 1 ? '' : 's'} currently connected` : 'Connect a target from the Servers workspace'}
-          icon="link"
-          label="Live connections"
-          tone={connected.length ? 'success' : 'neutral'}
-          value={String(connected.length)}
-        />
-        <Metric
-          hint={managers.length ? 'Choose a connected manager in Servers to resume this workspace' : 'Docker cluster reads and mutations remain paused'}
-          icon="shield"
-          label="Swarm managers"
-          tone={managers.length ? 'success' : 'warning'}
-          value={String(managers.length)}
-        />
-      </MetricGrid>
-      <Columns>
+
+      <Columns align="start" template="two-thirds">
         <Panel
-          description="The browser never receives a Docker socket or creates host credentials. It connects only to a pinned machine API that you add and select deliberately."
-          eyebrow="First-run path"
-          title="Bring a manager online"
+          actions={
+            <Inline>
+              <Button iconStart={stage === 'prepare' ? 'check-circle' : stage === 'install' ? 'plus' : 'server'} onClick={stage === 'prepare' ? onOpenProvisioning : onOpenServers} variant="accent">
+                {copy.action}
+              </Button>
+            </Inline>
+          }
+          description={`Each step is reversible and leaves an audit record. ${entry.label} resumes by itself the moment the last one is done.`}
+          title="What it takes to reach this screen"
         >
           <TaskProgress
-            caption={managers.length
-              ? 'A remote Swarm manager is ready. Open Servers to make it the selected target for this workspace.'
-              : 'Install the native machine agent on a Docker host, then add its HTTPS endpoint, public certificate fingerprint, and API key in Servers.'}
             steps={[
-              { id: 'agent', label: 'Install the machine agent on a Docker host', status: servers.length ? 'done' : 'active' },
-              { id: 'connect', label: 'Connect and verify Docker / Swarm readiness', status: managers.length ? 'done' : connected.length ? 'active' : 'pending' },
-              { id: 'select', label: `Select a manager and resume ${PAGES[page]}`, status: managers.length ? 'active' : 'pending' },
+              { id: 'enroll', label: 'Enroll a host and let its agent connect', status: servers.length ? (connected.length ? 'done' : 'active') : 'active' },
+              { id: 'prepare', label: 'Make the host a Docker Swarm manager', status: managers.length ? 'done' : connected.length ? 'active' : 'pending' },
+              { id: 'select', label: `Select that cluster and open ${entry.label}`, status: managers.length ? 'active' : 'pending' },
             ]}
-            title="Three safe steps"
+            title="Three steps, in order"
           />
-          <Inline>
-            <Button iconStart="plus" onClick={onOpenServers} variant="accent">Add or select a server</Button>
-            <Button onClick={onOpenProvisioning} variant="secondary">Open provisioning</Button>
-          </Inline>
         </Panel>
-        <Panel
-          description="These controls are intentionally available before a manager is selected, so the setup path is not a dead end."
-          eyebrow="Available now"
-          title="Continue setup"
-        >
+
+        <Panel description="Nothing here depends on a selected cluster, so setup is never a dead end." title="Open while you wait">
           <List plain>
-            <ListRow href="#servers" leading={<Icon name="server" size="sm" />} subtitle="Add, reconnect, or select a pinned machine API target." title="Servers" />
-            <ListRow href="#provisioning" leading={<Icon name="play" size="sm" />} subtitle="Install Docker, initialize Swarm, and configure the firewall through reviewed fixes." title="Setup & readiness" />
-            <ListRow href="#commands" leading={<Icon name="clock" size="sm" />} subtitle="Review queued, running, completed, or failed work." title="Runs" />
-            <ListRow href="#audit" leading={<Icon name="document" size="sm" />} subtitle="Inspect safe, append-only operator activity records." title="Audit" />
+            <ListRow href="#servers" leading={<Icon name="server" size="sm" />} subtitle="Enroll a host, approve its code, or read why one dropped." title="Servers" />
+            <ListRow href="#agent-diagnostics" leading={<Icon name="link" size="sm" />} subtitle="See which layer — agent, Docker, or Swarm — stopped answering." title="Connection diagnostics" />
+            <ListRow href="#commands" leading={<Icon name="activity" size="sm" />} subtitle="Follow queued, running, failed, and recovered operations." title="Runs" />
+            <ListRow href="#audit" leading={<Icon name="shield" size="sm" />} subtitle="Read the append-only record of operator activity." title="Audit trail" />
           </List>
         </Panel>
       </Columns>
+
+      <MetricGrid aria-label="Fleet readiness" columns={3} dense>
+        <Metric hint={servers.length ? 'Hosts with an approved agent identity' : 'No host has completed enrollment'} icon="server" label="Enrolled hosts" tone={servers.length ? 'accent' : 'neutral'} value={String(servers.length)} />
+        <Metric hint={connected.length ? 'Agents currently answering outbound long polls' : 'No agent is answering the controller'} icon="link" label="Answering agents" tone={connected.length ? 'success' : 'warning'} value={String(connected.length)} />
+        <Metric hint={managers.length ? 'Hosts that can be selected as a cluster target' : 'Swarm control is unavailable on every host'} icon="layers" label="Swarm managers" tone={managers.length ? 'success' : 'warning'} value={String(managers.length)} />
+      </MetricGrid>
     </Page>
   )
 }
@@ -2135,8 +2155,8 @@ function CommandStateBadge({ state }: { state: Command['state'] }) {
 function useHashWorkspace(): [WorkspacePage, (page: WorkspacePage) => void] {
 	const read = () => {
 		const value = window.location.hash.slice(1)
-		if (Object.prototype.hasOwnProperty.call(PAGES, value)) return value as WorkspacePage
-    return LEGACY_ROUTES[value] ?? 'overview'
+		if (isWorkspacePage(value)) return value
+		return LEGACY_ROUTES[value] ?? 'overview'
 	}
   const [page, setPage] = useState<WorkspacePage>(read)
   useEffect(() => { const update = () => setPage(read()); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
@@ -2307,4 +2327,10 @@ function shortDigest(value: string) { return value.length > 20 ? `${value.slice(
 function formatNumber(value: number) { return new Intl.NumberFormat().format(Math.round(value)) }
 function formatBytes(value: number) { if (!value) return '0 B'; const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']; const power = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1); return `${(value / 1024 ** power).toFixed(power > 1 ? 1 : 0)} ${units[power]}` }
 function formatDateTime(value?: string) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—' }
+function formatClock(value?: string) {
+  const date = value ? new Date(value) : undefined
+  if (!date || Number.isNaN(date.getTime())) return 'an unknown time'
+  return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date)
+}
+
 function formatDuration(seconds?: number) { if (!seconds) return '—'; const days = Math.floor(seconds / 86400); const hours = Math.floor((seconds % 86400) / 3600); return days ? `${days}d ${hours}h` : `${hours}h` }

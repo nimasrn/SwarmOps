@@ -135,20 +135,33 @@ export interface FactsProps extends HTMLAttributes<HTMLDListElement> {
 export declare function Facts({ className, columns, items, ...props }: FactsProps): import("react").JSX.Element;
 export type ColumnsTemplate = 'aside' | 'aside-start' | 'halves' | 'one-third' | 'quarters' | 'thirds' | 'two-fifths' | 'two-thirds';
 export interface ColumnsProps extends HTMLAttributes<HTMLDivElement> {
+    /** `stretch` (the default) gives both columns the row's height, which is
+        right when they are two halves of one object. `start` sizes each to its
+        own content — use it when the columns are INDEPENDENT panels whose
+        lengths have no reason to agree, such as a list that varies from zero to
+        four rows beside a fixed set of four. Stretched, the shorter one becomes
+        a tall box with its content stranded at the top. */
+    align?: 'start' | 'stretch';
     children: ReactNode;
     /** `aside` is a main column plus a fixed rail; `halves` and `thirds` are
         equal tracks. All of them collapse to one column in a narrow container. */
     template?: ColumnsTemplate;
 }
-export declare function Columns({ children, className, template, ...props }: ColumnsProps): import("react").JSX.Element;
+export declare function Columns({ align, children, className, template, ...props }: ColumnsProps): import("react").JSX.Element;
 export interface StatusHeroProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+    /** What to DO about the verdict. A control room that states a condition and
+        offers nothing has left the reader to go and find the screen themselves,
+        which is the moment an incident costs its first minutes. Keep it to the
+        one recommended action; a hero with a row of equal buttons has ranked
+        nothing. */
+    actions?: ReactNode;
     description?: ReactNode;
     icon: IconName;
     title: ReactNode;
     tone?: StatusTone;
 }
 /** A large first-glance health statement for a control-room overview. */
-export declare function StatusHero({ className, description, icon, title, tone, ...props }: StatusHeroProps): import("react").JSX.Element;
+export declare function StatusHero({ actions, className, description, icon, title, tone, ...props }: StatusHeroProps): import("react").JSX.Element;
 export interface CodeBlockProps extends Omit<HTMLAttributes<HTMLPreElement>, 'children'> {
     /** The text itself. A string rather than nodes, so it can be copied — a log
         an operator cannot paste into a ticket has failed at its one job. */

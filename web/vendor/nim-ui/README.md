@@ -63,6 +63,46 @@ here) whenever the kit changes.
 
 ---
 
+## What changed in 0.15
+
+`CommandPalette` closes the one gap 0.2 left open on purpose. That omission
+said a palette "has to know the whole product's actions" and is therefore
+app-shaped — which is true of its CONTENTS and of nothing else. The surface is
+the same in every console: one field, one ranked list, ↑↓ to move, Enter to
+run, Escape to leave. So the kit owns the surface and the app hands it the
+commands, which is what the `commands` prop is.
+
+Two decisions inside it are worth knowing. It RANKS rather than filters —
+where the match landed decides the order, so the row the viewer typed the
+start of is the row Enter is already on. And the ⌘K that opens it is not the
+kit's: a component binding a global chord would collide with every other
+consumer on the page, and which chord a product spends is the product's call.
+The palette is controlled by `open` / `onClose` like any other overlay.
+
+`StatusHero` takes `actions`. A control room that states a verdict and offers
+nothing has sent the reader off to find the screen themselves, which is where
+an incident spends its first minutes. Keep it to the one recommended action;
+a hero with a row of equal buttons has ranked nothing. Below 40rem of its own
+container the action returns to the leading edge instead of being stranded on
+the trailing edge of its own line.
+
+`Columns` takes `align="start"`. A grid stretches by default, which is right
+when two columns are halves of one object and wrong when they are independent
+panels — a list that runs from zero to four rows beside a fixed set of four
+becomes a tall box with its content stranded at the top. The default is
+unchanged.
+
+Two corrections to existing components, both the same mistake in two places.
+A `ListRow` given an `href` no longer underlines its title and subtitle: a row
+rendered as a link is still a ROW, and its affordance is the band lighting up,
+not a rule under every line of it. And `AdminShell`'s toolbar, once it has
+wrapped onto its own full-width row, now starts where the title starts — the
+`margin-inline-start: auto` that held it on the trailing edge of a SHARED row
+was stranding it away from the reading edge on its own. The `sections` variant
+already corrected this for itself; the correction was never variant-specific.
+
+---
+
 ## What changed in 0.14
 
 0.14 locks the shared `console` voice to the geometry of a full-time operator
@@ -84,6 +124,12 @@ separate contextual rail owns the workspaces inside the active section. The
 context rail becomes a compact horizontal strip in narrower containers, so a
 large console retains the same two-level information architecture without
 duplicating its navigation for desktop and mobile.
+
+For consoles whose primary areas must remain visible without spending another
+label-width sidebar, `navigation="rail"` renders those icon-bearing areas as a
+fixed first tier beside the contextual destination panel. Below 60rem the same
+labelled primary navigation moves into the drawer and the contextual tier
+becomes the existing horizontal strip.
 
 ---
 
@@ -549,6 +595,9 @@ rebuilding. Nothing was removed and no token changed.
   than truncated, because a nav label clipped to four characters is worse than
   the icon alone. It is opt-in — a console with five destinations has nothing
   to reclaim and the control is then one more thing to explain.
+  `navigation="rail"` is the persistent dual-tier variant: icon-bearing product
+  areas form the narrow first rail while `contextualGroups` owns the labelled
+  destinations beside it.
 - `DetailHeader` — where a record sits, what it is, and what can be done to it.
   The actions are at the top, because an operator working a queue acts without
   reading the whole record and a button under a thousand rows is a button
@@ -789,7 +838,9 @@ expecting `vlora`'s old 1.62.
 
 A deliberate omission: the command palette shown in the 0.2 design review is not
 in this release. It is app-shaped — it has to know the whole product's actions —
-and composes from `Dialog` and `Combobox` in the meantime.
+and composes from `Dialog` and `Combobox` in the meantime. (Revisited in 0.15:
+its CONTENTS are app-shaped, its surface is not. `CommandPalette` ships the
+surface and takes the commands as a prop.)
 
 ---
 
@@ -1040,7 +1091,7 @@ accent, which is all `oxblood` is.
 | Forms | `Input` · `Textarea` · `Select` · `Checkbox` · `Switch` · `RadioGroup` / `Radio` · `Slider` · `Segmented` · `Combobox` · `DateField` / `DatePicker` / `Calendar` · `Stepper` · `ChipInput` · `Rating` · `FileDrop` |
 | Collections | `List` · `ListRow` · `Table` · `DataList` · `Timeline` · `Accordion` |
 | Navigation | `Tabs` · `Breadcrumb` · `Pagination` · `TabBar` |
-| Overlays | `Sheet` · `Dialog` · `Menu` · `Popover` · `Tooltip` |
+| Overlays | `Sheet` · `Dialog` · `CommandPalette` · `Menu` · `Popover` · `Tooltip` |
 | Feedback | `Banner` · `EmptyState` · `Spinner` · `Progress` · `Skeleton` · `ToastProvider` / `useToast` |
 | Type | `Display` · `Title` · `Body` · `Label` · `Caption` · `Rule` |
 | Layout | `AppFrame` · `Stack` · `Inline` · `AdminShell` · `DetailHeader` · `FilterChips` · `ActivityFeed` |
@@ -1048,7 +1099,7 @@ accent, which is all `oxblood` is.
 | Flows | `Onboarding` · `SignInFlow` · `Wizard` · `PlanPicker` · `ProfileScreen` · `AppShell` · `TaskProgress` |
 | Flow parts | `AuthScreen` · `PhoneField` · `OtpInput` · `PasswordField` · `PlanCard` · `ProfileHeader` · `AvatarRing` · `ChoiceGrid` · `OptionCard` |
 | Commerce | `OrderSummary` · `ActionBar` |
-| Console | `AdminShell` · `DetailHeader` · `FilterChips` · `ActivityFeed` · `Page` · `Panel` · `Toolbar` · `Metric` / `MetricGrid` · `Facts` · `Columns` · `DetailLayout` · `StageTrack` · `Rail` / `RailSection` · `CopyChip` · `CodeBlock` · `StatusDot` · `Mono` · `RecordLink` · `DataTable` |
+| Console | `AdminShell` · `DetailHeader` · `FilterChips` · `ActivityFeed` · `Page` · `Panel` · `Toolbar` · `Metric` / `MetricGrid` · `Facts` · `Columns` · `DetailLayout` · `StageTrack` · `Rail` / `RailSection` · `CopyChip` · `CodeBlock` · `StatusDot` · `Mono` · `RecordLink` · `DataTable` · `CommandPalette` |
 | Conversations | `Messenger` · `ConversationList` · `RoomHeader` · `Chat` · `ChatComposer` |
 | Assistant | `AssistantThread` |
 | Data | `Chart` · `Sparkline` |

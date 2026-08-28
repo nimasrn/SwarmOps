@@ -953,8 +953,15 @@
     transition: background-color var(--nim-dur-fast) var(--nim-ease-standard);
   }
 
+  /* A row rendered as an <a> is still a ROW: its affordance is the whole
+     band lighting up and the chevron on its edge, not a rule drawn under a
+     title and its subtitle. Without this the UA default underlines every line
+     of a linked row, which is why one list can look like prose and the next
+     like a link farm. */
   .nim-list-row--interactive {
     cursor: pointer;
+    color: inherit;
+    text-decoration: none;
   }
 
   .nim-list-row--interactive:hover {
@@ -1656,6 +1663,159 @@
     padding: var(--nim-space-5);
     border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
     flex: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     COMMAND PALETTE — the console's keyboard surface
+     A dialog's platform behaviour with a list's geometry. It sits HIGH in the
+     viewport rather than centred: the list grows downward as the query
+     narrows, and a centred box would move its own first row under the caret
+     on every keystroke.
+     ═══════════════════════════════════════════════════════════════════════ */
+  .nim-palette {
+    inline-size: min(100% - var(--nim-space-6), 34rem);
+    max-block-size: min(70dvh, 32rem);
+    margin: 0 auto;
+    /* The margin above the surface is what keeps it out of the topbar it was
+       opened from; `margin: auto` would centre it and lose that. */
+    margin-block-start: min(12vh, var(--nim-space-9));
+    padding: 0;
+    background: var(--nim-surface);
+    color: var(--nim-ink);
+    border: var(--nim-border-width) solid var(--nim-line-strong);
+    border-radius: var(--nim-radius-lg);
+    box-shadow: var(--nim-shadow-lg);
+    overflow: hidden;
+  }
+
+  .nim-palette[open] {
+    display: flex;
+    flex-direction: column;
+    animation: nim-rise var(--nim-dur-base) var(--nim-ease-decelerate);
+  }
+
+  .nim-palette::backdrop {
+    background: var(--nim-scrim);
+    animation: nim-fade-in var(--nim-dur-base) var(--nim-ease-standard);
+  }
+
+  .nim-palette__field {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    padding-inline: var(--nim-space-4);
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+    color: var(--nim-ink-tertiary);
+    flex: none;
+  }
+
+  .nim-palette__input {
+    flex: 1;
+    min-inline-size: 0;
+    block-size: calc(var(--nim-control-lg) * var(--nim-density));
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--nim-ink);
+    font: inherit;
+    font-size: var(--nim-type-title-md-size);
+  }
+
+  /* The kit's focus ring is suppressed here on purpose, and it is the one
+     place in the kit where that is right: the palette is modal, the field is
+     its ONLY tab stop, and it is focused from the moment the surface opens.
+     A ring that is always on indicates nothing, and drawn inside a square
+     dialog head it reads as a second, misaligned edge. The caret is the
+     indicator. Anything that adds a second tab stop here must put it back. */
+  .nim-palette__input:focus,
+  .nim-palette__input:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .nim-palette__input::placeholder {
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-palette__list {
+    padding: var(--nim-space-2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .nim-palette__group {
+    margin: 0;
+    padding: var(--nim-space-3) var(--nim-space-3) var(--nim-space-2);
+    color: var(--nim-ink-tertiary);
+    font-size: var(--nim-type-label-size);
+    font-weight: var(--nim-weight-medium);
+    letter-spacing: var(--nim-tracking-wide);
+    text-transform: uppercase;
+  }
+
+  .nim-palette__row {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    inline-size: 100%;
+    padding: var(--nim-space-2) var(--nim-space-3);
+    background: none;
+    border: 0;
+    border-radius: var(--nim-radius-md);
+    color: var(--nim-ink);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  /* The active row is driven by the ROVING selection, not by :hover — the
+     keyboard and the pointer must never light two different rows, because
+     Enter only ever runs one of them. */
+  .nim-palette__row[data-active='true'] {
+    background: var(--nim-surface-muted);
+    color: var(--nim-ink);
+  }
+
+  .nim-palette__row:disabled {
+    color: var(--nim-ink-tertiary);
+    cursor: not-allowed;
+  }
+
+  .nim-palette__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--nim-space-0);
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .nim-palette__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-palette__hint {
+    color: var(--nim-ink-secondary);
+    font-size: var(--nim-type-caption-size);
+    line-height: var(--nim-type-caption-line);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nim-palette__shortcut {
+    padding-inline: var(--nim-space-2);
+    color: var(--nim-ink-tertiary);
+    font-family: var(--nim-font-mono);
+    font-size: var(--nim-type-caption-size);
+    flex: none;
+  }
+
+  .nim-palette__empty {
+    margin: 0;
+    padding: var(--nim-space-5) var(--nim-space-3);
+    color: var(--nim-ink-tertiary);
+    text-align: center;
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -5755,6 +5915,43 @@
     padding-block-start: var(--nim-space-3);
   }
 
+  /* The first tier of a dual-sidebar console is a stable icon rail. Product
+     areas stay visible without competing with the second tier's destination
+     labels, and the full labelled hierarchy remains in the mobile drawer. */
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar {
+    inline-size: calc(var(--nim-control-lg) + var(--nim-space-4));
+    gap: 0;
+    overflow-x: hidden;
+    padding: var(--nim-space-3) var(--nim-space-2);
+  }
+
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__brand,
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__brand {
+    min-block-size: var(--nim-control-lg);
+  }
+
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__brand .nim-brand__text,
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__group-label,
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__link > span,
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar-foot,
+  .nim-admin[data-navigation='rail'] .nim-admin__rail-toggle {
+    display: none;
+  }
+
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__nav {
+    gap: var(--nim-space-2);
+  }
+
+  .nim-admin[data-navigation='rail'] .nim-admin__sidebar .nim-admin__group + .nim-admin__group {
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+    padding-block-start: var(--nim-space-3);
+  }
+
   .nim-admin__brand :is(strong, b) {
     font-size: var(--nim-type-title-md-size);
     font-weight: var(--nim-type-title-md-weight);
@@ -7893,6 +8090,10 @@
     min-inline-size: 0;
   }
 
+  .nim-columns[data-align='start'] {
+    align-items: start;
+  }
+
   .nim-columns[data-template='halves'] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7926,11 +8127,13 @@
   }
 
   .nim-status-hero {
+    container-type: inline-size;
     display: flex;
     align-items: center;
     gap: var(--nim-space-6);
     min-block-size: 12rem;
     padding: var(--nim-space-4) var(--nim-space-6);
+    flex-wrap: wrap;
   }
 
   .nim-status-hero__mark {
@@ -7953,9 +8156,41 @@
   .nim-status-hero[data-tone='accent'] .nim-status-hero__mark,
   .nim-status-hero[data-tone='accent'] .nim-status-hero__title { color: var(--nim-accent); }
 
+  /* The action sits on the trailing edge on a wide hero and drops under the
+     copy when the row can no longer hold both — `margin-inline-start: auto`
+     rather than a second breakpoint, so it mirrors under RTL for free. */
+  .nim-status-hero__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--nim-space-3);
+    margin-inline-start: auto;
+    flex: none;
+  }
+
+  /* Once the row has wrapped, `margin-inline-start: auto` is no longer holding
+     the action on the trailing edge of a row — it is stranding it on the
+     trailing edge of its OWN line, under copy that reads from the leading
+     edge. Below the wrap the action returns to the start, where the eye
+     already is. */
+  @container (inline-size < 40rem) {
+    .nim-status-hero__actions {
+      margin-inline-start: 0;
+      inline-size: 100%;
+    }
+
+    .nim-status-hero__actions > * {
+      flex: 1;
+    }
+  }
+
   .nim-status-hero__copy {
     display: grid;
     gap: var(--nim-space-2);
+    /* The basis is what makes the row wrap rather than squeeze: below it the
+       action drops to its own line instead of crushing the verdict into a
+       column of single words. */
+    flex: 1;
+    min-inline-size: 18rem;
   }
 
   .nim-status-hero__title {
@@ -8255,14 +8490,16 @@
       flex: 1;
       min-inline-size: 0;
     }
+    /* `margin-inline-start: auto` held the toolbar on the trailing edge of a
+       SHARED row. On its own full-width row that alignment strands it away
+       from the reading edge the title starts at — so once it has wrapped, it
+       starts where the title does. The sections variant used to correct this
+       for itself; the correction was never variant-specific. */
     .nim-admin__toolbar {
       flex: 1 1 100%;
       flex-wrap: wrap;
-      justify-content: flex-end;
-      margin-inline-start: 0;
-    }
-    .nim-admin[data-navigation='sections'] .nim-admin__toolbar {
       justify-content: flex-start;
+      margin-inline-start: 0;
     }
     .nim-admin[data-navigation='sections'] .nim-admin__title {
       flex: 1 1 100%;
@@ -8404,6 +8641,10 @@
     padding: var(--nim-space-4) var(--nim-space-3);
     background: var(--nim-canvas);
     border-color: var(--nim-line);
+  }
+
+  [data-nim-style='console'] .nim-admin[data-navigation='rail'] .nim-admin__context {
+    background: var(--nim-surface);
   }
 
   [data-nim-style='console'] .nim-admin__context-nav .nim-admin__nav {
@@ -8822,6 +9063,16 @@
     outline-offset: calc(var(--nim-size-focus-offset) * -1);
   }
 
+  .nim-root .nim-palette__row[data-active='true'] {
+    outline: var(--nim-border-width) solid Highlight;
+    outline-offset: calc(var(--nim-border-width) * -1);
+  }
+
+  .nim-root .nim-admin__link[data-active] {
+    outline: var(--nim-border-width) solid Highlight;
+    outline-offset: calc(var(--nim-border-width) * -1);
+  }
+
   /* Progress, meters, and the slider's filled half are pure fill by nature —
      they must be allowed to keep drawing themselves. */
   .nim-root :is(.nim-progress__fill, .nim-resource-meter__fill, .nim-slider) {
@@ -8830,7 +9081,7 @@
 
   /* Elevation is invisible in forced colours, so surfaces that were only
      separated by a shadow get a line instead. */
-  .nim-root :is(.nim-card--raised, .nim-menu, .nim-sheet, .nim-dialog) {
+  .nim-root :is(.nim-card--raised, .nim-menu, .nim-sheet, .nim-dialog, .nim-palette) {
     border: var(--nim-border-width) solid CanvasText;
   }
 
