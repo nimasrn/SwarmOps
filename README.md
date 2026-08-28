@@ -164,7 +164,8 @@ model. A persistent icon rail owns **Overview**, **Deliver**, **Fleet**,
 contextual sidebar names the screens inside the active area and states what the
 area is for. Overview answers what is healthy and what to do next. Deliver owns
 the whole path from source to running production — deploy from source,
-applications, images and builds, and the container registry. Fleet owns
+applications, images and builds, the container registry, and reading a
+Kubernetes workload to see whether Swarm can run it. Fleet owns
 servers, host setup, Swarm placement, connection diagnostics, and Docker
 resources. Workloads owns what is scheduled right now: Swarm services, stacks,
 and managed databases. Traffic gives gateway ports, routes, DNS providers, and
@@ -213,6 +214,51 @@ are in [console information architecture](docs/console-information-architecture.
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
 | Agent operations | Queue a typed operation for one node or an explicit node set and inspect durable attempts, evidence, retries, and attention states. | Agents lease work through outbound HTTPS, acknowledge ordered events, resume after disconnects, and reject commands from stale Core authority epochs. |
 | Backups | Install an opt-in Restic timer for local Docker named-volume paths to S3-compatible storage | Credentials are supplied only through a protected controller-side file; repository initialisation and restore validation stay explicit operator actions. |
+
+## Explaining, previewing, and importing
+
+Three read-only surfaces exist because the expensive part of operating a
+cluster is not deploying, it is finding out why something is not running.
+
+**Diagnosis.** A service running fewer tasks than it wants is explained as a
+chain of claims, each carrying the measurement behind it and where that
+measurement came from, ending at the first thing SwarmOps can act on. Three
+rules ship: an unsatisfiable placement constraint, an image too large for every
+eligible node, and a task that places and then dies.
+
+The engine prefers silence to invention, and that is the design rather than a
+limitation. A rule that cannot obtain its measurements declines rather than
+degrading to a guess. A placement-constraint form the engine does not implement
+makes it decline rather than report "no node matches", because that would be a
+confident wrong answer produced by its own ignorance. Evidence older than
+ninety seconds cannot support a claim about capacity. A host with no probe has
+unknown capacity, not zero. When no rule fires the console shows what was
+measured and which failures the engine knows how to explain — an engine is
+trusted until its first confident wrong answer and never afterwards.
+
+**Change preview.** What a deploy will interrupt, in what order, and what
+happens when a step fails. Rollback behaviour is read from the service's own
+failure action rather than assumed: a service that configures none is told
+Docker's real default is to pause with the replaced tasks left on the new
+image. "Serving during rollout" is affirmative only when capacity genuinely
+remains, so a single-replica service is told plainly that it cannot be replaced
+without a gap. Nothing is queued; the preview exists so an operator can decide
+not to.
+
+**Kubernetes import.** Manifests are read and reported as what maps, what does
+not, and what was skipped, with a Compose v3.9 stack returned for review rather
+than deployed. A two-container pod is reported as a gap rather than a mapping,
+because Swarm has no pod and a sidecar sharing localhost with its app would
+silently stop working. Autoscalers, custom resources, Jobs, NetworkPolicies and
+LoadBalancer Services each state why in terms of what Swarm is, and every list
+of options includes staying on Kubernetes. A translation that maps but changes
+behaviour says so in the same row.
+
+All three are reads. None queues a command, and the actions a diagnosis
+proposes navigate to the screen that owns them rather than performing them:
+pruning is gated behind an explicit confirmation, and running a destructive
+command from the panel that just diagnosed the problem would bypass the
+deliberation that gate exists to force.
 
 ## Architecture
 
