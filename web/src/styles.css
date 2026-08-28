@@ -169,3 +169,24 @@ body {
 
 .swarmops-preview__step-title { font-size: var(--nim-text-13); color: var(--nim-ink); }
 .swarmops-preview__step-detail { display: block; font-size: var(--nim-text-12); color: var(--nim-ink-tertiary); }
+
+/* The engine's vocabulary, shown beside a refusal. Deliberately plain: it is
+   context for "no rule fired", not a feature of its own. */
+.swarmops-diagnosis__rules { margin-block-start: var(--nim-space-4); }
+
+.swarmops-diagnosis__rules ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nim-space-2);
+  margin: var(--nim-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.swarmops-diagnosis__rules li {
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-sm);
+  padding: 2px var(--nim-space-2);
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-secondary);
+}

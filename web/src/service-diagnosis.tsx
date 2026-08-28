@@ -10,6 +10,7 @@ import {
   Panel,
 } from '@nim.zone/ui'
 import type { CausalLink } from '@nim.zone/ui'
+import { api } from './api'
 import type { DiagnosisEvidence, DiagnosisResult } from './types'
 
 /** How long ago a measurement was taken, in the shortest honest form.
@@ -26,6 +27,23 @@ function age(observedAt: string): string {
 
 function source(evidence: DiagnosisEvidence): string {
   return `${evidence.source} · ${age(evidence.observedAt)}`
+}
+
+/** The engine's vocabulary, fetched once. Shown beside a refusal because an
+ *  engine whose rule set is secret cannot be trusted at the edges of it: told
+ *  only "no rule fired", an operator cannot tell a gap in the engine from a
+ *  genuinely inexplicable service. */
+function useDiagnosisRules(enabled: boolean) {
+  const [rules, setRules] = useState<string[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    void api.diagnosisRules()
+      .then((response: { rules: string[] }) => { if (live) setRules(response.rules) })
+      .catch(() => { /* The rule list is context, never the reason a page works. */ })
+    return () => { live = false }
+  }, [enabled])
+  return rules
 }
 
 export function ServiceDiagnosis({
@@ -56,17 +74,21 @@ export function ServiceDiagnosis({
     )
   }
 
-  if (loading && !result) {
+  if (!result) {
+    if (loading) {
     return (
       <Panel eyebrow={<Mono>working</Mono>} title={`Why ${serviceName} is not converged`}>
         <Body size="sm">Gathering measurements from the manager and the host probes.</Body>
       </Panel>
-    )
+      )
+    }
+    return null
   }
 
-  if (!result) return null
-
-  const { chain, refusal } = result
+  const { chain, refusal } = result ?? {}
+  // Only fetched when a refusal is on screen; the list is context for "no rule
+  // fired" and noise anywhere else.
+  const rules = useDiagnosisRules(Boolean(result && !result.chain))
 
   if (chain) {
     const links: CausalLink[] = chain.links.map((link) => ({
@@ -133,6 +155,17 @@ export function ServiceDiagnosis({
         icon="search"
         title="Nothing here is a guess"
       />
+      {rules.length ? (
+        <div className="swarmops-diagnosis__rules">
+          <Body size="sm">
+            SwarmOps can currently explain {rules.length} kind{rules.length === 1 ? '' : 's'} of failure. None of them fits
+            what this service is doing, which may mean the cause is outside that list rather than absent.
+          </Body>
+          <ul>
+            {rules.map((rule) => <li key={rule}><Mono>{rule}</Mono></li>)}
+          </ul>
+        </div>
+      ) : null}
       {refusal?.evidence?.length ? (
         <dl className="swarmops-diagnosis__evidence">
           {refusal.evidence.map((item) => (
