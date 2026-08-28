@@ -277,12 +277,12 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.7.1`. Release history is in
+The current version is `0.7.2`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
 
-Core installations on v0.5.10 whose Warden rejects a newly added reviewed
+Core installations on an older release whose Warden rejects a newly added reviewed
 stack asset can recover without reinstalling or touching controller state:
 
 ```sh

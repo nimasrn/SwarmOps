@@ -238,8 +238,8 @@ verify_core_bundle_layout() {
       swarmops-warden) warden_count=$((warden_count + 1)) ;;
       assets/alertmanager.yml) alertmanager_count=$((alertmanager_count + 1)) ;;
       assets/agent.yml) agent_count=$((agent_count + 1)) ;;
-      assets/fluentd-aggregator.conf) fluentd_aggregator_count=$((fluentd_aggregator_count + 1)) ;;
-      assets/fluentd-forwarder.conf) fluentd_forwarder_count=$((fluentd_forwarder_count + 1)) ;;
+      assets/fluentd-aggregator.yml) fluentd_aggregator_count=$((fluentd_aggregator_count + 1)) ;;
+      assets/fluentd-forwarder.yml) fluentd_forwarder_count=$((fluentd_forwarder_count + 1)) ;;
       assets/jaeger.yml) jaeger_count=$((jaeger_count + 1)) ;;
       assets/logs.yml) logs_count=$((logs_count + 1)) ;;
       assets/mongo.yml) mongo_count=$((mongo_count + 1)) ;;
@@ -263,8 +263,8 @@ validate_core_release() {
     "$release_path/swarmops-warden" \
     "$release_path/assets/alertmanager.yml" \
     "$release_path/assets/agent.yml" \
-    "$release_path/assets/fluentd-aggregator.conf" \
-    "$release_path/assets/fluentd-forwarder.conf" \
+    "$release_path/assets/fluentd-aggregator.yml" \
+    "$release_path/assets/fluentd-forwarder.yml" \
     "$release_path/assets/jaeger.yml" \
     "$release_path/assets/logs.yml" \
     "$release_path/assets/mongo.yml" \
@@ -296,7 +296,7 @@ download_core_release() {
   temporary_release="$(mktemp -d "$release_dir/.stage-${release_version}.XXXXXX")"
   tar -xzf "$download_dir/$asset_name" -C "$temporary_release" || fail 'extract release bundle'
   chmod 0755 "$temporary_release" "$temporary_release/assets" "$temporary_release/swarmops-core" "$temporary_release/swarmops-warden"
-  chmod 0444 "$temporary_release/assets/alertmanager.yml" "$temporary_release/assets/agent.yml" "$temporary_release/assets/fluentd-aggregator.conf" "$temporary_release/assets/fluentd-forwarder.conf" "$temporary_release/assets/jaeger.yml" "$temporary_release/assets/logs.yml" "$temporary_release/assets/mongo.yml" "$temporary_release/assets/observability.yml" "$temporary_release/assets/postgres.yml" "$temporary_release/assets/prometheus-alerts.yml" "$temporary_release/assets/prometheus.yml" "$temporary_release/assets/redis.yml" "$temporary_release/assets/traefik-dynamic.yml" "$temporary_release/assets/traefik.yml"
+  chmod 0444 "$temporary_release/assets/alertmanager.yml" "$temporary_release/assets/agent.yml" "$temporary_release/assets/fluentd-aggregator.yml" "$temporary_release/assets/fluentd-forwarder.yml" "$temporary_release/assets/jaeger.yml" "$temporary_release/assets/logs.yml" "$temporary_release/assets/mongo.yml" "$temporary_release/assets/observability.yml" "$temporary_release/assets/postgres.yml" "$temporary_release/assets/prometheus-alerts.yml" "$temporary_release/assets/prometheus.yml" "$temporary_release/assets/redis.yml" "$temporary_release/assets/traefik-dynamic.yml" "$temporary_release/assets/traefik.yml"
   validate_core_release "$temporary_release"
   rm -rf "$download_dir"
   download_dir=''

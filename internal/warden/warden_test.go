@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -158,6 +159,24 @@ func TestExtractCoreBundleIncludesReviewedAssets(t *testing.T) {
 		}
 		if got, want := info.Mode().Perm(), bundleFileMode(name); got != want {
 			t.Fatalf("core bundle file %q mode = %04o, want %04o", name, got, want)
+		}
+	}
+}
+
+func TestCoreBundleRemainsStageableByV062Warden(t *testing.T) {
+	legacyRequired := map[string]bool{
+		"swarmops-core": true, "swarmops-warden": true,
+		"assets/agent.yml": true, "assets/logs.yml": true,
+		"assets/mongo.yml": true, "assets/observability.yml": true,
+		"assets/postgres.yml": true, "assets/redis.yml": true,
+		"assets/traefik.yml": true,
+	}
+	for _, name := range requiredBundleFiles("core") {
+		if legacyRequired[name] {
+			continue
+		}
+		if !strings.HasPrefix(name, "assets/") || strings.Count(name, "/") != 1 || !strings.HasSuffix(name, ".yml") {
+			t.Fatalf("Core release path %q is rejected by the v0.6.2 Warden", name)
 		}
 	}
 }

@@ -102,8 +102,8 @@ func TestCoreReleaseCarriesEveryCollectorConfig(t *testing.T) {
 		script := string(data)
 		for _, asset := range []string{
 			"assets/alertmanager.yml",
-			"assets/fluentd-aggregator.conf",
-			"assets/fluentd-forwarder.conf",
+			"assets/fluentd-aggregator.yml",
+			"assets/fluentd-forwarder.yml",
 			"assets/jaeger.yml",
 			"assets/prometheus-alerts.yml",
 			"assets/prometheus.yml",

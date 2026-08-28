@@ -11,6 +11,18 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.2 — 2026-08-28
+
+This patch restores direct Warden upgrades from every supported pre-0.7 Core
+while retaining the complete native release bundle introduced in 0.7.1.
+
+- **Backward-compatible release assets** — Fluentd configuration payloads now
+  use the Warden's established flat `.yml` archive namespace. Their container
+  mount targets remain `fluent.conf`, so runtime behavior is unchanged.
+- **Proven upgrade bridge** — a v0.6.2 Core can stage, checksum, switch to, and
+  health-check the complete 0.7.2 bundle through the normal `swarmops-core
+  upgrade` command without replacing the updater out of band.
+
 ## 0.7.1 — 2026-08-28
 
 This release reorganizes the console around operator tasks and closes the
