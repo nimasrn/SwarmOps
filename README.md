@@ -243,8 +243,10 @@ service action, image build, Traefik reconciliation, and reviewed
 observability controls — require an `Idempotency-Key`. After admission and
 policy checks, SwarmOps atomically writes an encrypted command record before
 returning HTTP `202` with a command ID. The matching console route shows only
-safe metadata: action, target, state, attempt count, next retry, and generic
-failure guidance.
+safe metadata: action, target, state, attempt count, next retry, and a bounded
+failure code, operator summary, and recovery hint. Raw remote output and error
+text remain excluded, but the failure class and next action are retained instead
+of collapsing every problem into the same generic sentence.
 
 The active-core worker runs one command at a time. Its states are `queued`,
 `running`, `retry_scheduled`, `succeeded`, and `needs_attention`. Only
@@ -253,7 +255,9 @@ then 64 seconds, with no more than eight attempts. A shutdown, timeout, API
 restart while a command is running, deterministic policy error, non-retryable
 action, or exhausted retry budget becomes `needs_attention`; SwarmOps never
 blindly replays an uncertain remote effect. An operator can manually requeue
-that terminal state after inspecting the target. A planned fence stops it from
+that terminal state after inspecting the target. Runs shows current blockers
+for known workflows and disables retry while a required agent connection,
+managed gateway, or placement label is absent. A planned fence stops it from
 claiming new work; it does not cancel an already-running remote operation. The
 worker also retries a
 transient durable-store failure with bounded exponential backoff before it
@@ -277,7 +281,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.7.6`. Release history is in
+The current version is `0.7.7`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -380,6 +384,13 @@ cards distinguish cluster health, ready-node coverage, running-versus-desired
 tasks, host-probe coverage, and the tightest measured memory/disk headroom.
 The supporting lists put degraded nodes and services first, then retain stack
 and platform posture for follow-up.
+
+Automatic refreshes are non-destructive: the console keeps the current
+workspace, selected manager, filters, and last successful data mounted while a
+new snapshot is read. A temporary agent disconnect reports degraded or stale
+state in place; it does not send the operator back through the first-run screen
+or silently retarget the console. The selected manager is retained only for the
+current browser session and is cleared on sign-out.
 
 SwarmOps does not retain a performance time series, so Overview intentionally
 does not draw historical trends. CPU is shown as declared core capacity rather

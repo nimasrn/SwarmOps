@@ -11,6 +11,22 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.7 — 2026-08-28
+
+This patch keeps live operations stable during polling and makes failed
+commands explain their safe next action.
+
+- **Silent live refresh** — background command, audit, log, and cluster polls
+  retain the mounted workspace and last successful data instead of replacing
+  the screen with a loading or landing state.
+- **Stable explicit targeting** — the selected manager survives transient agent
+  disconnects for the browser session and is cleared on sign-out, preventing
+  an automatic switch to a different cluster.
+- **Actionable needs-attention state** — the command ledger retains bounded,
+  non-secret failure codes, summaries, and recovery hints. Observability runs
+  surface missing gateway, agent, and stateful-placement prerequisites, link to
+  their setup screens, and disable retry until those blockers are resolved.
+
 ## 0.7.6 — 2026-08-28
 
 This patch closes two safety and language gaps found during the authenticated

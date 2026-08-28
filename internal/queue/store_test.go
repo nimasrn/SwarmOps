@@ -96,6 +96,9 @@ func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 	if event != "needs_attention" || failed.State != domain.CommandNeedsAttention {
 		t.Fatalf("bounded failure = %#v, event=%q", failed, event)
 	}
+	if failed.FailureCode != "execution_not_confirmed" || failed.FailureSummary == "" || failed.RecoveryHint == "" {
+		t.Fatalf("failure guidance = %#v", failed)
+	}
 	current = current.Add(time.Second)
 	retried, err := store.RetryNow(command.ID, command.AuthorityEpoch)
 	if err != nil {
@@ -103,6 +106,30 @@ func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 	}
 	if retried.State != domain.CommandQueued || retried.Attempt != 0 || retried.NextAttemptAt == nil || !retried.NextAttemptAt.Equal(current) {
 		t.Fatalf("manual retry = %#v", retried)
+	}
+}
+
+func TestObservabilityFailureKeepsSafeRecoveryGuidance(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	input := testInput()
+	input.Action = "observability.core"
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	failed, event, err := store.Fail(command.ID, PermanentError(errors.New("Traefik singleton service was not found")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event != "needs_attention" || failed.FailureCode != "gateway_required" {
+		t.Fatalf("failure = %#v event=%q", failed, event)
+	}
+	if !strings.Contains(failed.RecoveryHint, "Gateway, routes & DNS") {
+		t.Fatalf("recovery hint = %q", failed.RecoveryHint)
 	}
 }
 

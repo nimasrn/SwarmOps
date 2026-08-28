@@ -243,6 +243,8 @@ type Command struct {
 	AutoRetry      bool         `json:"autoRetry"`
 	ClusterID      string       `json:"clusterId"`
 	CreatedAt      time.Time    `json:"createdAt"`
+	FailureCode    string       `json:"failureCode,omitempty"`
+	FailureSummary string       `json:"failureSummary,omitempty"`
 	ID             string       `json:"id"`
 	LastAttemptAt  *time.Time   `json:"lastAttemptAt,omitempty"`
 	LastError      string       `json:"lastError,omitempty"`
@@ -251,6 +253,7 @@ type Command struct {
 	NextAttemptAt  *time.Time   `json:"nextAttemptAt,omitempty"`
 	NodeID         string       `json:"nodeId"`
 	RequestID      string       `json:"requestId,omitempty"`
+	RecoveryHint   string       `json:"recoveryHint,omitempty"`
 	ServerID       string       `json:"serverId"`
 	State          CommandState `json:"state"`
 	Target         string       `json:"target"`

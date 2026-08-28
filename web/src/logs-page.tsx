@@ -43,7 +43,7 @@ export function LogsPage() {
       </Stack>
     </Panel>
     <Panel title="Sanitized records">
-      {loading ? <Spinner label="Reading logs" /> : !page?.records.length ? <Body tone="muted">No matching records in the selected time range.</Body> : <Stack gap="tight">{page.records.map(record => <Panel key={record.id} eyebrow={`${new Date(record.timestamp).toLocaleString()} · ${record.sourceKind} · ${record.level}`} title={record.service || record.unit || record.containerId?.slice(0,12) || record.node || 'Host record'}><Body>{record.message}</Body><Body size="sm" tone="muted">{[record.node, record.stack, record.service, record.containerId, record.unit, record.stream].filter(Boolean).join(' · ')}</Body></Panel>)}</Stack>}
+      {loading && !page ? <Spinner label="Reading logs" /> : !page?.records.length ? <Body tone="muted">No matching records in the selected time range.</Body> : <Stack gap="tight">{page.records.map(record => <Panel key={record.id} eyebrow={`${new Date(record.timestamp).toLocaleString()} · ${record.sourceKind} · ${record.level}`} title={record.service || record.unit || record.containerId?.slice(0,12) || record.node || 'Host record'}><Body>{record.message}</Body><Body size="sm" tone="muted">{[record.node, record.stack, record.service, record.containerId, record.unit, record.stream].filter(Boolean).join(' · ')}</Body></Panel>)}</Stack>}
       {page?.nextCursor ? <Inline><Button disabled={!cursor} onClick={() => void load('')} variant="ghost">Newest</Button><Button onClick={() => void load(page.nextCursor)}>Older records</Button></Inline> : null}
     </Panel>
   </Page>

@@ -130,6 +130,7 @@ const LEGACY_ROUTES: Record<string, WorkspacePage> = {
 }
 
 const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
+const SELECTED_SERVER_KEY = 'swarmops:selected-server'
 const openLogsWorkspace = () => window.dispatchEvent(new Event('swarmops:open-logs'))
 
 export function App() {
@@ -325,15 +326,25 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   const [workspace, setWorkspace] = useHashWorkspace()
   const toast = useToast()
   const { error: serversError, loading: serversLoading, refresh: refreshServers, servers } = useServers(onLogout)
-	const { error: auditError, events: auditEvents, loading: auditLoading, refresh: refreshAudit } = useAuditEvents(workspace === 'audit', onLogout)
-	const { commands, error: commandsError, loading: commandsLoading, refresh: refreshCommands } = useCommands(workspace === 'commands' || workspace === 'catalogue' || workspace === 'overview', onLogout)
+	const { error: auditError, events: auditEvents, initialLoading: auditInitialLoading, refreshing: auditRefreshing, refresh: refreshAudit } = useAuditEvents(workspace === 'audit', onLogout)
+	const { commands, error: commandsError, initialLoading: commandsInitialLoading, refreshing: commandsRefreshing, refresh: refreshCommands } = useCommands(workspace === 'commands' || workspace === 'catalogue' || workspace === 'overview', onLogout)
 	const { core, error: coreError, refresh: refreshCore } = useCoreTopology(onLogout)
   const [homeActivity, setHomeActivity] = useState<InsightsSample[]>([])
   const [highlightedCommandID, setHighlightedCommandID] = useState('')
-  const [activeServerID, setActiveServerID] = useState('')
-  const activeServer = servers.find((server) => server.id === activeServerID && serverCanManage(server))
-  const managers = servers.filter(serverCanManage)
+  const [activeServerID, setActiveServerID] = useState(() => window.sessionStorage.getItem(SELECTED_SERVER_KEY) ?? '')
+	// Selection is operator intent, not a health result. Keep the explicit target
+	// while its agent reconnects so a transient poll cannot throw the operator
+	// back to the first-run screen or silently select a different cluster.
+  const activeServer = servers.find((server) => server.id === activeServerID)
+	const managers = servers.filter((server) => serverCanManage(server) || server.id === activeServerID)
   const { data, error, refresh, refreshing } = useDashboard(activeServer?.id ?? '', onLogout)
+
+	const selectServer = useCallback((id: string) => {
+		api.selectServer(id)
+		setActiveServerID(id)
+		if (id) window.sessionStorage.setItem(SELECTED_SERVER_KEY, id)
+		else window.sessionStorage.removeItem(SELECTED_SERVER_KEY)
+	}, [])
 
   useEffect(() => {
     const openLogs = () => setWorkspace('logs')
@@ -354,17 +365,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   }, [activeServer?.id, data?.overview.generatedAt, workspace])
 
   useEffect(() => {
-    const next = servers.some((server) => server.id === activeServerID && serverCanManage(server))
+    if (serversLoading) return
+    const next = servers.some((server) => server.id === activeServerID)
       ? activeServerID
 	  : servers.find(serverCanManage)?.id ?? ''
-    api.selectServer(next)
-    if (next !== activeServerID) setActiveServerID(next)
-  }, [activeServerID, servers])
-
-  const selectServer = (id: string) => {
-    api.selectServer(id)
-    setActiveServerID(id)
-  }
+    selectServer(next)
+	}, [activeServerID, selectServer, servers, serversLoading])
 
   const connected = async (server: Server) => {
     await refreshServers()
@@ -385,7 +391,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
       // Removing the local session is safer than leaving a failed sign-out
       // screen usable; the server-side cookie expires independently.
     }
-    api.selectServer('')
+		selectServer('')
     onLogout()
   }
 
@@ -436,9 +442,9 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         ? refreshServers
         : refresh
 	const refreshLoading = workspace === 'audit'
-    ? auditLoading
+    ? auditInitialLoading || auditRefreshing
 		: workspace === 'commands'
-      ? commandsLoading
+      ? commandsInitialLoading || commandsRefreshing
 		: workspace === 'servers' || workspace === 'agent-diagnostics' || !activeServer
         ? serversLoading
         : refreshing
@@ -506,12 +512,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 	  ) : workspace === 'audit' ? (
         <>
           {auditError ? <Banner title="Audit trail unavailable" tone="danger">{auditError}</Banner> : null}
-          {auditLoading ? <LoadingScreen label="Reading the audit trail" /> : <AuditPage events={auditEvents} />}
+          {auditInitialLoading ? <LoadingScreen label="Reading the audit trail" /> : <AuditPage events={auditEvents} />}
         </>
 	  ) : workspace === 'commands' ? (
         <>
           {commandsError ? <Banner title="Runs unavailable" tone="danger">{commandsError}</Banner> : null}
-          {commandsLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} highlightedID={highlightedCommandID} onRefresh={refreshCommands} servers={servers} toast={toast} />}
+          {commandsInitialLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} dashboard={data} highlightedID={highlightedCommandID} onOpenDiagnostics={() => setWorkspace('agent-diagnostics')} onOpenGateway={() => setWorkspace('traefik')} onOpenSwarm={() => setWorkspace('nodes')} onRefresh={refreshCommands} servers={servers} toast={toast} />}
         </>
 	  ) : workspace === 'catalogue' ? (
         <CommandCataloguePage activeServerID={activeServerID} onQueued={(commandID) => { setHighlightedCommandID(commandID); setWorkspace('commands') }} servers={servers} toast={toast} />
@@ -580,7 +586,7 @@ function PageRouter({
     case 'services': return <ServicesPage services={data.services} toast={toast} />
     case 'builds': return <BuildsPage toast={toast} />
     case 'traefik': return <TraefikControlPage status={data.traefik} toast={toast} />
-    case 'observability': return <ObservabilityPage status={data.observability} toast={toast} />
+    case 'observability': return <ObservabilityPage nodes={data.nodes} onOpenGateway={() => window.location.hash = 'traefik'} onOpenSwarm={() => window.location.hash = 'nodes'} status={data.observability} toast={toast} traefik={data.traefik} />
     case 'logs': return <LogsPage />
     case 'databases': return <DatabasesPage toast={toast} />
     case 'applications': return <ApplicationsPage toast={toast} />
@@ -1814,12 +1820,18 @@ function DatabasesPage({ toast }: { toast: ReturnType<typeof useToast> }) {
   )
 }
 
-function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toast: ReturnType<typeof useToast> }) {
+function ObservabilityPage({ nodes, onOpenGateway, onOpenSwarm, status, toast, traefik }: { nodes: Node[]; onOpenGateway: () => void; onOpenSwarm: () => void; status: ObservabilityStatus; toast: ReturnType<typeof useToast>; traefik: TraefikStatus }) {
   const [pending, setPending] = useState(false)
   const [confirmation, setConfirmation] = useState('')
   const [coreConfirmation, setCoreConfirmation] = useState('')
   const [agentConfirmation, setAgentConfirmation] = useState('')
   const [logRemovalRequested, setLogRemovalRequested] = useState(false)
+	const gatewayInstalled = Boolean(traefik.service)
+	const statefulNodeReady = nodes.some((node) => node.state === 'ready' && node.availability === 'active' && node.labels?.['nim.stateful'] === 'true')
+	const coreBlockers = [
+		...(!gatewayInstalled ? ['Install the SwarmOps-managed Traefik gateway so private monitoring routes can be created.'] : []),
+		...(!statefulNodeReady ? ['Assign nim.stateful=true to at least one ready, active Swarm node for Prometheus, Alertmanager, and Jaeger placement.'] : []),
+	]
   const setCore = async (enabled: boolean) => {
     setPending(true)
     try {
@@ -1859,8 +1871,9 @@ function ObservabilityPage({ status, toast }: { status: ObservabilityStatus; toa
       <Columns>
         <Panel eyebrow="Shared platform service" title="Core monitoring stack">
           <Body size="sm">One API action deploys the reviewed Prometheus, Alertmanager, and Jaeger stack. SwarmOps will render the few operator graphs itself later; the baseline Alertmanager intentionally has no external receiver until an operator installs a reviewed receiver configuration.</Body>
+			{!status.coreInstalled && coreBlockers.length ? <Banner title="Deployment prerequisites are not ready" tone="warning"><Rows gap="tight"><List plain>{coreBlockers.map((blocker) => <ListRow key={blocker} subtitle={blocker} title="Required before deployment" />)}</List><Inline><Button onClick={onOpenGateway} size="sm" variant="secondary">Open gateway setup</Button><Button onClick={onOpenSwarm} size="sm" variant="secondary">Open Swarm placement</Button></Inline></Rows></Banner> : null}
           <TaskProgress caption={status.coreInstalled ? (status.coreHealthy ? 'The core stack is healthy in Docker.' : 'The core stack is present but Docker reports at least one service as degraded.') : 'Provision the core stack before trusting monitoring state.'} steps={[{ id: 'prometheus', label: 'Prometheus discovery, rules, and retention', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }, { id: 'alertmanager', label: 'Alert grouping and routing boundary', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }, { id: 'jaeger', label: 'Jaeger durable storage', status: status.coreInstalled ? (status.coreHealthy ? 'done' : 'failed') : 'pending' }]} title="Core readiness" />
-          {status.coreInstalled ? <><Input hint="Type the exact confirmation before removing shared monitoring." label="Remove-core confirmation" onChange={(event) => setCoreConfirmation(event.target.value)} value={coreConfirmation} /><Button disabled={pending || coreConfirmation !== 'REMOVE_OBSERVABILITY_CORE'} loading={pending} onClick={() => void setCore(false)} variant="danger">Remove core monitoring</Button></> : <Button disabled={pending} loading={pending} onClick={() => void setCore(true)} variant="accent">Deploy core monitoring</Button>}
+          {status.coreInstalled ? <><Input hint="Type the exact confirmation before removing shared monitoring." label="Remove-core confirmation" onChange={(event) => setCoreConfirmation(event.target.value)} value={coreConfirmation} /><Button disabled={pending || coreConfirmation !== 'REMOVE_OBSERVABILITY_CORE'} loading={pending} onClick={() => void setCore(false)} variant="danger">Remove core monitoring</Button></> : <Button disabled={pending || coreBlockers.length > 0} loading={pending} onClick={() => void setCore(true)} variant="accent">Deploy core monitoring</Button>}
         </Panel>
         <Panel eyebrow="Explicit cluster-wide collection" title="Fluentd log pipeline">
           <Switch checked={status.logsEnabled} disabled={pending} description={status.logsEnabled ? 'Fluentd is collecting container output and host journals globally. Turning the switch off opens the confirmation step; the stack is not removed until you confirm it.' : 'Runs the reviewed Fluentd forwarder globally with a stateful aggregator and bounded query service.'} onChange={(event) => { if (event.target.checked) void setLogs(true); else setLogRemovalRequested(true) }}>Enable log collection</Switch>
@@ -1894,7 +1907,7 @@ function AuditPage({ events }: { events: AuditEvent[] }) {
   )
 }
 
-function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }: { commands: Command[]; highlightedID: string; onRefresh: () => Promise<void>; servers: Server[]; toast: ReturnType<typeof useToast> }) {
+function CommandQueuePage({ commands, dashboard, highlightedID, onOpenDiagnostics, onOpenGateway, onOpenSwarm, onRefresh, servers, toast }: { commands: Command[]; dashboard: DashboardData | null; highlightedID: string; onOpenDiagnostics: () => void; onOpenGateway: () => void; onOpenSwarm: () => void; onRefresh: () => Promise<void>; servers: Server[]; toast: ReturnType<typeof useToast> }) {
   const [retrying, setRetrying] = useState('')
   const [selectedID, setSelectedID] = useState(() => commands.find((command) => command.state === 'needs_attention')?.id ?? commands[0]?.id ?? '')
   const [query, setQuery] = useState('')
@@ -1919,6 +1932,7 @@ function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }
   }
   const attention = commands.filter((command) => command.state === 'needs_attention')
   const selected = commands.find((command) => command.id === selectedID)
+	const guidance = selected ? commandAttentionGuidance(selected, dashboard, servers) : null
   const queued = commands.filter((command) => command.state === 'queued' || command.state === 'uploading').length
   const running = commands.filter((command) => command.state === 'leased' || command.state === 'preparing' || command.state === 'running').length
   const retryScheduled = commands.filter((command) => command.state === 'retry_scheduled').length
@@ -1961,9 +1975,10 @@ function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }
           <Panel
             actions={<Button aria-label="Close command details" iconStart="close" onClick={() => setSelectedID('')} size="sm" variant="ghost">Close</Button>}
             caption={<CommandStateBadge state={selected.state} />}
-            title={selected.action}
+            title={commandLabel(selected.action)}
           >
             <Rows>
+				{guidance ? <Banner title="Why this needs attention" tone="warning"><Rows gap="tight"><Body size="sm">{guidance.summary}</Body>{guidance.blockers.length ? <List plain>{guidance.blockers.map((blocker) => <ListRow key={blocker} subtitle={blocker} title="Current blocker" />)}</List> : null}<Body size="sm"><strong>How to recover:</strong> {guidance.recovery}</Body>{selected.action === 'observability.core' ? <Inline><Button onClick={onOpenGateway} size="sm" variant="secondary">Gateway setup</Button><Button onClick={onOpenSwarm} size="sm" variant="secondary">Swarm placement</Button><Button onClick={onOpenDiagnostics} size="sm" variant="ghost">Agent diagnostics</Button></Inline> : null}</Rows></Banner> : null}
               <Facts columns={1} items={[
                 { label: 'Command ID', mono: true, value: selected.id },
                 { label: 'Explicit target', mono: true, value: selected.target || selected.nodeId },
@@ -1976,7 +1991,7 @@ function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }
                 { label: 'Updated', value: formatDateTime(selected.updatedAt) },
               ]} />
               {selected.lastError ? <CodeBlock label="Latest result summary" wrap>{selected.lastError}</CodeBlock> : null}
-              {selected.state === 'needs_attention' || selected.state === 'retry_scheduled' ? <Button disabled={Boolean(retrying)} loading={retrying === selected.id} onClick={() => void retry(selected)} variant="accent">Retry reviewed command</Button> : null}
+				{selected.state === 'needs_attention' || selected.state === 'retry_scheduled' ? <Button disabled={Boolean(retrying) || Boolean(guidance?.blockRetry)} loading={retrying === selected.id} onClick={() => void retry(selected)} variant="accent">{guidance?.blockRetry ? 'Resolve prerequisites before retrying' : 'Retry reviewed command'}</Button> : null}
             </Rows>
           </Panel>
         ) : undefined}
@@ -2005,6 +2020,35 @@ function CommandQueuePage({ commands, highlightedID, onRefresh, servers, toast }
       {attention.length > 0 ? <Panel caption="Uncertain outcomes are never replayed blindly" title="Failure evidence"><List plain>{attention.map((command) => <ListRow key={command.id} subtitle={command.lastError ?? 'Inspect the explicit target before retrying.'} title={`${command.action} · ${command.target}`} trailing={<CommandStateBadge state={command.state} />} />)}</List></Panel> : null}
     </Page>
   )
+}
+
+function commandAttentionGuidance(command: Command, dashboard: DashboardData | null, servers: Server[]) {
+	if (command.state !== 'needs_attention' && command.state !== 'failed') return null
+	const server = servers.find((candidate) => candidate.id === command.serverId)
+	const blockers: string[] = []
+	if (!server || server.connectionState !== 'connected' || serverHealth(server) === 'unhealthy') {
+		blockers.push('The selected server is not currently reachable through a healthy agent connection.')
+	}
+	if (command.action === 'observability.core') {
+		if (!dashboard) {
+			blockers.push('No current cluster snapshot is available, so SwarmOps cannot verify monitoring prerequisites.')
+		} else {
+			if (!dashboard.traefik.service) blockers.push('The SwarmOps-managed Traefik gateway is not installed.')
+			if (!dashboard.nodes.some((node) => node.state === 'ready' && node.availability === 'active' && node.labels?.['nim.stateful'] === 'true')) blockers.push('No ready active node has the required nim.stateful=true placement label.')
+			if (!dashboard.observability.coreInstalled) blockers.push('Docker currently reports no swarmops-observability stack, so the earlier run did not leave a working monitoring deployment.')
+		}
+	}
+	return {
+		blockRetry: blockers.some((blocker) => !blocker.startsWith('Docker currently reports')),
+		blockers,
+		recovery: command.recoveryHint ?? (command.action === 'observability.core' ? 'Restore the agent connection, install the managed gateway, assign stateful placement, then retry. SwarmOps will stop again if its reviewed assets or Swarm configs are missing.' : 'Inspect the explicit target and verify the intended change is absent before retrying.'),
+		summary: command.failureSummary ?? (command.action === 'observability.core' ? 'SwarmOps started the core monitoring change but could not prove that Prometheus, Alertmanager, and Jaeger completed. Automatic replay stopped to avoid duplicating an uncertain cluster mutation.' : command.lastError ?? 'SwarmOps could not confirm that this operation completed.'),
+	}
+}
+
+function commandLabel(action: string) {
+	if (action === 'observability.core') return 'Core monitoring change'
+	return action
 }
 
 function TaskList({ tasks }: { tasks: Task[] }) {
@@ -2103,6 +2147,7 @@ function useAuditEvents(enabled: boolean, onExpired: () => void) {
   const [error, setError] = useState('')
   const [events, setEvents] = useState<AuditEvent[] | null>(null)
   const [loading, setLoading] = useState(false)
+	const [settled, setSettled] = useState(false)
   const refresh = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -2111,18 +2156,25 @@ function useAuditEvents(enabled: boolean, onExpired: () => void) {
     } catch (reason) {
       if (reason instanceof APIError && reason.status === 401) onExpired()
       else setError(messageOf(reason))
-    } finally { setLoading(false) }
+    } finally { setLoading(false); setSettled(true) }
   }, [onExpired])
   useEffect(() => {
     if (enabled) void refresh()
   }, [enabled, refresh])
-  return { error, events: events ?? [], loading: enabled && (loading || events === null && !error), refresh }
+  return {
+		error,
+		events: events ?? [],
+		initialLoading: enabled && !settled,
+		refresh,
+		refreshing: enabled && settled && loading,
+	}
 }
 
 function useCommands(enabled: boolean, onExpired: () => void) {
   const [commands, setCommands] = useState<Command[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+	const [settled, setSettled] = useState(false)
   const refresh = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -2133,6 +2185,7 @@ function useCommands(enabled: boolean, onExpired: () => void) {
       else setError(messageOf(reason))
     } finally {
       setLoading(false)
+			setSettled(true)
     }
   }, [onExpired])
   useEffect(() => {
@@ -2141,7 +2194,13 @@ function useCommands(enabled: boolean, onExpired: () => void) {
     const timer = window.setInterval(() => void refresh(), 5000)
     return () => window.clearInterval(timer)
   }, [enabled, refresh])
-  return { commands, error, loading, refresh }
+  return {
+		commands,
+		error,
+		initialLoading: enabled && !settled,
+		refresh,
+		refreshing: enabled && settled && loading,
+	}
 }
 
 function useDashboard(serverID: string, onExpired: () => void) {

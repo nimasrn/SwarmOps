@@ -63,6 +63,44 @@ func isPermanent(err error) bool {
 // classified outcome cannot be reinterpreted by later heuristics.
 func IsPermanent(err error) bool { return isPermanent(err) }
 
+// commandFailureDiagnostic converts locally generated execution errors into a
+// bounded operator explanation. Raw remote output never enters the command
+// ledger or browser, but the safe failure class and next action must survive.
+func commandFailureDiagnostic(action string, err error) (code, summary, recovery string) {
+	message := ""
+	if err != nil {
+		message = strings.ToLower(err.Error())
+	}
+	switch {
+	case strings.Contains(message, "command execution ended before completion") || strings.Contains(message, "core restarted while"):
+		return "execution_interrupted", "The controller stopped before it could confirm the remote result.", "Verify the target's current state, then retry only if the intended change is still missing."
+	case strings.Contains(message, "server is not connected") || strings.Contains(message, "select a connected server"):
+		return "target_disconnected", "The selected server was not connected when execution started.", "Open Diagnostics, restore the agent connection, then retry this command."
+	case strings.Contains(message, "traefik singleton service was not found"):
+		return "gateway_required", "The managed Traefik gateway is required before this stack can create private routes.", "Install and verify Traefik under Gateway, routes & DNS, then retry."
+	case strings.Contains(message, "nim.stateful"):
+		return "stateful_node_required", "No ready active node satisfies the required nim.stateful=true placement.", "Open Swarm, assign the stateful label to the reviewed node, then retry."
+	case strings.Contains(message, "read trusted stack asset"):
+		return "controller_asset_missing", "The controller's reviewed deployment asset is unavailable.", "Repair or update the controller installation before retrying."
+	case strings.Contains(message, "config") && strings.Contains(message, "not found"):
+		return "swarm_config_missing", "A required versioned Swarm configuration is missing.", "Repair the reviewed platform configurations, then retry the stack deployment."
+	case action == "observability.core":
+		return "observability_not_confirmed", "SwarmOps could not confirm the Prometheus, Alertmanager, and Jaeger deployment.", "Check the selected manager, Traefik gateway, stateful placement, and reviewed Swarm configs before retrying."
+	default:
+		return "execution_not_confirmed", "SwarmOps could not confirm that the requested change completed.", "Inspect the explicit target and current resource state before retrying."
+	}
+}
+
+func setCommandFailureDiagnostic(command *domain.Command, err error) {
+	command.FailureCode, command.FailureSummary, command.RecoveryHint = commandFailureDiagnostic(command.Action, err)
+}
+
+func clearCommandFailureDiagnostic(command *domain.Command) {
+	command.FailureCode = ""
+	command.FailureSummary = ""
+	command.RecoveryHint = ""
+}
+
 // FenceAuthority prevents work accepted by an older Core epoch from crossing
 // a promotion boundary. Records remain visible and can be explicitly retried
 // under the new authority after the operator reviews the uncertain state.
@@ -426,13 +464,17 @@ func (s *Store) RetryNow(id string, authorityEpoch uint64) (domain.Command, erro
 	previousAttempt := record.Command.Attempt
 	previousAuthorityEpoch := record.Command.AuthorityEpoch
 	previousError := record.Command.LastError
+	previousFailureCode := record.Command.FailureCode
+	previousFailureSummary := record.Command.FailureSummary
 	previousLastAttemptAt := record.Command.LastAttemptAt
 	previousNextAttemptAt := record.Command.NextAttemptAt
+	previousRecoveryHint := record.Command.RecoveryHint
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	record.Command.Attempt = 0
 	record.Command.AuthorityEpoch = authorityEpoch
 	record.Command.LastError = ""
+	clearCommandFailureDiagnostic(&record.Command)
 	record.Command.LastAttemptAt = nil
 	record.Command.NextAttemptAt = &now
 	record.Command.State = domain.CommandQueued
@@ -441,8 +483,11 @@ func (s *Store) RetryNow(id string, authorityEpoch uint64) (domain.Command, erro
 		record.Command.Attempt = previousAttempt
 		record.Command.AuthorityEpoch = previousAuthorityEpoch
 		record.Command.LastError = previousError
+		record.Command.FailureCode = previousFailureCode
+		record.Command.FailureSummary = previousFailureSummary
 		record.Command.LastAttemptAt = previousLastAttemptAt
 		record.Command.NextAttemptAt = previousNextAttemptAt
+		record.Command.RecoveryHint = previousRecoveryHint
 		record.Command.State = previousState
 		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, err
@@ -631,6 +676,7 @@ func (s *Store) CompleteLease(id, leaseID string) (domain.Command, error) {
 	previous := *record
 	now := s.now().UTC()
 	record.Command.LastError = ""
+	clearCommandFailureDiagnostic(&record.Command)
 	record.Command.LeaseExpiresAt = nil
 	record.Command.NextAttemptAt = nil
 	record.Command.State = domain.CommandSucceeded
@@ -676,6 +722,7 @@ func (s *Store) FailLease(id, leaseID string, executionErr error) (domain.Comman
 		record.Command.NextAttemptAt = nil
 		record.Command.State = domain.CommandNeedsAttention
 	}
+	setCommandFailureDiagnostic(&record.Command, executionErr)
 	record.Command.LeaseExpiresAt = nil
 	record.Command.UpdatedAt = now
 	record.LeaseID = ""
@@ -700,13 +747,17 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	}
 	now := s.now().UTC()
 	previousError := record.Command.LastError
+	previousFailureCode := record.Command.FailureCode
+	previousFailureSummary := record.Command.FailureSummary
 	previousNextAttemptAt := record.Command.NextAttemptAt
 	previousLeaseExpiresAt := record.Command.LeaseExpiresAt
+	previousRecoveryHint := record.Command.RecoveryHint
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	previousPayload := record.Payload
 	previousArtifact := record.Artifact
 	record.Command.LastError = ""
+	clearCommandFailureDiagnostic(&record.Command)
 	record.Command.NextAttemptAt = nil
 	record.Command.LeaseExpiresAt = nil
 	record.Command.State = domain.CommandSucceeded
@@ -719,8 +770,11 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
+		record.Command.FailureCode = previousFailureCode
+		record.Command.FailureSummary = previousFailureSummary
 		record.Command.NextAttemptAt = previousNextAttemptAt
 		record.Command.LeaseExpiresAt = previousLeaseExpiresAt
+		record.Command.RecoveryHint = previousRecoveryHint
 		record.Command.State = previousState
 		record.Command.UpdatedAt = previousUpdatedAt
 		record.Payload = previousPayload
@@ -752,9 +806,12 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 	}
 	now := s.now().UTC()
 	previousError := record.Command.LastError
+	previousFailureCode := record.Command.FailureCode
+	previousFailureSummary := record.Command.FailureSummary
 	previousNextAttemptAt := record.Command.NextAttemptAt
 	previousLeaseExpiresAt := record.Command.LeaseExpiresAt
 	previousState := record.Command.State
+	previousRecoveryHint := record.Command.RecoveryHint
 	previousUpdatedAt := record.Command.UpdatedAt
 	event := "needs_attention"
 	if record.Command.AutoRetry && !isPermanent(executionErr) && record.Command.Attempt < record.Command.MaxAttempts {
@@ -768,15 +825,19 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		record.Command.NextAttemptAt = nil
 		record.Command.State = domain.CommandNeedsAttention
 	}
+	setCommandFailureDiagnostic(&record.Command, executionErr)
 	record.Command.UpdatedAt = now
 	record.Command.LeaseExpiresAt = nil
 	record.LeaseID = ""
 	s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
+		record.Command.FailureCode = previousFailureCode
+		record.Command.FailureSummary = previousFailureSummary
 		record.Command.NextAttemptAt = previousNextAttemptAt
 		record.Command.LeaseExpiresAt = previousLeaseExpiresAt
 		record.Command.State = previousState
+		record.Command.RecoveryHint = previousRecoveryHint
 		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, "", err
 	}
@@ -819,6 +880,7 @@ func (s *Store) recover() error {
 		case domain.CommandLeased, domain.CommandPreparing, domain.CommandRunning:
 			record.Command.State = domain.CommandNeedsAttention
 			record.Command.LastError = "Core restarted while the command lease was in flight; the agent result must be reconciled before retrying."
+			setCommandFailureDiagnostic(&record.Command, errors.New(record.Command.LastError))
 			record.Command.LeaseExpiresAt = nil
 			record.LeaseID = ""
 			record.Command.NextAttemptAt = nil

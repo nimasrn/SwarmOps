@@ -54,3 +54,23 @@ test('controller recovery UI does not expose the internal Core name', async () =
   assert.match(topology, /title="Controller"/)
   assert.match(topology, /Controller members/)
 })
+
+test('background refreshes preserve the current workspace and loaded content', async () => {
+  const [app, logs] = await Promise.all([source('app.tsx'), source('logs-page.tsx')])
+  assert.match(app, /sessionStorage\.getItem\(SELECTED_SERVER_KEY\)/)
+  assert.match(app, /servers\.some\(\(server\) => server\.id === activeServerID\)/)
+  assert.doesNotMatch(app, /commandsLoading \? <LoadingScreen/)
+  assert.doesNotMatch(app, /auditLoading \? <LoadingScreen/)
+  assert.match(app, /commandsInitialLoading \? <LoadingScreen/)
+  assert.match(logs, /loading && !page \? <Spinner/)
+})
+
+test('runs explain observability failures and block unsafe retries', async () => {
+  const app = await source('app.tsx')
+  assert.match(app, /title="Why this needs attention"/)
+  assert.match(app, /The SwarmOps-managed Traefik gateway is not installed/)
+  assert.match(app, /nim\.stateful=true placement label/)
+  assert.match(app, /Resolve prerequisites before retrying/)
+  assert.match(app, />Gateway setup<\/Button>/)
+  assert.match(app, />Agent diagnostics<\/Button>/)
+})

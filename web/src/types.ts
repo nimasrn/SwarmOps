@@ -283,6 +283,8 @@ export interface Command {
   autoRetry: boolean
 	clusterId: string
   createdAt: string
+	failureCode?: string
+	failureSummary?: string
   id: string
   lastAttemptAt?: string
   lastError?: string
@@ -291,6 +293,7 @@ export interface Command {
   nextAttemptAt?: string
 	nodeId: string
   requestId?: string
+	recoveryHint?: string
   serverId: string
   state: CommandState
   target: string
