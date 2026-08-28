@@ -483,7 +483,7 @@ export function SourceDeployPage({ managerID, managerName, toast, view = 'source
                       value: (
                         <Rows gap="tight">
                           <Inline><Icon name="check-circle" size="xs" tone="success" />Verified</Inline>
-                          <Mono>{selectedConnection.account || '—'}</Mono>
+                          <Mono>{selectedConnection.account || 'Not set'}</Mono>
                         </Rows>
                       ),
                     },
@@ -594,7 +594,7 @@ export function SourceDeployPage({ managerID, managerName, toast, view = 'source
                       {selectedSlot ? <Facts columns={1} items={[
                         { label: 'Reviewed slot', value: `${selectedSlot.name} · ${managerName ?? managerID}` },
                         { label: 'Resource ceiling', value: `${selectedSlot.replicas} replica${selectedSlot.replicas === 1 ? '' : 's'} · ${selectedSlot.cpuCores} vCPU · ${selectedSlot.memoryMiB} MiB` },
-                        { label: 'Certificate resolver', value: selectedSlot.resolver || '—' },
+                        { label: 'Certificate resolver', value: selectedSlot.resolver || 'None configured' },
                         { label: 'Domain policy', value: sourceDomainPolicy(selectedSlot) },
                       ]} /> : <Banner title="Map the service to a slot" tone="info">Choose an approved application slot in the deployment plan beside this page.</Banner>}
                       {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
@@ -752,7 +752,7 @@ function DeploymentPlan({
       }
       title="Deployment plan"
     >
-      <RailSection meta={selectedService ? '1 service' : '—'} title="Applications">
+      <RailSection meta={selectedService ? '1 service' : 'None selected'} title="Applications">
         {selectedService ? (
           <List plain>
             <ListRow
@@ -771,7 +771,7 @@ function DeploymentPlan({
         )}
       </RailSection>
 
-      <RailSection meta={selectedService ? '1 image' : '—'} title="Images (immutable)">
+      <RailSection meta={selectedService ? '1 image' : 'None selected'} title="Images (immutable)">
         {selectedService ? (
           <List plain>
             <ListRow

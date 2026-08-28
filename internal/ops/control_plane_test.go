@@ -78,6 +78,30 @@ configs:
 	}
 }
 
+func TestValidateTraefikReconcileRejectsMissingACMEEmailBeforeExecution(t *testing.T) {
+	t.Parallel()
+	runner := &recordingRunner{}
+	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{12}, 32), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := testTraefikSettings()
+	settings.ACMEEmail = ""
+	control := NewControlPlane(nil, DockerCLI{Runner: runner}, store, ControlPlaneOptions{
+		Mutations:        true,
+		TraefikSettings:  settings,
+		TraefikStackFile: filepath.Join(t.TempDir(), "traefik.yml"),
+	})
+
+	err = control.ValidateTraefikReconcile("DEPLOY_TRAEFIK")
+	if err == nil || !strings.Contains(err.Error(), "Traefik ACME email is not configured") {
+		t.Fatalf("validation error = %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("validation reached Docker: %#v", runner.calls)
+	}
+}
+
 func TestLogsCollectionRequiresConfiguredAsset(t *testing.T) {
 	t.Parallel()
 	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)

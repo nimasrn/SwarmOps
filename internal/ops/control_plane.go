@@ -290,6 +290,23 @@ func (c *ControlPlane) TasksForNode(ctx context.Context, nodeID string) ([]domai
 	return result, nil
 }
 
+// TasksForService returns the tasks Swarm has scheduled for one service.
+//
+// The diagnosis engine needs these to tell placement apart from a workload
+// that starts and dies — the two look identical from the service's task
+// counts alone, and they have opposite fixes.
+func (c *ControlPlane) TasksForService(ctx context.Context, serviceID string) ([]domain.Task, error) {
+	tasks, err := c.Docker.ListTasks(ctx, map[string][]string{"service": {serviceID}})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.Task, 0, len(tasks))
+	for _, task := range tasks {
+		result = append(result, fromDockerTask(task))
+	}
+	return result, nil
+}
+
 func (c *ControlPlane) ValidateStack(name string, raw []byte, targetNodeID string) (domain.ComposePlan, error) {
 	effective, err := PinComposeToNode(raw, targetNodeID)
 	if err != nil {
@@ -688,7 +705,25 @@ func fromDockerService(raw dockerapi.Service, tasks []dockerapi.Task, nodes int)
 	if raw.UpdateStatus != nil {
 		update = raw.UpdateStatus.State
 	}
-	return domain.Service{CreatedAt: raw.CreatedAt, DesiredTasks: desired, Health: status, ID: raw.ID, Image: raw.Spec.TaskTemplate.ContainerSpec.Image, Labels: raw.Spec.Labels, Mode: mode, Name: raw.Spec.Name, RunningTasks: running, Stack: stack, UpdatedAt: raw.UpdatedAt, UpdateState: update}
+	return domain.Service{Constraints: raw.Spec.TaskTemplate.Placement.Constraints, Update: updatePolicy(raw), CreatedAt: raw.CreatedAt, DesiredTasks: desired, Health: status, ID: raw.ID, Image: raw.Spec.TaskTemplate.ContainerSpec.Image, Labels: raw.Spec.Labels, Mode: mode, Name: raw.Spec.Name, RunningTasks: running, Stack: stack, UpdatedAt: raw.UpdatedAt, UpdateState: update}
+}
+
+// updatePolicy reads what Swarm will do on a change. Absent config means the
+// engine's defaults apply, and Known stays false so the preview says that
+// rather than printing a number nobody configured.
+func updatePolicy(raw dockerapi.Service) domain.UpdatePolicy {
+	cfg := raw.Spec.UpdateConfig
+	if cfg == nil {
+		return domain.UpdatePolicy{}
+	}
+	return domain.UpdatePolicy{
+		Parallelism:   cfg.Parallelism,
+		DelaySeconds:  cfg.Delay / 1e9,
+		FailureAction: cfg.FailureAction,
+		MonitorSecond: cfg.Monitor / 1e9,
+		Order:         cfg.Order,
+		Known:         true,
+	}
 }
 
 func fromDockerTask(raw dockerapi.Task) domain.Task {

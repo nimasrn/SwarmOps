@@ -78,26 +78,6 @@ func TestConnectionErrorReturnsSafeDiagnostic(t *testing.T) {
 	}
 }
 
-func TestConnectionErrorExplainsMachineAPIPinReplacement(t *testing.T) {
-	t.Parallel()
-	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/test/connect", nil)
-	response := httptest.NewRecorder()
-
-	server.connectionError(response, request, remote.ErrAgentAPIFingerprint)
-
-	var payload struct {
-		Detail string `json:"detail"`
-		Error  string `json:"error"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload.Error != "Machine API certificate fingerprint mismatch" || !strings.Contains(payload.Detail, "update this saved profile") {
-		t.Fatalf("payload = %#v", payload)
-	}
-}
-
 func TestOperationErrorExplainsWhenDockerBootstrapIsRequired(t *testing.T) {
 	t.Parallel()
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
@@ -182,7 +162,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 		DataDir:           t.TempDir(),
 		DataEncryptionKey: dataEncryptionKey,
 		MutationEnabled:   true,
-		SecureCookies:     false,
+		SecureCookies:     true,
 		SessionKey:        []byte("01234567890123456789012345678901"),
 		SessionTTL:        time.Hour,
 	}
@@ -201,7 +181,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := server.Handler()
+	handler := PlaintextHTTPHandler(server.Handler())
 
 	loginRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"username":"operator","password":"test-password"}`))
 	loginRequest.Header.Set("Content-Type", "application/json")
@@ -213,6 +193,15 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 	cookies := loginResponse.Result().Cookies()
 	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].Secure {
 		t.Fatalf("unexpected cookie: %#v", cookies)
+	}
+	if got, want := cookies[0].Name, plaintextSessionCookie; got != want {
+		t.Fatalf("plaintext session cookie = %q, want %q", got, want)
+	}
+	if got := loginResponse.Header().Get("Strict-Transport-Security"); got != "" {
+		t.Fatalf("plaintext response set HSTS: %q", got)
+	}
+	if got := loginResponse.Header().Get("X-SwarmOps-Transport"); got != "plaintext-http" {
+		t.Fatalf("plaintext transport header = %q", got)
 	}
 
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
@@ -229,6 +218,60 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 	handler.ServeHTTP(logoutResponse, logoutRequest)
 	if logoutResponse.Code != http.StatusForbidden {
 		t.Fatalf("logout without csrf = %d", logoutResponse.Code)
+	}
+}
+
+func TestHTTPSHandlerKeepsSecureSessionAndPlaintextBlocksAgents(t *testing.T) {
+	t.Parallel()
+	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataEncryptionKey := bytes.Repeat([]byte{7}, 32)
+	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(config.Config{
+		AdminPasswordHash: hash,
+		AdminUsername:     "operator",
+		DataDir:           t.TempDir(),
+		DataEncryptionKey: dataEncryptionKey,
+		SecureCookies:     true,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+	}, TargetResolverFunc(func(string) (Target, error) { return Target{}, nil }), servers, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"operator","password":"test-password"}`))
+	login.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, login)
+	if response.Code != http.StatusOK {
+		t.Fatalf("login = %d: %s", response.Code, response.Body.String())
+	}
+	cookies := response.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("HTTPS session cookie = %#v, want Secure", cookies)
+	}
+	if got, want := cookies[0].Name, sessionCookie; got != want {
+		t.Fatalf("HTTPS session cookie = %q, want %q", got, want)
+	}
+	if got := response.Header().Get("Strict-Transport-Security"); got == "" {
+		t.Fatal("HTTPS response did not set HSTS")
+	}
+
+	agentRequest := httptest.NewRequest(http.MethodPost, "/agent/v1/poll", nil)
+	agentResponse := httptest.NewRecorder()
+	PlaintextHTTPHandler(server.Handler()).ServeHTTP(agentResponse, agentRequest)
+	if agentResponse.Code != http.StatusUpgradeRequired {
+		t.Fatalf("plaintext agent poll = %d, want %d", agentResponse.Code, http.StatusUpgradeRequired)
 	}
 }
 

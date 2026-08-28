@@ -37,6 +37,7 @@ export type WorkspacePage =
   | 'routes'
   | 'servers'
   | 'services'
+  | 'kubernetes-import'
   | 'source-deploy'
   | 'stacks'
   | 'tls'
@@ -94,6 +95,7 @@ export const AREAS: AreaEntry[] = [
       { icon: 'play', key: 'source-deploy', label: 'Deploy from source', summary: 'Build a repository or directory and roll it out.', keywords: 'ship release rollout git build deploy' },
       { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product' },
       { icon: 'package', key: 'builds', label: 'Images & builds', summary: 'Image history, digests, and build results.', keywords: 'docker image tag digest' },
+      { icon: 'download', key: 'kubernetes-import', label: 'Import from Kubernetes', summary: 'Read manifests and see what Swarm can run, and what it cannot.', keywords: 'kubernetes k8s migrate import yaml manifest deployment helm' },
       { icon: 'cloud', key: 'registry', label: 'Container registry', summary: 'Where built images are pushed and pulled from.', keywords: 'ghcr docker hub credentials push' },
     ],
   },

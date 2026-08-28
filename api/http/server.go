@@ -36,7 +36,40 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/web"
 )
 
-const sessionCookie = "swarmops_session"
+const (
+	sessionCookie          = "swarmops_session"
+	plaintextSessionCookie = "swarmops_http_session"
+)
+
+type plaintextHTTPContextKey struct{}
+
+// PlaintextHTTPHandler marks requests accepted by the explicitly enabled
+// break-glass HTTP listener. The normal HTTPS handler remains unchanged. Agent
+// enrollment and polling are never exposed without TLS; only the operator UI
+// and its authenticated API can use this transport.
+func PlaintextHTTPHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if strings.HasPrefix(request.URL.Path, "/agent/") {
+			writeError(response, http.StatusUpgradeRequired, "Machine agents require HTTPS")
+			return
+		}
+		response.Header().Set("X-SwarmOps-Transport", "plaintext-http")
+		ctx := context.WithValue(request.Context(), plaintextHTTPContextKey{}, true)
+		next.ServeHTTP(response, request.WithContext(ctx))
+	})
+}
+
+func isPlaintextHTTPRequest(request *http.Request) bool {
+	plaintext, _ := request.Context().Value(plaintextHTTPContextKey{}).(bool)
+	return plaintext
+}
+
+func sessionCookieName(request *http.Request) string {
+	if isPlaintextHTTPRequest(request) {
+		return plaintextSessionCookie
+	}
+	return sessionCookie
+}
 
 // Target contains the fixed-shape control services for one authenticated,
 // selected server. The resolver owns the machine API key; HTTP handlers never
@@ -163,6 +196,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/servers/{id}/connect", s.withActiveAuth(s.serverConnect))
 	mux.HandleFunc("POST /api/v1/servers/{id}/disconnect", s.withActiveAuth(s.serverDisconnect))
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withActiveAuth(s.serverRemove))
+	mux.HandleFunc("GET /api/v1/services/{id}/diagnosis", s.withAuth(false, s.serviceDiagnosis))
+	mux.HandleFunc("GET /api/v1/diagnosis/rules", s.withAuth(false, s.diagnosisRules))
+	mux.HandleFunc("POST /api/v1/import/kubernetes", s.withAuth(false, s.k8sImport))
+	mux.HandleFunc("POST /api/v1/services/{id}/change-preview", s.withAuth(false, s.changePreview))
 	mux.HandleFunc("GET /api/v1/servers/{id}/diagnostics", s.withAuth(false, s.serverDiagnostics))
 	mux.HandleFunc("POST /api/v1/servers/{id}/agent-update", s.withActiveAuth(s.serverUpdate))
 	mux.HandleFunc("GET /api/v1/servers/{id}/readiness", s.withAuth(false, s.serverReadiness))
@@ -323,7 +360,7 @@ func (s *Server) login(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	s.loginLimiter.Success(key)
-	http.SetCookie(response, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", MaxAge: int(s.config.SessionTTL.Seconds()), HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies})
+	http.SetCookie(response, &http.Cookie{Name: sessionCookieName(request), Value: token, Path: "/", MaxAge: int(s.config.SessionTTL.Seconds()), HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies && !isPlaintextHTTPRequest(request)})
 	s.record(claims.Username, requestID(request), "auth.login", "session", nil, nil)
 	writeJSON(response, http.StatusOK, map[string]any{"csrfToken": claims.CSRF, "user": map[string]string{"username": claims.Username}})
 }
@@ -333,7 +370,7 @@ func (s *Server) me(response http.ResponseWriter, request *http.Request, claims 
 }
 
 func (s *Server) logout(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	http.SetCookie(response, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies})
+	http.SetCookie(response, &http.Cookie{Name: sessionCookieName(request), Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies && !isPlaintextHTTPRequest(request)})
 	s.record(claims.Username, requestID(request), "auth.logout", "session", nil, nil)
 	response.WriteHeader(http.StatusNoContent)
 }
@@ -1137,7 +1174,7 @@ type protectedHandler func(http.ResponseWriter, *http.Request, auth.Claims)
 
 func (s *Server) withAuth(csrf bool, handler protectedHandler) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		cookie, err := request.Cookie(sessionCookie)
+		cookie, err := request.Cookie(sessionCookieName(request))
 		if err != nil {
 			writeError(response, http.StatusUnauthorized, "Authentication is required")
 			return
@@ -1162,7 +1199,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		response.Header().Set("X-Frame-Options", "DENY")
 		response.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'")
 		response.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()")
-		if !s.config.InsecureDevAuth && s.config.SecureCookies {
+		if !s.config.InsecureDevAuth && s.config.SecureCookies && !isPlaintextHTTPRequest(request) {
 			response.Header().Set("Strict-Transport-Security", "max-age=63072000")
 		}
 		if request.URL.Path != "/metrics" {

@@ -1,4 +1,7 @@
 import type {
+  ChangePreview,
+  DiagnosisResult,
+  ImportReport,
 	AgentEnrollmentToken,
 	AgentClaimApproval,
 	AgentIdentity,
@@ -182,6 +185,32 @@ export class SwarmOpsAPI {
 
   serverReadiness(id: string) {
 	return this.request<ServerReadiness>(`/api/v1/servers/${encodeURIComponent(id)}/readiness`)
+  }
+
+  serviceDiagnosis(id: string) {
+	return this.request<DiagnosisResult>(`/api/v1/services/${encodeURIComponent(id)}/diagnosis`)
+  }
+
+  /** The body is YAML, not JSON. The shared helper defaults an unlabelled body
+   *  to application/json, so the type is set explicitly rather than sending
+   *  manifests under a content type that describes something else. */
+  importKubernetes(manifests: string) {
+	return this.request<ImportReport>('/api/v1/import/kubernetes', {
+	  method: 'POST',
+	  body: manifests,
+	  headers: { 'Content-Type': 'application/yaml' },
+	})
+  }
+
+  changePreview(id: string, image: string) {
+	return this.request<ChangePreview>(`/api/v1/services/${encodeURIComponent(id)}/change-preview`, {
+	  method: 'POST',
+	  body: JSON.stringify({ image }),
+	})
+  }
+
+  diagnosisRules() {
+	return this.request<{ rules: string[] }>('/api/v1/diagnosis/rules')
   }
 
   agentDiagnostics(id: string) {

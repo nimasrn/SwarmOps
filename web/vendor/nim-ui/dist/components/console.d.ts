@@ -78,6 +78,12 @@ export interface MetricProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onCli
         it appears on. */
     deltaIntent?: 'less-is-better' | 'more-is-better';
     hint?: ReactNode;
+    /** What produced the figure. Rendered under it, quieter than the hint: a
+        hint explains what the number means, a source says who says so. */
+    source?: ReactNode;
+    /** The figure is not available, and the tile says so instead of rendering a
+        dash that reads as zero. */
+    unmeasured?: boolean;
     icon?: IconName;
     label: ReactNode;
     /** `stacked` (default) is the counter tile: label, then the number at the
@@ -98,7 +104,7 @@ export interface MetricProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onCli
  * fit: a row of tiles is read by comparing the numbers, and a tile that shrank
  * its own value to fit "1,284,003" has broken that comparison.
  */
-export declare function Metric({ className, delta, deltaDirection, deltaIntent, hint, icon, label, layout, onClick, tone, value, ...props }: MetricProps): import("react").JSX.Element;
+export declare function Metric({ className, delta, deltaDirection, deltaIntent, hint, source, unmeasured, icon, label, layout, onClick, tone, value, ...props }: MetricProps): import("react").JSX.Element;
 export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
     children: ReactNode;
     /** For a row of chip-form tiles (`Metric layout="inline"`). A chip stays
@@ -120,6 +126,18 @@ export interface Fact {
     key?: string;
     label: ReactNode;
     value: ReactNode;
+    /** What produced this value: an instrument, a probe, a declaration. A
+        console's figures are read as facts, so the ones that came from somewhere
+        should say where — and the ones that did not become conspicuous by not
+        saying it. Optional because a name or a label has no source; a
+        measurement does. */
+    source?: ReactNode;
+    /** The value is not known, and this row says so rather than showing a blank
+        or a zero. A zero is a measurement of nothing; a blank is ambiguous
+        between "none" and "not asked". Both get read as data. */
+    unmeasured?: boolean;
+    /** Why it is not known. Only meaningful with `unmeasured`. */
+    why?: ReactNode;
 }
 export interface FactsProps extends HTMLAttributes<HTMLDListElement> {
     columns?: 1 | 2 | 3;

@@ -1016,3 +1016,130 @@ export interface CommandDefinition {
 }
 
 export type PruneResource = 'build-cache' | 'containers' | 'images' | 'networks' | 'volumes'
+
+/** One measurement a diagnosis reasoned from.
+ *
+ *  `observedAt` is part of the model rather than metadata: a disk reading five
+ *  minutes old is a guess wearing a fact's clothes, and the console shows its
+ *  age so an operator can discount a chain built on stale ground. */
+export interface DiagnosisEvidence {
+  label: string
+  source: string
+  observedAt: string
+}
+
+export interface DiagnosisLink {
+  step: string
+  claim: string
+  /** Absent is legitimate and is rendered thinner — an unevidenced step is the
+   *  one a reader should distrust, and neither layer may disguise it. */
+  evidence?: DiagnosisEvidence
+  tone?: 'danger' | 'neutral' | 'warning'
+}
+
+export interface DiagnosisAction {
+  kind: string
+  label: string
+  detail?: string
+  primary?: boolean
+}
+
+/** What reaching the same answer costs on Kubernetes. Carried by the rule
+ *  rather than the page, because a different failure costs a different number
+ *  of steps — a fixed list would be marketing. */
+export interface DiagnosisElsewhere {
+  commands: string[]
+  note?: string
+}
+
+export interface DiagnosisChain {
+  /** Which rule produced this, so a wrong answer is traceable to the rule that
+   *  made it rather than to "the engine". */
+  rule: string
+  subject: string
+  links: DiagnosisLink[]
+  actions?: DiagnosisAction[]
+  elsewhere?: DiagnosisElsewhere
+  /** Every measurement the chain used, derived from its own links so the trail
+   *  cannot document reasoning that did not happen. */
+  evidence?: DiagnosisEvidence[]
+  caveats?: string[]
+}
+
+/** Returned when no rule can explain the subject. A first-class result, not an
+ *  error: saying "I cannot explain this, here is what I measured" is what makes
+ *  the chains believable when they do fire. */
+export interface DiagnosisRefusal {
+  subject: string
+  reason: string
+  evidence?: DiagnosisEvidence[]
+}
+
+export interface DiagnosisResult {
+  chain?: DiagnosisChain
+  refusal?: DiagnosisRefusal
+}
+
+/** One Kubernetes object with a Swarm equivalent. `note` carries whatever the
+ *  translation loses — a mapping that changes behaviour without saying so is
+ *  the same lie as an unmappable object reported as mapped. */
+export interface ImportMapping {
+  from: string
+  to: string
+  note?: string
+}
+
+/** An object with no honest equivalent. `options` always includes staying on
+ *  Kubernetes, because that is a real answer and cheaper than finding out in
+ *  production. */
+export interface ImportGap {
+  object: string
+  why: string
+  options: string
+}
+
+export interface ImportReport {
+  mappings: ImportMapping[]
+  gaps: ImportGap[]
+  skipped?: string[]
+  errors?: string[]
+  compose?: string
+}
+
+export interface PreviewStep {
+  title: string
+  detail?: string
+  mark?: string
+}
+
+/** One blast-radius figure. `tone: "good"` is reserved for a consequence that
+ *  should reassure — zero interruptions, chiefly — and has to be earned. */
+export interface PreviewConsequence {
+  label: string
+  value: string
+  note?: string
+  tone?: 'caution' | 'good' | 'neutral'
+}
+
+export interface PreviewDiffLine {
+  kind: 'added' | 'context' | 'removed'
+  text: string
+}
+
+export interface ChangePreview {
+  service: string
+  from?: string
+  to?: string
+  consequences: PreviewConsequence[]
+  steps: PreviewStep[]
+  /** The spec change itself, computed server-side: what moved is a fact about
+   *  the cluster, and a client deriving it could disagree with the
+   *  consequences listed beside it. */
+  diff: PreviewDiffLine[]
+  /** What happens when a step fails, read from the service's own failure
+   *  action rather than assumed. */
+  rollback: string
+  /** Never empty: whether a new image starts cleanly is only knowable by
+   *  running it. A preview that promises everything is lying. */
+  unknowns: string[]
+}

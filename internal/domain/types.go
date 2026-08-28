@@ -152,7 +152,26 @@ type Platform struct {
 	OS           string `json:"os,omitempty"`
 }
 
+// UpdatePolicy is how Swarm will roll a change out, read from the service
+// rather than assumed. A preview that states a sequence the cluster has not
+// agreed to is a preview of a different deployment.
+type UpdatePolicy struct {
+	Parallelism   uint64 `json:"parallelism"`
+	DelaySeconds  int64  `json:"delaySeconds"`
+	FailureAction string `json:"failureAction,omitempty"`
+	MonitorSecond int64  `json:"monitorSeconds"`
+	Order         string `json:"order,omitempty"`
+	// Known is false when the service declares no update config, in which case
+	// Swarm's defaults apply and the preview must say so rather than invent
+	// numbers.
+	Known bool `json:"known"`
+}
+
 type Service struct {
+	// Constraints are the service's placement rules as authored, for example
+	// "node.labels.tier==edge". Empty means the task may run anywhere.
+	Constraints  []string          `json:"constraints,omitempty"`
+	Update       UpdatePolicy      `json:"update"`
 	CreatedAt    time.Time         `json:"createdAt,omitempty"`
 	DesiredTasks uint64            `json:"desiredTasks"`
 	Health       Health            `json:"health"`

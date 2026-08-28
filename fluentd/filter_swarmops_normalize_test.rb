@@ -38,18 +38,4 @@ class SwarmOpsNormalizeFilterTest < Minitest::Test
     allowed = %w[id identifier level message node sourceKind stack stream timestamp unit containerId service]
     assert_empty record.keys - allowed
   end
-
-  def test_aggregator_normalization_preserves_forwarder_identity
-    forwarded = @filter.filter("journal.persistent", Time.now.to_i, {
-      "MESSAGE"=>"service ready",
-      "CONTAINER_ID_FULL"=>"b"*64,
-      "_SYSTEMD_UNIT"=>"swarmops-agent.service",
-      "SYSLOG_IDENTIFIER"=>"swarmops-agent",
-    })
-    stored = @filter.filter("journal.persistent", Time.now.to_i, forwarded)
-    assert_equal "b"*64, stored["containerId"]
-    assert_equal "swarmops-agent.service", stored["unit"]
-    assert_equal "swarmops-agent", stored["identifier"]
-    assert_equal "agent", stored["sourceKind"]
-  end
 end

@@ -16,9 +16,9 @@ module Fluent::Plugin
       parsed = parse_message(message)
       message = parsed["message"] || parsed["msg"] || message
       timestamp = parse_time(raw["time"] || raw["__REALTIME_TIMESTAMP"] || parsed["timestamp"], time)
-      container_id = raw["containerId"] || raw["container_id"] || raw["CONTAINER_ID_FULL"] || container_from_path(raw["source_path"])
-      unit = clean(raw["unit"] || raw["_SYSTEMD_UNIT"] || raw["UNIT"])
-      identifier = clean(raw["identifier"] || raw["SYSLOG_IDENTIFIER"] || parsed["logger"] || parsed["component"])
+      container_id = raw["container_id"] || raw["CONTAINER_ID_FULL"] || container_from_path(raw["source_path"])
+      unit = clean(raw["_SYSTEMD_UNIT"] || raw["UNIT"])
+      identifier = clean(raw["SYSLOG_IDENTIFIER"] || parsed["logger"] || parsed["component"])
       service = clean(raw["service"] || parsed["service"])
       stack = clean(raw["stack"] || parsed["stack"])
       normalized_message = redact(clean(message.to_s, MAX_MESSAGE))

@@ -59,6 +59,9 @@ type Config struct {
 	DataEncryptionKey             []byte
 	DevMachineAPI                 *DevMachineAPI
 	ImagePrefixes                 []string
+	HTTPAllowRemote               bool
+	HTTPEnabled                   bool
+	HTTPListenAddr                string
 	InsecureDevAuth               bool
 	ListenAddr                    string
 	LogsStackFile                 string
@@ -142,6 +145,9 @@ func Load() (Config, error) {
 		CoreName:               env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
 		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
 		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
+		HTTPAllowRemote:        envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
+		HTTPEnabled:            envBool("SWARMOPS_HTTP_ENABLED", false),
+		HTTPListenAddr:         env("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:8085"),
 		InsecureDevAuth:        envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
 		ListenAddr:             env("SWARMOPS_LISTEN_ADDR", ":8084"),
 		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
@@ -213,6 +219,24 @@ func Load() (Config, error) {
 	if c.SourceImagePrefix != "" && !sourceImagePrefixAllowed(c.SourceImagePrefix, c.ImagePrefixes) {
 		return Config{}, fmt.Errorf("SWARMOPS_SOURCE_IMAGE_PREFIX must be covered by SWARMOPS_IMAGE_PREFIXES")
 	}
+	if c.HTTPAllowRemote && !c.HTTPEnabled {
+		return Config{}, fmt.Errorf("SWARMOPS_HTTP_ALLOW_REMOTE requires SWARMOPS_HTTP_ENABLED")
+	}
+	if c.HTTPEnabled {
+		if c.TLSCertFile == "" || c.TLSKeyFile == "" {
+			return Config{}, fmt.Errorf("SWARMOPS_HTTP_ENABLED requires the primary HTTPS listener")
+		}
+		if c.HTTPListenAddr == c.ListenAddr {
+			return Config{}, fmt.Errorf("SWARMOPS_HTTP_LISTEN_ADDR must differ from SWARMOPS_LISTEN_ADDR")
+		}
+		httpLoopback, err := listenAddressIsLoopback("SWARMOPS_HTTP_LISTEN_ADDR", c.HTTPListenAddr)
+		if err != nil {
+			return Config{}, err
+		}
+		if !httpLoopback && !c.HTTPAllowRemote {
+			return Config{}, fmt.Errorf("non-loopback SWARMOPS_HTTP_LISTEN_ADDR requires SWARMOPS_HTTP_ALLOW_REMOTE=true")
+		}
+	}
 	if dashboardURL := strings.TrimSpace(c.TraefikDashboardURL); dashboardURL != "" && !strings.HasPrefix(dashboardURL, "https://") {
 		return Config{}, fmt.Errorf("SWARMOPS_TRAEFIK_DASHBOARD_URL must use https")
 	}
@@ -222,6 +246,11 @@ func Load() (Config, error) {
 	var cidrErr error
 	if c.TrustedProxyCIDRs, cidrErr = parseClientCIDRs(env("SWARMOPS_TRUSTED_PROXY_CIDRS", "")); cidrErr != nil {
 		return Config{}, fmt.Errorf("SWARMOPS_TRUSTED_PROXY_CIDRS: %w", cidrErr)
+	}
+	if c.TLSCertFile != "" || c.HTTPEnabled {
+		if c.AllowedClientCIDRs, cidrErr = parseClientCIDRs(env("SWARMOPS_ALLOWED_CLIENT_CIDRS", "")); cidrErr != nil {
+			return Config{}, cidrErr
+		}
 	}
 
 	if c.InsecureDevAuth {
@@ -284,21 +313,22 @@ func Load() (Config, error) {
 		if err := requireProtectedFile(c.TLSKeyFile, "TLS private key"); err != nil {
 			return Config{}, err
 		}
-		loopback, err := listenAddressIsLoopback(c.ListenAddr)
+		loopback, err := listenAddressIsLoopback("SWARMOPS_LISTEN_ADDR", c.ListenAddr)
 		if err != nil {
 			return Config{}, err
 		}
-		if !loopback {
-			if c.AllowedClientCIDRs, err = parseClientCIDRs(env("SWARMOPS_ALLOWED_CLIENT_CIDRS", "")); err != nil {
-				return Config{}, err
-			}
-			if len(c.AllowedClientCIDRs) == 0 {
-				return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for direct TLS on a non-loopback listener")
-			}
+		if !loopback && len(c.AllowedClientCIDRs) == 0 {
+			return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for direct TLS on a non-loopback listener")
 		}
 	}
-	if c.TrustedProxyCIDRs, err = parseClientCIDRs(env("SWARMOPS_TRUSTED_PROXY_CIDRS", "")); err != nil {
-		return Config{}, fmt.Errorf("SWARMOPS_TRUSTED_PROXY_CIDRS: %w", err)
+	if c.HTTPEnabled {
+		httpLoopback, err := listenAddressIsLoopback("SWARMOPS_HTTP_LISTEN_ADDR", c.HTTPListenAddr)
+		if err != nil {
+			return Config{}, err
+		}
+		if !httpLoopback && len(c.AllowedClientCIDRs) == 0 {
+			return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for remote plaintext HTTP")
+		}
 	}
 	return c, nil
 }
@@ -478,13 +508,13 @@ func requireProtectedFile(path, label string) error {
 	return nil
 }
 
-func listenAddressIsLoopback(address string) (bool, error) {
+func listenAddressIsLoopback(name, address string) (bool, error) {
 	host, port, err := net.SplitHostPort(strings.TrimSpace(address))
 	if err != nil {
-		return false, fmt.Errorf("SWARMOPS_LISTEN_ADDR must be a host:port address for direct TLS")
+		return false, fmt.Errorf("%s must be a host:port address", name)
 	}
 	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
-		return false, fmt.Errorf("SWARMOPS_LISTEN_ADDR has an invalid port")
+		return false, fmt.Errorf("%s has an invalid port", name)
 	}
 	if host == "localhost" {
 		return true, nil
@@ -494,7 +524,7 @@ func listenAddressIsLoopback(address string) (bool, error) {
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil {
-		return false, fmt.Errorf("SWARMOPS_LISTEN_ADDR must use a local IP address or localhost for direct TLS")
+		return false, fmt.Errorf("%s must use an IP address or localhost", name)
 	}
 	return ip.IsLoopback(), nil
 }

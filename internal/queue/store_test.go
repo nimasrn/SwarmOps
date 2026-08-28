@@ -133,6 +133,30 @@ func TestObservabilityFailureKeepsSafeRecoveryGuidance(t *testing.T) {
 	}
 }
 
+func TestTraefikACMEFailureKeepsSafeRecoveryGuidance(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	input := testInput()
+	input.Action = "traefik.reconcile"
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	failed, event, err := store.Fail(command.ID, PermanentError(errors.New("Traefik ACME email is not configured")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event != "needs_attention" || failed.FailureCode != "traefik_acme_email_required" {
+		t.Fatalf("failure = %#v event=%q", failed, event)
+	}
+	if !strings.Contains(failed.FailureSummary, "ACME contact email") || !strings.Contains(failed.RecoveryHint, "Gateway & ports") {
+		t.Fatalf("failure guidance = %#v", failed)
+	}
+}
+
 func TestPullLeaseLifecycleRequiresCapabilityAndPersistsAgentStates(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)

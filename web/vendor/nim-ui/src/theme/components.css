@@ -9026,6 +9026,62 @@
    Outside `@layer` so it outranks the component rules it corrects.
    ═══════════════════════════════════════════════════════════════════════════ */
 @media (forced-colors: active) {
+  /* ── Diagnosis components ──────────────────────────────────────────────
+     Each of these three carries a meaning in a background — a tint, a wash, a
+     hatch — and forced colours removes every one of them. Without these rules
+     a Caveat loses the hatch that is its only non-colour marker, and a Diff
+     loses the distinction between an added and a removed line, precisely for
+     the readers who had the least redundancy to spare. */
+
+  /* The hatch is the whole point of Caveat, so it is kept rather than
+     re-expressed: forced-color-adjust holds the stripes, and a dashed border
+     says the same thing again for anyone the pattern does not reach. */
+  .nim-root .nim-caveat {
+    border-style: dashed;
+    forced-color-adjust: none;
+    background-color: Canvas;
+    background-image: repeating-linear-gradient(
+      135deg,
+      GrayText 0 1px,
+      Canvas 1px 7px
+    );
+    color: CanvasText;
+  }
+
+  .nim-root .nim-caveat__glyph { stroke: CanvasText; }
+  .nim-root .nim-caveat__title { color: CanvasText; }
+  .nim-root .nim-caveat__detail { color: GrayText; }
+
+  /* A diff line's tint is gone, so the marker column carries it alone — which
+     is why the markers are text and not an icon. */
+  .nim-root .nim-diff__line[data-kind='added'] .nim-diff__marker,
+  .nim-root .nim-diff__line[data-kind='removed'] .nim-diff__marker {
+    forced-color-adjust: none;
+    color: Highlight;
+    font-weight: var(--nim-weight-bold);
+  }
+
+  .nim-root .nim-diff__line[data-kind='added'],
+  .nim-root .nim-diff__line[data-kind='removed'] {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  /* Tone on a chain node is colour only, so the shape has to say it instead:
+     the failing link keeps a filled node, the rest read as outlines. */
+  .nim-root .nim-causal__link[data-tone='danger'] .nim-causal__node,
+  .nim-root .nim-causal__link[data-tone='warning'] .nim-causal__node {
+    forced-color-adjust: none;
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .nim-root .nim-causal__link[data-unevidenced='true'] .nim-causal__node {
+    border-style: dashed;
+  }
+
+  .nim-root .nim-causal__resolution { border-block-start: 2px solid Highlight; }
+
   /* Focus is drawn as a box-shadow throughout the kit, and box-shadows are
      removed entirely in forced colours. Every focusable surface gets a real
      outline back. */
@@ -9117,4 +9173,462 @@
   .nim-root .nim-map__attribution {
     border: var(--nim-border-width) solid CanvasText;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAUSAL CHAIN — a diagnosis that shows its work
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-causal {
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+  background: var(--nim-surface);
+  overflow: hidden;
+}
+
+.nim-causal__list { margin: 0; padding: 0; list-style: none; }
+
+.nim-causal__link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--nim-space-4);
+  padding: var(--nim-space-4) var(--nim-space-5);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+}
+
+/* The observation the operator arrived with, set apart from the reasoning. */
+.nim-causal__link[data-lead='true'] { background: var(--nim-surface-muted); }
+.nim-causal__link[data-lead='true'] .nim-causal__claim {
+  font-size: var(--nim-text-15);
+  font-weight: var(--nim-weight-semibold);
+}
+
+.nim-causal__rail { display: flex; flex-direction: column; align-items: center; inline-size: 12px; }
+
+.nim-causal__node {
+  inline-size: 11px;
+  block-size: 11px;
+  border-radius: var(--nim-radius-pill);
+  border: 2px solid var(--nim-ink-tertiary);
+  background: var(--nim-surface);
+  flex-shrink: 0;
+}
+
+.nim-causal__thread { flex-grow: 1; inline-size: 2px; background: var(--nim-line); margin-block-start: 3px; }
+
+.nim-causal__link[data-tone='warning'] .nim-causal__node { border-color: var(--nim-warning); background: var(--nim-warning-soft); }
+.nim-causal__link[data-tone='danger'] .nim-causal__node { border-color: var(--nim-danger); background: var(--nim-danger-soft); }
+.nim-causal__link[data-tone='success'] .nim-causal__node { border-color: var(--nim-success); background: var(--nim-success-soft); }
+
+.nim-causal__body { display: flex; flex-direction: column; gap: var(--nim-space-2); min-inline-size: 0; }
+
+.nim-causal__step {
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  letter-spacing: var(--nim-tracking-wide);
+  color: var(--nim-ink-tertiary);
+}
+
+.nim-causal__claim { margin: 0; font-size: var(--nim-text-13); line-height: var(--nim-leading-normal); }
+
+.nim-causal__proof { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--nim-space-3); }
+
+.nim-causal__evidence {
+  display: inline-flex;
+  align-items: center;
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-sm);
+  background: var(--nim-canvas);
+  padding: 2px var(--nim-space-2);
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-secondary);
+}
+
+.nim-causal__source { font-size: var(--nim-text-11); color: var(--nim-ink-tertiary); }
+
+/* An unevidenced link is allowed, and is meant to look thinner than the rest.
+   Disguising it would make the chain read as stronger than its weakest step. */
+.nim-causal__link[data-unevidenced='true'] .nim-causal__claim { color: var(--nim-ink-secondary); }
+.nim-causal__link[data-unevidenced='true'] .nim-causal__node { border-style: dashed; }
+
+.nim-causal__resolution {
+  padding: var(--nim-space-4) var(--nim-space-5);
+  background: var(--nim-accent-soft);
+  border-block-start: var(--nim-border-width) solid var(--nim-accent-line);
+}
+
+.nim-causal__caveat { border-block-start: var(--nim-border-width) solid var(--nim-line-soft); }
+.nim-causal__caveat .nim-caveat { border: 0; border-radius: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAVEAT — what the product does not know
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-caveat {
+  display: flex;
+  gap: var(--nim-space-3);
+  align-items: flex-start;
+  padding: var(--nim-space-3) var(--nim-space-4);
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+  background-color: var(--nim-surface);
+  /* Unsurveyed ground. Survives greyscale, print and a screenshot in a chat
+     thread, none of which a tinted background does. */
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--nim-line-soft) 0 1px,
+    transparent 1px 7px
+  );
+  color: var(--nim-ink-secondary);
+}
+
+.nim-caveat__glyph {
+  inline-size: var(--nim-size-icon-sm);
+  block-size: var(--nim-size-icon-sm);
+  flex-shrink: 0;
+  margin-block-start: 1px;
+  fill: none;
+  stroke: var(--nim-ink-tertiary);
+  stroke-width: 2;
+  stroke-linecap: square;
+}
+
+.nim-caveat__body { display: flex; flex-direction: column; gap: 3px; min-inline-size: 0; }
+.nim-caveat__title { margin: 0; font-size: var(--nim-text-13); font-weight: var(--nim-weight-semibold); color: var(--nim-ink); }
+.nim-caveat__detail { font-size: var(--nim-text-12); line-height: var(--nim-leading-normal); color: var(--nim-ink-tertiary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DIFF — what moved, before it is applied
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-diff {
+  margin: 0;
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+  background: var(--nim-surface);
+  overflow: hidden;
+}
+
+.nim-diff__caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nim-space-4);
+  padding: var(--nim-space-3) var(--nim-space-4);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  font-size: var(--nim-text-12);
+  color: var(--nim-ink-secondary);
+}
+
+.nim-diff__tally { display: inline-flex; gap: var(--nim-space-3); font-family: var(--nim-font-mono); font-size: var(--nim-text-11); }
+.nim-diff__tally-add { color: var(--nim-success); }
+.nim-diff__tally-del { color: var(--nim-danger); }
+
+.nim-diff__body {
+  margin: 0;
+  padding: var(--nim-space-2) 0;
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  line-height: 1.85;
+  overflow-x: auto;
+}
+
+.nim-diff__line { display: flex; gap: var(--nim-space-3); padding-inline: var(--nim-space-4); }
+.nim-diff__marker { inline-size: 9px; flex-shrink: 0; color: var(--nim-ink-tertiary); }
+.nim-diff__text { white-space: pre; }
+
+.nim-diff__line[data-kind='added'] { background: var(--nim-success-soft); }
+.nim-diff__line[data-kind='added'] .nim-diff__marker { color: var(--nim-success); }
+.nim-diff__line[data-kind='removed'] { background: var(--nim-danger-soft); }
+.nim-diff__line[data-kind='removed'] .nim-diff__marker { color: var(--nim-danger); }
+/* Context is dimmed so the eye lands on the two or three lines that are the
+   actual decision. */
+.nim-diff__line[data-kind='context'] .nim-diff__text { color: var(--nim-ink-tertiary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EVIDENCE LEDGER — measured, and not evidence
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--nim-space-4);
+  align-items: start;
+}
+
+.nim-ledger__col {
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+  overflow: hidden;
+}
+
+.nim-ledger__col[data-kind='measured'] { border-color: var(--nim-accent-line); }
+
+.nim-ledger__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nim-space-3);
+  padding: var(--nim-space-3) var(--nim-space-4);
+  border-block-end: var(--nim-border-width) solid var(--nim-line);
+  font-size: var(--nim-text-13);
+  font-weight: var(--nim-weight-semibold);
+}
+
+.nim-ledger__col[data-kind='measured'] .nim-ledger__head {
+  background: var(--nim-accent-soft);
+  border-block-end-color: var(--nim-accent-line);
+  color: var(--nim-accent-strong);
+}
+
+.nim-ledger__col[data-kind='absent'] .nim-ledger__head {
+  background: var(--nim-surface-muted);
+  color: var(--nim-ink-secondary);
+}
+
+.nim-ledger__coverage {
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  font-weight: var(--nim-weight-regular);
+}
+
+/* Hatched for the same reason Caveat is: the absence has to survive greyscale,
+   print, and a screenshot pasted into an incident channel. */
+.nim-ledger__col[data-kind='absent'] .nim-ledger__rows {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--nim-line-soft) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+.nim-ledger__rows { margin: 0; }
+
+.nim-ledger__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nim-space-4);
+  padding: var(--nim-space-3) var(--nim-space-4);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+}
+
+.nim-ledger__row:last-child { border-block-end: 0; }
+
+.nim-ledger__row dt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--nim-text-13);
+  color: var(--nim-ink);
+}
+
+.nim-ledger__meta { font-size: var(--nim-text-11); color: var(--nim-ink-tertiary); }
+
+.nim-ledger__row dd {
+  margin: 0;
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-13);
+  font-variant-numeric: var(--nim-font-numeric);
+  white-space: nowrap;
+}
+
+.nim-ledger__col[data-kind='absent'] .nim-ledger__row dd { color: var(--nim-ink-tertiary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EVIDENCE TRAIL — what a conclusion rested on, and how old it is
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-trail__caption {
+  margin: 0 0 var(--nim-space-2);
+  font-size: var(--nim-text-12);
+  color: var(--nim-ink-tertiary);
+}
+
+.nim-trail__rows { margin: 0; }
+
+.nim-trail__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nim-space-3);
+  padding-block: var(--nim-space-2);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+}
+
+.nim-trail__row dt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--nim-text-12);
+  color: var(--nim-ink);
+}
+
+.nim-trail__source {
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-tertiary);
+}
+
+.nim-trail__age {
+  margin: 0;
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-tertiary);
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROVENANCE IN THE GRAMMAR
+
+   A console's figures are read as facts, so the ones that came from an
+   instrument say where — and the ones that did not become conspicuous by not
+   saying it. This is deliberately quiet: the source is context for a reader
+   deciding how much to trust a number, not a second label competing with it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-facts__source,
+.nim-metric__source {
+  display: block;
+  margin-block-start: 2px;
+  font-size: var(--nim-text-11);
+  font-weight: var(--nim-weight-regular);
+  color: var(--nim-ink-tertiary);
+}
+
+/* An unmeasured row is hatched for the reason Caveat is: the marker survives
+   greyscale, print, and a screenshot pasted into an incident channel, none of
+   which a colour alone does. */
+.nim-facts__item[data-unmeasured='true'],
+.nim-metric[data-unmeasured='true'] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--nim-line-soft) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+.nim-facts__item[data-unmeasured='true'] .nim-facts__value,
+.nim-metric[data-unmeasured='true'] .nim-metric__value {
+  color: var(--nim-ink-tertiary);
+}
+
+@media (forced-colors: active) {
+  .nim-root :is(.nim-facts__item, .nim-metric)[data-unmeasured='true'] {
+    forced-color-adjust: none;
+    background-image: repeating-linear-gradient(135deg, GrayText 0 1px, Canvas 1px 7px);
+    color: CanvasText;
+  }
+}
+
+/* An empty state that could not ask is not an empty state that got no answer.
+   Hatched so the difference survives greyscale and a pasted screenshot. */
+.nim-empty[data-reason='unknown'] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--nim-line-soft) 0 1px,
+    transparent 1px 7px
+  );
+  border: var(--nim-border-width) dashed var(--nim-line);
+  border-radius: var(--nim-radius-lg);
+}
+
+@media (forced-colors: active) {
+  .nim-root .nim-empty[data-reason='unknown'] {
+    forced-color-adjust: none;
+    background-image: repeating-linear-gradient(135deg, GrayText 0 1px, Canvas 1px 7px);
+    border-color: CanvasText;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMMAND LIST — what a task costs somewhere else
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-commands__list {
+  margin: 0;
+  padding: var(--nim-space-3);
+  list-style: none;
+  counter-reset: nim-command;
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-sm);
+  background: var(--nim-canvas);
+  overflow-x: auto;
+}
+
+.nim-commands__item {
+  counter-increment: nim-command;
+  white-space: nowrap;
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  line-height: 1.9;
+  color: var(--nim-ink-secondary);
+}
+
+.nim-commands__item::before {
+  content: counter(nim-command) '. ';
+  color: var(--nim-ink-tertiary);
+}
+
+/* The step that costs judgement rather than a query. Marked with weight as
+   well as colour so it survives greyscale — the whole point of this component
+   is the argument it makes, and an argument that only lands in colour is a
+   weaker one. */
+.nim-commands__item[data-costly='true'] {
+  color: var(--nim-danger);
+  font-weight: var(--nim-weight-bold);
+}
+
+.nim-commands__note {
+  margin: var(--nim-space-2) 0 0;
+  font-size: var(--nim-text-12);
+  line-height: var(--nim-leading-normal);
+  color: var(--nim-ink-tertiary);
+}
+
+@media (forced-colors: active) {
+  .nim-root .nim-commands__item[data-costly='true'] {
+    forced-color-adjust: none;
+    color: Highlight;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DECIDE BAR — the moment a screen hands a decision back
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-decide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nim-space-4);
+  flex-wrap: wrap;
+  padding-block-start: var(--nim-space-4);
+  /* Ruled off, because a decision made mid-scroll is not a decision. */
+  border-block-start: var(--nim-border-width) solid var(--nim-line);
+}
+
+.nim-decide__note {
+  margin: 0;
+  font-size: var(--nim-text-12);
+  color: var(--nim-ink-tertiary);
+}
+
+.nim-decide__actions { display: flex; gap: var(--nim-space-2); flex-wrap: wrap; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CAUSAL CHAIN · RESOLUTION — the fix, styled by the kit rather than the caller
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-causal__resolution-title {
+  margin: 0;
+  font-size: var(--nim-text-14);
+  font-weight: var(--nim-weight-semibold);
+  color: var(--nim-ink);
+}
+
+.nim-causal__resolution-detail {
+  margin: var(--nim-space-1) 0 0;
+  font-size: var(--nim-text-12);
+  line-height: var(--nim-leading-normal);
+  color: var(--nim-ink-secondary);
+}
+
+.nim-causal__resolution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nim-space-2);
+  margin-block-start: var(--nim-space-3);
 }

@@ -206,7 +206,7 @@ function coreMemberColumns(topology: CoreTopology, servers: Server[], pending: s
     { header: 'Host', key: 'host', render: (member) => member.name },
     { header: 'Endpoint', key: 'endpoint', render: (member) => <Mono>{member.endpoint || 'Not configured'}</Mono> },
     { header: 'State', key: 'state', render: (member) => member.role === 'active' ? 'Serving' : member.replicaState === 'verified' ? 'Restore verified' : 'Awaiting restore' },
-    { header: 'Agent', key: 'agent', render: (member) => member.agentServerId ? servers.find((server) => server.id === member.agentServerId)?.name ?? member.agentServerId : '—' },
+    { header: 'Agent', key: 'agent', render: (member) => member.agentServerId ? servers.find((server) => server.id === member.agentServerId)?.name ?? member.agentServerId : 'No agent' },
     { header: 'Checkpoint', key: 'checkpoint', render: (member) => formatDateTime(member.lastCheckpointAt) },
     { header: 'Actions', key: 'actions', render: (member) => member.role !== 'active' && member.replicaState !== 'verified' ? <Button disabled={Boolean(pending)} loading={pending === `verify-${member.id}`} onClick={() => onVerify(member)} size="sm" variant="secondary">Verify restore</Button> : '•••' },
   ]

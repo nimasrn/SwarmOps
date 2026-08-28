@@ -26,7 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.9.3"
+const version = "0.10.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -247,41 +247,57 @@ func main() {
 		}
 	}()
 
-	server := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           api.Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		// Build contexts are explicitly size-capped by the handler and can take
-		// longer than a normal API response on a slow operator connection.
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  60 * time.Second,
-	}
+	primary := apiListener{scheme: "http", server: newAPIServer(cfg.ListenAddr, api.Handler())}
 	if cfg.TLSCertFile != "" {
-		server.TLSConfig = &tls.Config{
+		primary.scheme = "https"
+		primary.tlsCertFile = cfg.TLSCertFile
+		primary.tlsKeyFile = cfg.TLSKeyFile
+		primary.server.TLSConfig = &tls.Config{
 			MinVersion:       tls.VersionTLS13,
 			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 			ClientAuth:       tls.VerifyClientCertIfGiven,
 			ClientCAs:        api.AgentClientCAs(),
 		}
 	}
-	go func() {
-		scheme := "http"
-		if cfg.TLSCertFile != "" {
-			scheme = "https"
-		}
-		logger.Info("SwarmOps API listening", "address", cfg.ListenAddr, "scheme", scheme, "version", version, "mutations_enabled", cfg.MutationEnabled, "builds_enabled", cfg.BuildEnabled)
-		if err := serve(server, cfg); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("serve HTTP", "error", err)
-			os.Exit(1)
-		}
-	}()
+	listeners := []apiListener{primary}
+	if cfg.HTTPEnabled {
+		listeners = append(listeners, apiListener{
+			scheme: "http-break-glass",
+			server: newAPIServer(cfg.HTTPListenAddr, apihttp.PlaintextHTTPHandler(api.Handler())),
+		})
+	}
+	serveErrors := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		listener := listener
+		logger.Info("SwarmOps API listening", "address", listener.server.Addr, "scheme", listener.scheme, "version", version, "mutations_enabled", cfg.MutationEnabled, "builds_enabled", cfg.BuildEnabled)
+		go func() {
+			if err := listener.serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serveErrors <- fmt.Errorf("serve %s on %s: %w", listener.scheme, listener.server.Addr, err)
+			}
+		}()
+	}
 
-	<-ctx.Done()
+	var serveErr error
+	select {
+	case err := <-serveErrors:
+		serveErr = err
+		logger.Error("serve SwarmOps API", "error", err)
+		stop()
+	case <-ctx.Done():
+	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := server.Shutdown(shutdown); err != nil {
-		logger.Error("shutdown HTTP server", "error", err)
+	var shutdownErr error
+	for _, listener := range listeners {
+		if err := listener.server.Shutdown(shutdown); err != nil {
+			shutdownErr = errors.Join(shutdownErr, fmt.Errorf("shutdown %s listener: %w", listener.scheme, err))
+		}
+	}
+	if shutdownErr != nil {
+		logger.Error("shutdown HTTP servers", "error", shutdownErr)
+	}
+	if serveErr != nil {
+		os.Exit(1)
 	}
 }
 
@@ -313,9 +329,29 @@ func passwordHash(input io.Reader, output io.Writer) error {
 	return nil
 }
 
-func serve(server *http.Server, cfg config.Config) error {
-	if cfg.TLSCertFile != "" {
-		return server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+type apiListener struct {
+	scheme      string
+	server      *http.Server
+	tlsCertFile string
+	tlsKeyFile  string
+}
+
+func newAPIServer(address string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              address,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		// Build contexts are explicitly size-capped by the handler and can take
+		// longer than a normal API response on a slow operator connection.
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
 	}
-	return server.ListenAndServe()
+}
+
+func (listener apiListener) serve() error {
+	if listener.tlsCertFile != "" {
+		return listener.server.ListenAndServeTLS(listener.tlsCertFile, listener.tlsKeyFile)
+	}
+	return listener.server.ListenAndServe()
 }

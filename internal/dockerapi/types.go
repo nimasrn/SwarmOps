@@ -77,7 +77,29 @@ type Service struct {
 			ContainerSpec struct {
 				Image string `json:"Image"`
 			} `json:"ContainerSpec"`
+			// Placement is what decides whether a task can be scheduled at all.
+			// It was already on the wire and simply not modelled, which is why
+			// an unschedulable service looked identical to a healthy one from
+			// everything SwarmOps could see.
+			Placement struct {
+				Constraints []string `json:"Constraints"`
+			} `json:"Placement"`
 		} `json:"TaskTemplate"`
+		// UpdateConfig and RollbackConfig are what Swarm will ACTUALLY do on a
+		// change. A preview that describes a rollout policy without reading
+		// them is describing a policy the cluster has not agreed to.
+		UpdateConfig *struct {
+			Parallelism   uint64  `json:"Parallelism"`
+			Delay         int64   `json:"Delay"`
+			FailureAction string  `json:"FailureAction"`
+			Monitor       int64   `json:"Monitor"`
+			Order         string  `json:"Order"`
+			MaxFailRatio  float64 `json:"MaxFailureRatio"`
+		} `json:"UpdateConfig"`
+		RollbackConfig *struct {
+			Parallelism uint64 `json:"Parallelism"`
+			Order       string `json:"Order"`
+		} `json:"RollbackConfig"`
 	} `json:"Spec"`
 	UpdateStatus *struct {
 		Message string `json:"Message"`

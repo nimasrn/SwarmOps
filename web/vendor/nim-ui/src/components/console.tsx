@@ -163,6 +163,12 @@ export interface MetricProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onCli
       it appears on. */
   deltaIntent?: 'less-is-better' | 'more-is-better'
   hint?: ReactNode
+  /** What produced the figure. Rendered under it, quieter than the hint: a
+      hint explains what the number means, a source says who says so. */
+  source?: ReactNode
+  /** The figure is not available, and the tile says so instead of rendering a
+      dash that reads as zero. */
+  unmeasured?: boolean
   icon?: IconName
   label: ReactNode
   /** `stacked` (default) is the counter tile: label, then the number at the
@@ -190,6 +196,8 @@ export function Metric({
   deltaDirection = 'up',
   deltaIntent = 'more-is-better',
   hint,
+  source,
+  unmeasured,
   icon,
   label,
   layout = 'stacked',
@@ -207,6 +215,7 @@ export function Metric({
       className={cn('nim-metric', onClick && 'nim-metric--interactive', className)}
       data-layout={layout === 'stacked' ? undefined : layout}
       data-tone={tone === 'neutral' ? undefined : tone}
+      data-unmeasured={unmeasured ? 'true' : undefined}
       onClick={onClick}
       type={onClick ? 'button' : undefined}
       {...(props as HTMLAttributes<HTMLElement>)}
@@ -233,6 +242,7 @@ export function Metric({
             </span>
           ) : null}
           {hint ? <span className="nim-metric__hint">{hint}</span> : null}
+          {source ? <span className="nim-metric__source">{source}</span> : null}
         </span>
       ) : null}
     </Component>
@@ -273,6 +283,18 @@ export interface Fact {
   key?: string
   label: ReactNode
   value: ReactNode
+  /** What produced this value: an instrument, a probe, a declaration. A
+      console's figures are read as facts, so the ones that came from somewhere
+      should say where — and the ones that did not become conspicuous by not
+      saying it. Optional because a name or a label has no source; a
+      measurement does. */
+  source?: ReactNode
+  /** The value is not known, and this row says so rather than showing a blank
+      or a zero. A zero is a measurement of nothing; a blank is ambiguous
+      between "none" and "not asked". Both get read as data. */
+  unmeasured?: boolean
+  /** Why it is not known. Only meaningful with `unmeasured`. */
+  why?: ReactNode
 }
 
 export interface FactsProps extends HTMLAttributes<HTMLDListElement> {
@@ -291,8 +313,17 @@ export function Facts({ className, columns = 2, items, ...props }: FactsProps) {
   return (
     <dl className={cn('nim-facts', className)} data-columns={columns} {...props}>
       {items.map((fact, index) => (
-        <div className="nim-facts__item" key={fact.key ?? index}>
-          <dt className="nim-facts__label">{fact.label}</dt>
+        <div
+          className="nim-facts__item"
+          data-unmeasured={fact.unmeasured ? 'true' : undefined}
+          key={fact.key ?? index}
+        >
+          <dt className="nim-facts__label">
+            {fact.label}
+            {fact.source || fact.why ? (
+              <span className="nim-facts__source">{fact.unmeasured ? fact.why : fact.source}</span>
+            ) : null}
+          </dt>
           <dd className="nim-facts__value" data-mono={fact.mono ? 'true' : undefined}>
             {fact.value}
           </dd>

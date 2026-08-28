@@ -45,9 +45,12 @@ import {
   useToast,
 } from '@nim.zone/ui'
 import type { BadgeVariant, TableColumn } from '@nim.zone/ui'
+import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 import { APIError, api } from './api'
 import { OverviewDashboard } from './dashboard'
 import { Brand, SwarmOpsMark } from './brand'
+import { ChangePreviewPanel } from './change-preview'
+import { KubernetesImportPage } from './kubernetes-import'
 import { SourceDeployPage } from './source-deploy'
 import { ServerReadinessPage } from './server-readiness'
 import { AgentDiagnosticsPage } from './agent-diagnostics'
@@ -570,6 +573,8 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         </>
 	  ) : workspace === 'catalogue' ? (
         <CommandCataloguePage activeServerID={activeServerID} onQueued={(commandID) => { setHighlightedCommandID(commandID); setWorkspace('commands') }} servers={servers} toast={toast} />
+	  ) : workspace === 'kubernetes-import' ? (
+		<KubernetesImportPage />
 	  ) : workspace === 'source-deploy' || workspace === 'registry' ? (
 		<SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} view={workspace === 'registry' ? 'registry' : 'source'} />
 	  ) : workspace === 'overview' && core ? (
@@ -600,7 +605,25 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 			commands={commands}
 			data={data}
 			onAddNode={() => setWorkspace('servers')}
+			onDiagnosisAction={(kind) => {
+			  // A diagnosis hands off to the screen that owns the action; it
+			  // does not perform it. Prune in particular is gated behind an
+			  // explicit confirmation, and a destructive command run from a
+			  // panel that just told you what was wrong would bypass exactly
+			  // the deliberation that gate exists to force.
+			  const destination: Record<string, WorkspacePage> = {
+			    'edit-constraint': 'services',
+			    'label-node': 'nodes',
+			    logs: 'logs',
+			    prune: 'resources',
+			    reschedule: 'nodes',
+			  }
+			  const next = destination[kind]
+			  if (next) setWorkspace(next)
+			  else toast({ message: `No screen owns "${kind}" yet.`, tone: 'neutral' })
+			}}
 			onDiagnostics={() => setWorkspace('agent-diagnostics')}
+			onOpenPage={(next) => setWorkspace(next as WorkspacePage)}
 			onReadiness={() => setWorkspace('provisioning')}
 			page={workspace as ClusterPage}
 			toast={toast}
@@ -617,12 +640,16 @@ function PageRouter({
   onAddNode,
   onDiagnostics,
   onReadiness,
+  onDiagnosisAction,
+  onOpenPage,
   page,
   toast,
 }: {
   commands: Command[]
   data: DashboardData
   onAddNode: () => void
+  onDiagnosisAction: (kind: string) => void
+  onOpenPage: (page: string) => void
   onDiagnostics: () => void
   onReadiness: () => void
   page: ClusterPage
@@ -631,7 +658,7 @@ function PageRouter({
   switch (page) {
     case 'nodes': return <NodesPage commands={commands} nodes={data.nodes} onAddNode={onAddNode} onDiagnostics={onDiagnostics} onReadiness={onReadiness} overview={data.overview} toast={toast} />
     case 'stacks': return <StacksPage nodes={data.nodes} stacks={data.stacks} toast={toast} />
-    case 'services': return <ServicesPage services={data.services} toast={toast} />
+    case 'services': return <ServicesPage onDiagnosisAction={onDiagnosisAction} services={data.services} toast={toast} />
     case 'builds': return <BuildsPage toast={toast} />
     case 'gateway': return <TraefikControlPage initialTab="overview" status={data.traefik} toast={toast} />
     case 'routes': return <TraefikControlPage initialTab="routes" status={data.traefik} toast={toast} />
@@ -643,7 +670,7 @@ function PageRouter({
     case 'applications': return <ApplicationsPage toast={toast} />
     case 'resources': return <ResourcesPage toast={toast} />
     case 'insights': return <InsightsPage toast={toast} />
-    case 'overview': return <OverviewDashboard observability={data.observability} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
+    case 'overview': return <OverviewDashboard observability={data.observability} onOpen={onOpenPage} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
   }
 }
 
@@ -983,11 +1010,11 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
     { header: 'Role', key: 'role', render: (node) => <span>{node.role}{node.manager?.leader ? ' · leader' : ''}</span> },
     { header: 'Availability', key: 'availability', render: (node) => <span>{node.availability}</span> },
     { header: 'Agent', key: 'agent', render: (node) => <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? node.agent.version || 'Online' : node.agent.error ? 'Unavailable' : 'Not configured'} /> },
-    { header: 'Docker', key: 'docker', render: (node) => <Mono>{node.engine.version ?? node.dockerVersion ?? '—'}</Mono> },
+    { header: 'Docker', key: 'docker', render: (node) => <Mono>{node.engine.version ?? node.dockerVersion ?? 'not reported'}</Mono> },
     { header: 'CPU', key: 'cpu', numeric: true, render: (node) => `${formatNumber(node.cpu.capacity)} cores` },
     { header: 'Memory', key: 'memory', render: (node) => `${formatBytes(node.memory.used)} / ${formatBytes(node.memory.capacity)}` },
     { header: 'Disk', key: 'disk', render: (node) => `${formatBytes(node.disk.used)} / ${formatBytes(node.disk.capacity)}` },
-    { header: 'Last seen', key: 'seen', render: (node) => node.agent.collectedAt ? formatDateTime(node.agent.collectedAt) : '—' },
+    { header: 'Last seen', key: 'seen', render: (node) => node.agent.collectedAt ? formatDateTime(node.agent.collectedAt) : 'no probe' },
   ]
 
   const attention = nodes.filter((node) => node.state !== 'ready' || node.availability !== 'active' || !node.agent.healthy)
@@ -1000,7 +1027,7 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
     { header: 'Image', key: 'image', render: (container) => <Mono>{container.Image}</Mono> },
     { header: 'State', key: 'state', render: (container) => <StatusDot tone={container.State === 'running' ? 'success' : 'warning'}>{capitalize(container.State)}</StatusDot> },
     { header: 'Status', key: 'status', render: (container) => container.Status },
-    { header: 'Networks', key: 'networks', render: (container) => Object.keys(container.NetworkSettings?.Networks ?? {}).join(', ') || '—' },
+    { header: 'Networks', key: 'networks', render: (container) => Object.keys(container.NetworkSettings?.Networks ?? {}).join(', ') || 'None' },
   ]
 
   if (selected && containerDetail) {
@@ -1024,9 +1051,9 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
         ]} value={detailTab} />
         {detailTab === 'overview' || detailTab === 'metrics' ? <>
           <MetricGrid columns={4}>
-            <Metric hint="One Engine sample" icon="activity" label="CPU" value={containerStats ? `${containerStats.cpuPercent.toFixed(2)}%` : '—'} />
-            <Metric hint={containerStats?.memoryLimitBytes ? `of ${formatBytes(containerStats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" value={containerStats ? formatBytes(containerStats.memoryUsedBytes) : '—'} />
-            <Metric hint={containerStats ? `${formatBytes(containerStats.networkTxBytes)} egress` : 'No sample'} icon="cloud" label="Network ingress" value={containerStats ? formatBytes(containerStats.networkRxBytes) : '—'} />
+            <Metric hint="One Engine sample" icon="activity" label="CPU" source={containerStats ? 'docker stats' : undefined} unmeasured={!containerStats} value={containerStats ? `${containerStats.cpuPercent.toFixed(2)}%` : 'no sample'} />
+            <Metric hint={containerStats?.memoryLimitBytes ? `of ${formatBytes(containerStats.memoryLimitBytes)}` : 'No limit reported'} icon="activity" label="Memory" source={containerStats ? 'docker stats' : undefined} unmeasured={!containerStats} value={containerStats ? formatBytes(containerStats.memoryUsedBytes) : 'no sample'} />
+            <Metric hint={containerStats ? `${formatBytes(containerStats.networkTxBytes)} egress` : undefined} icon="cloud" label="Network ingress" source={containerStats ? 'docker stats' : undefined} unmeasured={!containerStats} value={containerStats ? formatBytes(containerStats.networkRxBytes) : 'no sample'} />
             <Metric hint="Engine restart counter" icon="refresh" label="Restart count" value={String(containerDetail.RestartCount)} />
           </MetricGrid>
           <Columns template="aside">
@@ -1037,7 +1064,7 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
                   { label: 'State', value: containerDetail.State.Status },
                   { label: 'Node', value: selected.hostname },
                   { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) },
-                  { label: 'Restart policy', value: containerDetail.HostConfig.RestartPolicy?.Name ?? '—' },
+                  { label: 'Restart policy', value: containerDetail.HostConfig.RestartPolicy?.Name || 'Not set' },
                 ]} /></Panel>
                 <Panel title="Routes & ports"><Body size="sm" tone="muted">Published port and route evidence is shown in Traffic. This inspect payload does not claim an application route.</Body></Panel>
               </Columns>
@@ -1046,23 +1073,23 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
                 { label: 'Created', value: formatDateTime(containerDetail.Created) },
                 { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) },
                 { label: 'Restarts', value: String(containerDetail.RestartCount) },
-                { label: 'Last sample', value: containerStats ? formatDateTime(containerStats.sampledAt) : '—' },
+                { label: 'Last sample', value: containerStats ? formatDateTime(containerStats.sampledAt) : 'never' },
               ]} /></Panel>
             </Rows>
             <Rows gap="md">
               <Panel title="Container inspector"><Facts columns={1} items={[
                 { label: 'Image', mono: true, value: containerDetail.Config.Image ?? containerDetail.Image },
-                { label: 'Entrypoint', mono: true, value: containerDetail.Path ?? '—' },
-                { label: 'Command', mono: true, value: containerDetail.Args?.join(' ') || '—' },
+                { label: 'Entrypoint', mono: true, value: containerDetail.Path || 'Not set' },
+                { label: 'Command', mono: true, value: containerDetail.Args?.join(' ') || 'Not set' },
                 { label: 'Labels', value: String(Object.keys(containerDetail.Config.Labels ?? {}).length) },
                 { label: 'Mounts', value: String(containerDetail.Mounts?.length ?? 0) },
-                { label: 'Network mode', value: containerDetail.HostConfig.NetworkMode ?? '—' },
+                { label: 'Network mode', value: containerDetail.HostConfig.NetworkMode || 'Not set' },
                 { label: 'Docker health', value: containerDetail.State.Health?.Status ?? (containerDetail.State.Running ? 'Running' : 'Stopped') },
               ]} /></Panel>
               <Panel title="Telemetry"><Body size="sm">Metrics are sampled from Docker. Logs and traces remain source-labeled under Monitoring and are never fabricated when collectors are absent.</Body></Panel>
             </Rows>
           </Columns>
-        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">Use Monitoring → Logs for collected records. This controller does not proxy unrestricted container streams.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Mode', mono: true, value: containerDetail.HostConfig.NetworkMode ?? '—' }, { label: 'Ingress sample', value: containerStats ? formatBytes(containerStats.networkRxBytes) : '—' }, { label: 'Egress sample', value: containerStats ? formatBytes(containerStats.networkTxBytes) : '—' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: containerDetail.Id }, { label: 'Image ID', mono: true, value: containerDetail.Image }, { label: 'Environment names', value: containerDetail.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: containerDetail.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(containerDetail.Created) }, { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) }, { label: 'Finished', value: formatDateTime(containerDetail.State.FinishedAt) }, { label: 'Restarts', value: String(containerDetail.RestartCount) }]} /></Panel>}
+        </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">Use Monitoring → Logs for collected records. This controller does not proxy unrestricted container streams.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Mode', mono: true, value: containerDetail.HostConfig.NetworkMode || 'Not set' }, { label: 'Ingress sample', value: containerStats ? formatBytes(containerStats.networkRxBytes) : 'no sample' }, { label: 'Egress sample', value: containerStats ? formatBytes(containerStats.networkTxBytes) : 'no sample' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: containerDetail.Id }, { label: 'Image ID', mono: true, value: containerDetail.Image }, { label: 'Environment names', value: containerDetail.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: containerDetail.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(containerDetail.Created) }, { label: 'Started', value: formatDateTime(containerDetail.State.StartedAt) }, { label: 'Finished', value: formatDateTime(containerDetail.State.FinishedAt) }, { label: 'Restarts', value: String(containerDetail.RestartCount) }]} /></Panel>}
       </Page>
     )
   }
@@ -1149,7 +1176,7 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
       <DetailHeader
         actions={<Inline><Button iconStart="activity" onClick={onDiagnostics} variant="secondary">Run diagnosis</Button><Button onClick={onReadiness} variant="secondary">Prepare node</Button></Inline>}
         back={{ label: 'Infrastructure', onClick: () => setSelectedID('') }}
-        meta={<Inline><Mono>{selected.address ?? '—'}</Mono><StatusDot tone={nodeHealth(selected) === 'healthy' ? 'success' : 'warning'}>{capitalize(selected.state)}</StatusDot><span>{selected.role}{selected.manager?.leader ? ' · leader' : ''}</span><span>Agent {selected.agent.version ?? '—'}</span><span>Docker {selected.engine.version ?? selected.dockerVersion ?? '—'}</span></Inline>}
+        meta={<Inline><Mono>{selected.address ?? '—'}</Mono><StatusDot tone={nodeHealth(selected) === 'healthy' ? 'success' : 'warning'}>{capitalize(selected.state)}</StatusDot><span>{selected.role}{selected.manager?.leader ? ' · leader' : ''}</span><span>Agent {selected.agent.version ?? 'not reported'}</span><span>Docker {selected.engine.version ?? selected.dockerVersion ?? 'not reported'}</span></Inline>}
         title={selected.hostname}
       />
       <Tabs label="Node views" onChange={setDetailTab} options={[
@@ -1185,23 +1212,23 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
           <Rows gap="md">
             <Panel title="System">
               <Facts columns={1} items={[
-                { label: 'OS', value: selected.os ?? selected.platform.os ?? '—' },
-                { label: 'Kernel', mono: true, value: selected.kernel ?? '—' },
+                { label: 'OS', source: 'host probe', unmeasured: !(selected.os ?? selected.platform.os), value: selected.os ?? selected.platform.os ?? 'not reported', why: 'the agent did not report an OS' },
+                { label: 'Kernel', mono: true, source: 'host probe', unmeasured: !selected.kernel, value: selected.kernel ?? 'not reported', why: 'the agent did not report a kernel version' },
                 { label: 'CPU', value: `${formatNumber(selected.cpu.capacity)} cores` },
                 { label: 'Memory', value: formatBytes(selected.memory.capacity) },
                 { label: 'Storage', value: formatBytes(selected.disk.capacity) },
-                { label: 'Architecture', value: selected.platform.architecture ?? '—' },
-                { label: 'Storage driver', value: selected.engine.driver ?? '—' },
-                { label: 'cgroup driver', value: selected.engine.cgroupDriver ?? '—' },
+                { label: 'Architecture', source: 'host probe', unmeasured: !selected.platform.architecture, value: selected.platform.architecture ?? 'not reported', why: 'the agent did not report an architecture' },
+                { label: 'Storage driver', source: 'docker info', unmeasured: !selected.engine.driver, value: selected.engine.driver ?? 'not reported', why: 'the Engine did not report a storage driver' },
+                { label: 'cgroup driver', source: 'docker info', unmeasured: !selected.engine.cgroupDriver, value: selected.engine.cgroupDriver ?? 'not reported', why: 'the Engine did not report a cgroup driver' },
                 { label: 'Uptime', value: formatDuration(selected.uptimeSeconds) },
               ]} />
             </Panel>
             <Panel title="Agent health">
               <StatusBadge health={hostProbeHealth(selected)} label={selected.agent.healthy ? 'Connected' : selected.agent.error ?? 'Not configured'} />
               <Facts columns={1} items={[
-                { label: 'Address', mono: true, value: selected.agent.address ?? selected.address ?? '—' },
-                { label: 'Version', mono: true, value: selected.agent.version ?? '—' },
-                { label: 'Last inventory', value: selected.agent.collectedAt ? formatDateTime(selected.agent.collectedAt) : '—' },
+                { label: 'Address', mono: true, value: selected.agent.address ?? selected.address ?? 'None advertised' },
+                { label: 'Version', mono: true, source: 'agent', unmeasured: !selected.agent.version, value: selected.agent.version ?? 'not reported', why: 'the agent has not reported a version' },
+                { label: 'Last inventory', value: selected.agent.collectedAt ? formatDateTime(selected.agent.collectedAt) : 'no probe' },
                 { label: 'Swarm membership', value: `${capitalize(selected.role)} · ${capitalize(selected.availability)}` },
               ]} />
               <Inline>{['active', 'pause', 'drain'].map((availability) => <Button disabled={busy || selected.availability === availability} key={availability} loading={busy && selected.availability !== availability} onClick={() => void updateAvailability(availability)} size="sm" variant={availability === 'drain' ? 'danger' : 'secondary'}>{capitalize(availability)}</Button>)}</Inline>
@@ -1214,8 +1241,8 @@ function NodesPage({ commands, nodes, onAddNode, onDiagnostics, onReadiness, ove
         {taskError ? <Banner tone="warning">{taskError}</Banner> : tasks.length ? <TaskList tasks={tasks} /> : <EmptyState description="No task records are currently assigned to this node." icon="sparkle" title="No tasks" />}
       </Panel> : detailTab === 'network' ? <Panel title="Network">
         <Facts items={[
-          { label: 'Advertised address', mono: true, value: selected.address ?? '—' },
-          { label: 'Manager address', mono: true, value: selected.manager?.address ?? '—' },
+          { label: 'Advertised address', mono: true, value: selected.address || 'None advertised' },
+          { label: 'Manager address', mono: true, value: selected.manager?.address || 'None advertised' },
           { label: 'Reachability', value: selected.manager?.reachability ?? 'Not a manager' },
           { label: 'Control path', value: 'Outbound pinned HTTPS' },
         ]} />
@@ -1323,7 +1350,7 @@ function StacksPage({ nodes, stacks, toast }: { nodes: Node[]; stacks: Stack[]; 
   )
 }
 
-function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnType<typeof useToast> }) {
+function ServicesPage({ onDiagnosisAction, services, toast }: { onDiagnosisAction: (kind: string) => void; services: Service[]; toast: ReturnType<typeof useToast> }) {
   const [selectedID, setSelectedID] = useState(services[0]?.id ?? '')
   const [logs, setLogs] = useState('')
   const [logsError, setLogsError] = useState('')
@@ -1331,6 +1358,14 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
   const [replicas, setReplicas] = useState(String(services[0]?.desiredTasks ?? 0))
   const [scaleError, setScaleError] = useState('')
   const selected = services.find((service) => service.id === selectedID) ?? services[0]
+  // A degraded service is the only reason anyone opens this page in a hurry, so
+  // the diagnosis is fetched for the selected service rather than hidden behind
+  // a button — the question "why" is already the reason they are here.
+  const degraded = selected ? selected.runningTasks < selected.desiredTasks : false
+  const diagnosis = useServiceDiagnosis(
+    degraded && selected ? selected.id : null,
+    (id) => api.serviceDiagnosis(id),
+  )
 
   useEffect(() => {
     if (selected) setReplicas(String(selected.desiredTasks))
@@ -1360,10 +1395,10 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
   }
   const columns: TableColumn<Service>[] = [
     { header: 'Service', key: 'name', render: (service) => <RecordLink meta={service.stack ?? 'unmanaged service'} onClick={() => void readLogs(service)} title={service.name} /> },
-    { header: 'Image', key: 'image', render: (service) => <Mono>{service.image ?? '—'}</Mono> },
+    { header: 'Image', key: 'image', render: (service) => <Mono>{service.image ?? 'Not set'}</Mono> },
     { header: 'Tasks', key: 'tasks', numeric: true, render: (service) => `${service.runningTasks} / ${service.desiredTasks}` },
     { header: 'Health', key: 'health', render: (service) => <StatusBadge health={service.health} /> },
-    { header: 'Update', key: 'update', render: (service) => service.updateState || '—' },
+    { header: 'Update', key: 'update', render: (service) => service.updateState || 'None in progress' },
   ]
   if (!selected) return <Page><DetailHeader subtitle="Long-running processes scheduled by Docker Swarm. Docker Compose and standalone containers are listed separately under Cluster → Docker resources." title="Swarm services" /><EmptyState description="Docker Engine is reachable, but this Swarm currently schedules zero services. This is normal when workloads run as Docker Compose or standalone containers." icon="layers" title="No Swarm services" /></Page>
   const canScale = selected.mode.toLowerCase() === 'replicated'
@@ -1371,9 +1406,18 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
     <Page>
       <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Long-running processes scheduled by Docker Swarm. Compose and standalone containers are listed under Cluster → Docker resources. Restarts and rollbacks use fixed audited command shapes." title="Swarm services" />
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
+      {degraded ? (
+        <ServiceDiagnosis
+          error={diagnosis.error}
+          loading={diagnosis.loading}
+          onAction={onDiagnosisAction}
+          result={diagnosis.result}
+          serviceName={selected.name}
+        />
+      ) : null}
       <Columns>
         <Panel eyebrow={selected.stack ?? 'No stack label'} title={selected.name}>
-          <Facts items={[{ label: 'Image', mono: true, value: selected.image ?? '—' }, { label: 'Desired tasks', value: String(selected.desiredTasks) }, { label: 'Running tasks', value: String(selected.runningTasks) }, { label: 'Last updated', value: formatDateTime(selected.updatedAt) }]} />
+          <Facts items={[{ label: 'Image', mono: true, value: selected.image || 'Not set' }, { label: 'Desired tasks', value: String(selected.desiredTasks) }, { label: 'Running tasks', value: String(selected.runningTasks) }, { label: 'Last updated', value: formatDateTime(selected.updatedAt) }]} />
           <Inline><Button loading={busy === 'restart'} onClick={() => void action('restart')} variant="secondary">Force restart</Button><Button loading={busy === 'rollback'} onClick={() => void action('rollback')} variant="danger">Rollback</Button><Button onClick={() => void readLogs(selected)} variant="ghost">Read logs</Button></Inline>
           <Rows gap="tight">
             <Label as="p">Replica control</Label>
@@ -1391,9 +1435,14 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
             {scaleError ? <Banner tone="warning">{scaleError}</Banner> : null}
           </Rows>
         </Panel>
+        <ChangePreviewPanel
+          currentImage={selected.image}
+          onApply={() => toast({ message: 'Applying from the preview is not wired yet — deploy from the source screen.', tone: 'neutral' })}
+          serviceID={selected.id}
+        />
         <Panel eyebrow="Last 200 lines" title="Service logs">
           {logsError ? <Banner tone="danger">{logsError}</Banner> : null}
-          {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Select a service name or use Read logs to fetch an on-demand, bounded log tail." icon="document" title="Logs are not loaded" />}
+          {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Nothing has been fetched yet. Use Read logs for an on-demand, bounded tail — this is not a statement that the service produced none." icon="document" reason="unknown" title="Logs are not loaded" />}
         </Panel>
       </Columns>
     </Page>
@@ -1679,7 +1728,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
     { header: 'Application', key: 'name', render: (status) => <RecordLink meta={status.stack} onClick={() => setInspectedApplication(status.spec.name)} title={status.spec.name} /> },
     { header: 'Address', key: 'url', render: (status) => status.url ? <a href={status.url} rel="noreferrer" target="_blank">{status.url}</a> : 'Internal only' },
     { header: 'Image', key: 'image', render: (status) => <Mono>{status.spec.image}</Mono> },
-    { header: 'Databases', key: 'databases', render: (status) => (status.spec.databases ?? []).join(', ') || '—' },
+    { header: 'Databases', key: 'databases', render: (status) => (status.spec.databases ?? []).join(', ') || 'None' },
     { header: 'Tasks', key: 'tasks', render: (status) => <StatusBadge health={status.runningTasks > 0 ? 'healthy' : status.deployed ? 'degraded' : 'unknown'} label={status.deployed ? `${status.runningTasks} running` : 'Not deployed'} /> },
     {
       header: 'Action',
@@ -1713,7 +1762,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
             />
             {slot ? <Facts items={[
               { label: 'Domain', value: slot.domain || 'Internal only' },
-              { label: 'Certificate resolver', value: slot.resolver || '—' },
+              { label: 'Certificate resolver', value: slot.resolver || 'None configured' },
               { label: 'Budget', value: `${slot.cpuCores} vCPU · ${slot.memoryMiB} MiB` },
             ]} /> : null}
             <Input hint="An already-pushed, immutable image tag. SwarmOps deploys images; it does not build here." label="Image" onChange={(event) => setImage(event.target.value)} placeholder="ghcr.io/org/app:2026.08.25" value={image} />
@@ -1789,7 +1838,7 @@ function ApplicationsPage({ toast }: { toast: ReturnType<typeof useToast> }) {
             <Select label="Deployed application" onChange={(event) => chooseDomainApplication(event.target.value)} options={domainEligible.map((status) => ({ label: `${status.spec.name}${status.spec.domain ? ` — ${status.spec.domain}` : ' — internal only'}`, value: status.spec.name }))} value={domainApplication} />
             {domainPolicy ? <Facts items={[
               { label: 'Current domain', value: domainStatus?.spec.domain || 'Internal only' },
-              { label: 'Certificate resolver', value: domainPolicy.resolver || '—' },
+              { label: 'Certificate resolver', value: domainPolicy.resolver || 'None configured' },
               { label: 'Allowed policy', value: domainPolicy.domainSuffixes?.length ? `One hostname under ${domainPolicy.domainSuffixes.join(', ')}` : 'Optional route' },
             ]} /> : null}
             <Input hint={domainPolicy?.domainSuffixes?.length ? `Use one hostname under ${domainPolicy.domainSuffixes.join(' or ')}. Clear the field only to remove an optional route.` : 'Clear the field only to remove this optional route.'} label="Domain" onChange={(event) => setDomainValue(event.target.value)} placeholder={domainPolicy?.domainSuffixes?.[0] || 'app.example.com'} value={domainValue} />
@@ -2012,7 +2061,7 @@ function CommandQueuePage({ commands, dashboard, highlightedID, onOpenDiagnostic
     { header: 'Server', key: 'server', render: (command) => servers.find((server) => server.id === command.serverId)?.name ?? <Mono>{shortID(command.serverId)}</Mono> },
     { header: 'State', key: 'state', render: (command) => <CommandStateBadge state={command.state} /> },
     { header: 'Attempts', key: 'attempts', numeric: true, render: (command) => `${command.attempt} / ${command.maxAttempts}` },
-    { header: 'Next attempt', key: 'next', render: (command) => command.nextAttemptAt ? formatDateTime(command.nextAttemptAt) : '—' },
+    { header: 'Next attempt', key: 'next', render: (command) => command.nextAttemptAt ? formatDateTime(command.nextAttemptAt) : 'No retry scheduled' },
     { header: 'Updated', key: 'updated', render: (command) => formatDateTime(command.updatedAt) },
     { header: 'Action', key: 'action', render: (command) => <Button onClick={() => setSelectedID(command.id)} size="sm" variant={command.id === selectedID ? 'secondary' : 'ghost'}>{command.id === selectedID ? 'Selected' : 'Inspect'}</Button> },
   ]
@@ -2117,7 +2166,7 @@ function TaskList({ tasks }: { tasks: Task[] }) {
     { header: 'Desired', key: 'desired', render: (task) => task.desiredState },
     { header: 'Current', key: 'current', render: (task) => task.currentState },
     { header: 'Started', key: 'started', render: (task) => formatDateTime(task.startedAt) },
-    { header: 'Error', key: 'error', render: (task) => task.error || '—' },
+    { header: 'Error', key: 'error', render: (task) => task.error || 'None' },
   ]
   return (
     <DataTable

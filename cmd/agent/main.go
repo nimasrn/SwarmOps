@@ -28,19 +28,14 @@ import (
 
 const (
 	apiKeyLength     = 32
+	version          = "0.7.6"
 	buildTimeout     = 30 * time.Minute
 	provisionTimeout = 50 * time.Minute
 )
 
-var version = "0.7.6"
-
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println(version)
-		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "upgrade" {
-		runAgentUpgrade(os.Args[2:])
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "provisioner" {
@@ -48,10 +43,6 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "gen" {
-		if len(os.Args) > 2 && os.Args[2] == "key" {
-			runGenerateKey(os.Args[2:])
-			return
-		}
 		runGenerator(os.Args[2:])
 		return
 	}
@@ -343,9 +334,7 @@ func runGenerateAPIKey(args []string) {
 func printUsage() {
 	fmt.Println("usage:")
 	fmt.Println("  swarmops-agent --version")
-	fmt.Println("  swarmops-agent upgrade")
 	fmt.Println("  swarmops-agent provisioner --socket <path> --agent-port <port>")
-	fmt.Println("  swarmops-agent gen key [--key-file <path>]")
 	fmt.Println("  swarmops-agent gen apikey [--key-file <path>]")
 }
 

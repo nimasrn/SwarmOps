@@ -211,6 +211,59 @@ func TestLoadDirectTLSParsesClientNetwork(t *testing.T) {
 	}
 }
 
+func TestLoadBreakGlassHTTPIsDisabledByDefault(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_DEV_SESSION_KEY", strings.Repeat("s", 32))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HTTPEnabled || cfg.HTTPAllowRemote {
+		t.Fatalf("plaintext HTTP defaults = enabled:%v remote:%v, want disabled", cfg.HTTPEnabled, cfg.HTTPAllowRemote)
+	}
+	if got, want := cfg.HTTPListenAddr, "127.0.0.1:8085"; got != want {
+		t.Fatalf("HTTPListenAddr = %q, want %q", got, want)
+	}
+}
+
+func TestLoadBreakGlassHTTPLoopbackAndRemoteGuards(t *testing.T) {
+	setProductionCoreEnv(t)
+	t.Setenv("SWARMOPS_TLS_CERT_FILE", writeSecretFile(t, "certificate", []byte("certificate")))
+	t.Setenv("SWARMOPS_TLS_KEY_FILE", writeSecretFile(t, "private-key", []byte("private-key")))
+	t.Setenv("SWARMOPS_LISTEN_ADDR", "127.0.0.1:28318")
+	t.Setenv("SWARMOPS_HTTP_ENABLED", "true")
+	t.Setenv("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:28319")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load loopback HTTP listener: %v", err)
+	}
+	if !cfg.HTTPEnabled || cfg.HTTPAllowRemote || cfg.HTTPListenAddr != "127.0.0.1:28319" {
+		t.Fatalf("loopback HTTP config = enabled:%v remote:%v address:%q", cfg.HTTPEnabled, cfg.HTTPAllowRemote, cfg.HTTPListenAddr)
+	}
+
+	t.Setenv("SWARMOPS_HTTP_LISTEN_ADDR", "0.0.0.0:28319")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_HTTP_ALLOW_REMOTE=true") {
+		t.Fatalf("remote HTTP without acknowledgement error = %v", err)
+	}
+
+	t.Setenv("SWARMOPS_HTTP_ALLOW_REMOTE", "true")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_ALLOWED_CLIENT_CIDRS") {
+		t.Fatalf("remote HTTP without allowlist error = %v", err)
+	}
+
+	t.Setenv("SWARMOPS_ALLOWED_CLIENT_CIDRS", "198.51.100.20/32")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("load guarded remote HTTP listener: %v", err)
+	}
+	if !cfg.HTTPAllowRemote || len(cfg.AllowedClientCIDRs) != 1 {
+		t.Fatalf("remote HTTP guards = acknowledged:%v CIDRs:%#v", cfg.HTTPAllowRemote, cfg.AllowedClientCIDRs)
+	}
+}
+
 func TestLoadDefaultsAndBoundsForRetentionValues(t *testing.T) {
 	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
 	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
@@ -289,6 +342,15 @@ func writeSecretFile(t *testing.T, name string, content []byte) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func setProductionCoreEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "false")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
+	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
+	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32)))))
 }
 
 func writeDevMachineCertificate(t *testing.T) (string, string) {

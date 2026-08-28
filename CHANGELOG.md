@@ -11,6 +11,38 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.10.0 — 2026-08-27
+
+SwarmOps can now answer why a service is not running, what a change will do
+before it is applied, and whether a Kubernetes workload can come across.
+
+- **Causal diagnosis** — a degraded service gets a chain of claims, each
+  carrying the measurement behind it and where that measurement came from. It
+  stops at the first thing SwarmOps can act on, because a chain ending in an
+  explanation with no action has diagnosed nothing. Three rules:
+  `constraint-unsatisfiable`, `node-cannot-hold-image`, `task-failing`.
+- **The engine prefers silence to invention** — a rule that cannot obtain its
+  measurements declines rather than degrading to a guess; an unrecognised
+  placement-constraint form makes it decline rather than report "no node
+  matches"; evidence older than 90 seconds cannot support a capacity claim; a
+  host with no probe has unknown capacity, not zero. When nothing fires, the
+  console shows a refusal listing what was measured and which failures the
+  engine knows how to explain. An engine is trusted until its first confident
+  wrong answer and never afterwards.
+- **Change preview** — what a deploy will interrupt, in what order, and what
+  happens when a step fails. Rollback behaviour is READ from the service's own
+  failure action: a service configuring none is told Docker's real default is
+  to pause, not roll back. "Serving during rollout" is only affirmative when
+  capacity genuinely remains, so a single-replica service is told it cannot be
+  replaced without a gap.
+- **Kubernetes import** — reads manifests and reports what maps, what does not,
+  and what was skipped. A two-container pod is a gap rather than a mapping,
+  because Swarm has no pod and a sidecar sharing localhost would silently stop
+  working. Every gap's options include staying on Kubernetes.
+- **Placement constraints and update policy are now modelled.** Both were on
+  the wire from Docker and unread, which is why an unschedulable service looked
+  identical to a healthy one from everything SwarmOps could see.
+
 ## 0.9.3 — 2026-08-28
 
 Traefik's four safe installation blockers can now be repaired from one button.
