@@ -1,0 +1,109 @@
+/* SwarmOps — app chrome only.
+
+   Everything an admin console is made of now comes from @nim.zone/ui's
+   console layer: Page, Panel, MetricGrid, Facts, Columns, CodeBlock,
+   DataTable, StatusDot, Mono. What is left here is the product's own
+   identity — the mark, the wordmark, and the two full-viewport screens that
+   exist before the shell does — and nothing a second console would need to
+   copy. Any rule that creeps back into this file describing a LAYOUT is a
+   missing kit component. */
+
+:root {
+  background: var(--nim-canvas);
+}
+
+html,
+body,
+#root {
+  min-block-size: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--nim-canvas);
+}
+
+.nim-root {
+  min-block-size: 100vh;
+}
+
+.swarmops-loading,
+.swarmops-auth-page {
+  min-block-size: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--nim-space-4);
+  padding: var(--nim-space-6);
+  background: var(--nim-canvas-sunken);
+  color: var(--nim-ink-secondary);
+  text-align: center;
+}
+
+.swarmops-auth-page > form {
+  inline-size: min(100%, 29rem);
+}
+
+.swarmops-auth-page .nim-auth {
+  background: var(--nim-surface);
+  box-shadow: var(--nim-shadow-lg);
+}
+
+/* The one line of identity this app keeps: the malachite accent, handed to the
+   kit's brand lockup for the second run of the wordmark. Everything else about
+   the lockup — the gap, the type, the tracking, the tagline — is `Brand`. */
+.nim-brand {
+  --nim-brand-accent: var(--nim-accent);
+}
+
+/* The diagnosis fix block and refusal evidence list. Both are product copy
+   arrangements rather than layouts — if either grows a grid or a breakpoint it
+   has become a missing kit component and belongs there instead. */
+.swarmops-diagnosis__fix-label {
+  margin: 0;
+  font-size: var(--nim-text-14);
+  font-weight: var(--nim-weight-semibold);
+  color: var(--nim-ink);
+}
+
+.swarmops-diagnosis__fix-detail {
+  margin: var(--nim-space-1) 0 0;
+  font-size: var(--nim-text-12);
+  line-height: var(--nim-leading-normal);
+  color: var(--nim-ink-secondary);
+}
+
+.swarmops-diagnosis__fix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nim-space-2);
+  margin-block-start: var(--nim-space-3);
+}
+
+.swarmops-diagnosis__evidence {
+  margin: var(--nim-space-4) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nim-space-2);
+}
+
+.swarmops-diagnosis__evidence > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nim-space-4);
+  padding-block: var(--nim-space-2);
+  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+}
+
+.swarmops-diagnosis__evidence dt {
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-12);
+  color: var(--nim-ink);
+}
+
+.swarmops-diagnosis__evidence dd {
+  margin: 0;
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-tertiary);
+}
