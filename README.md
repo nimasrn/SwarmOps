@@ -141,10 +141,13 @@ Today, SwarmOps is a Docker Swarm control plane, not a turnkey multi-tenant
 cloud PaaS. Its deployment primitive is a reviewed, generated image-only
 Compose v3.9 application stack. Private repository content can inform that
 generator and its bounded image build, but source Compose is never deployed
-directly. SwarmOps does not ingest Kubernetes manifests or Helm charts.
-Kubernetes/Helm compatibility is a future product decision, not an existing
-capability or promise. The dated Iranian market scan and the exact comparison
-boundary are in [market positioning](docs/market-positioning.md). The
+directly. SwarmOps does not deploy Kubernetes manifests or Helm charts
+directly. Its read-only Kubernetes importer can assess ordinary manifests and
+return a generated Compose draft for review, with explicit gaps where Swarm
+cannot preserve the workload's semantics. Helm rendering and direct
+Kubernetes deployment remain future product decisions, not existing
+capabilities or promises. The dated Iranian market scan and the exact
+comparison boundary are in [market positioning](docs/market-positioning.md). The
 bilingual programme reference and phased resilience roadmap are rendered from
 the nim.zone site’s versioned docs content and publish at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops) when the current site
@@ -259,6 +262,10 @@ proposes navigate to the screen that owns them rather than performing them:
 pruning is gated behind an explicit confirmation, and running a destructive
 command from the panel that just diagnosed the problem would bypass the
 deliberation that gate exists to force.
+
+Across these surfaces, evidence states are written in words. Unknown,
+unmeasured, unreported and unconfigured values never collapse into an
+ambiguous dash that an operator must interpret under pressure.
 
 ## Architecture
 

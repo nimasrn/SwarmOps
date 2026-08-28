@@ -11,7 +11,7 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
-## 0.10.0 — 2026-08-27
+## 0.10.0 — 2026-08-29
 
 SwarmOps can now answer why a service is not running, what a change will do
 before it is applied, and whether a Kubernetes workload can come across.
@@ -42,6 +42,11 @@ before it is applied, and whether a Kubernetes workload can come across.
 - **Placement constraints and update policy are now modelled.** Both were on
   the wire from Docker and unread, which is why an unschedulable service looked
   identical to a healthy one from everything SwarmOps could see.
+- **Evidence is a console grammar, not decoration.** Diagnosis, preview and
+  import use the shared causal-chain, caveat, command-list, decision, diff and
+  evidence components from nim-ui. Unknown, unmeasured, unreported and
+  unconfigured values are written explicitly instead of collapsing into an
+  ambiguous dash.
 
 ## 0.9.3 — 2026-08-28
 
