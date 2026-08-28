@@ -1067,3 +1067,29 @@ export interface DiagnosisResult {
   chain?: DiagnosisChain
   refusal?: DiagnosisRefusal
 }
+
+/** One Kubernetes object with a Swarm equivalent. `note` carries whatever the
+ *  translation loses — a mapping that changes behaviour without saying so is
+ *  the same lie as an unmappable object reported as mapped. */
+export interface ImportMapping {
+  from: string
+  to: string
+  note?: string
+}
+
+/** An object with no honest equivalent. `options` always includes staying on
+ *  Kubernetes, because that is a real answer and cheaper than finding out in
+ *  production. */
+export interface ImportGap {
+  object: string
+  why: string
+  options: string
+}
+
+export interface ImportReport {
+  mappings: ImportMapping[]
+  gaps: ImportGap[]
+  skipped?: string[]
+  errors?: string[]
+  compose?: string
+}

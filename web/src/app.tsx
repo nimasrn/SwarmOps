@@ -49,6 +49,7 @@ import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 import { APIError, api } from './api'
 import { OverviewDashboard } from './dashboard'
 import { Brand, SwarmOpsMark } from './brand'
+import { KubernetesImportPage } from './kubernetes-import'
 import { SourceDeployPage } from './source-deploy'
 import { ServerReadinessPage } from './server-readiness'
 import { AgentDiagnosticsPage } from './agent-diagnostics'
@@ -571,6 +572,8 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         </>
 	  ) : workspace === 'catalogue' ? (
         <CommandCataloguePage activeServerID={activeServerID} onQueued={(commandID) => { setHighlightedCommandID(commandID); setWorkspace('commands') }} servers={servers} toast={toast} />
+	  ) : workspace === 'kubernetes-import' ? (
+		<KubernetesImportPage />
 	  ) : workspace === 'source-deploy' || workspace === 'registry' ? (
 		<SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} view={workspace === 'registry' ? 'registry' : 'source'} />
 	  ) : workspace === 'overview' && core ? (

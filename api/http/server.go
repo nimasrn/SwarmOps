@@ -198,6 +198,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/servers/{id}", s.withActiveAuth(s.serverRemove))
 	mux.HandleFunc("GET /api/v1/services/{id}/diagnosis", s.withAuth(false, s.serviceDiagnosis))
 	mux.HandleFunc("GET /api/v1/diagnosis/rules", s.withAuth(false, s.diagnosisRules))
+	mux.HandleFunc("POST /api/v1/import/kubernetes", s.withAuth(false, s.k8sImport))
 	mux.HandleFunc("GET /api/v1/servers/{id}/diagnostics", s.withAuth(false, s.serverDiagnostics))
 	mux.HandleFunc("POST /api/v1/servers/{id}/agent-update", s.withActiveAuth(s.serverUpdate))
 	mux.HandleFunc("GET /api/v1/servers/{id}/readiness", s.withAuth(false, s.serverReadiness))
