@@ -25,6 +25,16 @@ export interface AdminShellProps {
     /** Under the nav: session state, build version — the things an operator
         checks before believing a screen. */
     sidebarFooter?: ReactNode;
+    /** Optional second-level navigation for section-based consoles. It stays
+        visible beside the workspace on wide containers and becomes a compact
+        horizontal strip on smaller ones. */
+    contextualGroups?: AdminNavGroup[];
+    /** Identity or scope shown above contextual navigation. */
+    contextualHeader?: ReactNode;
+    /** Evidence or a recovery shortcut shown below contextual navigation. */
+    contextualFooter?: ReactNode;
+    /** Active item in contextualGroups. Defaults to value. */
+    contextualValue?: string;
     groups: AdminNavGroup[];
     labels?: {
         menu?: string;
@@ -58,7 +68,7 @@ export interface AdminShellProps {
  * Below the layout's breakpoint the same sidebar becomes a drawer — the same
  * markup, not a second nav to keep in sync, which is how the two drift apart.
  */
-export declare function AdminShell({ brand, children, className, collapsible, groups, labels, navigation, sidebarFooter, title, toolbar, value, titleRole, }: AdminShellProps): import("react").JSX.Element;
+export declare function AdminShell({ brand, children, className, collapsible, contextualFooter, contextualGroups, contextualHeader, contextualValue, groups, labels, navigation, sidebarFooter, title, toolbar, value, titleRole, }: AdminShellProps): import("react").JSX.Element;
 export interface DetailHeaderProps {
     /** Buttons for this record: approve, retry, export. */
     actions?: ReactNode;

@@ -11,6 +11,26 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.8.0 — 2026-08-28
+
+This release turns the console redesign into the product’s real information
+architecture and corrects agent reachability reporting at the protocol edge.
+
+- **Command-center shell** — a light, responsive masthead separates seven
+  operator areas from their contextual workspaces, adds an environment-aware
+  feature finder, and preserves the selected page while evidence refreshes.
+- **Self-explaining operations** — Overview traces Controller → outbound Agent
+  → Docker Engine → Swarm, needs-attention cards show retained failure evidence
+  and recovery actions, Runs has working filters, and catalog operations open a
+  review sheet immediately.
+- **Clear ownership and vocabulary** — gateway ports, routes, DNS providers,
+  TLS, source deployment, registry policy, Docker resources, Swarm services,
+  stacks, applications, and managed databases each have one named owner and
+  explain how they differ.
+- **Truthful agent health** — outbound agents advertise the bounded log routes
+  they can actually execute, and a feature-specific controller catalog error
+  no longer becomes a false machine-unreachable status.
+
 ## 0.7.7 — 2026-08-28
 
 This patch keeps live operations stable during polling and makes failed

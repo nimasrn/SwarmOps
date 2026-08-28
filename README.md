@@ -18,6 +18,11 @@ needed. Production agents run on Ubuntu 22.04 or 24.04 and initiate outbound
 mutual-TLS long polls to Core. No inbound agent port, SSH session, WebSocket,
 or Traefik route is required for control traffic.
 
+Core can send only catalogued fixed requests through that outbound channel.
+The reviewed catalogue includes bounded log status and query routes; a local
+Core catalogue rejection is treated as a controller contract error and never
+as evidence that the authenticated agent or its network path is unreachable.
+
 ## Quick start
 
 In **Cluster → Servers**, generate a short-lived one-time installer
@@ -147,14 +152,17 @@ version is deployed.
 
 ## Console information architecture
 
-The console uses operator-centered groups. **Overview** answers what is healthy
-and what needs action. **Cluster** owns servers, Swarm topology, Docker
-resources, readiness and diagnostics. **Workloads** owns applications,
-databases, runtime services, stacks and image builds. **Networking** owns the
-Traefik gateway, routes, ports, DNS providers and TLS. **Monitoring** owns
-health, logs and collectors. **Activity** owns runs, the fixed action catalog
-and audit. **Settings** owns controller recovery and the source/registry
-boundary.
+The console uses a two-level operator hierarchy. A persistent top row owns
+**Overview**, **Cluster**, **Workloads**, **Network**, **Monitoring**,
+**Activity**, and **Settings**; a contextual rail names the workspaces inside
+the active area. Overview answers what is healthy and what needs action.
+Cluster owns servers, Swarm placement, Docker resources, setup and diagnostics.
+Workloads owns applications, managed databases, Swarm services, stacks and
+image builds. Network gives gateway ports, routes, DNS providers and TLS their
+own destinations. Monitoring owns health, logs and collectors. Activity owns
+runs, the fixed action catalog and audit. Settings owns controller recovery,
+source deployment and registry policy. The masthead feature finder reaches any
+destination without requiring the operator to know its category first.
 
 A page may show a compact status owned elsewhere, but it must link to the
 owner for investigation or mutation. It must not recreate the owner's tables,
@@ -162,14 +170,14 @@ filters, charts, configuration, or action menus. Overview is the deliberate
 exception for summaries, never a second full workspace. Every destination is
 directly addressable and preserves the selected server.
 
-The complete ownership table and interaction rules are in
+The complete ownership table, drill-down rules, and interaction rules are in
 [console information architecture](docs/console-information-architecture.md).
 
 ## What it operates
 
 | Area | Capability | Boundary |
 | --- | --- | --- |
-| Control plane | Show the active or standby controller identity, register a recovery standby, record a tested encrypted-state restore, fence a planned handoff, and promote a local standby | A core member is never an implicit Server. A standby does not contact agents, claim queued commands, or run cluster mutations until promotion. State/key transfer and external primary fencing remain an explicit operator recovery procedure; automatic failover is intentionally not claimed. |
+| Controller | Show the active or standby controller identity, register a recovery standby, record a tested encrypted-state restore, fence a planned handoff, and promote a local standby | A controller member is never an implicit Server. A standby does not contact agents, claim queued commands, or run cluster mutations until promotion. State/key transfer and external primary fencing remain an explicit operator recovery procedure; automatic failover is intentionally not claimed. |
 | Agents | Enrol an Ubuntu 22.04/24.04 host with a dashboard-generated command or approve the code printed by an install-first agent | Both flows generate the private key locally, issue a renewable client certificate, pin Core identity, and use outbound HTTPS long polls. Long-lived credentials are never printed. A Swarm manager is required before cluster pages or mutations are enabled. |
 | Nodes | Docker role/state/availability, labels, task placement, and engine-declared CPU/memory capacity from the selected machine agent | A target must be a remote Swarm manager for cluster operations; optional global host probes are not required for connection. |
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
@@ -281,7 +289,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.7.7`. Release history is in
+The current version is `0.8.0`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -344,10 +352,11 @@ targets and invalid TLS certificates. The production API remains the source of
 truth for cluster profiles, audit records, checked-in deployment assets, and
 the served production console.
 
-The console has seven stable groups: **Overview**, **Cluster**, **Workloads**,
-**Networking**, **Monitoring**, **Activity**, and **Settings**. Their direct
-destinations appear in a persistent desktop side rail and the same order in the
-mobile drawer. The masthead keeps controller authority separate from the
+The console has seven stable areas: **Overview**, **Cluster**, **Workloads**,
+**Network**, **Monitoring**, **Activity**, and **Settings**. They appear in a
+persistent desktop section row and in the same order in the mobile drawer. A
+contextual rail shows the destinations owned by the active area and becomes a
+horizontal strip on narrow screens. The masthead keeps controller authority separate from the
 selected Swarm cluster, and every cluster read or mutation continues to carry
 that explicit manager target. Pages that require a
 manager show a selected-manager workspace with direct recovery paths instead
@@ -505,7 +514,7 @@ The bootstrap writes a stable `SWARMOPS_CORE_ID` derived from its bound IP and
 marks the initial service `SWARMOPS_CORE_MODE=active`. A replacement controller
 must use a different stable ID and `SWARMOPS_CORE_MODE=standby`; stop its API
 before restoring a complete state copy, restore the matching data-encryption
-key through the protected host path, then start it and use **Control plane** to
+key through the protected host path, then start it and use **Controller & recovery** to
 record verification and promote it. Do not mount the same local state directory
 on two machines, use a network filesystem as live controller state, or start
 two active cores.

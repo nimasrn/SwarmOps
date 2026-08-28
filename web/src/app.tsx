@@ -9,6 +9,7 @@ import {
   Banner,
   Button,
   CodeBlock,
+  Combobox,
   Columns,
   DataTable,
   DetailHeader,
@@ -69,7 +70,6 @@ import type {
 	CoreTopology,
   DatabaseStatus,
   Health,
-  InsightsSample,
   Node,
   ObservabilityStatus,
   Overview,
@@ -83,8 +83,9 @@ import type {
   TraefikStatus,
 } from './types'
 
-type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'resources' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'traefik'
-type ClusterPage = Exclude<WorkspacePage, 'agent-diagnostics' | 'audit' | 'catalogue' | 'commands' | 'core' | 'provisioning' | 'servers' | 'source-deploy'>
+type WorkspacePage = 'agent-diagnostics' | 'applications' | 'audit' | 'builds' | 'catalogue' | 'commands' | 'core' | 'databases' | 'dns' | 'gateway' | 'insights' | 'logs' | 'nodes' | 'observability' | 'overview' | 'provisioning' | 'registry' | 'resources' | 'routes' | 'servers' | 'services' | 'source-deploy' | 'stacks' | 'tls'
+type WorkspaceSection = 'activity' | 'cluster' | 'monitoring' | 'network' | 'overview' | 'settings' | 'workloads'
+type ClusterPage = Exclude<WorkspacePage, 'agent-diagnostics' | 'audit' | 'catalogue' | 'commands' | 'core' | 'provisioning' | 'registry' | 'servers' | 'source-deploy'>
 
 interface DashboardData {
   nodes: Node[]
@@ -110,23 +111,31 @@ const PAGES: Record<WorkspacePage, string> = {
   commands: 'Runs',
   core: 'Controller & recovery',
   databases: 'Managed databases',
+  dns: 'DNS providers',
+  gateway: 'Gateway & ports',
   insights: 'Health',
   logs: 'Logs',
-  nodes: 'Swarm',
+  nodes: 'Swarm & placement',
   observability: 'Collectors',
   overview: 'Overview',
   provisioning: 'Setup & readiness',
-  resources: 'Resources',
+  registry: 'Container registry',
+  resources: 'Docker resources',
+  routes: 'Routes',
   servers: 'Servers',
-  services: 'Runtime',
-  'source-deploy': 'Source & registry',
+  services: 'Swarm services',
+  'source-deploy': 'Source deployment',
   stacks: 'Stacks',
-  traefik: 'Gateway, routes & DNS',
+  tls: 'TLS certificates',
 }
 
 const LEGACY_ROUTES: Record<string, WorkspacePage> = {
   home: 'overview', infrastructure: 'nodes', applications: 'applications', deploy: 'source-deploy',
-  traffic: 'traefik', observe: 'insights', operations: 'commands', settings: 'core',
+  traffic: 'gateway', traefik: 'gateway', observe: 'insights', operations: 'commands', settings: 'core',
+}
+
+const WORKSPACE_SECTION: Record<WorkspacePage, WorkspaceSection> = {
+  'agent-diagnostics': 'cluster', applications: 'workloads', audit: 'activity', builds: 'workloads', catalogue: 'activity', commands: 'activity', core: 'settings', databases: 'workloads', dns: 'network', gateway: 'network', insights: 'monitoring', logs: 'monitoring', nodes: 'cluster', observability: 'monitoring', overview: 'overview', provisioning: 'cluster', registry: 'settings', resources: 'cluster', routes: 'network', servers: 'cluster', services: 'workloads', 'source-deploy': 'settings', stacks: 'workloads', tls: 'network',
 }
 
 const AGENT_INSTALL_URL = 'https://github.com/nimasrn/SwarmOps/releases/latest/download/install-swarmops-agent.sh'
@@ -329,7 +338,6 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 	const { error: auditError, events: auditEvents, initialLoading: auditInitialLoading, refreshing: auditRefreshing, refresh: refreshAudit } = useAuditEvents(workspace === 'audit', onLogout)
 	const { commands, error: commandsError, initialLoading: commandsInitialLoading, refreshing: commandsRefreshing, refresh: refreshCommands } = useCommands(workspace === 'commands' || workspace === 'catalogue' || workspace === 'overview', onLogout)
 	const { core, error: coreError, refresh: refreshCore } = useCoreTopology(onLogout)
-  const [homeActivity, setHomeActivity] = useState<InsightsSample[]>([])
   const [highlightedCommandID, setHighlightedCommandID] = useState('')
   const [activeServerID, setActiveServerID] = useState(() => window.sessionStorage.getItem(SELECTED_SERVER_KEY) ?? '')
 	// Selection is operator intent, not a health result. Keep the explicit target
@@ -351,18 +359,6 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     window.addEventListener('swarmops:open-logs', openLogs)
     return () => window.removeEventListener('swarmops:open-logs', openLogs)
   }, [setWorkspace])
-
-  useEffect(() => {
-    let cancelled = false
-    if (workspace !== 'overview' || !activeServer) {
-      setHomeActivity([])
-      return () => { cancelled = true }
-    }
-    void api.insightsHistory()
-      .then((samples) => { if (!cancelled) setHomeActivity(Array.isArray(samples) ? samples : []) })
-      .catch(() => { if (!cancelled) setHomeActivity([]) })
-    return () => { cancelled = true }
-  }, [activeServer?.id, data?.overview.generatedAt, workspace])
 
   useEffect(() => {
     if (serversLoading) return
@@ -395,26 +391,28 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     onLogout()
   }
 
-	const groups = useMemo(() => [
+	const workspaceGroups = useMemo(() => [
     { key: 'overview', label: '', items: [
-      { icon: 'home' as const, key: 'overview', label: 'Overview', onSelect: () => setWorkspace('overview') },
+      { icon: 'home' as const, key: 'overview', label: 'Command center', onSelect: () => setWorkspace('overview') },
     ] },
     { key: 'cluster', label: 'Cluster', items: [
       { icon: 'server' as const, key: 'servers', label: 'Servers', onSelect: () => setWorkspace('servers') },
-      { icon: 'layers' as const, key: 'nodes', label: 'Swarm', onSelect: () => setWorkspace('nodes') },
-      { icon: 'package' as const, key: 'resources', label: 'Resources', onSelect: () => setWorkspace('resources') },
-      { icon: 'check-circle' as const, key: 'provisioning', label: 'Setup & readiness', onSelect: () => setWorkspace('provisioning') },
-      { icon: 'activity' as const, key: 'agent-diagnostics', label: 'Diagnostics', onSelect: () => setWorkspace('agent-diagnostics') },
+      { icon: 'layers' as const, key: 'nodes', label: 'Swarm & placement', onSelect: () => setWorkspace('nodes') },
+      { icon: 'check-circle' as const, key: 'provisioning', label: 'Host setup', onSelect: () => setWorkspace('provisioning') },
+      { icon: 'package' as const, key: 'resources', label: 'Docker resources', onSelect: () => setWorkspace('resources') },
     ] },
     { key: 'workloads', label: 'Workloads', items: [
       { icon: 'layers' as const, key: 'applications', label: 'Applications', onSelect: () => setWorkspace('applications') },
-      { icon: 'database' as const, key: 'databases', label: 'Databases', onSelect: () => setWorkspace('databases') },
-      { icon: 'terminal' as const, key: 'services', label: 'Runtime', onSelect: () => setWorkspace('services') },
+      { icon: 'database' as const, key: 'databases', label: 'Managed databases', onSelect: () => setWorkspace('databases') },
+      { icon: 'terminal' as const, key: 'services', label: 'Swarm services', onSelect: () => setWorkspace('services') },
       { icon: 'layers' as const, key: 'stacks', label: 'Stacks', onSelect: () => setWorkspace('stacks') },
-      { icon: 'package' as const, key: 'builds', label: 'Image builds', onSelect: () => setWorkspace('builds') },
+      { icon: 'package' as const, key: 'builds', label: 'Images & builds', onSelect: () => setWorkspace('builds') },
     ] },
-    { key: 'networking', label: 'Networking', items: [
-      { icon: 'external' as const, key: 'traefik', label: 'Gateway, routes & DNS', onSelect: () => setWorkspace('traefik') },
+    { key: 'network', label: 'Network', items: [
+      { icon: 'external' as const, key: 'gateway', label: 'Gateway & ports', onSelect: () => setWorkspace('gateway') },
+      { icon: 'layers' as const, key: 'routes', label: 'Routes', onSelect: () => setWorkspace('routes') },
+      { icon: 'cloud' as const, key: 'dns', label: 'DNS providers', onSelect: () => setWorkspace('dns') },
+      { icon: 'shield' as const, key: 'tls', label: 'TLS certificates', onSelect: () => setWorkspace('tls') },
     ] },
     { key: 'monitoring', label: 'Monitoring', items: [
       { icon: 'trend-up' as const, key: 'insights', label: 'Health', onSelect: () => setWorkspace('insights') },
@@ -424,13 +422,37 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
     { key: 'activity', label: 'Activity', items: [
       { icon: 'play' as const, key: 'commands', label: 'Runs', onSelect: () => setWorkspace('commands') },
       { icon: 'document' as const, key: 'catalogue', label: 'Action catalog', onSelect: () => setWorkspace('catalogue') },
-      { icon: 'shield' as const, key: 'audit', label: 'Audit', onSelect: () => setWorkspace('audit') },
+      { icon: 'shield' as const, key: 'audit', label: 'Audit trail', onSelect: () => setWorkspace('audit') },
     ] },
     { key: 'settings', label: 'Settings', items: [
-      { icon: 'settings' as const, key: 'core', label: 'Controller & recovery', onSelect: () => setWorkspace('core') },
-      { icon: 'cloud' as const, key: 'source-deploy', label: 'Source & registry', onSelect: () => setWorkspace('source-deploy') },
+      { icon: 'settings' as const, key: 'core', label: 'Controller', onSelect: () => setWorkspace('core') },
+      { icon: 'cloud' as const, key: 'source-deploy', label: 'Source deployment', onSelect: () => setWorkspace('source-deploy') },
+      { icon: 'package' as const, key: 'registry', label: 'Container registry', onSelect: () => setWorkspace('registry') },
     ] },
   ], [setWorkspace])
+
+  const activeSection = WORKSPACE_SECTION[workspace]
+  const activeWorkspaceGroup = workspaceGroups.find((group) => group.key === activeSection) ?? workspaceGroups[0]!
+  const primaryGroups = useMemo(() => [{ key: 'primary', label: '', items: [
+    { key: 'overview', label: 'Overview', onSelect: () => setWorkspace('overview') },
+    { key: 'cluster', label: 'Cluster', onSelect: () => setWorkspace('servers') },
+    { key: 'workloads', label: 'Workloads', onSelect: () => setWorkspace('applications') },
+    { key: 'network', label: 'Network', onSelect: () => setWorkspace('gateway') },
+    { key: 'monitoring', label: 'Monitoring', onSelect: () => setWorkspace('insights') },
+    { key: 'activity', label: 'Activity', onSelect: () => setWorkspace('commands') },
+    { key: 'settings', label: 'Settings', onSelect: () => setWorkspace('core') },
+  ] }], [setWorkspace])
+
+  useEffect(() => {
+    const focusFinder = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        document.querySelector<HTMLInputElement>('.swarmops-feature-finder input')?.focus()
+      }
+    }
+    window.addEventListener('keydown', focusFinder)
+    return () => window.removeEventListener('keydown', focusFinder)
+  }, [])
 
 	const refreshAction = workspace === 'audit'
     ? refreshAudit
@@ -461,36 +483,52 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   return (
     <AdminShell
       brand={<Brand subtitle="" />}
-      collapsible
-      groups={groups}
-      navigation="sidebar"
-      sidebarFooter={
+      contextualFooter={
         <>
-          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Checking controller' : core.controlEnabled ? 'Controller reachable' : 'Controller read-only'}</StatusDot>
-          <span>{core ? `Controller authority ${core.authorityEpoch}` : 'Reading controller authority'}</span>
-          <span>{data ? `Cluster snapshot ${formatDateTime(data.overview.generatedAt)}` : activeServer ? 'Refreshing cluster state' : 'No cluster selected'}</span>
+          <StatusDot tone={activeServer?.connectionState === 'connected' ? 'success' : activeServer ? 'warning' : 'neutral'}>{activeServer?.connectionState === 'connected' ? 'Agent connected' : activeServer ? 'Agent reconnecting' : 'No agent selected'}</StatusDot>
+          <span>{activeServer?.connectionState === 'connected' ? 'The outbound transport is live. Feature-specific failures appear in their owning workspace.' : 'Choose Servers to inspect enrollment and safe connection evidence.'}</span>
         </>
       }
+      contextualGroups={[activeWorkspaceGroup]}
+      contextualHeader={
+        <>
+          <Label>Selected environment</Label>
+          <strong>{activeServer?.name ?? 'Production'}</strong>
+          <span>{activeServer ? `${activeServer.host} · ${activeServer.swarmControlAvailable ? 'Swarm manager' : 'Host setup required'}` : 'Choose a server to inspect Docker and Swarm'}</span>
+        </>
+      }
+      contextualValue={workspace}
+      groups={primaryGroups}
+      navigation="sections"
       title={
         <Inline wrap={false}>
-          <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Controller: Checking' : core.controlEnabled ? 'Controller: Active' : 'Controller: Standby'}</StatusDot>
-          <Label>Cluster:</Label>
+          <Label>Environment</Label>
           {managers.length ? (
             <Select
               aria-label="Selected Docker Swarm cluster manager"
 				onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('servers')}
               options={managers.map((server) => ({ label: server.name, value: server.id }))}
-              placeholder="Select cluster"
+              placeholder="Production · select server"
               value={activeServerID}
             />
           ) : (
-			<Button iconStart="server" onClick={() => setWorkspace('servers')} size="sm" variant="ghost">Connect cluster</Button>
+			<Button iconStart="server" onClick={() => setWorkspace('servers')} size="sm" variant="ghost">Production · connect server</Button>
           )}
         </Inline>
       }
       titleRole="scope"
       toolbar={
         <>
+		  <Combobox<WorkspacePage>
+			ariaLabel="Find a feature or setting"
+			className="swarmops-feature-finder"
+			emptyState={(query) => `No feature matches “${query}”.`}
+			onChange={(next) => { if (next) setWorkspace(next) }}
+			options={(Object.entries(PAGES) as [WorkspacePage, string][]).map(([value, label]) => ({ label, meta: WORKSPACE_SECTION[value], value }))}
+			placeholder="Find anything…  ⌘K"
+			value={null}
+		  />
+		  <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>{!core ? 'Controller checking' : core.controlEnabled ? 'Controller ready' : 'Controller standby'}</StatusDot>
 		  <IconButton disabled={refreshLoading} label={refreshLabel} name="refresh" onClick={() => void refreshAction()} size="sm" variant="ghost" />
           <Inline gap="tight">
             <Avatar name={session.user.username} size="sm" />
@@ -498,7 +536,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
           </Inline>
         </>
       }
-      value={workspace}
+      value={activeSection}
     >
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
 	  {workspace === 'servers' ? (
@@ -517,15 +555,14 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 	  ) : workspace === 'commands' ? (
         <>
           {commandsError ? <Banner title="Runs unavailable" tone="danger">{commandsError}</Banner> : null}
-          {commandsInitialLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} dashboard={data} highlightedID={highlightedCommandID} onOpenDiagnostics={() => setWorkspace('agent-diagnostics')} onOpenGateway={() => setWorkspace('traefik')} onOpenSwarm={() => setWorkspace('nodes')} onRefresh={refreshCommands} servers={servers} toast={toast} />}
+          {commandsInitialLoading ? <LoadingScreen label="Reading durable commands" /> : <CommandQueuePage commands={commands} dashboard={data} highlightedID={highlightedCommandID} onOpenDiagnostics={() => setWorkspace('agent-diagnostics')} onOpenGateway={() => setWorkspace('gateway')} onOpenSwarm={() => setWorkspace('nodes')} onRefresh={refreshCommands} servers={servers} toast={toast} />}
         </>
 	  ) : workspace === 'catalogue' ? (
         <CommandCataloguePage activeServerID={activeServerID} onQueued={(commandID) => { setHighlightedCommandID(commandID); setWorkspace('commands') }} servers={servers} toast={toast} />
-	  ) : workspace === 'source-deploy' ? (
-        <SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} />
+	  ) : workspace === 'source-deploy' || workspace === 'registry' ? (
+		<SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} view={workspace === 'registry' ? 'registry' : 'source'} />
 	  ) : workspace === 'overview' && core ? (
 		<HomePage
-		  activity={homeActivity}
 		  cluster={activeServer && data ? data : undefined}
 		  commands={commands}
 		  core={core}
@@ -535,7 +572,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  onOpenApplications={() => setWorkspace('applications')}
 		  onOpenInfrastructure={() => setWorkspace('nodes')}
 		  onOpenOperations={() => setWorkspace('commands')}
-		  onOpenTraffic={() => setWorkspace('traefik')}
+		  onOpenTraffic={() => setWorkspace('gateway')}
 		  servers={servers}
 		/>
 	  ) : !activeServer ? (
@@ -585,8 +622,11 @@ function PageRouter({
     case 'stacks': return <StacksPage nodes={data.nodes} stacks={data.stacks} toast={toast} />
     case 'services': return <ServicesPage services={data.services} toast={toast} />
     case 'builds': return <BuildsPage toast={toast} />
-    case 'traefik': return <TraefikControlPage status={data.traefik} toast={toast} />
-    case 'observability': return <ObservabilityPage nodes={data.nodes} onOpenGateway={() => window.location.hash = 'traefik'} onOpenSwarm={() => window.location.hash = 'nodes'} status={data.observability} toast={toast} traefik={data.traefik} />
+    case 'gateway': return <TraefikControlPage initialTab="overview" status={data.traefik} toast={toast} />
+    case 'routes': return <TraefikControlPage initialTab="routes" status={data.traefik} toast={toast} />
+    case 'dns': return <TraefikControlPage initialTab="dns" status={data.traefik} toast={toast} />
+    case 'tls': return <TraefikControlPage initialTab="certificates" status={data.traefik} toast={toast} />
+    case 'observability': return <ObservabilityPage nodes={data.nodes} onOpenGateway={() => window.location.hash = 'gateway'} onOpenSwarm={() => window.location.hash = 'nodes'} status={data.observability} toast={toast} traefik={data.traefik} />
     case 'logs': return <LogsPage />
     case 'databases': return <DatabasesPage toast={toast} />
     case 'applications': return <ApplicationsPage toast={toast} />
@@ -1305,11 +1345,11 @@ function ServicesPage({ services, toast }: { services: Service[]; toast: ReturnT
     { header: 'Health', key: 'health', render: (service) => <StatusBadge health={service.health} /> },
     { header: 'Update', key: 'update', render: (service) => service.updateState || '—' },
   ]
-  if (!selected) return <EmptyState description="Docker Engine returned no Swarm services." icon="sparkle" title="No services" />
+  if (!selected) return <Page><DetailHeader subtitle="Long-running processes scheduled by Docker Swarm. Docker Compose and standalone containers are listed separately under Cluster → Docker resources." title="Swarm services" /><EmptyState description="Docker Engine is reachable, but this Swarm currently schedules zero services. This is normal when workloads run as Docker Compose or standalone containers." icon="layers" title="No Swarm services" /></Page>
   const canScale = selected.mode.toLowerCase() === 'replicated'
   return (
     <Page>
-      <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Logs come from the bounded Fluentd query path. Restarts and rollbacks use fixed audited command shapes, not browser-supplied shell commands." title="Service control" />
+      <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Long-running processes scheduled by Docker Swarm. Compose and standalone containers are listed under Cluster → Docker resources. Restarts and rollbacks use fixed audited command shapes." title="Swarm services" />
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
       <Columns>
         <Panel eyebrow={selected.stack ?? 'No stack label'} title={selected.name}>

@@ -1,25 +1,31 @@
+import { useEffect, useState } from 'react'
 import {
   Body,
   Button,
-  Chart,
   Columns,
   DetailHeader,
   EmptyState,
   Facts,
+  Icon,
   Inline,
+  List,
+  ListRow,
+  Metric,
+  MetricGrid,
   Mono,
   Page,
   Panel,
+  Stack as Rows,
   StatusHero,
   StatusDot,
   Table,
 } from '@nim.zone/ui'
 import type { StatusTone, TableColumn } from '@nim.zone/ui'
+import { api } from './api'
 import type {
   Command,
   CoreTopology,
-  InsightsSample,
-  Node,
+  ContainerSummary,
   ObservabilityStatus,
   Overview,
   Server,
@@ -35,7 +41,6 @@ interface HomeClusterData {
 }
 
 interface HomePageProps {
-  activity: InsightsSample[]
   commands: Command[]
   cluster?: HomeClusterData
   core: CoreTopology
@@ -56,24 +61,6 @@ interface AttentionItem {
   tone: StatusTone
 }
 
-const NODE_COLUMNS: TableColumn<Node>[] = [
-  {
-    header: 'Node',
-    key: 'node',
-    render: (node) => (
-      <Inline gap="tight">
-        <StatusDot tone={nodeTone(node)}>{node.hostname}</StatusDot>
-        {node.address ? <Mono size="sm">{node.address}</Mono> : null}
-      </Inline>
-    ),
-  },
-  { header: 'Role', key: 'role', render: (node) => node.manager?.leader ? 'Manager · leader' : capitalize(node.role) },
-  { header: 'Host probe', key: 'agent', render: (node) => node.agent.healthy ? `Online${node.agent.version ? ` · ${node.agent.version}` : ''}` : node.agent.error ? 'Unavailable' : 'Not configured' },
-  { header: 'CPU', key: 'cpu', numeric: true, render: (node) => capacityLabel(node.cpu, 'cores') },
-  { header: 'Memory', key: 'memory', numeric: true, render: (node) => capacityLabel(node.memory) },
-  { header: 'Disk', key: 'disk', numeric: true, render: (node) => capacityLabel(node.disk) },
-]
-
 const COMMAND_COLUMNS: TableColumn<Command>[] = [
   { header: 'Operation', key: 'operation', render: (command) => <Mono size="inherit">{shortID(command.id)}</Mono> },
   { header: 'Action', key: 'action', render: (command) => command.action },
@@ -84,7 +71,6 @@ const COMMAND_COLUMNS: TableColumn<Command>[] = [
 ]
 
 export function HomePage({
-  activity,
   cluster,
   commands,
   core,
@@ -98,89 +84,108 @@ export function HomePage({
   servers,
 }: HomePageProps) {
   const activeCore = core.members.find((member) => member.id === core.activeId)
-  const connectedServer = servers.find((server) => server.connectionState === 'connected' && server.swarmControlAvailable)
+  const connectedServer = servers.find((server) => server.connectionState === 'connected')
   const attention = attentionItems(core, cluster, servers, commands)
   const nodes = cluster?.overview.nodes ?? []
-  const history = Array.isArray(activity) ? activity.slice(-12) : []
-  const healthy = core.controlEnabled && Boolean(cluster) && attention.length === 0
+  const [containers, setContainers] = useState<ContainerSummary[]>([])
+  const [containerEvidence, setContainerEvidence] = useState<'available' | 'loading' | 'unavailable'>('loading')
+  const operating = core.controlEnabled && connectedServer?.connectionState === 'connected' && cluster?.overview.health !== 'unhealthy'
   const visibleCommands = commands.slice(0, 6)
+  const primaryAttention = attention[0]
+
+  useEffect(() => {
+    let cancelled = false
+    if (!cluster) {
+      setContainers([])
+      setContainerEvidence('unavailable')
+      return () => { cancelled = true }
+    }
+    setContainerEvidence('loading')
+    void api.containers().then((next) => {
+      if (!cancelled) {
+        setContainers(Array.isArray(next) ? next : [])
+        setContainerEvidence('available')
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setContainers([])
+        setContainerEvidence('unavailable')
+      }
+    })
+    return () => { cancelled = true }
+  }, [cluster?.overview.generatedAt])
 
   return (
     <Page width="full">
       <DetailHeader
         actions={<Inline><Button iconStart="play" onClick={onDeploy} variant="accent">Deploy application</Button><Button iconStart="plus" onClick={onAddNode} variant="secondary">Add node</Button></Inline>}
-        subtitle={connectedServer ? `Environment ${connectedServer.name} · ${nodes.length} Swarm node${nodes.length === 1 ? '' : 's'}` : 'Controller status and the next action to take'}
-        title="Overview"
+        meta={cluster ? <StatusDot tone="success">Production snapshot · {formatTime(cluster.overview.generatedAt)}</StatusDot> : <StatusDot tone="neutral">Waiting for production evidence</StatusDot>}
+        subtitle="Health, risk, and the next operator decision. Every signal names the source that produced it."
+        title="Command center"
       />
 
-      <Columns template="two-fifths">
-        <StatusHero
-          description={healthy ? 'All systems operational' : cluster ? `${attention.length} issue${attention.length === 1 ? '' : 's'} require review.` : 'The controller is active; select a Swarm manager to begin cluster inspection.'}
-          icon={healthy ? 'check' : attention.length ? 'alert' : 'activity'}
-          title={healthy ? 'Cluster is healthy' : attention.length ? 'Cluster needs attention' : 'Connect a cluster'}
-          tone={healthy ? 'success' : attention.length ? 'warning' : 'accent'}
-        />
-        <Panel actions={attention.length ? <Button onClick={onDiagnose} size="sm" variant="ghost">View all issues</Button> : undefined} flush title={`Needs your attention${attention.length ? ` (${attention.length})` : ''}`}>
-          {attention.length ? <Table columns={[
-            { header: 'Resource', key: 'resource', render: (item: AttentionItem) => <StatusDot tone={item.tone}>{item.label}</StatusDot> },
-            { header: 'Diagnosis', key: 'detail', render: (item: AttentionItem) => item.detail },
-          ]} rowKey={(item) => item.id} rows={attention.slice(0, 3)} /> : <Body size="sm" tone="muted">No current controller, agent, cluster, or command issue needs operator attention.</Body>}
+      <StatusHero
+        description={operating ? `Agent, Docker, and Swarm are responding${attention.length ? `; ${attention.length} reviewed operation${attention.length === 1 ? '' : 's'} still need an operator decision.` : '.'}` : connectedServer ? 'The agent connection or cluster evidence is incomplete. Open the attention item below for the exact failing layer.' : 'Connect an outbound machine agent to begin production inspection.'}
+        icon={operating ? 'check' : 'alert'}
+        title={operating ? 'Production is operating' : 'Production evidence is incomplete'}
+        tone={operating ? 'success' : 'warning'}
+      />
+
+      <MetricGrid aria-label="Production signal summary" columns={4} dense>
+        <Metric hint={activeCore ? 'Owns durable operations and policy' : `Local identity ${core.localId}`} icon="shield" label="Controller" tone={core.controlEnabled ? 'success' : 'warning'} value={core.controlEnabled ? 'Ready' : 'Standby'} />
+        <Metric hint="Authenticated outbound TLS; no inbound agent port" icon="link" label="Agent connection" tone={connectedServer ? 'success' : 'warning'} value={connectedServer ? 'Connected' : 'Not connected'} />
+        <Metric hint={connectedServer?.dockerVersion || 'No current Engine version'} icon="package" label="Docker Engine" tone={connectedServer?.dockerAvailable ? 'success' : 'warning'} value={connectedServer?.dockerAvailable ? 'Healthy' : 'Unavailable'} />
+        <Metric hint={connectedServer?.swarmControlAvailable ? `${nodes.length} node${nodes.length === 1 ? '' : 's'} · selected manager` : 'Docker can run without Swarm services'} icon="layers" label="Docker Swarm" tone={connectedServer?.swarmControlAvailable ? 'success' : 'neutral'} value={connectedServer?.swarmControlAvailable ? 'Active' : connectedServer ? 'Not initialized' : 'Unknown'} />
+      </MetricGrid>
+
+      <Columns template="two-thirds">
+        <Panel
+          actions={primaryAttention ? <Inline><Button onClick={onOpenOperations} size="sm" variant="accent">Review recovery</Button><Button onClick={onDiagnose} size="sm" variant="secondary">Open evidence</Button></Inline> : undefined}
+          caption={attention.length ? `${attention.length} open decision${attention.length === 1 ? '' : 's'}` : 'No open decision'}
+          title={primaryAttention?.label ?? 'No operator action required'}
+        >
+          {primaryAttention ? <Rows gap="tight"><Body>{primaryAttention.detail}</Body><List plain>{attention.map((item) => <ListRow key={item.id} leading={<Icon name={item.tone === 'danger' ? 'alert' : 'activity'} size="sm" tone={item.tone === 'danger' ? 'danger' : 'warning'} />} subtitle={item.detail} title={item.label} trailing={<StatusDot tone={item.tone}>Review</StatusDot>} />)}</List></Rows> : <Body size="sm" tone="muted">The current controller, agent, cluster, and durable command evidence contains no condition requiring intervention.</Body>}
+        </Panel>
+        <Panel title="Where the signal comes from">
+          <List plain>
+            <ListRow leading={<Icon name="shield" size="sm" />} subtitle="Stores authority and durable operations" title="Controller" trailing={<StatusDot tone={core.controlEnabled ? 'success' : 'warning'}>{core.controlEnabled ? 'Ready' : 'Standby'}</StatusDot>} />
+            <ListRow leading={<Icon name="link" size="sm" />} subtitle="Maintains authenticated long polling" title="Outbound agent" trailing={<StatusDot tone={connectedServer ? 'success' : 'warning'}>{connectedServer ? 'Connected' : 'Missing'}</StatusDot>} />
+            <ListRow leading={<Icon name="package" size="sm" />} subtitle="Reports local containers and Swarm state" title="Docker Engine" trailing={<StatusDot tone={connectedServer?.dockerAvailable ? 'success' : 'warning'}>{connectedServer?.dockerAvailable ? 'Healthy' : 'Unavailable'}</StatusDot>} />
+            <ListRow leading={<Icon name="layers" size="sm" />} subtitle="Leads the explicitly selected cluster" title="Swarm manager" trailing={<StatusDot tone={connectedServer?.swarmControlAvailable ? 'success' : 'neutral'}>{connectedServer?.swarmControlAvailable ? 'Active' : 'Not active'}</StatusDot>} />
+          </List>
         </Panel>
       </Columns>
 
-      {connectedServer ? <Panel actions={<Inline><Button onClick={onOpenInfrastructure} size="sm" variant="secondary">View server</Button><Button onClick={onDiagnose} size="sm" variant="ghost">Run diagnostics</Button></Inline>} title={`${connectedServer.name} is connected`}>
-        <Body size="sm">This server securely connects out to SwarmOps; no inbound agent port is exposed.</Body>
-        <Facts items={[
-          { label: 'Docker', value: connectedServer.dockerVersion || 'Engine reachable' },
-          { label: 'Swarm', value: connectedServer.swarmControlAvailable ? 'Manager' : connectedServer.swarmState || 'Not active' },
-          { label: 'Agent', mono: true, value: connectedServer.agentHealth?.agentVersion ? `v${connectedServer.agentHealth.agentVersion.replace(/^v/, '')}` : 'Version unavailable' },
-        ]} />
-      </Panel> : null}
-
-      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">Open Swarm</Button>} caption={`${nodes.length} node${nodes.length === 1 ? '' : 's'}`} flush title="Swarm topology">
-        {nodes.length ? <Table columns={NODE_COLUMNS} rowKey={(node) => node.id} rows={nodes.slice(0, 6)} /> : (
-          <EmptyState actions={<Button onClick={onAddNode} size="sm" variant="secondary">Add node</Button>} description="Node capacity, agent health, Docker state, and task placement appear after enrollment." icon="server" title="No managed nodes" />
-        )}
+      <Panel actions={<Button onClick={onOpenInfrastructure} size="sm" variant="ghost">Browse resources</Button>} title="What actually runs on this server">
+        <MetricGrid columns={3} dense>
+          <Metric hint={containerEvidence === 'available' ? 'Docker containers, including Compose workloads' : containerEvidence === 'loading' ? 'Reading Docker container inventory' : 'Open Docker resources for current evidence'} label="Compose and Engine containers" value={containerEvidence === 'available' ? String(containers.length) : '—'} />
+          <Metric hint={cluster?.overview.summary.services ? 'Services scheduled by Docker Swarm' : 'Swarm can be active while running zero services'} label="Swarm services" value={String(cluster?.overview.summary.services ?? 0)} />
+          <Metric hint={cluster?.stacks.length ? 'Namespaces grouping Swarm services' : 'No namespaced service groups'} label="Swarm stacks" value={String(cluster?.stacks.length ?? 0)} />
+        </MetricGrid>
       </Panel>
 
-      <Columns template="thirds">
-        <Panel actions={<Button onClick={onOpenApplications} size="sm" variant="ghost">View all</Button>} flush title={`Applications (${cluster?.stacks.length ?? 0})`}>
-          {cluster?.stacks.length ? <Table columns={[
-            { header: 'Application', key: 'name', render: (stack: Stack) => stack.name },
-            { header: 'Health', key: 'health', render: (stack: Stack) => <StatusDot tone={healthTone(stack.health)}>{healthLabel(stack.health)}</StatusDot> },
-            { header: 'Tasks', key: 'tasks', numeric: true, render: (stack: Stack) => stack.runningTasks },
-          ]} rowKey={(stack) => stack.name} rows={cluster.stacks.slice(0, 7)} /> : <EmptyState description="Applications appear after the selected manager reports deployed stacks." icon="layers" title="No applications" />}
+      <Columns>
+        <Panel actions={<Button onClick={onOpenApplications} size="sm" variant="ghost">Open workloads</Button>} title="Application, service, or stack?">
+          <Facts items={[
+            { label: 'Application', value: 'The product you deploy and operate as one lifecycle.' },
+            { label: 'Service', value: 'A long-running Swarm process inside an application or stack.' },
+            { label: 'Stack', value: 'An advanced group of services, networks, configs, and secrets.' },
+            { label: 'Managed database', value: 'A stateful dependency whose placement, credentials, backup posture, and lifecycle SwarmOps owns.' },
+          ]} />
         </Panel>
-
-        <Panel actions={<Button onClick={onOpenTraffic} size="sm" variant="ghost">View traffic</Button>} title="Cluster activity">
-          {history.length > 1 ? <Chart categories={history.map((sample) => formatTime(sample.at))} format={(value) => Number.isInteger(value) ? String(value) : value.toFixed(1)} height={150} legend max={Math.max(1, ...history.map((sample) => Math.max(sample.tasksDesired, sample.containersTotal)))} min={0} series={[
-            { label: 'Tasks', series: 1, values: history.map((sample) => sample.tasksRunning) },
-            { label: 'Containers', series: 2, values: history.map((sample) => sample.containersRunning) },
-          ]} /> : <EmptyState description="Activity history begins after two manager snapshots." icon="chart" title="Collecting activity" />}
-        </Panel>
-
-        <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View runs</Button>} flush title="Recent activity">
-          {visibleCommands.length ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} /> : <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations" />}
+        <Panel actions={<Button onClick={onOpenTraffic} size="sm" variant="ghost">Open gateway</Button>} title="Recommended sequence">
+          <List plain>
+            <ListRow leading={<Icon name="document" size="sm" />} subtitle="Confirm the failure is feature-specific, not an agent outage." title="1. Read the run evidence" />
+            <ListRow leading={<Icon name="external" size="sm" />} subtitle="Choose the existing production gateway or install the managed one." title="2. Resolve gateway ownership" />
+            <ListRow leading={<Icon name="server" size="sm" />} subtitle="Approve stateful and edge placement before retrying shared workloads." title="3. Confirm placement" />
+          </List>
         </Panel>
       </Columns>
 
-      <Panel title="How workloads are organized">
-        <Facts items={[
-          { label: 'Application', value: 'The product you deploy and operate as one lifecycle.' },
-          { label: 'Service', value: 'A long-running process inside an application or stack.' },
-          { label: 'Stack', value: 'An advanced group of services, networks, configs, and secrets deployed together.' },
-          { label: 'Managed database', value: 'A database whose placement, credentials, backup, and lifecycle SwarmOps owns.' },
-        ]} />
+      <Panel actions={<Button onClick={onOpenOperations} size="sm" variant="ghost">View all runs</Button>} flush title="Recent operations">
+        {visibleCommands.length ? <Table columns={COMMAND_COLUMNS.slice(1, 5)} rowKey={(command) => command.id} rows={visibleCommands} /> : <EmptyState description="Queued, running, retrying, and completed operations remain visible here." icon="terminal" title="No operations" />}
       </Panel>
 
-      <Panel title="Platform status">
-        <Facts items={[
-          { label: 'Controller identity', mono: true, value: activeCore?.name ?? core.localId },
-          { label: 'Traefik', value: cluster ? serviceState(cluster.traefik.service?.health) : 'Not observed' },
-          { label: 'Prometheus + Jaeger', value: cluster ? installedState(cluster.observability.coreInstalled, cluster.observability.coreHealthy) : 'Not observed' },
-          { label: 'Fluentd', value: cluster ? installedState(cluster.observability.logsEnabled, cluster.observability.logsHealthy) : 'Not observed' },
-        ]} />
-      </Panel>
     </Page>
   )
 }
@@ -193,25 +198,14 @@ function attentionItems(core: CoreTopology, cluster: HomeClusterData | undefined
     items.push({ detail: server.agentHealth?.summary ?? 'The agent cannot currently be reached by the controller.', id: `server-${server.id}`, label: `${server.name} needs connectivity review`, tone: 'danger' })
   }
   for (const command of commands.filter((candidate) => candidate.state === 'needs_attention' || candidate.state === 'failed').slice(0, 2)) {
-    items.push({ detail: `${command.action} on ${command.target || command.nodeId} stopped in ${stateLabel(command.state).toLowerCase()}.`, id: `command-${command.id}`, label: 'Operation needs attention', tone: 'danger' })
+    items.push({
+      detail: command.failureSummary ?? command.lastError ?? `${command.action} on ${command.target || command.nodeId} stopped in ${stateLabel(command.state).toLowerCase()}.`,
+      id: `command-${command.id}`,
+      label: command.action === 'observability.core' ? 'Monitoring deployment needs review' : `${command.action} needs review`,
+      tone: 'danger',
+    })
   }
   return items.slice(0, 4)
-}
-
-function nodeTone(node: Node): StatusTone {
-  if (node.state !== 'ready') return 'danger'
-  return node.availability === 'active' ? 'success' : 'warning'
-}
-
-function healthTone(health: string): StatusTone {
-  if (health === 'healthy') return 'success'
-  if (health === 'degraded') return 'warning'
-  if (health === 'unhealthy') return 'danger'
-  return 'neutral'
-}
-
-function healthLabel(health: string) {
-  return health === 'healthy' ? 'Healthy' : health === 'degraded' ? 'Degraded' : health === 'unhealthy' ? 'Unhealthy' : 'Unknown'
 }
 
 function commandTone(state: Command['state']): StatusTone {
@@ -224,30 +218,6 @@ function commandTone(state: Command['state']): StatusTone {
 
 function stateLabel(state: Command['state']) {
   return state.split('_').map(capitalize).join(' ')
-}
-
-function serviceState(health?: string) {
-  return health ? healthLabel(health) : 'Not installed'
-}
-
-function installedState(installed: boolean, healthy: boolean) {
-  return !installed ? 'Not installed' : healthy ? 'Healthy' : 'Needs attention'
-}
-
-function capacityLabel(capacity: { used: number; capacity: number }, unit?: string) {
-  if (unit) return `${formatNumber(capacity.used)} / ${formatNumber(capacity.capacity)} ${unit}`
-  return `${formatBytes(capacity.used)} / ${formatBytes(capacity.capacity)}`
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0 B'
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
-  return `${formatNumber(value / (1024 ** index))} ${units[index]}`
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value)
 }
 
 function capitalize(value: string) {

@@ -6,6 +6,7 @@ export interface ComboboxOption<T extends string> {
     value: T;
 }
 export interface ComboboxProps<T extends string> {
+    ariaLabel?: string;
     className?: string;
     /** Shown when nothing matches. Give the viewer the way forward rather than
         a dead end: "No client matches — create it". */
@@ -28,4 +29,4 @@ export interface ComboboxProps<T extends string> {
  * Arrow keys move the active option, Enter commits it, Escape reverts to the
  * last committed value rather than clearing the field.
  */
-export declare function Combobox<T extends string>({ className, emptyState, error, hint, id, label, onChange, options, placeholder, required, value, }: ComboboxProps<T>): import("react").JSX.Element;
+export declare function Combobox<T extends string>({ ariaLabel, className, emptyState, error, hint, id, label, onChange, options, placeholder, required, value, }: ComboboxProps<T>): import("react").JSX.Element;

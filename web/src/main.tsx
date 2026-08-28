@@ -7,7 +7,7 @@ import './styles.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <NimProvider defaultColorway="malachite" defaultScheme="dark" defaultStyle="console">
+    <NimProvider defaultColorway="malachite" defaultScheme="light" defaultStyle="console">
       <ToastProvider>
         <App />
       </ToastProvider>

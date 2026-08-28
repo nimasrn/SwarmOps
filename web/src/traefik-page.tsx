@@ -46,24 +46,22 @@ import type {
   RouteTLSMode,
   RoutingState,
   ServiceRouteRole,
-  TraefikLogRecord,
   TraefikSettings,
   TraefikStatus,
 } from './types'
 
-type Tab = 'overview' | 'routes' | 'certificates' | 'dns' | 'logs'
+type Tab = 'overview' | 'routes' | 'certificates' | 'dns'
 type Toast = ReturnType<typeof useToast>
 
-const tabs = [
-  { label: 'Overview', value: 'overview' as const },
-  { label: 'Routes', value: 'routes' as const },
-  { label: 'Certificates', value: 'certificates' as const },
-  { label: 'Gateway configuration', value: 'dns' as const },
-  { label: 'Logs & metrics', value: 'logs' as const },
-]
+const TAB_TITLE: Record<Tab, string> = {
+  certificates: 'TLS certificates',
+  dns: 'DNS providers',
+  overview: 'Gateway & ports',
+  routes: 'Routes',
+}
 
-export function TraefikControlPage({ status, toast }: { status: TraefikStatus; toast: Toast }) {
-  const [tab, setTab] = useState<Tab>('overview')
+export function TraefikControlPage({ initialTab = 'overview', status, toast }: { initialTab?: Tab; status: TraefikStatus; toast: Toast }) {
+  const tab = initialTab
   const [state, setState] = useState<RoutingState | null>(null)
   const [routes, setRoutes] = useState<RouteInventoryRow[]>([])
   const [certificates, setCertificates] = useState<CertificateStatus[]>([])
@@ -122,11 +120,12 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
   return (
     <Page>
       <DetailHeader
-        actions={<Inline>{!installed ? <Button onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : <Button onClick={() => setTab('routes')} variant="accent">Add route</Button>}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button><Button onClick={() => setTab('dns')} variant="secondary">Configure gateway</Button><Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
+        actions={<Inline>{!installed ? <Button onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : tab === 'routes' ? <Button onClick={() => window.location.hash = 'routes'} variant="accent">Add route</Button> : null}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button>{tab !== 'dns' ? <Button onClick={() => window.location.hash = 'dns'} variant="secondary">DNS providers</Button> : null}<Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
         status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not managed by SwarmOps' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
-        title="Gateway, routes & DNS"
+        subtitle={tab === 'overview' ? 'Install and configure Traefik listening ports and its reviewed singleton runtime.' : tab === 'routes' ? 'Publish explicitly typed HTTP, TCP, or UDP routes for reviewed services.' : tab === 'dns' ? 'Store Cloudflare or ArvanCloud credentials and manage owned DNS records.' : 'Inspect certificate issuance, validation, expiry, and recovery evidence.'}
+        title={TAB_TITLE[tab]}
       />
-      <Banner title="What lives here" tone="info">Install and operate the Traefik gateway, publish application routes, configure listening ports, issue TLS certificates, and manage Cloudflare or ArvanCloud DNS access. Provider credentials are under Gateway configuration—not under entrypoints.</Banner>
+      <Banner title="One owner for each concern" tone="info">Gateway & ports owns the Traefik runtime and entrypoints. Routes owns published application traffic. DNS providers owns Cloudflare and ArvanCloud credentials and records. TLS certificates owns ACME and handshake evidence.</Banner>
       {tab !== 'overview' ? (!installed ? (
         <Banner title="No SwarmOps-managed Traefik is installed" tone="info">
           Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. SwarmOps does not claim that host-native or Docker Compose gateways are absent; check the selected host before installing.
@@ -136,14 +135,12 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
           Traefik intentionally runs as one task. Applying static settings or adding a TCP/UDP entrypoint restarts that singleton and can interrupt every routed connection. Route enable/disable is dynamic once its entrypoint exists.
         </Banner>
       )) : null}
-      {tab !== 'overview' ? <Tabs label="Traefik control-plane sections" onChange={setTab} options={tabs} value={tab} /> : null}
       {error ? <Banner title="Routing state unavailable" tone="danger">{error}</Banner> : null}
       {loading || !state ? <Panel><Rows><Body>Loading the selected manager’s sealed routing state…</Body></Rows></Panel> : null}
-      {!loading && state && tab === 'overview' ? <TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /> : null}
+      {!loading && state && tab === 'overview' ? <Rows><TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /><DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /></Rows> : null}
       {!loading && state && tab === 'routes' ? <RoutesTab cutover={cutover} onQueued={() => void load(false)} routes={routes} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
-      {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} state={state} toast={toast} /> : null}
-      {!loading && state && tab === 'logs' ? <LogsMetricsTab onQueued={() => void load(false)} prometheus={prometheus} settings={state.settings} toast={toast} /> : null}
+      {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} scope="dns" state={state} toast={toast} /> : null}
       <Sheet closeLabel="Close gateway installation" onClose={() => { setInstallOpen(false); setInstallConfirmation('') }} open={installOpen} title="Install Traefik gateway">
         <Rows>
           <Body size="sm">SwarmOps will deploy its reviewed singleton Traefik stack on the selected manager. Routes, certificates, access logs, and metrics become available after the run succeeds.</Body>
@@ -408,7 +405,7 @@ function CertificatesTab({ certificates, onQueued, routes, toast }: { certificat
   )
 }
 
-function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; state: RoutingState; toast: Toast }) {
+function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: () => void; scope: 'dns' | 'gateway'; state: RoutingState; toast: Toast }) {
   const [settings, setSettings] = useState<TraefikSettings>(cloneSettings(state.settings))
   const [settingsConfirmation, setSettingsConfirmation] = useState('')
   const [pending, setPending] = useState('')
@@ -496,7 +493,7 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
   return (
     <Rows>
       <Columns>
-        <Panel eyebrow="Gateway listening and certificate policy" title="Ports & certificate resolvers">
+        {scope === 'gateway' ? <Panel eyebrow="Gateway listening and certificate policy" title="Ports & certificate resolvers">
           <Rows>
             <Input label="ACME account email" onChange={(event) => setSettings({ ...settings, acmeEmail: event.target.value })} type="email" value={settings.acmeEmail} />
             <Columns><Input label="Stream port range start" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, start: Number(event.target.value) } })} type="number" value={settings.portRange.start} /><Input label="Stream port range end" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, end: Number(event.target.value) } })} type="number" value={settings.portRange.end} /></Columns>
@@ -507,8 +504,8 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
             <Input hint="Type RESTART_SINGLETON_TRAEFIK." label="Settings confirmation" onChange={(event) => setSettingsConfirmation(event.target.value)} value={settingsConfirmation} />
             <Button disabled={Boolean(pending) || settingsConfirmation !== 'RESTART_SINGLETON_TRAEFIK'} loading={pending === 'settings'} onClick={() => void queueSettings()} variant="danger">Queue static settings</Button>
           </Rows>
-        </Panel>
-        <Panel eyebrow="Cloudflare and ArvanCloud" title="DNS providers & credentials">
+        </Panel> : null}
+        {scope === 'dns' ? <Panel eyebrow="Cloudflare and ArvanCloud" title="DNS providers & credentials">
           <Rows>
             <Banner tone="info">The value is written first to the encrypted durable command artifact, validated with the provider, sealed in controller state, then created as a new immutable Swarm secret. Responses, logs, commands, and audit records contain metadata only.</Banner>
             <Select label="Provider" onChange={(event) => setProvider(event.target.value as 'cloudflare' | 'arvan')} options={[{ label: 'Cloudflare scoped DNS token', value: 'cloudflare' }, { label: 'ArvanCloud DNS API key', value: 'arvan' }]} value={provider} />
@@ -522,9 +519,9 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
               {deleteCredentialID ? <Rows><Banner title="Removing old immutable versions" tone="warning"><Mono>Removing a credential version cannot be undone.</Mono></Banner><Input hint={`Type ${credentialRemovalConfirmation(deleteCredentialID, deleteCredentialVersion)}.`} label="Removal confirmation" onChange={(event) => setDeleteCredentialConfirmation(event.target.value)} value={deleteCredentialConfirmation} /><Inline><Button disabled={Boolean(pending) || deleteCredentialConfirmation !== credentialRemovalConfirmation(deleteCredentialID, deleteCredentialVersion)} loading={pending === 'credential-delete'} onClick={() => void queueCredentialDelete()} variant="danger">Queue credential version removal</Button><Button disabled={Boolean(pending)} onClick={() => { setDeleteCredentialID(''); setDeleteCredentialVersion(0); setDeleteCredentialConfirmation('') }} variant="ghost">Cancel</Button></Inline></Rows> : null}
             </Panel>
           </Rows>
-        </Panel>
+        </Panel> : null}
       </Columns>
-      <Columns>
+      {scope === 'dns' ? <Columns>
         <Panel eyebrow="Read before write" title="DNS record preview">
           <Rows>
             <Columns><Input label="Record ID" onChange={(event) => setRecord({ ...record, id: event.target.value })} value={record.id} /><Select label="Route protocol" onChange={(event) => { const next = event.target.value as RouteProtocol; setProtocol(next); if (next !== 'http') setRecord({ ...record, proxied: false }) }} options={['http', 'tcp', 'udp'].map(option)} value={protocol} /></Columns>
@@ -543,74 +540,7 @@ function DNSSettingsTab({ onQueued, state, toast }: { onQueued: () => void; stat
             {deleteRecordID ? <Rows><Banner title="Separate DNS deletion" tone="warning">A route must release this record first. Cutover rollback and route disable never delete it.</Banner><Input hint={`Type DELETE_DNS_RECORD_${deleteRecordID.toUpperCase().replaceAll('-', '_')}.`} label="Deletion confirmation" onChange={(event) => setDeleteRecordConfirmation(event.target.value)} value={deleteRecordConfirmation} /><Inline><Button disabled={Boolean(pending) || deleteRecordConfirmation !== `DELETE_DNS_RECORD_${deleteRecordID.toUpperCase().replaceAll('-', '_')}`} loading={pending === 'delete'} onClick={() => void queueDelete()} variant="danger">Queue record deletion</Button><Button disabled={Boolean(pending)} onClick={() => setDeleteRecordID('')} variant="ghost">Cancel</Button></Inline></Rows> : null}
           </Rows>
         </Panel>
-      </Columns>
-    </Rows>
-  )
-}
-
-function LogsMetricsTab({ onQueued, prometheus, settings: initialSettings, toast }: { onQueued: () => void; prometheus: PrometheusStatus | null; settings: TraefikSettings; toast: Toast }) {
-  const [settings, setSettings] = useState(cloneSettings(initialSettings))
-  const [confirmation, setConfirmation] = useState('')
-  const [logs, setLogs] = useState<TraefikLogRecord[]>([])
-  const [level, setLevel] = useState('')
-  const [router, setRouter] = useState('')
-  const [service, setService] = useState('')
-  const [requestID, setRequestID] = useState('')
-  const [hours, setHours] = useState('1')
-  const [pending, setPending] = useState('')
-  const [logError, setLogError] = useState('')
-
-  const queueSettings = async () => {
-    setPending('settings')
-    try {
-      const command = await api.applyTraefikSettings(settings, confirmation)
-      queuedToast(toast, command, 'Traefik logging settings')
-      setConfirmation('')
-      onQueued()
-    } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
-  }
-  const loadLogs = async (live: boolean) => {
-    setPending(live ? 'live' : 'history'); setLogError('')
-    try {
-      const to = new Date()
-      const boundedHours = Math.max(1 / 12, Math.min(168, Number(hours) || 1))
-      setLogs(await api.traefikLogs({ from: new Date(to.getTime() - boundedHours * 3600000).toISOString(), level, limit: live ? 200 : 1000, live, requestId: requestID, router, service, to: to.toISOString() }))
-    } catch (reason) { setLogError(messageOf(reason)); setLogs([]) } finally { setPending('') }
-  }
-
-  const targetColumns: TableColumn<PrometheusStatus['targets'][number]>[] = [
-    { header: 'Target', key: 'target', render: (target) => <Mono>{target.target}</Mono> },
-    { header: 'Health', key: 'health', render: (target) => <Badge dot variant={target.health === 'up' ? 'success' : 'danger'}>{target.health}</Badge> },
-    { header: 'Last scrape', key: 'scrape', render: (target) => dateTime(target.lastScrape) },
-    { header: 'Labels', key: 'labels', render: (target) => target.labels.join(', ') || '—' },
-    { header: 'Error', key: 'error', render: (target) => target.error || '—' },
-  ]
-
-  return (
-    <Rows>
-      <Columns>
-        <Panel eyebrow="Real static toggles" title="Traefik logging">
-          <Rows>
-            <Switch checked={settings.accessLogs} description="When disabled, Traefik stops writing request access records. Operational logs remain controlled separately." onChange={(event) => setSettings({ ...settings, accessLogs: event.target.checked })}>Access logs</Switch>
-            <Select label="Operational level" onChange={(event) => setSettings({ ...settings, operationalLog: event.target.value as TraefikSettings['operationalLog'] })} options={['DEBUG', 'INFO', 'WARN', 'ERROR'].map(option)} value={settings.operationalLog} />
-            <Banner title="Minimal means ERROR, not off" tone="info">Traefik does not provide a complete operational-log OFF level. SwarmOps therefore labels ERROR as the minimal setting; metrics remain enabled in every state.</Banner>
-            <Input hint="Logging changes render a new immutable static config and restart the singleton." label="Restart confirmation" onChange={(event) => setConfirmation(event.target.value)} placeholder="RESTART_SINGLETON_TRAEFIK" value={confirmation} />
-            <Button disabled={Boolean(pending) || confirmation !== 'RESTART_SINGLETON_TRAEFIK'} loading={pending === 'settings'} onClick={() => void queueSettings()} variant="danger">Queue logging settings</Button>
-          </Rows>
-        </Panel>
-        <Panel eyebrow="Fixed bounded Fluentd query" title="Live tail & seven-day history">
-          <Rows>
-            <Columns><Select label="Level" onChange={(event) => setLevel(event.target.value)} options={[{ label: 'All levels', value: '' }, ...['DEBUG', 'INFO', 'WARN', 'ERROR'].map(option)]} value={level} /><Input label="Router" onChange={(event) => setRouter(event.target.value)} value={router} /><Input label="Service" onChange={(event) => setService(event.target.value)} value={service} /></Columns>
-            <Columns><Input label="Request ID" onChange={(event) => setRequestID(event.target.value)} value={requestID} /><Input hint="Maximum 168 hours and 1,000 records." label="History hours" min="0.083" max="168" onChange={(event) => setHours(event.target.value)} step="0.083" type="number" value={hours} /></Columns>
-            <Inline><Button disabled={Boolean(pending)} loading={pending === 'live'} onClick={() => void loadLogs(true)} variant="accent">Read live window</Button><Button disabled={Boolean(pending)} loading={pending === 'history'} onClick={() => void loadLogs(false)} variant="secondary">Read history</Button></Inline>
-            {logError ? <Banner tone="danger">{logError}</Banner> : null}
-            {logs.length ? <CodeBlock label={`${logs.length} sanitized records`} wrap>{logs.map((record) => `${record.timestamp} ${record.level || 'INFO'} ${record.router ?? record.service ?? ''} ${record.message}`).join('\n')}</CodeBlock> : <Body size="sm">Log content is sanitized and capped, and is never copied into the audit trail.</Body>}
-          </Rows>
-        </Panel>
-      </Columns>
-      <Panel eyebrow="Collection health, no arbitrary PromQL" title="Prometheus scrape status">
-        {!prometheus ? <Banner tone="warning">Prometheus target status is unavailable from the selected manager.</Banner> : <Rows><Badge dot variant={prometheus.collected ? 'success' : 'warning'}>{prometheus.collected ? 'Traefik target collected' : 'No Traefik target observed'}</Badge><Body size="sm">Observed {dateTime(prometheus.observedAt)} on Traefik’s internal metrics entrypoint. Stable entrypoint, router, and service labels are enabled. Graphs will be implemented directly in SwarmOps later.</Body><DataTable caption="Prometheus targets relevant to Traefik" columns={targetColumns} empty={<EmptyState description="Prometheus returned no Traefik target." icon="chart" title="No scrape target" />} rowKey={(target) => target.target} rows={prometheus.targets} /></Rows>}
-      </Panel>
+      </Columns> : null}
     </Rows>
   )
 }

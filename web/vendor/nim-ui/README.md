@@ -79,6 +79,12 @@ dense dark sidebar without relying on colour alone.
 first-glance health statements and stable 40/60 or one-third/two-thirds splits
 for control-room overview screens.
 
+`AdminShell` can now keep primary product sections in its masthead while a
+separate contextual rail owns the workspaces inside the active section. The
+context rail becomes a compact horizontal strip in narrower containers, so a
+large console retains the same two-level information architecture without
+duplicating its navigation for desktop and mobile.
+
 ---
 
 ## What changed in 0.13

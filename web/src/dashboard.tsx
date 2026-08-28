@@ -195,7 +195,7 @@ export function OverviewDashboard({ observability, overview, stacks, traefik }: 
           <List plain>
             {platform.map((signal) => (
               <ListRow
-                href={signal.title === 'Edge proxy' ? '#traefik' : '#observability'}
+                href={signal.title === 'Edge proxy' ? '#gateway' : '#observability'}
                 key={signal.title}
                 leading={<Icon name={signal.icon} size="sm" />}
                 subtitle={signal.subtitle}
@@ -320,7 +320,7 @@ function attentionItems(nodes: Node[], services: Service[], observability: Obser
     items.push({ href: '#observability', icon: 'document', subtitle: 'Docker log collection is enabled but its reviewed stack is degraded.', title: 'Log collection', tone: 'warning' })
   }
   if (traefik.service && traefik.service.health !== 'healthy') {
-    items.push({ href: '#traefik', icon: 'external', subtitle: serviceSubtitle(traefik.service), title: 'Edge proxy', tone: healthTone(traefik.service.health) })
+    items.push({ href: '#gateway', icon: 'external', subtitle: serviceSubtitle(traefik.service), title: 'Edge proxy', tone: healthTone(traefik.service.health) })
   }
 
   return items.sort((left, right) => attentionPriority(left.tone) - attentionPriority(right.tone) || left.title.localeCompare(right.title)).slice(0, 6)

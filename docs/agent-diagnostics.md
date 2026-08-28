@@ -38,6 +38,12 @@ The console renders these states:
 A degraded or unhealthy server is never silently selected as a manager for a
 cluster operation.
 
+The outbound broker catalogues the fixed `GET /v1/logs/status` and
+`POST /v1/logs/query` requests used by Monitoring → Logs. A rejection from
+Core's own request catalogue is a controller contract failure, not a machine
+transport failure: it must not clear Docker readiness, evict the authenticated
+connection, or report **Machine API unreachable**.
+
 ## Update model
 
 The native installer enables automatic updates only for its reviewed

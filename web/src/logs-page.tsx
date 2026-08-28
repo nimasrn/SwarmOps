@@ -33,7 +33,8 @@ export function LogsPage() {
 
   return <Page>
     <DetailHeader title="Logs" subtitle="Sanitized container stdout/stderr and host journals from the explicitly selected Swarm. Queries are literal, bounded to seven days, and never expose a file path or regular expression." status={<Badge variant={status?.healthy ? 'success' : 'warning'}>{status?.healthy ? 'Pipeline healthy' : 'Pipeline unavailable'}</Badge>} />
-    {error ? <Banner title="Log collection unavailable" tone="danger">{error}. Enable or repair the reviewed SwarmOps Logs stack on this manager.</Banner> : null}
+    {error ? <Banner title="Logs are unavailable; agent connectivity is evaluated separately" tone="danger">{error}. This failure belongs to the bounded log route or collector pipeline; it does not by itself mean the outbound agent is disconnected. Check the connection indicator, then repair or install the reviewed SwarmOps Logs stack.</Banner> : null}
+    {!error && status ? <Banner title="Connection and collection are separate signals" tone="info">A connected outbound agent proves the authenticated transport is live. This page separately verifies Fluentd coverage, retention, and the bounded log-query route.</Banner> : null}
     {status?.warnings?.map(warning => <Banner key={warning} title="Pipeline warning" tone="warning">{warning}</Banner>)}
     {status ? <Panel title="Pipeline health"><Inline wrap><Label>Coverage {status.forwarders}/{status.expectedNodes || 'unknown'} nodes</Label><Label>{formatBytes(status.retainedBytes)} retained</Label><Label>{formatBytes(status.bufferBytes)} buffered</Label><Label>7-day policy / {formatBytes(status.capacityBytes)} cap</Label><Label>{status.capacityEvictions} capacity evictions</Label><Label>{status.droppedRecords} dropped</Label></Inline></Panel> : null}
     <Panel title="Filters">

@@ -12,6 +12,7 @@ export interface ComboboxOption<T extends string> {
 }
 
 export interface ComboboxProps<T extends string> {
+  ariaLabel?: string
   className?: string
   /** Shown when nothing matches. Give the viewer the way forward rather than
       a dead end: "No client matches — create it". */
@@ -36,6 +37,7 @@ export interface ComboboxProps<T extends string> {
  * last committed value rather than clearing the field.
  */
 export function Combobox<T extends string>({
+  ariaLabel,
   className,
   emptyState,
   error,
@@ -102,6 +104,7 @@ export function Combobox<T extends string>({
         <div className="nim-combobox">
           <div className={cn('nim-input-shell', 'nim-input-shell--has-end')}>
             <input
+              aria-label={ariaLabel ?? label}
               aria-autocomplete="list"
               aria-controls={open ? listId : undefined}
               aria-describedby={describedBy}

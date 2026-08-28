@@ -70,6 +70,27 @@ func TestManagerMarksStaleOutboundAgentDisconnectedUntilNextPoll(t *testing.T) {
 	}
 }
 
+func TestManagerKeepsOutboundAgentConnectedAfterCoreCatalogRejection(t *testing.T) {
+	t.Parallel()
+	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := agentpull.Status{DockerAvailable: true, NodeName: "manager-1", RemoteControlEnabled: true, SwarmControlAvailable: true, SwarmState: "active", Version: "test"}
+	profile, err := manager.AttachPull("agent-1", "manager-1", status, unavailableRoundTripper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogErr := fmt.Errorf("connect to machine API: %w", agentpull.ErrRequestNotCatalogued)
+	if err := manager.ObserveFailure(profile.ID, catalogErr); err != nil {
+		t.Fatal(err)
+	}
+	listed := manager.List()
+	if len(listed) != 1 || listed[0].ConnectionState != connectedState || listed[0].AgentHealth.State != "healthy" {
+		t.Fatalf("catalog rejection changed live agent health = %#v", listed)
+	}
+}
+
 func TestManagerConnectsThroughPinnedSSHWithoutPersistingCredentials(t *testing.T) {
 	t.Parallel()
 	server := newTestSSHServer(t)

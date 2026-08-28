@@ -1,6 +1,6 @@
-import { jsx as e, jsxs as r, Fragment as G } from "react/jsx-runtime";
-import { forwardRef as Oe, useState as L, useCallback as Z, createContext as Ce, useContext as xe, useId as J, Fragment as ke, useRef as U, useLayoutEffect as en, useEffect as V, useMemo as Y, createElement as nn } from "react";
-import { Wallet as an, VolumeX as ln, Volume2 as tn, User as sn, Video as rn, Upload as cn, TrendingUp as on, TrendingDown as dn, Trash2 as mn, Sun as un, Star as hn, Sparkles as pn, CircleStop as _n, LogOut as fn, Share2 as Nn, Settings as bn, Send as vn, Search as gn, Plus as yn, Play as kn, Pin as wn, Pause as Cn, Paperclip as xn, Moon as Mn, Minus as Tn, Mic as Sn, Menu as zn, Lock as Dn, Loader as An, Info as Ln, Home as En, Heart as $n, Hash as In, Forward as Bn, Filter as Pn, Maximize2 as Fn, SmilePlus as Rn, MessageCircle as On, Eye as Un, ExternalLink as Gn, Pencil as Hn, Download as Kn, FileText as Wn, CircleAlert as Zn, Copy as Yn, X as jn, Clock as Vn, ChevronUp as qn, ChevronRight as Qn, ChevronDown as Xn, ChevronLeft as Jn, CircleCheck as ea, Check as na, Camera as aa, Calendar as ia, Bookmark as la, Bell as ta, Users as sa, Terminal as ra, Tag as ca, ShieldCheck as oa, Server as da, Reply as ma, RefreshCw as ua, Package as ha, MoreHorizontal as pa, Link2 as _a, Layers as fa, KeyRound as Na, Globe as ba, Database as va, Cloud as ga, BarChart3 as ya, ArrowRight as ka, ArrowLeft as wa, AlertTriangle as Ca, Activity as xa } from "lucide-react";
+import { jsx as e, jsxs as r, Fragment as H } from "react/jsx-runtime";
+import { forwardRef as Oe, useState as E, useCallback as Z, createContext as Ce, useContext as xe, useId as J, Fragment as ke, useRef as U, useLayoutEffect as en, useEffect as V, useMemo as Y, createElement as nn } from "react";
+import { Wallet as an, VolumeX as ln, Volume2 as tn, User as sn, Video as rn, Upload as cn, TrendingUp as on, TrendingDown as dn, Trash2 as mn, Sun as un, Star as hn, Sparkles as _n, CircleStop as pn, LogOut as fn, Share2 as Nn, Settings as bn, Send as vn, Search as gn, Plus as yn, Play as kn, Pin as wn, Pause as Cn, Paperclip as xn, Moon as Mn, Minus as Tn, Mic as Sn, Menu as zn, Lock as Dn, Loader as An, Info as Ln, Home as En, Heart as $n, Hash as In, Forward as Bn, Filter as Pn, Maximize2 as Fn, SmilePlus as Rn, MessageCircle as On, Eye as Un, ExternalLink as Hn, Pencil as Gn, Download as Kn, FileText as Wn, CircleAlert as Zn, Copy as Yn, X as jn, Clock as Vn, ChevronUp as qn, ChevronRight as Qn, ChevronDown as Xn, ChevronLeft as Jn, CircleCheck as ea, Check as na, Camera as aa, Calendar as ia, Bookmark as la, Bell as ta, Users as sa, Terminal as ra, Tag as ca, ShieldCheck as oa, Server as da, Reply as ma, RefreshCw as ua, Package as ha, MoreHorizontal as _a, Link2 as pa, Layers as fa, KeyRound as Na, Globe as ba, Database as va, Cloud as ga, BarChart3 as ya, ArrowRight as ka, ArrowLeft as wa, AlertTriangle as Ca, Activity as xa } from "lucide-react";
 import { createPortal as he } from "react-dom";
 const b = (...n) => n.filter(Boolean).join(" "), Ue = {
   activity: xa,
@@ -13,8 +13,8 @@ const b = (...n) => n.filter(Boolean).join(" "), Ue = {
   globe: ba,
   key: Na,
   layers: fa,
-  link: _a,
-  more: pa,
+  link: pa,
+  more: _a,
   package: ha,
   refresh: ua,
   reply: ma,
@@ -39,8 +39,8 @@ const b = (...n) => n.filter(Boolean).join(" "), Ue = {
   danger: Zn,
   document: Wn,
   download: Kn,
-  edit: Hn,
-  external: Gn,
+  edit: Gn,
+  external: Hn,
   eye: Un,
   chat: On,
   emoji: Rn,
@@ -67,8 +67,8 @@ const b = (...n) => n.filter(Boolean).join(" "), Ue = {
   settings: bn,
   share: Nn,
   "sign-out": fn,
-  stop: _n,
-  sparkle: pn,
+  stop: pn,
+  sparkle: _n,
   star: hn,
   sun: un,
   trash: mn,
@@ -92,7 +92,7 @@ const b = (...n) => n.filter(Boolean).join(" "), Ue = {
   "share",
   "sign-out"
 ]), Te = { xs: 14, sm: 16, md: 20, lg: 24, xl: 32 };
-function M({ className: n, label: l, name: i, size: a = "md", tone: t = "default", ...s }) {
+function x({ className: n, label: l, name: i, size: a = "md", tone: t = "default", ...s }) {
   const d = Ue[i];
   return /* @__PURE__ */ e(
     d,
@@ -111,17 +111,17 @@ function M({ className: n, label: l, name: i, size: a = "md", tone: t = "default
     }
   );
 }
-const Ji = Object.keys(Ue), Ta = { sm: "sm", md: "md", lg: "md" }, O = Oe(function({ className: l, label: i, name: a, size: t = "md", type: s = "button", variant: d = "ghost", ...c }, o) {
+const Ji = Object.keys(Ue), Ta = { sm: "sm", md: "md", lg: "md" }, O = Oe(function({ className: l, label: i, name: a, size: t = "md", type: s = "button", variant: d = "ghost", ...o }, c) {
   return /* @__PURE__ */ e(
     "button",
     {
       "aria-label": i,
       className: b("nim-icon-button", `nim-icon-button--${d}`, `nim-icon-button--${t}`, l),
-      ref: o,
+      ref: c,
       title: i,
       type: s,
-      ...c,
-      children: /* @__PURE__ */ e(M, { name: a, size: Ta[t] })
+      ...o,
+      children: /* @__PURE__ */ e(x, { name: a, size: Ta[t] })
     }
   );
 }), Sa = {
@@ -136,75 +136,79 @@ function el({
   children: l,
   className: i,
   collapsible: a = !1,
-  groups: t,
-  labels: s,
-  navigation: d = "sidebar",
-  sidebarFooter: c,
-  title: o,
-  toolbar: m,
-  value: u,
-  titleRole: h = "page"
+  contextualFooter: t,
+  contextualGroups: s,
+  contextualHeader: d,
+  contextualValue: o,
+  groups: c,
+  labels: m,
+  navigation: u = "sidebar",
+  sidebarFooter: h,
+  title: f,
+  toolbar: _,
+  value: N,
+  titleRole: g = "page"
 }) {
-  const _ = { ...Sa, ...s }, [p, N] = L(!1), [g, f] = L(!1), k = h === "scope" ? "div" : "h1", y = /* @__PURE__ */ e("nav", { "aria-label": _.nav, className: "nim-admin__nav", children: t.map((z) => /* @__PURE__ */ r("div", { className: "nim-admin__group", children: [
-    z.label ? /* @__PURE__ */ r("p", { className: "nim-admin__group-label", children: [
-      z.icon ? /* @__PURE__ */ e(M, { name: z.icon, size: "xs" }) : null,
-      z.label
+  const p = { ...Sa, ...m }, [w, y] = E(!1), [S, I] = E(!1), B = g === "scope" ? "div" : "h1", M = (k, L, D) => /* @__PURE__ */ e("nav", { "aria-label": D, className: "nim-admin__nav", children: k.map((A) => /* @__PURE__ */ r("div", { className: "nim-admin__group", children: [
+    A.label ? /* @__PURE__ */ r("p", { className: "nim-admin__group-label", children: [
+      A.icon ? /* @__PURE__ */ e(x, { name: A.icon, size: "xs" }) : null,
+      A.label
     ] }) : null,
-    z.items.map((D) => {
-      const I = D.key === u, T = /* @__PURE__ */ r(G, { children: [
-        D.icon ? /* @__PURE__ */ e(M, { name: D.icon, size: "sm" }) : null,
-        /* @__PURE__ */ e("span", { children: D.label })
-      ] }), v = {
-        "aria-current": I ? "page" : void 0,
+    A.items.map(($) => {
+      const G = $.key === L, K = /* @__PURE__ */ r(H, { children: [
+        $.icon ? /* @__PURE__ */ e(x, { name: $.icon, size: "sm" }) : null,
+        /* @__PURE__ */ e("span", { children: $.label })
+      ] }), P = {
+        "aria-current": G ? "page" : void 0,
         className: "nim-admin__link",
-        "data-active": I ? "true" : void 0,
+        "data-active": G ? "true" : void 0,
         onClick: () => {
-          var w;
-          (w = D.onSelect) == null || w.call(D), N(!1);
+          var C;
+          (C = $.onSelect) == null || C.call($), y(!1);
         },
         // The only text left in the rail is the icon, so the accessible
         // name has to survive the collapse — it is the label, always,
         // not a second string that can drift away from it.
-        title: typeof D.label == "string" ? D.label : void 0
+        title: typeof $.label == "string" ? $.label : void 0
       };
-      return D.href ? /* @__PURE__ */ e("a", { href: D.href, ...v, children: T }, D.key) : /* @__PURE__ */ e("button", { type: "button", ...v, children: T }, D.key);
+      return $.href ? /* @__PURE__ */ e("a", { href: $.href, ...P, children: K }, $.key) : /* @__PURE__ */ e("button", { type: "button", ...P, children: K }, $.key);
     })
-  ] }, z.key)) });
+  ] }, A.key)) }), v = M(c, N, p.nav), T = s != null && s.length ? M(s, o ?? N, `${p.nav} · current section`) : null;
   return /* @__PURE__ */ r(
     "div",
     {
       className: b("nim-admin", i),
-      "data-collapsed": a && g ? "true" : void 0,
-      "data-drawer": p ? "open" : void 0,
-      "data-navigation": d,
+      "data-collapsed": a && S ? "true" : void 0,
+      "data-drawer": w ? "open" : void 0,
+      "data-navigation": u,
       children: [
-        d === "sidebar" ? /* @__PURE__ */ r("aside", { className: "nim-admin__sidebar", children: [
+        u === "sidebar" ? /* @__PURE__ */ r("aside", { className: "nim-admin__sidebar", children: [
           n || a ? /* @__PURE__ */ e("div", { className: "nim-admin__brand", children: n }) : null,
-          y,
-          c ? /* @__PURE__ */ e("div", { className: "nim-admin__sidebar-foot", children: c }) : null,
+          v,
+          h ? /* @__PURE__ */ e("div", { className: "nim-admin__sidebar-foot", children: h }) : null,
           a ? /* @__PURE__ */ r(
             "button",
             {
-              "aria-label": g ? _.expand : _.collapse,
-              "aria-expanded": !g,
+              "aria-label": S ? p.expand : p.collapse,
+              "aria-expanded": !S,
               className: "nim-admin__rail-toggle",
-              onClick: () => f((z) => !z),
+              onClick: () => I((k) => !k),
               type: "button",
               children: [
-                /* @__PURE__ */ e(M, { name: g ? "chevron-forward" : "chevron-back", size: "sm" }),
-                /* @__PURE__ */ e("span", { children: g ? _.expand : _.collapse })
+                /* @__PURE__ */ e(x, { name: S ? "chevron-forward" : "chevron-back", size: "sm" }),
+                /* @__PURE__ */ e("span", { children: S ? p.expand : p.collapse })
               ]
             }
           ) : null
         ] }) : null,
-        /* @__PURE__ */ r("div", { className: "nim-admin__drawer", hidden: !p, children: [
-          /* @__PURE__ */ e("div", { className: "nim-admin__scrim", onClick: () => N(!1) }),
+        /* @__PURE__ */ r("div", { className: "nim-admin__drawer", hidden: !w, children: [
+          /* @__PURE__ */ e("div", { className: "nim-admin__scrim", onClick: () => y(!1) }),
           /* @__PURE__ */ r("div", { className: "nim-admin__drawer-panel", children: [
             /* @__PURE__ */ r("div", { className: "nim-admin__drawer-head", children: [
               n,
-              /* @__PURE__ */ e(O, { label: _.close, name: "close", onClick: () => N(!1), size: "sm" })
+              /* @__PURE__ */ e(O, { label: p.close, name: "close", onClick: () => y(!1), size: "sm" })
             ] }),
-            y
+            v
           ] })
         ] }),
         /* @__PURE__ */ r("div", { className: "nim-admin__workspace", children: [
@@ -212,20 +216,27 @@ function el({
             /* @__PURE__ */ e(
               O,
               {
-                "aria-expanded": p,
+                "aria-expanded": w,
                 className: "nim-admin__menu",
-                label: _.menu,
+                label: p.menu,
                 name: "menu",
-                onClick: () => N(!0),
+                onClick: () => y(!0),
                 size: "sm"
               }
             ),
-            d === "sections" && n ? /* @__PURE__ */ e("div", { className: "nim-admin__masthead-brand", children: n }) : null,
-            o ? /* @__PURE__ */ e(k, { className: "nim-admin__title", children: o }) : null,
-            m ? /* @__PURE__ */ e("div", { className: "nim-admin__toolbar", children: m }) : null
+            u === "sections" && n ? /* @__PURE__ */ e("div", { className: "nim-admin__masthead-brand", children: n }) : null,
+            f ? /* @__PURE__ */ e(B, { className: "nim-admin__title", children: f }) : null,
+            _ ? /* @__PURE__ */ e("div", { className: "nim-admin__toolbar", children: _ }) : null
           ] }),
-          d === "sections" ? /* @__PURE__ */ e("div", { className: "nim-admin__sections", children: y }) : null,
-          /* @__PURE__ */ e("main", { className: "nim-admin__main", children: l })
+          u === "sections" ? /* @__PURE__ */ e("div", { className: "nim-admin__sections", children: v }) : null,
+          T ? /* @__PURE__ */ r("div", { className: "nim-admin__context-layout", children: [
+            /* @__PURE__ */ r("aside", { className: "nim-admin__context", children: [
+              d ? /* @__PURE__ */ e("div", { className: "nim-admin__context-head", children: d }) : null,
+              /* @__PURE__ */ e("div", { className: "nim-admin__context-nav", children: T }),
+              t ? /* @__PURE__ */ e("div", { className: "nim-admin__context-foot", children: t }) : null
+            ] }),
+            /* @__PURE__ */ e("main", { className: "nim-admin__main", children: l })
+          ] }) : /* @__PURE__ */ e("main", { className: "nim-admin__main", children: l })
         ] })
       ]
     }
@@ -242,10 +253,10 @@ function nl({
 }) {
   return /* @__PURE__ */ r("header", { className: b("nim-detail-header", i), children: [
     l ? l.href ? /* @__PURE__ */ r("a", { className: "nim-detail-header__back", href: l.href, children: [
-      /* @__PURE__ */ e(M, { name: "chevron-back", size: "sm" }),
+      /* @__PURE__ */ e(x, { name: "chevron-back", size: "sm" }),
       l.label
     ] }) : /* @__PURE__ */ r("button", { className: "nim-detail-header__back", onClick: l.onClick, type: "button", children: [
-      /* @__PURE__ */ e(M, { name: "chevron-back", size: "sm" }),
+      /* @__PURE__ */ e(x, { name: "chevron-back", size: "sm" }),
       l.label
     ] }) : null,
     /* @__PURE__ */ r("div", { className: "nim-detail-header__row", children: [
@@ -278,7 +289,7 @@ function al({
     n.map((d) => /* @__PURE__ */ r("span", { className: "nim-filter-chip", children: [
       /* @__PURE__ */ r("span", { className: "nim-filter-chip__label", children: [
         d.label,
-        d.value !== void 0 ? /* @__PURE__ */ r(G, { children: [
+        d.value !== void 0 ? /* @__PURE__ */ r(H, { children: [
           ": ",
           d.value
         ] }) : null
@@ -290,7 +301,7 @@ function al({
           className: "nim-filter-chip__remove",
           onClick: d.onRemove,
           type: "button",
-          children: /* @__PURE__ */ e(M, { name: "close", size: "xs" })
+          children: /* @__PURE__ */ e(x, { name: "close", size: "xs" })
         }
       )
     ] }, d.key)),
@@ -305,7 +316,7 @@ function il({ className: n, empty: l, events: i, locale: a }) {
     month: "short"
   });
   return i.length === 0 ? /* @__PURE__ */ e("div", { className: b("nim-activity", n), children: l }) : /* @__PURE__ */ e("ol", { className: b("nim-activity", n), children: i.map((s) => /* @__PURE__ */ r("li", { className: "nim-activity__item", "data-tone": s.tone, children: [
-    /* @__PURE__ */ e("span", { className: "nim-activity__marker", children: s.icon ? /* @__PURE__ */ e(M, { name: s.icon, size: "xs" }) : null }),
+    /* @__PURE__ */ e("span", { className: "nim-activity__marker", children: s.icon ? /* @__PURE__ */ e(x, { name: s.icon, size: "xs" }) : null }),
     /* @__PURE__ */ r("div", { className: "nim-activity__body", children: [
       /* @__PURE__ */ r("p", { className: "nim-activity__action", children: [
         s.actor ? /* @__PURE__ */ e("strong", { children: s.actor }) : null,
@@ -329,15 +340,15 @@ function tl({
   description: t,
   eyebrow: s,
   flush: d = !1,
-  footer: c,
-  marker: o,
+  footer: o,
+  marker: c,
   title: m,
   ...u
 }) {
   const h = m || l || t || s || n;
   return /* @__PURE__ */ r("section", { className: b("nim-panel", a), ...u, children: [
     h ? /* @__PURE__ */ r("header", { className: "nim-panel__head", children: [
-      o ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-panel__marker", children: o }) : null,
+      c ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-panel__marker", children: c }) : null,
       /* @__PURE__ */ r("div", { className: "nim-panel__heading", children: [
         s ? /* @__PURE__ */ e("p", { className: "nim-panel__eyebrow", children: s }) : null,
         m ? /* @__PURE__ */ r("div", { className: "nim-panel__title-row", children: [
@@ -349,7 +360,7 @@ function tl({
       n ? /* @__PURE__ */ e("div", { className: "nim-panel__actions", children: n }) : null
     ] }) : null,
     i ? /* @__PURE__ */ e("div", { className: "nim-panel__body", "data-flush": d ? "true" : void 0, children: i }) : null,
-    c ? /* @__PURE__ */ e("div", { className: "nim-panel__foot", children: c }) : null
+    o ? /* @__PURE__ */ e("div", { className: "nim-panel__foot", children: o }) : null
   ] });
 }
 function sl({ actions: n, children: l, className: i, ...a }) {
@@ -366,32 +377,32 @@ function rl({
   hint: t,
   icon: s,
   label: d,
-  layout: c = "stacked",
-  onClick: o,
+  layout: o = "stacked",
+  onClick: c,
   tone: m = "neutral",
   value: u,
   ...h
 }) {
-  const _ = a === "more-is-better" ? i === "up" : i === "down";
+  const f = a === "more-is-better" ? i === "up" : i === "down";
   return /* @__PURE__ */ r(
-    o ? "button" : "div",
+    c ? "button" : "div",
     {
-      className: b("nim-metric", o && "nim-metric--interactive", n),
-      "data-layout": c === "stacked" ? void 0 : c,
+      className: b("nim-metric", c && "nim-metric--interactive", n),
+      "data-layout": o === "stacked" ? void 0 : o,
       "data-tone": m === "neutral" ? void 0 : m,
-      onClick: o,
-      type: o ? "button" : void 0,
+      onClick: c,
+      type: c ? "button" : void 0,
       ...h,
       children: [
-        c === "inline" && s ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-metric__glyph", children: /* @__PURE__ */ e(M, { name: s, size: "sm" }) }) : null,
+        o === "inline" && s ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-metric__glyph", children: /* @__PURE__ */ e(x, { name: s, size: "sm" }) }) : null,
         /* @__PURE__ */ r("span", { className: "nim-metric__label", children: [
-          c === "inline" ? null : s ? /* @__PURE__ */ e(M, { name: s, size: "xs" }) : null,
+          o === "inline" ? null : s ? /* @__PURE__ */ e(x, { name: s, size: "xs" }) : null,
           d
         ] }),
         /* @__PURE__ */ e("span", { className: "nim-metric__value", children: u }),
         l || t ? /* @__PURE__ */ r("span", { className: "nim-metric__foot", children: [
-          l ? /* @__PURE__ */ r("span", { className: "nim-metric__delta", "data-intent": _ ? "good" : "bad", children: [
-            /* @__PURE__ */ e(M, { name: i === "up" ? "trend-up" : "trend-down", size: "xs" }),
+          l ? /* @__PURE__ */ r("span", { className: "nim-metric__delta", "data-intent": f ? "good" : "bad", children: [
+            /* @__PURE__ */ e(x, { name: i === "up" ? "trend-up" : "trend-down", size: "xs" }),
             l
           ] }) : null,
           t ? /* @__PURE__ */ e("span", { className: "nim-metric__hint", children: t }) : null
@@ -423,7 +434,7 @@ function dl({ children: n, className: l, template: i = "halves", ...a }) {
 }
 function ml({ className: n, description: l, icon: i, title: a, tone: t = "neutral", ...s }) {
   return /* @__PURE__ */ r("section", { className: b("nim-status-hero", n), "data-tone": t, ...s, children: [
-    /* @__PURE__ */ e("span", { className: "nim-status-hero__mark", children: /* @__PURE__ */ e(M, { name: i, size: "xl" }) }),
+    /* @__PURE__ */ e("span", { className: "nim-status-hero__mark", children: /* @__PURE__ */ e(x, { name: i, size: "xl" }) }),
     /* @__PURE__ */ r("div", { className: "nim-status-hero__copy", children: [
       /* @__PURE__ */ e("strong", { className: "nim-status-hero__title", children: a }),
       l ? /* @__PURE__ */ e("p", { className: "nim-status-hero__description", children: l }) : null
@@ -439,17 +450,17 @@ function ul({
   wrap: s = !1,
   ...d
 }) {
-  const [c, o] = L(!1), m = typeof navigator < "u" && !!navigator.clipboard, u = Z(() => {
+  const [o, c] = E(!1), m = typeof navigator < "u" && !!navigator.clipboard, u = Z(() => {
     navigator.clipboard.writeText(n).then(() => {
-      o(!0), window.setTimeout(() => o(!1), 1600);
+      c(!0), window.setTimeout(() => c(!1), 1600);
     });
   }, [n]);
   return /* @__PURE__ */ r("figure", { className: b("nim-code", l), children: [
     t || m ? /* @__PURE__ */ r("figcaption", { className: "nim-code__head", children: [
       t ? /* @__PURE__ */ e("span", { className: "nim-code__label", children: t }) : /* @__PURE__ */ e("span", {}),
       m ? /* @__PURE__ */ r("button", { className: "nim-code__copy", onClick: u, type: "button", children: [
-        /* @__PURE__ */ e(M, { name: c ? "check" : "copy", size: "xs" }),
-        c ? i : a
+        /* @__PURE__ */ e(x, { name: o ? "check" : "copy", size: "xs" }),
+        o ? i : a
       ] }) : null
     ] }) : null,
     /* @__PURE__ */ e("pre", { className: "nim-code__body", "data-wrap": s ? "true" : void 0, tabIndex: 0, ...d, children: n })
@@ -461,11 +472,11 @@ function hl({ children: n, className: l, pulse: i = !1, tone: a = "neutral", ...
     n
   ] });
 }
-function pl({ children: n, className: l, size: i = "sm", ...a }) {
+function _l({ children: n, className: l, size: i = "sm", ...a }) {
   return /* @__PURE__ */ e("code", { className: b("nim-mono", l), "data-size": i, ...a, children: n });
 }
-function _l({ className: n, href: l, meta: i, onClick: a, title: t }) {
-  const s = /* @__PURE__ */ r(G, { children: [
+function pl({ className: n, href: l, meta: i, onClick: a, title: t }) {
+  const s = /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("strong", { className: "nim-record__title", children: t }),
     i ? /* @__PURE__ */ e("span", { className: "nim-record__meta", children: i }) : null
   ] });
@@ -505,21 +516,21 @@ function bl({
   copyLabel: a = "Copy",
   ...t
 }) {
-  const [s, d] = L(!1), c = typeof navigator < "u" && !!navigator.clipboard, o = Z(() => {
+  const [s, d] = E(!1), o = typeof navigator < "u" && !!navigator.clipboard, c = Z(() => {
     navigator.clipboard.writeText(n).then(() => {
       d(!0), window.setTimeout(() => d(!1), 1600);
     });
   }, [n]);
   return /* @__PURE__ */ r("span", { className: b("nim-copy-chip", l), ...t, children: [
     /* @__PURE__ */ e("span", { className: "nim-copy-chip__value", children: n }),
-    c ? /* @__PURE__ */ e(
+    o ? /* @__PURE__ */ e(
       "button",
       {
         "aria-label": s ? i : `${a} ${n}`,
         className: "nim-copy-chip__button",
-        onClick: o,
+        onClick: c,
         type: "button",
-        children: /* @__PURE__ */ e(M, { name: s ? "check" : "copy", size: "xs" })
+        children: /* @__PURE__ */ e(x, { name: s ? "check" : "copy", size: "xs" })
       }
     ) : null
   ] });
@@ -538,9 +549,9 @@ function gl({
   nameAccent: t,
   size: s = "md",
   tagline: d,
-  ...c
+  ...o
 }) {
-  const o = /* @__PURE__ */ r(G, { children: [
+  const c = /* @__PURE__ */ r(H, { children: [
     i ? /* @__PURE__ */ e("span", { className: "nim-brand__mark", children: i }) : null,
     /* @__PURE__ */ r("span", { className: "nim-brand__text", children: [
       /* @__PURE__ */ r("strong", { className: "nim-brand__name", children: [
@@ -550,7 +561,7 @@ function gl({
       d ? /* @__PURE__ */ e("small", { className: "nim-brand__tagline", children: d }) : null
     ] })
   ] }), m = b("nim-brand", n);
-  return l ? /* @__PURE__ */ e("a", { className: m, "data-size": s, href: l, ...c, children: o }) : /* @__PURE__ */ e("span", { className: m, "data-size": s, ...c, children: o });
+  return l ? /* @__PURE__ */ e("a", { className: m, "data-size": s, href: l, ...o, children: c }) : /* @__PURE__ */ e("span", { className: m, "data-size": s, ...o, children: c });
 }
 const za = {
   gitea: "#609926",
@@ -565,41 +576,41 @@ const za = {
   redis: "#d82c20",
   valkey: "#ff4438"
 }, Da = {
-  gitea: /* @__PURE__ */ r(G, { children: [
+  gitea: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("path", { d: "M7 4h7a6 6 0 0 1 0 12h-2" }),
     /* @__PURE__ */ e("circle", { cx: "7", cy: "8", r: "3" }),
     /* @__PURE__ */ e("path", { d: "M12 16v4" })
   ] }),
   github: /* @__PURE__ */ e("path", { d: "M12 2.6a9.4 9.4 0 0 0-3 18.3c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.8.8.1-.6.3-1.1.6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.5-.1-.3-.4-1.3.1-2.6 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.6.6.6 1 1.5 1 2.5 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.8v2.7c0 .3.2.6.7.5A9.4 9.4 0 0 0 12 2.6Z" }),
   gitlab: /* @__PURE__ */ e("path", { d: "m12 21-3.5-10.8H3.3L12 21l8.7-10.8h-5.2L12 21ZM8.5 10.2 6.6 4l-3.3 6.2h5.2Zm7 0L17.4 4l3.3 6.2h-5.2Z" }),
-  grafana: /* @__PURE__ */ r(G, { children: [
+  grafana: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("circle", { cx: "12", cy: "13", r: "5" }),
     /* @__PURE__ */ e("path", { d: "M12 4v4M6 6l2 3M18 6l-2 3" })
   ] }),
-  jaeger: /* @__PURE__ */ r(G, { children: [
+  jaeger: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("circle", { cx: "12", cy: "12", r: "8" }),
     /* @__PURE__ */ e("circle", { cx: "12", cy: "12", r: "3" })
   ] }),
-  loki: /* @__PURE__ */ r(G, { children: [
+  loki: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("path", { d: "M12 3 5 9v9h14V9l-7-6Z" }),
     /* @__PURE__ */ e("path", { d: "M9 18v-5h6v5" })
   ] }),
   mongodb: /* @__PURE__ */ e("path", { d: "M12 2.5c2.6 3.2 5 6 5 10 0 3.4-2.2 6.2-4.3 7.1L12 22l-.7-2.4C9.2 18.7 7 15.9 7 12.5c0-4 2.4-6.8 5-10Z" }),
-  postgresql: /* @__PURE__ */ r(G, { children: [
+  postgresql: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("ellipse", { cx: "12", cy: "7", rx: "7", ry: "3.2" }),
     /* @__PURE__ */ e("path", { d: "M5 7v9c0 1.8 3.1 3.2 7 3.2s7-1.4 7-3.2V7" }),
     /* @__PURE__ */ e("path", { d: "M5 12c0 1.8 3.1 3.2 7 3.2s7-1.4 7-3.2" })
   ] }),
-  prometheus: /* @__PURE__ */ r(G, { children: [
+  prometheus: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("path", { d: "M12 2c2.6 2.8 3.6 5 2.6 7.4C13.8 11.2 12 11.8 12 14" }),
     /* @__PURE__ */ e("circle", { cx: "12", cy: "14", r: "7" }),
     /* @__PURE__ */ e("path", { d: "M8 12h8" })
   ] }),
-  redis: /* @__PURE__ */ r(G, { children: [
+  redis: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("path", { d: "m12 3 9 4-9 4-9-4 9-4Z" }),
     /* @__PURE__ */ e("path", { d: "m3 12 9 4 9-4M3 17l9 4 9-4" })
   ] }),
-  valkey: /* @__PURE__ */ r(G, { children: [
+  valkey: /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ e("path", { d: "m12 3 9 4-9 4-9-4 9-4Z" }),
     /* @__PURE__ */ e("path", { d: "m3 12 9 4 9-4" })
   ] })
@@ -653,55 +664,55 @@ const X = Oe(function({
   iconEnd: t,
   iconStart: s,
   size: d = "md",
-  variant: c = "primary",
-  ...o
+  variant: o = "primary",
+  ...c
 }, m) {
   const u = b(
     "nim-button",
-    `nim-button--${c}`,
+    `nim-button--${o}`,
     `nim-button--${d}`,
     a && "nim-button--full",
     i
-  ), h = /* @__PURE__ */ r(G, { children: [
-    s ? /* @__PURE__ */ e(M, { name: s, size: "sm" }) : null,
+  ), h = /* @__PURE__ */ r(H, { children: [
+    s ? /* @__PURE__ */ e(x, { name: s, size: "sm" }) : null,
     /* @__PURE__ */ e("span", { className: "nim-button__label", children: l }),
-    t ? /* @__PURE__ */ e(M, { name: t, size: "sm" }) : null
+    t ? /* @__PURE__ */ e(x, { name: t, size: "sm" }) : null
   ] });
-  if ("href" in o && o.href !== void 0) {
-    const { href: f, rel: k, target: y, ...z } = o;
+  if ("href" in c && c.href !== void 0) {
+    const { href: p, rel: w, target: y, ...S } = c;
     return /* @__PURE__ */ e(
       "a",
       {
         className: u,
-        href: f,
+        href: p,
         ref: m,
-        rel: y === "_blank" ? k ?? "noreferrer" : k,
+        rel: y === "_blank" ? w ?? "noreferrer" : w,
         target: y,
-        ...z,
+        ...S,
         children: h
       }
     );
   }
   const {
-    disabled: _ = !1,
-    loading: p = !1,
+    disabled: f = !1,
+    loading: _ = !1,
     type: N = "button",
     ...g
-  } = o;
+  } = c;
   return /* @__PURE__ */ r(
     "button",
     {
-      "aria-busy": p || void 0,
-      className: b(u, p && "nim-button--loading"),
-      disabled: _ || p,
+      "aria-busy": _ || void 0,
+      className: b(u, _ && "nim-button--loading"),
+      disabled: f || _,
       ref: m,
       type: N,
       ...g,
       children: [
-        p ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-button__spinner" }) : null,
-        p ? /* @__PURE__ */ r(G, { children: [
+        _ ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-button__spinner" }) : null,
+        _ ? /* @__PURE__ */ r(H, { children: [
           /* @__PURE__ */ e("span", { className: "nim-button__label", children: l }),
-          t ? /* @__PURE__ */ e(M, { name: t, size: "sm" }) : null
+          t ? /* @__PURE__ */ e(x, { name: t, size: "sm" }) : null
         ] }) : h
       ]
     }
@@ -709,7 +720,7 @@ const X = Oe(function({
 });
 function Ea({ actions: n, className: l, description: i, icon: a = "search", title: t, ...s }) {
   return /* @__PURE__ */ r("div", { className: b("nim-empty", l), ...s, children: [
-    /* @__PURE__ */ e("span", { className: "nim-empty__icon", children: /* @__PURE__ */ e(M, { name: a, size: "md" }) }),
+    /* @__PURE__ */ e("span", { className: "nim-empty__icon", children: /* @__PURE__ */ e(x, { name: a, size: "md" }) }),
     /* @__PURE__ */ e("p", { className: "nim-title nim-title--md", children: t }),
     i ? /* @__PURE__ */ e("p", { className: "nim-body nim-body--sm nim-empty__body", children: i }) : null,
     n ? /* @__PURE__ */ e("div", { className: "nim-empty__actions", children: n }) : null
@@ -730,10 +741,10 @@ function Ia({
   page: t,
   pageCount: s,
   previousLabel: d = "Previous page",
-  summary: c
+  summary: o
 }) {
   return /* @__PURE__ */ r("nav", { "aria-label": l, className: b("nim-pagination", n), children: [
-    c ? /* @__PURE__ */ e("p", { className: "nim-pagination__summary", children: c }) : /* @__PURE__ */ e("span", {}),
+    o ? /* @__PURE__ */ e("p", { className: "nim-pagination__summary", children: o }) : /* @__PURE__ */ e("span", {}),
     /* @__PURE__ */ r("div", { className: "nim-pagination__list", children: [
       /* @__PURE__ */ e(
         "button",
@@ -743,20 +754,20 @@ function Ia({
           disabled: t <= 1,
           onClick: () => a(t - 1),
           type: "button",
-          children: /* @__PURE__ */ e(M, { name: "chevron-back", size: "sm" })
+          children: /* @__PURE__ */ e(x, { name: "chevron-back", size: "sm" })
         }
       ),
       $a(t, s).map(
-        (o, m) => o === "gap" ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-pagination__ellipsis", children: "…" }, `gap-${m}`) : /* @__PURE__ */ e(
+        (c, m) => c === "gap" ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-pagination__ellipsis", children: "…" }, `gap-${m}`) : /* @__PURE__ */ e(
           "button",
           {
-            "aria-current": o === t ? "page" : void 0,
+            "aria-current": c === t ? "page" : void 0,
             className: "nim-pagination__item",
-            onClick: () => a(o),
+            onClick: () => a(c),
             type: "button",
-            children: o
+            children: c
           },
-          o
+          c
         )
       ),
       /* @__PURE__ */ e(
@@ -767,7 +778,7 @@ function Ia({
           disabled: t >= s,
           onClick: () => a(t + 1),
           type: "button",
-          children: /* @__PURE__ */ e(M, { name: "chevron-forward", size: "sm" })
+          children: /* @__PURE__ */ e(x, { name: "chevron-forward", size: "sm" })
         }
       )
     ] })
@@ -776,30 +787,30 @@ function Ia({
 function Se({ caption: n, className: l, columns: i, onSort: a, rowKey: t, rows: s, sort: d }) {
   return /* @__PURE__ */ e("div", { className: b("nim-table-wrap", l), children: /* @__PURE__ */ r("table", { className: "nim-table", children: [
     n ? /* @__PURE__ */ e("caption", { className: "nim-caption", children: n }) : null,
-    /* @__PURE__ */ e("thead", { children: /* @__PURE__ */ e("tr", { children: i.map((c) => {
-      const o = (d == null ? void 0 : d.key) === c.key ? d.direction : void 0;
+    /* @__PURE__ */ e("thead", { children: /* @__PURE__ */ e("tr", { children: i.map((o) => {
+      const c = (d == null ? void 0 : d.key) === o.key ? d.direction : void 0;
       return /* @__PURE__ */ e(
         "th",
         {
-          "aria-sort": o,
-          className: b(c.numeric && "nim-table__cell--numeric"),
+          "aria-sort": c,
+          className: b(o.numeric && "nim-table__cell--numeric"),
           scope: "col",
-          style: c.width ? { inlineSize: c.width } : void 0,
-          children: c.sortable && a ? /* @__PURE__ */ r("button", { className: "nim-table__sort", onClick: () => a(c.key), type: "button", children: [
-            c.header,
-            o ? /* @__PURE__ */ e(M, { name: o === "ascending" ? "chevron-up" : "chevron-down", size: "xs" }) : null
-          ] }) : c.header
+          style: o.width ? { inlineSize: o.width } : void 0,
+          children: o.sortable && a ? /* @__PURE__ */ r("button", { className: "nim-table__sort", onClick: () => a(o.key), type: "button", children: [
+            o.header,
+            c ? /* @__PURE__ */ e(x, { name: c === "ascending" ? "chevron-up" : "chevron-down", size: "xs" }) : null
+          ] }) : o.header
         },
-        c.key
+        o.key
       );
     }) }) }),
-    /* @__PURE__ */ e("tbody", { children: s.map((c) => /* @__PURE__ */ e("tr", { children: i.map((o) => /* @__PURE__ */ e("td", { className: b(o.numeric && "nim-table__cell--numeric"), children: o.render(c) }, o.key)) }, t(c))) })
+    /* @__PURE__ */ e("tbody", { children: s.map((o) => /* @__PURE__ */ e("tr", { children: i.map((c) => /* @__PURE__ */ e("td", { className: b(c.numeric && "nim-table__cell--numeric"), children: c.render(o) }, c.key)) }, t(o))) })
   ] }) });
 }
 function ze({ children: n, className: l, description: i, ...a }) {
   return /* @__PURE__ */ r("label", { className: b("nim-choice nim-choice--checkbox", l), children: [
     /* @__PURE__ */ e("input", { className: "nim-choice__input", type: "checkbox", ...a }),
-    /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-checkbox__box", children: /* @__PURE__ */ e(M, { name: "check", size: "xs" }) }),
+    /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-checkbox__box", children: /* @__PURE__ */ e(x, { name: "check", size: "xs" }) }),
     /* @__PURE__ */ r("span", { className: "nim-choice__text", children: [
       n,
       i ? /* @__PURE__ */ e("span", { className: "nim-choice__description", children: i }) : null
@@ -817,7 +828,7 @@ function Ba({ children: n, className: l, description: i, ...a }) {
   ] });
 }
 function wl({ children: n, className: l, description: i, ...a }) {
-  const t = xe(Ge);
+  const t = xe(He);
   return /* @__PURE__ */ r("label", { className: b("nim-choice nim-choice--radio", l), children: [
     /* @__PURE__ */ e(
       "input",
@@ -840,7 +851,7 @@ function wl({ children: n, className: l, description: i, ...a }) {
     ] })
   ] });
 }
-const Ge = Ce(null);
+const He = Ce(null);
 function Cl({
   children: n,
   className: l,
@@ -849,26 +860,26 @@ function Cl({
   label: t,
   layout: s = "stack",
   name: d,
-  onChange: c,
-  value: o
+  onChange: o,
+  value: c
 }) {
-  const m = J(), u = d ?? `nim-radio-${m}`, h = a ? `${u}-hint` : void 0, _ = i ? `${u}-error` : void 0;
-  return /* @__PURE__ */ e(Ge.Provider, { value: { name: u, onChange: c, value: o }, children: /* @__PURE__ */ r(
+  const m = J(), u = d ?? `nim-radio-${m}`, h = a ? `${u}-hint` : void 0, f = i ? `${u}-error` : void 0;
+  return /* @__PURE__ */ e(He.Provider, { value: { name: u, onChange: o, value: c }, children: /* @__PURE__ */ r(
     "fieldset",
     {
-      "aria-describedby": [_, h].filter(Boolean).join(" ") || void 0,
+      "aria-describedby": [f, h].filter(Boolean).join(" ") || void 0,
       "aria-invalid": i ? !0 : void 0,
       className: b("nim-radio-group", i && "nim-radio-group--invalid", l),
       children: [
         /* @__PURE__ */ e("legend", { className: "nim-radio-group__legend", children: t }),
         /* @__PURE__ */ e("div", { className: b("nim-radio-group__options", `nim-radio-group__options--${s}`), children: n }),
-        i ? /* @__PURE__ */ e("p", { className: "nim-field__error", id: _, children: i }) : null,
+        i ? /* @__PURE__ */ e("p", { className: "nim-field__error", id: f, children: i }) : null,
         a && !i ? /* @__PURE__ */ e("p", { className: "nim-field__hint", id: h, children: a }) : null
       ]
     }
   ) });
 }
-function He({ className: n, label: l = "Loading", size: i = "md", ...a }) {
+function Ge({ className: n, label: l = "Loading", size: i = "md", ...a }) {
   return /* @__PURE__ */ e(
     "span",
     {
@@ -918,43 +929,43 @@ function xl({
   error: t,
   labels: s,
   loading: d = !1,
-  onPageChange: c,
-  onRetry: o,
+  onPageChange: o,
+  onRetry: c,
   onSort: m,
   page: u,
   pageCount: h,
-  refreshing: _ = !1,
-  retryLabel: p = "Try again",
+  refreshing: f = !1,
+  retryLabel: _ = "Try again",
   rowKey: N,
   rows: g,
-  selection: f,
-  skeletonRows: k = 6,
+  selection: p,
+  skeletonRows: w = 6,
   sort: y,
-  summary: z,
-  toolbar: D
+  summary: S,
+  toolbar: I
 }) {
-  const I = { ...Oa, ...s }, T = g.length > 0 && f ? g.every((x) => f.isSelected(x)) : !1, v = f ? [
+  const B = { ...Oa, ...s }, M = g.length > 0 && p ? g.every((k) => p.isSelected(k)) : !1, v = p ? [
     {
-      header: f.onToggleAll ? /* @__PURE__ */ e(
+      header: p.onToggleAll ? /* @__PURE__ */ e(
         ze,
         {
-          "aria-label": I.selectAll,
-          checked: T,
-          onChange: (x) => {
-            var S;
-            return (S = f.onToggleAll) == null ? void 0 : S.call(f, x.currentTarget.checked);
+          "aria-label": B.selectAll,
+          checked: M,
+          onChange: (k) => {
+            var L;
+            return (L = p.onToggleAll) == null ? void 0 : L.call(p, k.currentTarget.checked);
           }
         }
-      ) : /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: I.selectAll }),
+      ) : /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: B.selectAll }),
       key: "__select",
-      render: (x) => {
-        var S;
+      render: (k) => {
+        var L;
         return /* @__PURE__ */ e(
           ze,
           {
-            "aria-label": ((S = f.label) == null ? void 0 : S.call(f, x)) ?? I.selectRow,
-            checked: f.isSelected(x),
-            onChange: (E) => f.onToggle(x, E.currentTarget.checked)
+            "aria-label": ((L = p.label) == null ? void 0 : L.call(p, k)) ?? B.selectRow,
+            checked: p.isSelected(k),
+            onChange: (D) => p.onToggle(k, D.currentTarget.checked)
           }
         );
       },
@@ -962,27 +973,27 @@ function xl({
     },
     ...i
   ] : i;
-  let w;
-  return t ? w = /* @__PURE__ */ e("div", { className: "nim-data-table__state", children: /* @__PURE__ */ e(
+  let T;
+  return t ? T = /* @__PURE__ */ e("div", { className: "nim-data-table__state", children: /* @__PURE__ */ e(
     Ea,
     {
-      actions: o ? /* @__PURE__ */ e(X, { onClick: o, size: "sm", variant: "secondary", children: p }) : void 0,
+      actions: c ? /* @__PURE__ */ e(X, { onClick: c, size: "sm", variant: "secondary", children: _ }) : void 0,
       icon: "danger",
       title: t
     }
-  ) }) : d ? w = /* @__PURE__ */ e(
+  ) }) : d ? T = /* @__PURE__ */ e(
     Se,
     {
       caption: n,
-      columns: v.map((x) => ({
-        ...x,
-        render: () => /* @__PURE__ */ e(Fa, { height: "0.9em", width: x.numeric ? "3rem" : "70%" }),
+      columns: v.map((k) => ({
+        ...k,
+        render: () => /* @__PURE__ */ e(Fa, { height: "0.9em", width: k.numeric ? "3rem" : "70%" }),
         sortable: !1
       })),
-      rowKey: (x) => `skeleton-${x.__skeleton}`,
-      rows: Ra(k)
+      rowKey: (k) => `skeleton-${k.__skeleton}`,
+      rows: Ra(w)
     }
-  ) : g.length === 0 ? w = /* @__PURE__ */ e("div", { className: "nim-data-table__state", children: a }) : w = /* @__PURE__ */ e(
+  ) : g.length === 0 ? T = /* @__PURE__ */ e("div", { className: "nim-data-table__state", children: a }) : T = /* @__PURE__ */ e(
     Se,
     {
       caption: n,
@@ -992,13 +1003,13 @@ function xl({
       rows: g,
       sort: y
     }
-  ), /* @__PURE__ */ r("div", { className: b("nim-data-table", l), "data-refreshing": _ ? "true" : void 0, children: [
-    D,
+  ), /* @__PURE__ */ r("div", { className: b("nim-data-table", l), "data-refreshing": f ? "true" : void 0, children: [
+    I,
     /* @__PURE__ */ r("div", { className: "nim-data-table__body", children: [
-      w,
-      _ ? /* @__PURE__ */ e("span", { className: "nim-data-table__pulse", children: /* @__PURE__ */ e(M, { name: "loading", size: "xs" }) }) : null
+      T,
+      f ? /* @__PURE__ */ e("span", { className: "nim-data-table__pulse", children: /* @__PURE__ */ e(x, { name: "loading", size: "xs" }) }) : null
     ] }),
-    u && h && h > 1 && c ? /* @__PURE__ */ e(Ia, { onChange: c, page: u, pageCount: h, summary: z }) : z ? /* @__PURE__ */ e("p", { className: "nim-data-table__summary", children: z }) : null
+    u && h && h > 1 && o ? /* @__PURE__ */ e(Ia, { onChange: o, page: u, pageCount: h, summary: S }) : S ? /* @__PURE__ */ e("p", { className: "nim-data-table__summary", children: S }) : null
   ] });
 }
 function Ml({
@@ -1010,27 +1021,27 @@ function Ml({
   open: s,
   variant: d = "panel"
 }) {
-  const c = J(), [o, m] = L(l), u = s ?? o, h = (_) => {
-    const p = u.includes(_), N = a === "single" ? p ? [] : [_] : p ? u.filter((g) => g !== _) : [...u, _];
+  const o = J(), [c, m] = E(l), u = s ?? c, h = (f) => {
+    const _ = u.includes(f), N = a === "single" ? _ ? [] : [f] : _ ? u.filter((g) => g !== f) : [...u, f];
     s || m(N), t == null || t(N);
   };
-  return /* @__PURE__ */ e("div", { className: b("nim-accordion", `nim-accordion--${d}`, n), children: i.map((_) => {
-    const p = u.includes(_.id), N = `${c}-${_.id}`;
-    return /* @__PURE__ */ r("div", { className: "nim-accordion__item", "data-open": p || void 0, children: [
+  return /* @__PURE__ */ e("div", { className: b("nim-accordion", `nim-accordion--${d}`, n), children: i.map((f) => {
+    const _ = u.includes(f.id), N = `${o}-${f.id}`;
+    return /* @__PURE__ */ r("div", { className: "nim-accordion__item", "data-open": _ || void 0, children: [
       /* @__PURE__ */ r(
         "button",
         {
           "aria-controls": N,
-          "aria-expanded": p,
+          "aria-expanded": _,
           className: "nim-accordion__trigger",
-          disabled: _.disabled,
+          disabled: f.disabled,
           id: `${N}-trigger`,
-          onClick: () => h(_.id),
+          onClick: () => h(f.id),
           type: "button",
           children: [
-            /* @__PURE__ */ e("span", { className: "nim-accordion__title", children: _.title }),
-            _.meta ? /* @__PURE__ */ e("span", { className: "nim-accordion__meta", children: _.meta }) : null,
-            /* @__PURE__ */ e(M, { className: "nim-accordion__chevron", name: "chevron-down", size: "sm" })
+            /* @__PURE__ */ e("span", { className: "nim-accordion__title", children: f.title }),
+            f.meta ? /* @__PURE__ */ e("span", { className: "nim-accordion__meta", children: f.meta }) : null,
+            /* @__PURE__ */ e(x, { className: "nim-accordion__chevron", name: "chevron-down", size: "sm" })
           ]
         }
       ),
@@ -1045,27 +1056,27 @@ function Ml({
             "div",
             {
               className: "nim-accordion__panel-inner",
-              inert: !p,
-              children: _.content
+              inert: !_,
+              children: f.content
             }
           )
         }
       )
-    ] }, _.id);
+    ] }, f.id);
   }) });
 }
 function Ua({ className: n, items: l, label: i, renderItem: a, value: t }) {
   return /* @__PURE__ */ e("nav", { "aria-label": i, className: b("nim-tab-bar", n), children: /* @__PURE__ */ e("div", { className: "nim-tab-bar__row", style: { "--nim-tab-count": l.length }, children: l.map((s) => {
-    const d = s.key === t, c = /* @__PURE__ */ r(G, { children: [
-      /* @__PURE__ */ e(M, { name: s.icon, size: s.center ? "lg" : "md" }),
+    const d = s.key === t, o = /* @__PURE__ */ r(H, { children: [
+      /* @__PURE__ */ e(x, { name: s.icon, size: s.center ? "lg" : "md" }),
       /* @__PURE__ */ e("span", { className: "nim-tab-bar__label", children: s.label })
-    ] }), o = {
+    ] }), c = {
       "aria-current": d ? "page" : void 0,
       "aria-label": s.fullLabel ?? s.label,
       className: b("nim-tab-bar__item", s.center && "nim-tab-bar__item--center"),
       "data-active": d ? "true" : void 0
     };
-    return a ? /* @__PURE__ */ e("div", { className: "nim-tab-bar__slot", children: a(s, c, o) }, s.key) : s.href ? /* @__PURE__ */ e("a", { href: s.href, ...o, children: c }, s.key) : /* @__PURE__ */ e("button", { onClick: s.onSelect, type: "button", ...o, children: c }, s.key);
+    return a ? /* @__PURE__ */ e("div", { className: "nim-tab-bar__slot", children: a(s, o, c) }, s.key) : s.href ? /* @__PURE__ */ e("a", { href: s.href, ...c, children: o }, s.key) : /* @__PURE__ */ e("button", { onClick: s.onSelect, type: "button", ...c, children: o }, s.key);
   }) }) });
 }
 function Tl({ children: n, className: l, frame: i = "responsive", header: a, tabs: t }) {
@@ -1083,13 +1094,13 @@ function Ne({
   className: t,
   footer: s,
   subtitle: d,
-  title: c
+  title: o
 }) {
   return /* @__PURE__ */ r("section", { className: b("nim-auth", t), children: [
     i ? /* @__PURE__ */ e("div", { className: "nim-auth__brand", children: i }) : null,
     /* @__PURE__ */ r("div", { className: "nim-auth__body", children: [
       l ? /* @__PURE__ */ e(X, { className: "nim-auth__back", iconStart: "chevron-back", onClick: l.onClick, size: "sm", variant: "ghost", children: l.label }) : null,
-      /* @__PURE__ */ e("h1", { className: "nim-auth__title", children: c }),
+      /* @__PURE__ */ e("h1", { className: "nim-auth__title", children: o }),
       d ? /* @__PURE__ */ e("p", { className: "nim-auth__subtitle", children: d }) : null,
       /* @__PURE__ */ e("div", { className: "nim-auth__fields", children: a })
     ] }),
@@ -1110,7 +1121,7 @@ function Ne({
     ] })
   ] });
 }
-const Ga = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((l) => {
+const Ha = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((l) => {
   var i;
   return ((i = l[0]) == null ? void 0 : i.toUpperCase()) ?? "";
 }).join("");
@@ -1121,7 +1132,7 @@ function de({ className: n, name: l, shape: i = "round", size: a = "md", src: t,
       className: b("nim-avatar", a !== "md" && `nim-avatar--${a}`, i === "square" && "nim-avatar--square", n),
       ...s,
       children: [
-        t ? /* @__PURE__ */ e("img", { alt: "", src: t }) : /* @__PURE__ */ e("span", { "aria-hidden": "true", children: Ga(l) }),
+        t ? /* @__PURE__ */ e("img", { alt: "", src: t }) : /* @__PURE__ */ e("span", { "aria-hidden": "true", children: Ha(l) }),
         /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: l })
       ]
     }
@@ -1136,14 +1147,14 @@ function Sl({
   src: s,
   value: d
 }) {
-  const c = Math.max(4, Math.round(t * 0.05)), o = (t - c) / 2, m = 2 * Math.PI * o, u = Math.min(100, Math.max(0, d)) / 100 * m;
+  const o = Math.max(4, Math.round(t * 0.05)), c = (t - o) / 2, m = 2 * Math.PI * c, u = Math.min(100, Math.max(0, d)) / 100 * m;
   return /* @__PURE__ */ r(
     "div",
     {
       "aria-label": a,
       className: b("nim-avatar-ring", l),
       role: "img",
-      style: { "--nim-ring-size": `${t}px`, "--nim-ring-stroke": `${c}px` },
+      style: { "--nim-ring-size": `${t}px`, "--nim-ring-stroke": `${o}px` },
       children: [
         /* @__PURE__ */ r("svg", { "aria-hidden": "true", className: "nim-avatar-ring__arc", viewBox: `0 0 ${t} ${t}`, children: [
           /* @__PURE__ */ e(
@@ -1153,8 +1164,8 @@ function Sl({
               cx: t / 2,
               cy: t / 2,
               fill: "none",
-              r: o,
-              strokeWidth: c
+              r: c,
+              strokeWidth: o
             }
           ),
           /* @__PURE__ */ e(
@@ -1164,10 +1175,10 @@ function Sl({
               cx: t / 2,
               cy: t / 2,
               fill: "none",
-              r: o,
+              r: c,
               strokeDasharray: `${u} ${m}`,
               strokeLinecap: "round",
-              strokeWidth: c
+              strokeWidth: o
             }
           )
         ] }),
@@ -1179,7 +1190,7 @@ function Sl({
     }
   );
 }
-function Ha({
+function Ga({
   actions: n,
   avatar: l,
   chips: i,
@@ -1197,10 +1208,10 @@ function Ha({
         i ? /* @__PURE__ */ e("div", { className: "nim-profile-header__chips", children: i }) : null
       ] })
     ] }),
-    d.length ? /* @__PURE__ */ e("dl", { className: "nim-profile-header__stats", children: d.map((c, o) => /* @__PURE__ */ r("div", { className: "nim-profile-header__stat", children: [
-      /* @__PURE__ */ e("dt", { className: "nim-profile-header__stat-label", children: c.label }),
-      /* @__PURE__ */ e("dd", { className: "nim-profile-header__stat-value", children: c.value })
-    ] }, o)) }) : null,
+    d.length ? /* @__PURE__ */ e("dl", { className: "nim-profile-header__stats", children: d.map((o, c) => /* @__PURE__ */ r("div", { className: "nim-profile-header__stat", children: [
+      /* @__PURE__ */ e("dt", { className: "nim-profile-header__stat-label", children: o.label }),
+      /* @__PURE__ */ e("dd", { className: "nim-profile-header__stat-value", children: o.value })
+    ] }, c)) }) : null,
     n ? /* @__PURE__ */ e("div", { className: "nim-profile-header__actions", children: n }) : null
   ] });
 }
@@ -1212,7 +1223,7 @@ function Ka({
   size: t = "md",
   tone: s = "soft",
   variant: d = "neutral",
-  ...c
+  ...o
 }) {
   return /* @__PURE__ */ r(
     "span",
@@ -1225,7 +1236,7 @@ function Ka({
         a && "nim-badge--pill",
         l
       ),
-      ...c,
+      ...o,
       children: [
         i ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-badge__dot" }) : null,
         n
@@ -1257,7 +1268,7 @@ function Za({
       role: s === "danger" ? "alert" : "status",
       ...d,
       children: [
-        /* @__PURE__ */ e(M, { className: "nim-banner__icon", name: a ?? Wa[s], size: "sm" }),
+        /* @__PURE__ */ e(x, { className: "nim-banner__icon", name: a ?? Wa[s], size: "sm" }),
         /* @__PURE__ */ r("div", { className: "nim-banner__content", children: [
           t ? /* @__PURE__ */ e("p", { className: "nim-banner__title", children: t }) : null,
           /* @__PURE__ */ e("div", { children: l })
@@ -1271,7 +1282,7 @@ function zl({ className: n, items: l, label: i = "Breadcrumb" }) {
   return /* @__PURE__ */ e("nav", { "aria-label": i, className: b("nim-breadcrumb", n), children: l.map((a, t) => {
     const s = t === l.length - 1;
     return /* @__PURE__ */ r(ke, { children: [
-      t > 0 ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-breadcrumb__separator", children: /* @__PURE__ */ e(M, { name: "chevron-forward", size: "xs" }) }) : null,
+      t > 0 ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-breadcrumb__separator", children: /* @__PURE__ */ e(x, { name: "chevron-forward", size: "xs" }) }) : null,
       s || !a.href ? /* @__PURE__ */ e("span", { "aria-current": s ? "page" : void 0, className: "nim-breadcrumb__current", children: a.label }) : /* @__PURE__ */ e("a", { className: "nim-breadcrumb__link", href: a.href, children: a.label })
     ] }, a.label);
   }) });
@@ -1284,20 +1295,20 @@ function Dl({
   header: t,
   interactive: s = !1,
   padding: d = "md",
-  variant: c = "default",
-  ...o
+  variant: o = "default",
+  ...c
 }) {
   return /* @__PURE__ */ r(
     n,
     {
       className: b(
         "nim-card",
-        `nim-card--${c}`,
+        `nim-card--${o}`,
         `nim-card--pad-${d}`,
         s && "nim-card--interactive",
         i
       ),
-      ...o,
+      ...c,
       children: [
         t ? /* @__PURE__ */ e("div", { className: "nim-card__header", children: t }) : null,
         l,
@@ -1314,27 +1325,27 @@ function Al({
   disabled: t = !1,
   icon: s,
   name: d,
-  onSelect: c,
-  selected: o,
+  onSelect: o,
+  selected: c,
   title: m
 }) {
-  return /* @__PURE__ */ r("label", { className: b("nim-option-card", o && "nim-option-card--selected", l), children: [
+  return /* @__PURE__ */ r("label", { className: b("nim-option-card", c && "nim-option-card--selected", l), children: [
     /* @__PURE__ */ e(
       "input",
       {
-        checked: o,
+        checked: c,
         className: "nim-option-card__input",
         disabled: t,
         name: d,
-        onChange: c,
+        onChange: o,
         type: "radio"
       }
     ),
-    s ? /* @__PURE__ */ e("span", { className: "nim-option-card__icon", children: /* @__PURE__ */ e(M, { name: s, size: "md" }) }) : null,
+    s ? /* @__PURE__ */ e("span", { className: "nim-option-card__icon", children: /* @__PURE__ */ e(x, { name: s, size: "md" }) }) : null,
     /* @__PURE__ */ r("span", { className: "nim-option-card__text", children: [
       /* @__PURE__ */ e("span", { className: "nim-option-card__title", children: m }),
       i ? /* @__PURE__ */ e("span", { className: "nim-option-card__description", children: i }) : null,
-      o && a ? /* @__PURE__ */ e("span", { className: "nim-option-card__detail", children: a }) : null
+      c && a ? /* @__PURE__ */ e("span", { className: "nim-option-card__detail", children: a }) : null
     ] }),
     n ? /* @__PURE__ */ e("span", { className: "nim-option-card__badge", children: n }) : null,
     /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-option-card__dot" })
@@ -1350,7 +1361,7 @@ function Ll({ className: n, items: l, title: i, totals: a = [] }) {
       ] }),
       /* @__PURE__ */ e("dd", { className: "nim-summary__value", children: t.value })
     ] }, t.key)) }),
-    a.length ? /* @__PURE__ */ r(G, { children: [
+    a.length ? /* @__PURE__ */ r(H, { children: [
       /* @__PURE__ */ e("hr", { className: "nim-summary__rule" }),
       /* @__PURE__ */ e("dl", { className: "nim-summary__lines nim-summary__lines--totals", children: a.map((t) => /* @__PURE__ */ r(
         "div",
@@ -1380,52 +1391,52 @@ function El({ action: n, className: l, note: i, total: a }) {
   ] });
 }
 function Ke(n, l, { onDismiss: i, open: a }) {
-  const [t, s] = L({ left: 0, top: 0 }), d = U(null), c = Z(() => {
-    const o = n.current, m = l.current;
-    if (!o || !m) return;
-    const u = o.getBoundingClientRect(), { height: h, width: _ } = m.getBoundingClientRect(), p = 4, N = 8, g = getComputedStyle(o).direction === "rtl", f = u.bottom + p, y = f + h > window.innerHeight && u.top - p - h > 0 ? u.top - p - h : f, z = g ? u.right - _ : u.left, D = Math.min(Math.max(z, N), window.innerWidth - _ - N);
-    s({ left: D, top: y });
+  const [t, s] = E({ left: 0, top: 0 }), d = U(null), o = Z(() => {
+    const c = n.current, m = l.current;
+    if (!c || !m) return;
+    const u = c.getBoundingClientRect(), { height: h, width: f } = m.getBoundingClientRect(), _ = 4, N = 8, g = getComputedStyle(c).direction === "rtl", p = u.bottom + _, y = p + h > window.innerHeight && u.top - _ - h > 0 ? u.top - _ - h : p, S = g ? u.right - f : u.left, I = Math.min(Math.max(S, N), window.innerWidth - f - N);
+    s({ left: I, top: y });
   }, [l, n]);
   return en(() => {
-    a && c();
-  }, [a, c]), V(() => {
+    a && o();
+  }, [a, o]), V(() => {
     if (!a) return;
     d.current = document.activeElement;
-    const o = (u) => {
+    const c = (u) => {
       u.key === "Escape" && (u.stopPropagation(), i());
     }, m = (u) => {
-      var _, p;
+      var f, _;
       const h = u.target;
-      (_ = l.current) != null && _.contains(h) || (p = n.current) != null && p.contains(h) || i();
+      (f = l.current) != null && f.contains(h) || (_ = n.current) != null && _.contains(h) || i();
     };
-    return window.addEventListener("keydown", o), window.addEventListener("pointerdown", m), window.addEventListener("resize", c), window.addEventListener("scroll", c, !0), () => {
+    return window.addEventListener("keydown", c), window.addEventListener("pointerdown", m), window.addEventListener("resize", o), window.addEventListener("scroll", o, !0), () => {
       var u, h;
-      window.removeEventListener("keydown", o), window.removeEventListener("pointerdown", m), window.removeEventListener("resize", c), window.removeEventListener("scroll", c, !0), (h = (u = d.current) == null ? void 0 : u.focus) == null || h.call(u);
+      window.removeEventListener("keydown", c), window.removeEventListener("pointerdown", m), window.removeEventListener("resize", o), window.removeEventListener("scroll", o, !0), (h = (u = d.current) == null ? void 0 : u.focus) == null || h.call(u);
     };
-  }, [i, a, l, c, n]), t;
+  }, [i, a, l, o, n]), t;
 }
 const Ya = (n) => n.kind === void 0 || n.kind === "action";
 function De({ children: n, className: l, items: i, label: a }) {
-  const [t, s] = L(!1), [d, c] = L(0), o = U(null), m = U(null), u = Ke(o, m, { onDismiss: () => s(!1), open: t }), _ = i.filter(Ya).filter((f) => !f.disabled), p = () => {
-    c(0), s((f) => !f);
-  }, N = (f) => {
-    s(!1), f.onSelect();
-  }, g = (f) => {
-    if (_.length !== 0) {
-      if (f.key === "ArrowDown" || f.key === "ArrowUp") {
-        f.preventDefault();
-        const k = f.key === "ArrowDown" ? 1 : -1;
-        c((y) => (y + k + _.length) % _.length);
+  const [t, s] = E(!1), [d, o] = E(0), c = U(null), m = U(null), u = Ke(c, m, { onDismiss: () => s(!1), open: t }), f = i.filter(Ya).filter((p) => !p.disabled), _ = () => {
+    o(0), s((p) => !p);
+  }, N = (p) => {
+    s(!1), p.onSelect();
+  }, g = (p) => {
+    if (f.length !== 0) {
+      if (p.key === "ArrowDown" || p.key === "ArrowUp") {
+        p.preventDefault();
+        const w = p.key === "ArrowDown" ? 1 : -1;
+        o((y) => (y + w + f.length) % f.length);
       }
-      if (f.key === "Home" && (f.preventDefault(), c(0)), f.key === "End" && (f.preventDefault(), c(_.length - 1)), f.key === "Enter" || f.key === " ") {
-        f.preventDefault();
-        const k = _[d];
-        k && N(k);
+      if (p.key === "Home" && (p.preventDefault(), o(0)), p.key === "End" && (p.preventDefault(), o(f.length - 1)), p.key === "Enter" || p.key === " ") {
+        p.preventDefault();
+        const w = f[d];
+        w && N(w);
       }
     }
   };
-  return /* @__PURE__ */ r(G, { children: [
-    n({ open: t, ref: o, toggle: p }),
+  return /* @__PURE__ */ r(H, { children: [
+    n({ open: t, ref: c, toggle: _ }),
     t && typeof document < "u" ? he(
       /* @__PURE__ */ e(
         "div",
@@ -1437,23 +1448,23 @@ function De({ children: n, className: l, items: i, label: a }) {
           role: "menu",
           style: { insetBlockStart: u.top, insetInlineStart: u.left },
           tabIndex: -1,
-          children: i.map((f, k) => f.kind === "separator" ? /* @__PURE__ */ e("hr", { className: "nim-menu__separator" }, `sep-${k}`) : f.kind === "heading" ? /* @__PURE__ */ e("p", { className: "nim-menu__label", children: f.label }, `head-${k}`) : /* @__PURE__ */ r(
+          children: i.map((p, w) => p.kind === "separator" ? /* @__PURE__ */ e("hr", { className: "nim-menu__separator" }, `sep-${w}`) : p.kind === "heading" ? /* @__PURE__ */ e("p", { className: "nim-menu__label", children: p.label }, `head-${w}`) : /* @__PURE__ */ r(
             "button",
             {
-              className: b("nim-menu__item", f.danger && "nim-menu__item--danger"),
-              "data-active": _.indexOf(f) === d ? "true" : void 0,
-              disabled: f.disabled,
-              onClick: () => N(f),
-              onPointerEnter: () => c(_.indexOf(f)),
+              className: b("nim-menu__item", p.danger && "nim-menu__item--danger"),
+              "data-active": f.indexOf(p) === d ? "true" : void 0,
+              disabled: p.disabled,
+              onClick: () => N(p),
+              onPointerEnter: () => o(f.indexOf(p)),
               role: "menuitem",
               type: "button",
               children: [
-                f.icon ? /* @__PURE__ */ e(M, { className: "nim-menu__icon", name: f.icon, size: "sm" }) : null,
-                /* @__PURE__ */ e("span", { children: f.label }),
-                f.shortcut ? /* @__PURE__ */ e("span", { className: "nim-menu__shortcut", children: f.shortcut }) : null
+                p.icon ? /* @__PURE__ */ e(x, { className: "nim-menu__icon", name: p.icon, size: "sm" }) : null,
+                /* @__PURE__ */ e("span", { children: p.label }),
+                p.shortcut ? /* @__PURE__ */ e("span", { className: "nim-menu__shortcut", children: p.shortcut }) : null
               ]
             },
-            f.label
+            p.label
           ))
         }
       ),
@@ -1462,7 +1473,7 @@ function De({ children: n, className: l, items: i, label: a }) {
   ] });
 }
 function ja({ children: n, className: l, label: i, onClose: a, open: t, triggerRef: s }) {
-  const d = U(null), c = Ke(s, d, { onDismiss: a, open: t });
+  const d = U(null), o = Ke(s, d, { onDismiss: a, open: t });
   return !t || typeof document > "u" ? null : he(
     /* @__PURE__ */ e(
       "div",
@@ -1471,7 +1482,7 @@ function ja({ children: n, className: l, label: i, onClose: a, open: t, triggerR
         className: b("nim-popover", l),
         ref: d,
         role: "dialog",
-        style: { insetBlockStart: c.top, insetInlineStart: c.left },
+        style: { insetBlockStart: o.top, insetInlineStart: o.left },
         children: n
       }
     ),
@@ -1516,10 +1527,10 @@ function Ja({
   labels: l,
   locale: i
 }) {
-  const a = U(null), [t, s] = L(!1), [d, c] = L(0), o = n.duration ?? 0, m = Y(
-    () => n.waveform ?? Array.from({ length: 32 }, (h, _) => 0.35 + _ * 7 % 11 / 18),
+  const a = U(null), [t, s] = E(!1), [d, o] = E(0), c = n.duration ?? 0, m = Y(
+    () => n.waveform ?? Array.from({ length: 32 }, (h, f) => 0.35 + f * 7 % 11 / 18),
     [n.waveform]
-  ), u = o > 0 ? Math.min(1, d / o) : 0;
+  ), u = c > 0 ? Math.min(1, d / c) : 0;
   return /* @__PURE__ */ r("div", { className: "nim-chat-voice", children: [
     /* @__PURE__ */ e(
       O,
@@ -1540,27 +1551,27 @@ function Ja({
         "aria-label": l.voiceMessage,
         className: "nim-chat-voice__wave",
         "aria-hidden": "true",
-        children: m.map((h, _) => /* @__PURE__ */ e(
+        children: m.map((h, f) => /* @__PURE__ */ e(
           "span",
           {
             className: "nim-chat-voice__bar",
-            "data-played": _ / m.length <= u ? "true" : void 0,
+            "data-played": f / m.length <= u ? "true" : void 0,
             style: { blockSize: `${Math.round(h * 100)}%` }
           },
-          _
+          f
         ))
       }
     ),
-    /* @__PURE__ */ e("span", { className: "nim-chat-voice__time", children: We(t || d ? Math.max(0, o - d) : o, i) }),
+    /* @__PURE__ */ e("span", { className: "nim-chat-voice__time", children: We(t || d ? Math.max(0, c - d) : c, i) }),
     /* @__PURE__ */ e(
       "audio",
       {
         onEnded: () => {
-          s(!1), c(0);
+          s(!1), o(0);
         },
         onPause: () => s(!1),
         onPlay: () => s(!0),
-        onTimeUpdate: (h) => c(h.currentTarget.currentTime),
+        onTimeUpdate: (h) => o(h.currentTarget.currentTime),
         preload: "metadata",
         ref: a,
         src: n.url
@@ -1585,12 +1596,12 @@ function ei({
       rel: "noreferrer",
       target: "_blank",
       children: [
-        /* @__PURE__ */ e("span", { className: "nim-chat-file__icon", children: /* @__PURE__ */ e(M, { name: "document", size: "md" }) }),
+        /* @__PURE__ */ e("span", { className: "nim-chat-file__icon", children: /* @__PURE__ */ e(x, { name: "document", size: "md" }) }),
         /* @__PURE__ */ r("span", { className: "nim-chat-file__text", children: [
           /* @__PURE__ */ e("span", { className: "nim-chat-file__name", children: n.name ?? l.download }),
           n.size !== void 0 ? /* @__PURE__ */ e("span", { className: "nim-chat-file__size", children: Xa(n.size, i) }) : null
         ] }),
-        /* @__PURE__ */ e(M, { className: "nim-chat-file__action", name: "download", size: "sm" })
+        /* @__PURE__ */ e(x, { className: "nim-chat-file__action", name: "download", size: "sm" })
       ]
     }
   );
@@ -1625,66 +1636,66 @@ function $l({
   group: t = !1,
   header: s,
   labels: d,
-  locale: c,
-  messages: o,
+  locale: o,
+  messages: c,
   onJump: m,
   onReact: u,
   reactions: h = qa,
-  runGap: _ = 300,
-  typing: p
+  runGap: f = 300,
+  typing: _
 }) {
-  const N = { ...Va, ...d }, g = U(null), f = U(!0), k = Y(
-    () => new Intl.DateTimeFormat(c, { hour: "2-digit", minute: "2-digit" }),
-    [c]
+  const N = { ...Va, ...d }, g = U(null), p = U(!0), w = Y(
+    () => new Intl.DateTimeFormat(o, { hour: "2-digit", minute: "2-digit" }),
+    [o]
   ), y = Y(
-    () => new Intl.DateTimeFormat(c, { day: "numeric", month: "long", weekday: "long" }),
-    [c]
-  ), z = Y(() => {
-    const D = ce((/* @__PURE__ */ new Date()).toISOString());
-    return o.map((I, T) => {
-      const v = o[T - 1], w = o[T + 1], x = I.at ? ce(I.at) : null, S = v != null && v.at ? ce(v.at) : null, E = x !== null && x !== S ? x === D ? N.today : x === D - Qa ? N.yesterday : y.format(new Date(I.at)) : null, $ = (R, C) => {
-        var P, W;
-        return !!R && !(R != null && R.system) && !C.system && !!(R != null && R.own) == !!C.own && ((P = R == null ? void 0 : R.author) == null ? void 0 : P.name) === ((W = C.author) == null ? void 0 : W.name);
-      }, B = (R, C) => !(R != null && R.at) || !C.at || Math.abs(new Date(C.at).getTime() - new Date(R.at).getTime()) <= _ * 1e3, H = E !== null || !$(v, I) || !B(v, I), K = !w || (w.at ? ce(w.at) : null) !== x || !$(w, I) || !B(I, w);
-      return { divider: E, first: H, last: K, message: I };
+    () => new Intl.DateTimeFormat(o, { day: "numeric", month: "long", weekday: "long" }),
+    [o]
+  ), S = Y(() => {
+    const I = ce((/* @__PURE__ */ new Date()).toISOString());
+    return c.map((B, M) => {
+      const v = c[M - 1], T = c[M + 1], k = B.at ? ce(B.at) : null, L = v != null && v.at ? ce(v.at) : null, D = k !== null && k !== L ? k === I ? N.today : k === I - Qa ? N.yesterday : y.format(new Date(B.at)) : null, A = (P, C) => {
+        var F, W;
+        return !!P && !(P != null && P.system) && !C.system && !!(P != null && P.own) == !!C.own && ((F = P == null ? void 0 : P.author) == null ? void 0 : F.name) === ((W = C.author) == null ? void 0 : W.name);
+      }, $ = (P, C) => !(P != null && P.at) || !C.at || Math.abs(new Date(C.at).getTime() - new Date(P.at).getTime()) <= f * 1e3, G = D !== null || !A(v, B) || !$(v, B), K = !T || (T.at ? ce(T.at) : null) !== k || !A(T, B) || !$(B, T);
+      return { divider: D, first: G, last: K, message: B };
     });
-  }, [y, o, _, N.today, N.yesterday]);
+  }, [y, c, f, N.today, N.yesterday]);
   return V(() => {
-    const D = g.current;
-    !D || !f.current || (D.scrollTop = D.scrollHeight);
-  }, [o, p]), /* @__PURE__ */ r("section", { className: b("nim-chat", l), children: [
+    const I = g.current;
+    !I || !p.current || (I.scrollTop = I.scrollHeight);
+  }, [c, _]), /* @__PURE__ */ r("section", { className: b("nim-chat", l), children: [
     s ? /* @__PURE__ */ e("header", { className: "nim-chat__header", children: s }) : null,
     /* @__PURE__ */ r(
       "div",
       {
         className: "nim-chat__scroll",
-        onScroll: (D) => {
-          const I = D.currentTarget;
-          f.current = I.scrollHeight - I.scrollTop - I.clientHeight < 48;
+        onScroll: (I) => {
+          const B = I.currentTarget;
+          p.current = B.scrollHeight - B.scrollTop - B.clientHeight < 48;
         },
         ref: g,
         children: [
-          /* @__PURE__ */ e("ol", { "aria-live": "polite", className: "nim-chat__list", children: z.map(({ divider: D, first: I, last: T, message: v }) => {
-            var S, E;
+          /* @__PURE__ */ e("ol", { "aria-live": "polite", className: "nim-chat__list", children: S.map(({ divider: I, first: B, last: M, message: v }) => {
+            var L, D;
             if (v.system)
               return /* @__PURE__ */ r(ke, { children: [
-                D ? /* @__PURE__ */ e("li", { className: "nim-chat__day", children: D }) : null,
+                I ? /* @__PURE__ */ e("li", { className: "nim-chat__day", children: I }) : null,
                 /* @__PURE__ */ e("li", { className: "nim-chat__system", children: v.text })
               ] }, v.id);
-            const w = (n == null ? void 0 : n(v)) ?? [], x = I && !v.own && (t || !!v.author);
+            const T = (n == null ? void 0 : n(v)) ?? [], k = B && !v.own && (t || !!v.author);
             return /* @__PURE__ */ r(ke, { children: [
-              D ? /* @__PURE__ */ e("li", { className: "nim-chat__day", children: D }) : null,
+              I ? /* @__PURE__ */ e("li", { className: "nim-chat__day", children: I }) : null,
               /* @__PURE__ */ r(
                 "li",
                 {
                   className: b("nim-chat-message", v.own && "nim-chat-message--own"),
-                  "data-first": I ? "true" : void 0,
-                  "data-last": T ? "true" : void 0,
+                  "data-first": B ? "true" : void 0,
+                  "data-last": M ? "true" : void 0,
                   id: `nim-message-${v.id}`,
                   children: [
-                    v.own ? null : /* @__PURE__ */ e("span", { className: "nim-chat-message__gutter", children: T && v.author ? /* @__PURE__ */ e(de, { name: v.author.name, size: "sm", src: v.author.avatar }) : null }),
+                    v.own ? null : /* @__PURE__ */ e("span", { className: "nim-chat-message__gutter", children: M && v.author ? /* @__PURE__ */ e(de, { name: v.author.name, size: "sm", src: v.author.avatar }) : null }),
                     /* @__PURE__ */ r("div", { className: "nim-chat-message__stack", children: [
-                      x && v.author ? /* @__PURE__ */ e("span", { className: "nim-chat-message__author", children: v.author.name }) : null,
+                      k && v.author ? /* @__PURE__ */ e("span", { className: "nim-chat-message__author", children: v.author.name }) : null,
                       /* @__PURE__ */ r("div", { className: "nim-chat-message__row", children: [
                         /* @__PURE__ */ r("div", { className: "nim-chat-message__bubble", "data-deleted": v.deleted ? "true" : void 0, children: [
                           v.replyTo ? /* @__PURE__ */ r(
@@ -1701,63 +1712,63 @@ function $l({
                             }
                           ) : null,
                           v.deleted ? /* @__PURE__ */ r("p", { className: "nim-chat-message__text nim-chat-message__text--gone", children: [
-                            /* @__PURE__ */ e(M, { name: "trash", size: "xs" }),
+                            /* @__PURE__ */ e(x, { name: "trash", size: "xs" }),
                             " ",
                             N.deleted
-                          ] }) : /* @__PURE__ */ r(G, { children: [
-                            (S = v.attachments) == null ? void 0 : S.map(($, B) => /* @__PURE__ */ e(
+                          ] }) : /* @__PURE__ */ r(H, { children: [
+                            (L = v.attachments) == null ? void 0 : L.map((A, $) => /* @__PURE__ */ e(
                               ei,
                               {
-                                attachment: $,
+                                attachment: A,
                                 labels: N,
-                                locale: c
+                                locale: o
                               },
-                              `${v.id}-${B}`
+                              `${v.id}-${$}`
                             )),
                             v.card ? /* @__PURE__ */ e("div", { className: "nim-chat-card", children: v.card }) : null,
                             v.text ? /* @__PURE__ */ e("p", { className: "nim-chat-message__text", children: v.text }) : null
                           ] })
                         ] }),
-                        !v.deleted && (w.length > 0 || u) ? /* @__PURE__ */ r("div", { className: "nim-chat-message__tools", children: [
+                        !v.deleted && (T.length > 0 || u) ? /* @__PURE__ */ r("div", { className: "nim-chat-message__tools", children: [
                           u ? /* @__PURE__ */ e(
                             De,
                             {
                               className: "nim-chat-picker",
-                              items: h.map(($) => ({
-                                label: $,
-                                onSelect: () => u(v, $)
+                              items: h.map((A) => ({
+                                label: A,
+                                onSelect: () => u(v, A)
                               })),
                               label: N.react,
-                              children: ({ ref: $, toggle: B }) => /* @__PURE__ */ e(
+                              children: ({ ref: A, toggle: $ }) => /* @__PURE__ */ e(
                                 O,
                                 {
                                   label: N.react,
                                   name: "emoji",
-                                  onClick: B,
-                                  ref: $,
+                                  onClick: $,
+                                  ref: A,
                                   size: "sm"
                                 }
                               )
                             }
                           ) : null,
-                          w.length > 0 ? /* @__PURE__ */ e(De, { items: w, label: N.more, children: ({ ref: $, toggle: B }) => /* @__PURE__ */ e(
+                          T.length > 0 ? /* @__PURE__ */ e(De, { items: T, label: N.more, children: ({ ref: A, toggle: $ }) => /* @__PURE__ */ e(
                             O,
                             {
                               label: N.more,
                               name: "more",
-                              onClick: B,
-                              ref: $,
+                              onClick: $,
+                              ref: A,
                               size: "sm"
                             }
                           ) }) : null
                         ] }) : null
                       ] }),
-                      (E = v.reactions) != null && E.length ? /* @__PURE__ */ e(ni, { labels: N, message: v, onReact: u }) : null,
-                      T ? /* @__PURE__ */ r("span", { className: "nim-chat-message__meta", children: [
-                        v.at ? /* @__PURE__ */ e("time", { dateTime: v.at, children: k.format(new Date(v.at)) }) : null,
+                      (D = v.reactions) != null && D.length ? /* @__PURE__ */ e(ni, { labels: N, message: v, onReact: u }) : null,
+                      M ? /* @__PURE__ */ r("span", { className: "nim-chat-message__meta", children: [
+                        v.at ? /* @__PURE__ */ e("time", { dateTime: v.at, children: w.format(new Date(v.at)) }) : null,
                         v.edited ? /* @__PURE__ */ e("span", { children: N.edited }) : null,
-                        v.own && v.status ? /* @__PURE__ */ e("span", { className: "nim-chat-message__status", "data-status": v.status, children: v.status === "sending" ? /* @__PURE__ */ e(He, { size: "sm" }) : /* @__PURE__ */ e(
-                          M,
+                        v.own && v.status ? /* @__PURE__ */ e("span", { className: "nim-chat-message__status", "data-status": v.status, children: v.status === "sending" ? /* @__PURE__ */ e(Ge, { size: "sm" }) : /* @__PURE__ */ e(
+                          x,
                           {
                             label: N[v.status],
                             name: v.status === "failed" ? "danger" : "check-circle",
@@ -1771,8 +1782,8 @@ function $l({
               )
             ] }, v.id);
           }) }),
-          p ? /* @__PURE__ */ r("p", { className: "nim-chat__typing", children: [
-            typeof p == "string" ? `${p} ${N.typing}` : N.typing,
+          _ ? /* @__PURE__ */ r("p", { className: "nim-chat__typing", children: [
+            typeof _ == "string" ? `${_} ${N.typing}` : N.typing,
             /* @__PURE__ */ r("span", { "aria-hidden": "true", className: "nim-chat__dots", children: [
               /* @__PURE__ */ e("i", {}),
               /* @__PURE__ */ e("i", {}),
@@ -1805,44 +1816,44 @@ function Il({
   labels: t,
   onCopy: s,
   onRate: d,
-  onRetry: c,
-  onStop: o,
+  onRetry: o,
+  onStop: c,
   turns: m
 }) {
-  const u = { ...ai, ...t }, h = U(null), _ = U(!0), [p, N] = L(null), g = m.some((f) => f.streaming);
+  const u = { ...ai, ...t }, h = U(null), f = U(!0), [_, N] = E(null), g = m.some((p) => p.streaming);
   return V(() => {
-    const f = h.current;
-    !f || !_.current || (f.scrollTop = f.scrollHeight);
+    const p = h.current;
+    !p || !f.current || (p.scrollTop = p.scrollHeight);
   }, [m]), /* @__PURE__ */ r("section", { className: b("nim-assistant", l), children: [
     /* @__PURE__ */ r(
       "div",
       {
         className: "nim-assistant__scroll",
-        onScroll: (f) => {
-          const k = f.currentTarget;
-          _.current = k.scrollHeight - k.scrollTop - k.clientHeight < 48;
+        onScroll: (p) => {
+          const w = p.currentTarget;
+          f.current = w.scrollHeight - w.scrollTop - w.clientHeight < 48;
         },
         ref: h,
         children: [
           m.length === 0 && a ? /* @__PURE__ */ e("div", { className: "nim-assistant__empty", children: a }) : null,
-          /* @__PURE__ */ e("ol", { "aria-live": "polite", className: "nim-assistant__list", children: m.map((f) => {
-            var k, y;
-            return /* @__PURE__ */ r("li", { className: "nim-turn", "data-role": f.role, children: [
-              /* @__PURE__ */ e("span", { className: "nim-turn__mark", children: f.role === "assistant" ? /* @__PURE__ */ e("span", { className: "nim-turn__badge", children: /* @__PURE__ */ e(M, { name: (n == null ? void 0 : n.icon) ?? "sparkle", size: "sm" }) }) : null }),
+          /* @__PURE__ */ e("ol", { "aria-live": "polite", className: "nim-assistant__list", children: m.map((p) => {
+            var w, y;
+            return /* @__PURE__ */ r("li", { className: "nim-turn", "data-role": p.role, children: [
+              /* @__PURE__ */ e("span", { className: "nim-turn__mark", children: p.role === "assistant" ? /* @__PURE__ */ e("span", { className: "nim-turn__badge", children: /* @__PURE__ */ e(x, { name: (n == null ? void 0 : n.icon) ?? "sparkle", size: "sm" }) }) : null }),
               /* @__PURE__ */ r("div", { className: "nim-turn__body", children: [
-                /* @__PURE__ */ e("span", { className: "nim-turn__who", children: f.role === "assistant" ? (n == null ? void 0 : n.name) ?? u.assistant : u.you }),
-                (k = f.steps) != null && k.length ? /* @__PURE__ */ r("div", { className: "nim-turn__steps", children: [
+                /* @__PURE__ */ e("span", { className: "nim-turn__who", children: p.role === "assistant" ? (n == null ? void 0 : n.name) ?? u.assistant : u.you }),
+                (w = p.steps) != null && w.length ? /* @__PURE__ */ r("div", { className: "nim-turn__steps", children: [
                   /* @__PURE__ */ r(
                     "button",
                     {
-                      "aria-expanded": p === f.id,
+                      "aria-expanded": _ === p.id,
                       className: "nim-turn__steps-toggle",
-                      onClick: () => N(p === f.id ? null : f.id),
+                      onClick: () => N(_ === p.id ? null : p.id),
                       type: "button",
                       children: [
-                        /* @__PURE__ */ e(M, { name: p === f.id ? "chevron-down" : "chevron-forward", size: "xs" }),
+                        /* @__PURE__ */ e(x, { name: _ === p.id ? "chevron-down" : "chevron-forward", size: "xs" }),
                         u.steps,
-                        /* @__PURE__ */ e("span", { className: "nim-turn__steps-count", children: f.steps.length })
+                        /* @__PURE__ */ e("span", { className: "nim-turn__steps-count", children: p.steps.length })
                       ]
                     }
                   ),
@@ -1850,43 +1861,43 @@ function Il({
                     "ul",
                     {
                       className: "nim-turn__step-list",
-                      hidden: p !== f.id,
-                      inert: p !== f.id,
-                      children: f.steps.map((z) => /* @__PURE__ */ r("li", { className: "nim-turn__step", "data-status": z.status, children: [
+                      hidden: _ !== p.id,
+                      inert: _ !== p.id,
+                      children: p.steps.map((S) => /* @__PURE__ */ r("li", { className: "nim-turn__step", "data-status": S.status, children: [
                         /* @__PURE__ */ e(
-                          M,
+                          x,
                           {
-                            name: z.status === "failed" ? "danger" : z.status === "running" ? "loading" : z.icon ?? "check",
+                            name: S.status === "failed" ? "danger" : S.status === "running" ? "loading" : S.icon ?? "check",
                             size: "xs"
                           }
                         ),
-                        /* @__PURE__ */ e("span", { children: z.label }),
-                        z.detail ? /* @__PURE__ */ e("span", { className: "nim-turn__step-detail", children: z.detail }) : null
-                      ] }, z.label))
+                        /* @__PURE__ */ e("span", { children: S.label }),
+                        S.detail ? /* @__PURE__ */ e("span", { className: "nim-turn__step-detail", children: S.detail }) : null
+                      ] }, S.label))
                     }
                   )
                 ] }) : null,
-                /* @__PURE__ */ e("div", { className: "nim-turn__content", "data-streaming": f.streaming ? "true" : void 0, children: f.content }),
-                (y = f.sources) != null && y.length ? /* @__PURE__ */ r("ul", { className: "nim-turn__sources", children: [
+                /* @__PURE__ */ e("div", { className: "nim-turn__content", "data-streaming": p.streaming ? "true" : void 0, children: p.content }),
+                (y = p.sources) != null && y.length ? /* @__PURE__ */ r("ul", { className: "nim-turn__sources", children: [
                   /* @__PURE__ */ e("li", { className: "nim-turn__sources-label", children: u.sources }),
-                  f.sources.map((z, D) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ r("a", { className: "nim-turn__source", href: z.href, rel: "noreferrer", target: "_blank", children: [
-                    /* @__PURE__ */ e("span", { className: "nim-turn__source-index", children: D + 1 }),
-                    z.title
-                  ] }) }, D))
+                  p.sources.map((S, I) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ r("a", { className: "nim-turn__source", href: S.href, rel: "noreferrer", target: "_blank", children: [
+                    /* @__PURE__ */ e("span", { className: "nim-turn__source-index", children: I + 1 }),
+                    S.title
+                  ] }) }, I))
                 ] }) : null,
-                f.role === "assistant" && !f.streaming && (s || c || d) ? /* @__PURE__ */ r("div", { className: "nim-turn__actions", children: [
-                  s ? /* @__PURE__ */ e(O, { label: u.copy, name: "copy", onClick: () => s(f), size: "sm" }) : null,
-                  c ? /* @__PURE__ */ e(O, { label: u.retry, name: "refresh", onClick: () => c(f), size: "sm" }) : null,
-                  d ? /* @__PURE__ */ r(G, { children: [
-                    /* @__PURE__ */ e(O, { label: u.up, name: "trend-up", onClick: () => d(f, "up"), size: "sm" }),
-                    /* @__PURE__ */ e(O, { label: u.down, name: "trend-down", onClick: () => d(f, "down"), size: "sm" })
+                p.role === "assistant" && !p.streaming && (s || o || d) ? /* @__PURE__ */ r("div", { className: "nim-turn__actions", children: [
+                  s ? /* @__PURE__ */ e(O, { label: u.copy, name: "copy", onClick: () => s(p), size: "sm" }) : null,
+                  o ? /* @__PURE__ */ e(O, { label: u.retry, name: "refresh", onClick: () => o(p), size: "sm" }) : null,
+                  d ? /* @__PURE__ */ r(H, { children: [
+                    /* @__PURE__ */ e(O, { label: u.up, name: "trend-up", onClick: () => d(p, "up"), size: "sm" }),
+                    /* @__PURE__ */ e(O, { label: u.down, name: "trend-down", onClick: () => d(p, "down"), size: "sm" })
                   ] }) : null
                 ] }) : null
               ] })
-            ] }, f.id);
+            ] }, p.id);
           }) }),
-          g && o ? /* @__PURE__ */ e("div", { className: "nim-assistant__stop", children: /* @__PURE__ */ r("button", { className: "nim-assistant__stop-button", onClick: o, type: "button", children: [
-            /* @__PURE__ */ e(M, { name: "stop", size: "sm" }),
+          g && c ? /* @__PURE__ */ e("div", { className: "nim-assistant__stop", children: /* @__PURE__ */ r("button", { className: "nim-assistant__stop-button", onClick: c, type: "button", children: [
+            /* @__PURE__ */ e(x, { name: "stop", size: "sm" }),
             u.stop
           ] }) }) : null
         ]
@@ -1907,44 +1918,44 @@ function Bl({
   kind: t = "line",
   legend: s,
   locale: d,
-  max: c,
-  min: o,
+  max: o,
+  min: c,
   note: m,
   series: u,
   title: h
 }) {
-  const _ = J(), [p, N] = L(null), g = Y(
+  const f = J(), [_, N] = E(null), g = Y(
     () => i ?? ((v) => new Intl.NumberFormat(d).format(v)),
     [i, d]
-  ), f = Y(() => {
-    const v = u.flatMap((R) => R.values).filter((R) => R !== null), w = o ?? Math.min(...v, 0), x = c ?? Math.max(...v, 0), S = t === "bar" ? Math.min(0, w) : w, E = x === S ? S + 1 : x, $ = ii(E - S, 4), B = Math.floor(S / $) * $, H = Math.ceil(E / $) * $, K = [];
-    for (let R = B; R <= H + $ / 2; R += $) K.push(Number(R.toFixed(6)));
-    return { bottom: B, ticks: K, top: H };
-  }, [t, c, o, u]), k = a - Le * 2, y = (v) => Le + k - (v - f.bottom) / (f.top - f.bottom) * k, z = be / Math.max(1, n.length), D = (v) => z * v + z / 2, I = (v, w) => {
-    let x = "", S = !1;
-    if (v.forEach((H, K) => {
-      if (H === null) {
-        S = !1;
+  ), p = Y(() => {
+    const v = u.flatMap((P) => P.values).filter((P) => P !== null), T = c ?? Math.min(...v, 0), k = o ?? Math.max(...v, 0), L = t === "bar" ? Math.min(0, T) : T, D = k === L ? L + 1 : k, A = ii(D - L, 4), $ = Math.floor(L / A) * A, G = Math.ceil(D / A) * A, K = [];
+    for (let P = $; P <= G + A / 2; P += A) K.push(Number(P.toFixed(6)));
+    return { bottom: $, ticks: K, top: G };
+  }, [t, o, c, u]), w = a - Le * 2, y = (v) => Le + w - (v - p.bottom) / (p.top - p.bottom) * w, S = be / Math.max(1, n.length), I = (v) => S * v + S / 2, B = (v, T) => {
+    let k = "", L = !1;
+    if (v.forEach((G, K) => {
+      if (G === null) {
+        L = !1;
         return;
       }
-      x += `${S ? "L" : "M"}${D(K).toFixed(2)} ${y(H).toFixed(2)}`, S = !0;
-    }), !w || !x) return x;
-    const E = v.map((H, K) => H === null ? null : K).filter((H) => H !== null), $ = E[0], B = E[E.length - 1];
-    return `${x}L${D(B).toFixed(2)} ${y(f.bottom).toFixed(2)}L${D($).toFixed(2)} ${y(f.bottom).toFixed(2)}Z`;
-  }, T = z * 0.62 / u.length;
+      k += `${L ? "L" : "M"}${I(K).toFixed(2)} ${y(G).toFixed(2)}`, L = !0;
+    }), !T || !k) return k;
+    const D = v.map((G, K) => G === null ? null : K).filter((G) => G !== null), A = D[0], $ = D[D.length - 1];
+    return `${k}L${I($).toFixed(2)} ${y(p.bottom).toFixed(2)}L${I(A).toFixed(2)} ${y(p.bottom).toFixed(2)}Z`;
+  }, M = S * 0.62 / u.length;
   return /* @__PURE__ */ r(
     "figure",
     {
-      "aria-labelledby": h ? _ : void 0,
+      "aria-labelledby": h ? f : void 0,
       className: b("nim-chart", l),
       "data-kind": t,
       children: [
         h || m ? /* @__PURE__ */ r("figcaption", { className: "nim-chart__head", children: [
-          h ? /* @__PURE__ */ e("span", { className: "nim-chart__title", id: _, children: h }) : null,
+          h ? /* @__PURE__ */ e("span", { className: "nim-chart__title", id: f, children: h }) : null,
           m ? /* @__PURE__ */ e("span", { className: "nim-chart__note", children: m }) : null
         ] }) : null,
         /* @__PURE__ */ r("div", { className: "nim-chart__frame", children: [
-          /* @__PURE__ */ e("div", { "aria-hidden": "true", className: "nim-chart__axis", children: [...f.ticks].reverse().map((v) => /* @__PURE__ */ e("span", { className: "nim-chart__tick", children: g(v) }, v)) }),
+          /* @__PURE__ */ e("div", { "aria-hidden": "true", className: "nim-chart__axis", children: [...p.ticks].reverse().map((v) => /* @__PURE__ */ e("span", { className: "nim-chart__tick", children: g(v) }, v)) }),
           /* @__PURE__ */ r("div", { className: "nim-chart__plot", children: [
             /* @__PURE__ */ r(
               "svg",
@@ -1955,7 +1966,7 @@ function Bl({
                 style: { blockSize: `${a}px` },
                 viewBox: `0 0 ${be} ${a}`,
                 children: [
-                  f.ticks.map((v) => /* @__PURE__ */ e(
+                  p.ticks.map((v) => /* @__PURE__ */ e(
                     "line",
                     {
                       className: "nim-chart__rule",
@@ -1966,36 +1977,36 @@ function Bl({
                     },
                     v
                   )),
-                  u.map((v, w) => {
-                    const x = `var(--nim-series-${v.series ?? w % 6 + 1})`;
+                  u.map((v, T) => {
+                    const k = `var(--nim-series-${v.series ?? T % 6 + 1})`;
                     return t === "bar" ? /* @__PURE__ */ e("g", { children: v.values.map(
-                      (S, E) => S === null ? null : /* @__PURE__ */ e(
+                      (L, D) => L === null ? null : /* @__PURE__ */ e(
                         "rect",
                         {
                           className: "nim-chart__bar",
-                          fill: x,
-                          height: Math.abs(y(S) - y(Math.max(f.bottom, 0))),
-                          width: T,
-                          x: D(E) - T * u.length / 2 + T * w,
-                          y: Math.min(y(S), y(Math.max(f.bottom, 0)))
+                          fill: k,
+                          height: Math.abs(y(L) - y(Math.max(p.bottom, 0))),
+                          width: M,
+                          x: I(D) - M * u.length / 2 + M * T,
+                          y: Math.min(y(L), y(Math.max(p.bottom, 0)))
                         },
-                        E
+                        D
                       )
                     ) }, v.label) : /* @__PURE__ */ r("g", { children: [
-                      t === "area" ? /* @__PURE__ */ e("path", { className: "nim-chart__area", d: I(v.values, !0), fill: x }) : null,
-                      /* @__PURE__ */ e("path", { className: "nim-chart__line", d: I(v.values, !1), stroke: x }),
+                      t === "area" ? /* @__PURE__ */ e("path", { className: "nim-chart__area", d: B(v.values, !0), fill: k }) : null,
+                      /* @__PURE__ */ e("path", { className: "nim-chart__line", d: B(v.values, !1), stroke: k }),
                       v.values.map(
-                        (S, E) => S === null ? null : /* @__PURE__ */ e(
+                        (L, D) => L === null ? null : /* @__PURE__ */ e(
                           "circle",
                           {
                             className: "nim-chart__dot",
-                            cx: D(E),
-                            cy: y(S),
-                            "data-on": p === E ? "true" : void 0,
-                            fill: x,
+                            cx: I(D),
+                            cy: y(L),
+                            "data-on": _ === D ? "true" : void 0,
+                            fill: k,
                             r: 4
                           },
-                          E
+                          D
                         )
                       )
                     ] }, v.label);
@@ -2004,41 +2015,41 @@ function Bl({
               }
             ),
             /* @__PURE__ */ r("div", { className: "nim-chart__hits", children: [
-              n.map((v, w) => /* @__PURE__ */ e(
+              n.map((v, T) => /* @__PURE__ */ e(
                 "button",
                 {
                   className: "nim-chart__hit",
-                  "data-on": p === w ? "true" : void 0,
+                  "data-on": _ === T ? "true" : void 0,
                   onBlur: () => N(null),
-                  onFocus: () => N(w),
-                  onMouseEnter: () => N(w),
+                  onFocus: () => N(T),
+                  onMouseEnter: () => N(T),
                   onMouseLeave: () => N(null),
                   type: "button",
                   children: /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: v })
                 },
-                w
+                T
               )),
-              p !== null ? /* @__PURE__ */ r(
+              _ !== null ? /* @__PURE__ */ r(
                 "div",
                 {
                   className: "nim-chart__tip",
-                  style: { insetInlineStart: `${(p + 0.5) / n.length * 100}%` },
+                  style: { insetInlineStart: `${(_ + 0.5) / n.length * 100}%` },
                   children: [
-                    /* @__PURE__ */ e("span", { className: "nim-chart__tip-label", children: n[p] }),
-                    u.map((v, w) => /* @__PURE__ */ r("span", { className: "nim-chart__tip-row", children: [
-                      /* @__PURE__ */ e("i", { style: { background: `var(--nim-series-${v.series ?? w % 6 + 1})` } }),
+                    /* @__PURE__ */ e("span", { className: "nim-chart__tip-label", children: n[_] }),
+                    u.map((v, T) => /* @__PURE__ */ r("span", { className: "nim-chart__tip-row", children: [
+                      /* @__PURE__ */ e("i", { style: { background: `var(--nim-series-${v.series ?? T % 6 + 1})` } }),
                       /* @__PURE__ */ e("span", { className: "nim-chart__tip-name", children: v.label }),
-                      /* @__PURE__ */ e("span", { className: "nim-chart__tip-value", children: v.values[p] === null ? "—" : g(v.values[p]) })
+                      /* @__PURE__ */ e("span", { className: "nim-chart__tip-value", children: v.values[_] === null ? "—" : g(v.values[_]) })
                     ] }, v.label))
                   ]
                 }
               ) : null
             ] }),
-            /* @__PURE__ */ e("div", { "aria-hidden": "true", className: "nim-chart__categories", children: n.map((v, w) => /* @__PURE__ */ e("span", { className: "nim-chart__category", children: v }, w)) })
+            /* @__PURE__ */ e("div", { "aria-hidden": "true", className: "nim-chart__categories", children: n.map((v, T) => /* @__PURE__ */ e("span", { className: "nim-chart__category", children: v }, T)) })
           ] })
         ] }),
-        s ?? u.length > 1 ? /* @__PURE__ */ e("ul", { "aria-hidden": "true", className: "nim-chart__legend", children: u.map((v, w) => /* @__PURE__ */ r("li", { className: "nim-chart__key", children: [
-          /* @__PURE__ */ e("i", { style: { background: `var(--nim-series-${v.series ?? w % 6 + 1})` } }),
+        s ?? u.length > 1 ? /* @__PURE__ */ e("ul", { "aria-hidden": "true", className: "nim-chart__legend", children: u.map((v, T) => /* @__PURE__ */ r("li", { className: "nim-chart__key", children: [
+          /* @__PURE__ */ e("i", { style: { background: `var(--nim-series-${v.series ?? T % 6 + 1})` } }),
           v.label
         ] }, v.label)) }) : null,
         /* @__PURE__ */ r("table", { className: "nim-visually-hidden", children: [
@@ -2047,18 +2058,18 @@ function Bl({
             /* @__PURE__ */ e("th", { scope: "col" }),
             u.map((v) => /* @__PURE__ */ e("th", { scope: "col", children: v.label }, v.label))
           ] }) }),
-          /* @__PURE__ */ e("tbody", { children: n.map((v, w) => /* @__PURE__ */ r("tr", { children: [
+          /* @__PURE__ */ e("tbody", { children: n.map((v, T) => /* @__PURE__ */ r("tr", { children: [
             /* @__PURE__ */ e("th", { scope: "row", children: v }),
-            u.map((x) => /* @__PURE__ */ e("td", { children: x.values[w] === null ? "—" : g(x.values[w]) }, x.label))
-          ] }, w)) })
+            u.map((k) => /* @__PURE__ */ e("td", { children: k.values[T] === null ? "—" : g(k.values[T]) }, k.label))
+          ] }, T)) })
         ] })
       ]
     }
   );
 }
 function Pl({ className: n, label: l, series: i = 1, values: a }) {
-  const t = Math.min(...a), d = Math.max(...a) - t || 1, c = a.map((o, m) => {
-    const u = m / Math.max(1, a.length - 1) * 100, h = 24 - (o - t) / d * 20 - 2;
+  const t = Math.min(...a), d = Math.max(...a) - t || 1, o = a.map((c, m) => {
+    const u = m / Math.max(1, a.length - 1) * 100, h = 24 - (c - t) / d * 20 - 2;
     return `${m === 0 ? "M" : "L"}${u.toFixed(2)} ${h.toFixed(2)}`;
   }).join("");
   return /* @__PURE__ */ r(
@@ -2070,7 +2081,7 @@ function Pl({ className: n, label: l, series: i = 1, values: a }) {
       viewBox: "0 0 100 24",
       children: [
         /* @__PURE__ */ e("title", { children: l }),
-        /* @__PURE__ */ e("path", { d: c, stroke: `var(--nim-series-${i})` })
+        /* @__PURE__ */ e("path", { d: o, stroke: `var(--nim-series-${i})` })
       ]
     }
   );
@@ -2100,10 +2111,10 @@ function si({
   onSelect: t,
   sections: s
 }) {
-  const d = { ...Ze, ...i }, c = new Intl.NumberFormat(a);
-  return /* @__PURE__ */ e("div", { className: b("nim-rooms", l), children: s.map((o) => /* @__PURE__ */ r("section", { className: "nim-rooms__section", children: [
-    /* @__PURE__ */ e("p", { className: "nim-rooms__label", children: o.label }),
-    /* @__PURE__ */ e("ul", { className: "nim-rooms__list", children: o.items.map((m) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ r(
+  const d = { ...Ze, ...i }, o = new Intl.NumberFormat(a);
+  return /* @__PURE__ */ e("div", { className: b("nim-rooms", l), children: s.map((c) => /* @__PURE__ */ r("section", { className: "nim-rooms__section", children: [
+    /* @__PURE__ */ e("p", { className: "nim-rooms__label", children: c.label }),
+    /* @__PURE__ */ e("ul", { className: "nim-rooms__list", children: c.items.map((m) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ r(
       "button",
       {
         "aria-current": m.id === n ? "true" : void 0,
@@ -2112,33 +2123,33 @@ function si({
         onClick: () => t == null ? void 0 : t(m),
         type: "button",
         children: [
-          /* @__PURE__ */ e("span", { className: "nim-room__face", children: m.kind === "channel" ? /* @__PURE__ */ e("span", { className: "nim-room__glyph", children: /* @__PURE__ */ e(M, { name: "hash", size: "sm" }) }) : /* @__PURE__ */ e(de, { name: m.name, size: "sm", src: m.avatar }) }),
+          /* @__PURE__ */ e("span", { className: "nim-room__face", children: m.kind === "channel" ? /* @__PURE__ */ e("span", { className: "nim-room__glyph", children: /* @__PURE__ */ e(x, { name: "hash", size: "sm" }) }) : /* @__PURE__ */ e(de, { name: m.name, size: "sm", src: m.avatar }) }),
           /* @__PURE__ */ r("span", { className: "nim-room__body", children: [
             /* @__PURE__ */ r("span", { className: "nim-room__top", children: [
               /* @__PURE__ */ r("span", { className: "nim-room__name", children: [
                 m.name,
-                m.muted ? /* @__PURE__ */ e(M, { className: "nim-room__mute", label: d.muted, name: "volume-off", size: "xs" }) : null
+                m.muted ? /* @__PURE__ */ e(x, { className: "nim-room__mute", label: d.muted, name: "volume-off", size: "xs" }) : null
               ] }),
               m.at ? /* @__PURE__ */ e("span", { className: "nim-room__at", children: ti(m.at, a) }) : null
             ] }),
             /* @__PURE__ */ r("span", { className: "nim-room__bottom", children: [
               /* @__PURE__ */ e("span", { className: "nim-room__preview", "data-typing": m.typing ? "true" : void 0, children: m.typing ?? m.preview }),
               m.unread ? /* @__PURE__ */ r(Ka, { size: "sm", tone: "solid", variant: m.muted ? "neutral" : "accent", children: [
-                c.format(m.unread),
+                o.format(m.unread),
                 /* @__PURE__ */ r("span", { className: "nim-visually-hidden", children: [
                   " ",
                   d.unread
                 ] })
               ] }) : m.members ? /* @__PURE__ */ r("span", { className: "nim-room__members", children: [
-                /* @__PURE__ */ e(M, { name: li[m.kind], size: "xs" }),
-                c.format(m.members)
+                /* @__PURE__ */ e(x, { name: li[m.kind], size: "xs" }),
+                o.format(m.members)
               ] }) : null
             ] })
           ] })
         ]
       }
     ) }, m.id)) })
-  ] }, o.key)) });
+  ] }, c.key)) });
 }
 function Fl({
   activeId: n,
@@ -2148,8 +2159,8 @@ function Fl({
   labels: t,
   locale: s,
   onBack: d,
-  onCompose: c,
-  onSelect: o,
+  onCompose: o,
+  onSelect: c,
   search: m,
   sections: u
 }) {
@@ -2158,7 +2169,7 @@ function Fl({
     /* @__PURE__ */ r("aside", { "aria-label": h.channels, className: "nim-messenger__rail", children: [
       /* @__PURE__ */ r("div", { className: "nim-messenger__rail-head", children: [
         l,
-        c ? /* @__PURE__ */ e(O, { label: h.compose, name: "plus", onClick: c, size: "sm", variant: "outline" }) : null
+        o ? /* @__PURE__ */ e(O, { label: h.compose, name: "plus", onClick: o, size: "sm", variant: "outline" }) : null
       ] }),
       m ? /* @__PURE__ */ e("div", { className: "nim-messenger__search", children: m }) : null,
       /* @__PURE__ */ e("div", { className: "nim-messenger__rail-scroll", children: /* @__PURE__ */ e(
@@ -2167,7 +2178,7 @@ function Fl({
           activeId: n,
           labels: t,
           locale: s,
-          onSelect: o,
+          onSelect: c,
           sections: u
         }
       ) })
@@ -2189,12 +2200,12 @@ function Fl({
 }
 function Rl({ actions: n, avatar: l, className: i, kind: a = "direct", members: t, meta: s, name: d }) {
   return /* @__PURE__ */ r("div", { className: b("nim-room-head", i), children: [
-    a === "channel" ? /* @__PURE__ */ e("span", { className: "nim-room__glyph", children: /* @__PURE__ */ e(M, { name: "hash", size: "sm" }) }) : /* @__PURE__ */ e(de, { name: d, size: "md", src: l }),
+    a === "channel" ? /* @__PURE__ */ e("span", { className: "nim-room__glyph", children: /* @__PURE__ */ e(x, { name: "hash", size: "sm" }) }) : /* @__PURE__ */ e(de, { name: d, size: "md", src: l }),
     /* @__PURE__ */ r("div", { className: "nim-room-head__text", children: [
       /* @__PURE__ */ e("span", { className: "nim-room-head__name", children: d }),
       s ? /* @__PURE__ */ e("span", { className: "nim-room-head__meta", children: s }) : null
     ] }),
-    t != null && t.length ? /* @__PURE__ */ e("ul", { className: "nim-facepile", children: t.slice(0, 6).map((c) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ e(de, { name: c.name, size: "sm", src: c.avatar }) }, c.name)) }) : null,
+    t != null && t.length ? /* @__PURE__ */ e("ul", { className: "nim-facepile", children: t.slice(0, 6).map((o) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ e(de, { name: o.name, size: "sm", src: o.avatar }) }, o.name)) }) : null,
     n ? /* @__PURE__ */ e("div", { className: "nim-room-head__actions", children: n }) : null
   ] });
 }
@@ -2220,36 +2231,36 @@ function Ol({
   labels: t,
   markers: s = [],
   onSelect: d,
-  onZoom: c,
-  ratio: o = 16 / 10,
+  onZoom: o,
+  ratio: c = 16 / 10,
   tiles: m,
   title: u
 }) {
-  const h = { ...ri, ...t }, _ = J();
+  const h = { ...ri, ...t }, f = J();
   return /* @__PURE__ */ r(
     "section",
     {
-      "aria-labelledby": _,
+      "aria-labelledby": f,
       className: b("nim-map", i),
-      style: { aspectRatio: `${o}` },
+      style: { aspectRatio: `${c}` },
       children: [
-        /* @__PURE__ */ e("h3", { className: "nim-visually-hidden", id: _, children: u }),
+        /* @__PURE__ */ e("h3", { className: "nim-visually-hidden", id: f, children: u }),
         /* @__PURE__ */ e("div", { className: "nim-map__tiles", children: m }),
-        /* @__PURE__ */ e("ul", { className: "nim-map__markers", children: s.map((p) => {
-          const N = ci(p, l), g = { insetBlockStart: `${N.y}%`, insetInlineStart: `${N.x}%` };
-          return /* @__PURE__ */ e("li", { className: "nim-map__marker", "data-self": p.self ? "true" : void 0, style: g, children: d ? /* @__PURE__ */ r("button", { className: "nim-map__pin", "data-tone": p.tone, onClick: () => d(p), type: "button", children: [
-            p.self ? /* @__PURE__ */ e("span", { className: "nim-map__dot" }) : /* @__PURE__ */ e(M, { name: "globe", size: "sm" }),
-            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: p.label })
-          ] }) : /* @__PURE__ */ r("span", { className: "nim-map__pin", "data-tone": p.tone, children: [
-            p.self ? /* @__PURE__ */ e("span", { className: "nim-map__dot" }) : /* @__PURE__ */ e(M, { name: "globe", size: "sm" }),
-            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: p.label })
-          ] }) }, p.id);
+        /* @__PURE__ */ e("ul", { className: "nim-map__markers", children: s.map((_) => {
+          const N = ci(_, l), g = { insetBlockStart: `${N.y}%`, insetInlineStart: `${N.x}%` };
+          return /* @__PURE__ */ e("li", { className: "nim-map__marker", "data-self": _.self ? "true" : void 0, style: g, children: d ? /* @__PURE__ */ r("button", { className: "nim-map__pin", "data-tone": _.tone, onClick: () => d(_), type: "button", children: [
+            _.self ? /* @__PURE__ */ e("span", { className: "nim-map__dot" }) : /* @__PURE__ */ e(x, { name: "globe", size: "sm" }),
+            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: _.label })
+          ] }) : /* @__PURE__ */ r("span", { className: "nim-map__pin", "data-tone": _.tone, children: [
+            _.self ? /* @__PURE__ */ e("span", { className: "nim-map__dot" }) : /* @__PURE__ */ e(x, { name: "globe", size: "sm" }),
+            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: _.label })
+          ] }) }, _.id);
         }) }),
-        c || a ? /* @__PURE__ */ r("div", { className: "nim-map__controls", children: [
+        o || a ? /* @__PURE__ */ r("div", { className: "nim-map__controls", children: [
           a,
-          c ? /* @__PURE__ */ r(G, { children: [
-            /* @__PURE__ */ e(O, { label: h.zoomIn, name: "plus", onClick: () => c(1), size: "sm", variant: "solid" }),
-            /* @__PURE__ */ e(O, { label: h.zoomOut, name: "minus", onClick: () => c(-1), size: "sm", variant: "solid" })
+          o ? /* @__PURE__ */ r(H, { children: [
+            /* @__PURE__ */ e(O, { label: h.zoomIn, name: "plus", onClick: () => o(1), size: "sm", variant: "solid" }),
+            /* @__PURE__ */ e(O, { label: h.zoomOut, name: "minus", onClick: () => o(-1), size: "sm", variant: "solid" })
           ] }) : null
         ] }) : null,
         n ? /* @__PURE__ */ e("p", { className: "nim-map__attribution", children: n }) : null
@@ -2268,8 +2279,8 @@ const oi = {
   volume: "Volume"
 };
 function oe(n, l) {
-  const i = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0, a = new Intl.NumberFormat(l, { minimumIntegerDigits: 2, useGrouping: !1 }), t = new Intl.NumberFormat(l), s = Math.floor(i / 3600), d = Math.floor(i % 3600 / 60), c = i % 60;
-  return s > 0 ? `${t.format(s)}:${a.format(d)}:${a.format(c)}` : `${t.format(d)}:${a.format(c)}`;
+  const i = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0, a = new Intl.NumberFormat(l, { minimumIntegerDigits: 2, useGrouping: !1 }), t = new Intl.NumberFormat(l), s = Math.floor(i / 3600), d = Math.floor(i % 3600 / 60), o = i % 60;
+  return s > 0 ? `${t.format(s)}:${a.format(d)}:${a.format(o)}` : `${t.format(d)}:${a.format(o)}`;
 }
 function Ul({
   autoPlay: n = !1,
@@ -2279,31 +2290,31 @@ function Ul({
   locale: t,
   onError: s,
   poster: d,
-  rates: c = [1, 1.5, 2],
-  src: o,
+  rates: o = [1, 1.5, 2],
+  src: c,
   title: m,
   waveform: u
 }) {
-  const h = { ...oi, ...a }, _ = U(null), p = U(null), [N, g] = L(!1), [f, k] = L(0), [y, z] = L(0), [D, I] = L(0), [T, v] = L(n), [w, x] = L(1), [S, E] = L(1), $ = y > 0 ? f / y : 0, B = Y(() => u ?? null, [u]), H = Z(() => {
-    const C = _.current;
+  const h = { ...oi, ...a }, f = U(null), _ = U(null), [N, g] = E(!1), [p, w] = E(0), [y, S] = E(0), [I, B] = E(0), [M, v] = E(n), [T, k] = E(1), [L, D] = E(1), A = y > 0 ? p / y : 0, $ = Y(() => u ?? null, [u]), G = Z(() => {
+    const C = f.current;
     C && (C.paused ? C.play() : C.pause());
   }, []);
   V(() => {
-    const C = _.current;
-    C && (C.playbackRate = S);
-  }, [S]);
+    const C = f.current;
+    C && (C.playbackRate = L);
+  }, [L]);
   const K = (C) => {
-    const P = C.buffered;
-    I(P.length ? P.end(P.length - 1) : 0);
-  }, R = {
-    onDurationChange: (C) => z(Number.isFinite(C.currentTarget.duration) ? C.currentTarget.duration : 0),
+    const F = C.buffered;
+    B(F.length ? F.end(F.length - 1) : 0);
+  }, P = {
+    onDurationChange: (C) => S(Number.isFinite(C.currentTarget.duration) ? C.currentTarget.duration : 0),
     onEnded: () => g(!1),
     onPause: () => g(!1),
     onPlay: () => g(!0),
     onProgress: (C) => K(C.currentTarget),
-    onTimeUpdate: (C) => k(C.currentTarget.currentTime),
+    onTimeUpdate: (C) => w(C.currentTarget.currentTime),
     onVolumeChange: (C) => {
-      v(C.currentTarget.muted), x(C.currentTarget.volume);
+      v(C.currentTarget.muted), k(C.currentTarget.volume);
     },
     onError: s
   };
@@ -2313,7 +2324,7 @@ function Ul({
       className: b("nim-player", l),
       "data-kind": i,
       "data-playing": N ? "true" : void 0,
-      ref: p,
+      ref: _,
       children: [
         i === "video" ? /* @__PURE__ */ r("div", { className: "nim-player__stage", children: [
           /* @__PURE__ */ e(
@@ -2326,10 +2337,10 @@ function Ul({
               poster: d,
               preload: "metadata",
               ref: (C) => {
-                _.current = C;
+                f.current = C;
               },
-              src: o,
-              ...R
+              src: c,
+              ...P
             }
           ),
           /* @__PURE__ */ e(
@@ -2337,9 +2348,9 @@ function Ul({
             {
               "aria-label": N ? h.pause : h.play,
               className: "nim-player__surface",
-              onClick: H,
+              onClick: G,
               type: "button",
-              children: N ? null : /* @__PURE__ */ e("span", { className: "nim-player__badge", children: /* @__PURE__ */ e(M, { name: "play", size: "lg" }) })
+              children: N ? null : /* @__PURE__ */ e("span", { className: "nim-player__badge", children: /* @__PURE__ */ e(x, { name: "play", size: "lg" }) })
             }
           )
         ] }) : /* @__PURE__ */ e(
@@ -2348,10 +2359,10 @@ function Ul({
             autoPlay: n,
             preload: "metadata",
             ref: (C) => {
-              _.current = C;
+              f.current = C;
             },
-            src: o,
-            ...R
+            src: c,
+            ...P
           }
         ),
         /* @__PURE__ */ r("div", { className: "nim-player__transport", children: [
@@ -2360,58 +2371,58 @@ function Ul({
             {
               label: N ? h.pause : h.play,
               name: N ? "pause" : "play",
-              onClick: H,
+              onClick: G,
               size: "md",
               variant: "solid"
             }
           ),
           /* @__PURE__ */ r("div", { className: "nim-player__track", children: [
             m ? /* @__PURE__ */ e("span", { className: "nim-player__title", children: m }) : null,
-            /* @__PURE__ */ r("div", { className: "nim-player__rail", "data-wave": B ? "true" : void 0, children: [
-              B ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__wave", children: B.map((C, P) => /* @__PURE__ */ e(
+            /* @__PURE__ */ r("div", { className: "nim-player__rail", "data-wave": $ ? "true" : void 0, children: [
+              $ ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__wave", children: $.map((C, F) => /* @__PURE__ */ e(
                 "i",
                 {
-                  "data-played": P / B.length <= $ ? "true" : void 0,
+                  "data-played": F / $.length <= A ? "true" : void 0,
                   style: { blockSize: `${Math.max(8, Math.round(C * 100))}%` }
                 },
-                P
-              )) }) : /* @__PURE__ */ r(G, { children: [
-                /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__buffer", style: { inlineSize: `${y ? D / y * 100 : 0}%` } }),
-                /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__played", style: { inlineSize: `${$ * 100}%` } })
+                F
+              )) }) : /* @__PURE__ */ r(H, { children: [
+                /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__buffer", style: { inlineSize: `${y ? I / y * 100 : 0}%` } }),
+                /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-player__played", style: { inlineSize: `${A * 100}%` } })
               ] }),
               /* @__PURE__ */ e(
                 "input",
                 {
                   "aria-label": h.seek,
-                  "aria-valuetext": `${oe(f, t)} / ${oe(y, t)}`,
+                  "aria-valuetext": `${oe(p, t)} / ${oe(y, t)}`,
                   className: "nim-player__seek",
                   max: y || 0,
                   min: 0,
                   onChange: (C) => {
-                    const P = Number(C.target.value);
-                    k(P), _.current && (_.current.currentTime = P);
+                    const F = Number(C.target.value);
+                    w(F), f.current && (f.current.currentTime = F);
                   },
                   step: "any",
                   type: "range",
-                  value: f
+                  value: p
                 }
               )
             ] }),
             /* @__PURE__ */ r("span", { className: "nim-player__times", children: [
-              /* @__PURE__ */ e("time", { children: oe(f, t) }),
+              /* @__PURE__ */ e("time", { children: oe(p, t) }),
               /* @__PURE__ */ e("time", { children: oe(y, t) })
             ] })
           ] }),
           /* @__PURE__ */ r("div", { className: "nim-player__side", children: [
-            c.length > 1 ? /* @__PURE__ */ r(
+            o.length > 1 ? /* @__PURE__ */ r(
               "button",
               {
                 "aria-label": h.rate,
                 className: "nim-player__rate",
-                onClick: () => E(c[(c.indexOf(S) + 1) % c.length] ?? 1),
+                onClick: () => D(o[(o.indexOf(L) + 1) % o.length] ?? 1),
                 type: "button",
                 children: [
-                  new Intl.NumberFormat(t).format(S),
+                  new Intl.NumberFormat(t).format(L),
                   "×"
                 ]
               }
@@ -2419,10 +2430,10 @@ function Ul({
             /* @__PURE__ */ e(
               O,
               {
-                label: T ? h.unmute : h.mute,
-                name: T || w === 0 ? "volume-off" : "volume",
+                label: M ? h.unmute : h.mute,
+                name: M || T === 0 ? "volume-off" : "volume",
                 onClick: () => {
-                  const C = _.current;
+                  const C = f.current;
                   C && (C.muted = !C.muted);
                 },
                 size: "sm"
@@ -2436,12 +2447,12 @@ function Ul({
                 max: 1,
                 min: 0,
                 onChange: (C) => {
-                  const P = _.current;
-                  P && (P.volume = Number(C.target.value), P.muted = Number(C.target.value) === 0);
+                  const F = f.current;
+                  F && (F.volume = Number(C.target.value), F.muted = Number(C.target.value) === 0);
                 },
                 step: 0.05,
                 type: "range",
-                value: T ? 0 : w
+                value: M ? 0 : T
               }
             ),
             i === "video" ? /* @__PURE__ */ e(
@@ -2450,8 +2461,8 @@ function Ul({
                 label: h.fullscreen,
                 name: "expand",
                 onClick: () => {
-                  var C, P;
-                  document.fullscreenElement ? document.exitFullscreen() : (P = (C = p.current) == null ? void 0 : C.requestFullscreen) == null || P.call(C);
+                  var C, F;
+                  document.fullscreenElement ? document.exitFullscreen() : (F = (C = _.current) == null ? void 0 : C.requestFullscreen) == null || F.call(C);
                 },
                 size: "sm"
               }
@@ -2477,7 +2488,7 @@ const di = {
   var n;
   return typeof navigator < "u" && typeof window < "u" && "MediaRecorder" in window && !!((n = navigator.mediaDevices) != null && n.getUserMedia);
 }, ui = (n) => n.type.startsWith("video/") ? "video" : n.type.startsWith("image/") ? "image" : "file";
-function Gl({
+function Hl({
   accept: n,
   allow: l,
   className: i,
@@ -2485,30 +2496,30 @@ function Gl({
   labels: t,
   onCancelReply: s,
   onFiles: d,
-  onSend: c,
-  onTyping: o,
+  onSend: o,
+  onTyping: c,
   placeholder: m,
   replyTo: u
 }) {
-  const h = { ...di, ...t }, _ = { file: !0, video: !0, voice: !0, ...l }, [p, N] = L(""), [g, f] = L([]), [k, y] = L(!1), [z, D] = L(0), [I] = L(mi), T = U([]), v = U(null), w = U(null), x = U(null), S = U(0), E = U([]), $ = U(null), B = Z(() => {
-    var A;
-    (A = x.current) == null || A.stream.getTracks().forEach((F) => F.stop()), x.current = null;
+  const h = { ...di, ...t }, f = { file: !0, video: !0, voice: !0, ...l }, [_, N] = E(""), [g, p] = E([]), [w, y] = E(!1), [S, I] = E(0), [B] = E(mi), M = U([]), v = U(null), T = U(null), k = U(null), L = U(0), D = U([]), A = U(null), $ = Z(() => {
+    var z;
+    (z = k.current) == null || z.stream.getTracks().forEach((R) => R.stop()), k.current = null;
   }, []);
-  V(() => B, [B]), V(() => {
-    var A;
-    u && ((A = $.current) == null || A.focus());
+  V(() => $, [$]), V(() => {
+    var z;
+    u && ((z = A.current) == null || z.focus());
   }, [u]), V(() => {
-    if (!k) return;
-    const A = window.setInterval(() => D((Date.now() - S.current) / 1e3), 200);
-    return () => window.clearInterval(A);
-  }, [k]);
-  const H = Z(
-    (A) => {
-      if (!(A != null && A.length)) return;
-      const F = Array.from(A);
-      T.current = [...T.current, ...F], f((q) => [
+    if (!w) return;
+    const z = window.setInterval(() => I((Date.now() - L.current) / 1e3), 200);
+    return () => window.clearInterval(z);
+  }, [w]);
+  const G = Z(
+    (z) => {
+      if (!(z != null && z.length)) return;
+      const R = Array.from(z);
+      M.current = [...M.current, ...R], p((q) => [
         ...q,
-        ...F.map((Q) => ({
+        ...R.map((Q) => ({
           kind: ui(Q),
           name: Q.name,
           size: Q.size,
@@ -2519,39 +2530,39 @@ function Gl({
     []
   ), K = Z(async () => {
     try {
-      const A = await navigator.mediaDevices.getUserMedia({ audio: !0 }), F = new MediaRecorder(A);
-      E.current = [], F.ondataavailable = (q) => {
-        q.data.size && E.current.push(q.data);
-      }, F.onstop = () => {
-        const q = new Blob(E.current, { type: F.mimeType }), Q = new File([q], "voice-message", { type: F.mimeType });
-        T.current = [...T.current, Q], f((re) => [
+      const z = await navigator.mediaDevices.getUserMedia({ audio: !0 }), R = new MediaRecorder(z);
+      D.current = [], R.ondataavailable = (q) => {
+        q.data.size && D.current.push(q.data);
+      }, R.onstop = () => {
+        const q = new Blob(D.current, { type: R.mimeType }), Q = new File([q], "voice-message", { type: R.mimeType });
+        M.current = [...M.current, Q], p((re) => [
           ...re,
           {
-            duration: (Date.now() - S.current) / 1e3,
+            duration: (Date.now() - L.current) / 1e3,
             kind: "voice",
             size: q.size,
             url: URL.createObjectURL(q)
           }
-        ]), B();
-      }, x.current = F, F.start(), S.current = Date.now(), D(0), y(!0);
+        ]), $();
+      }, k.current = R, R.start(), L.current = Date.now(), I(0), y(!0);
     } catch {
-      y(!1), B();
+      y(!1), $();
     }
-  }, [B]), R = Z(
-    (A) => {
-      const F = x.current;
-      y(!1), F && (A || (F.onstop = B), F.stop());
+  }, [$]), P = Z(
+    (z) => {
+      const R = k.current;
+      y(!1), R && (z || (R.onstop = $), R.stop());
     },
-    [B]
-  ), C = (A) => {
-    f((F) => (URL.revokeObjectURL(F[A].url), F.filter((q, Q) => Q !== A))), T.current = T.current.filter((F, q) => q !== A);
-  }, P = () => {
-    var A;
-    !p.trim() && g.length === 0 || (c({ attachments: g, text: p.trim() }), d == null || d(T.current), T.current = [], f([]), N(""), (A = $.current) == null || A.focus());
-  }, W = !p.trim() && g.length === 0;
+    [$]
+  ), C = (z) => {
+    p((R) => (URL.revokeObjectURL(R[z].url), R.filter((q, Q) => Q !== z))), M.current = M.current.filter((R, q) => q !== z);
+  }, F = () => {
+    var z;
+    !_.trim() && g.length === 0 || (o({ attachments: g, text: _.trim() }), d == null || d(M.current), M.current = [], p([]), N(""), (z = A.current) == null || z.focus());
+  }, W = !_.trim() && g.length === 0;
   return /* @__PURE__ */ r("div", { className: b("nim-composer", i), children: [
     u ? /* @__PURE__ */ r("div", { className: "nim-composer__reply", children: [
-      /* @__PURE__ */ e(M, { className: "nim-composer__reply-mark", name: "reply", size: "sm" }),
+      /* @__PURE__ */ e(x, { className: "nim-composer__reply-mark", name: "reply", size: "sm" }),
       /* @__PURE__ */ r("span", { className: "nim-composer__reply-text", children: [
         /* @__PURE__ */ r("span", { className: "nim-composer__reply-author", children: [
           h.replyingTo,
@@ -2562,30 +2573,30 @@ function Gl({
       ] }),
       /* @__PURE__ */ e(O, { label: h.cancelReply, name: "close", onClick: s, size: "sm" })
     ] }) : null,
-    g.length ? /* @__PURE__ */ e("ul", { className: "nim-composer__tray", children: g.map((A, F) => /* @__PURE__ */ r("li", { className: "nim-composer__chip", children: [
+    g.length ? /* @__PURE__ */ e("ul", { className: "nim-composer__tray", children: g.map((z, R) => /* @__PURE__ */ r("li", { className: "nim-composer__chip", children: [
       /* @__PURE__ */ e(
-        M,
+        x,
         {
-          name: A.kind === "voice" ? "mic" : A.kind === "video" ? "video" : A.kind === "image" ? "camera" : "document",
+          name: z.kind === "voice" ? "mic" : z.kind === "video" ? "video" : z.kind === "image" ? "camera" : "document",
           size: "xs"
         }
       ),
-      /* @__PURE__ */ e("span", { className: "nim-composer__chip-name", children: A.name ?? h.record }),
+      /* @__PURE__ */ e("span", { className: "nim-composer__chip-name", children: z.name ?? h.record }),
       /* @__PURE__ */ e(
         O,
         {
           label: h.discard,
           name: "close",
-          onClick: () => C(F),
+          onClick: () => C(R),
           size: "sm"
         }
       )
-    ] }, A.url)) }) : null,
-    /* @__PURE__ */ e("div", { className: "nim-composer__row", children: k ? /* @__PURE__ */ r("div", { className: "nim-composer__recording", role: "status", children: [
+    ] }, z.url)) }) : null,
+    /* @__PURE__ */ e("div", { className: "nim-composer__row", children: w ? /* @__PURE__ */ r("div", { className: "nim-composer__recording", role: "status", children: [
       /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-composer__pulse" }),
       /* @__PURE__ */ e("span", { className: "nim-composer__recording-label", children: h.recording }),
       /* @__PURE__ */ r("span", { className: "nim-composer__elapsed", children: [
-        z.toFixed(1),
+        S.toFixed(1),
         "s"
       ] }),
       /* @__PURE__ */ e(
@@ -2593,7 +2604,7 @@ function Gl({
         {
           label: h.cancel,
           name: "close",
-          onClick: () => R(!1),
+          onClick: () => P(!1),
           size: "sm"
         }
       ),
@@ -2602,34 +2613,34 @@ function Gl({
         {
           label: h.stop,
           name: "stop",
-          onClick: () => R(!0),
+          onClick: () => P(!0),
           size: "sm",
           variant: "solid"
         }
       )
-    ] }) : /* @__PURE__ */ r(G, { children: [
-      _.file ? /* @__PURE__ */ e(
+    ] }) : /* @__PURE__ */ r(H, { children: [
+      f.file ? /* @__PURE__ */ e(
         O,
         {
           disabled: a,
           label: h.attach,
           name: "paperclip",
           onClick: () => {
-            var A;
-            return (A = v.current) == null ? void 0 : A.click();
+            var z;
+            return (z = v.current) == null ? void 0 : z.click();
           },
           size: "sm"
         }
       ) : null,
-      _.video ? /* @__PURE__ */ e(
+      f.video ? /* @__PURE__ */ e(
         O,
         {
           disabled: a,
           label: h.video,
           name: "video",
           onClick: () => {
-            var A;
-            return (A = w.current) == null ? void 0 : A.click();
+            var z;
+            return (z = T.current) == null ? void 0 : z.click();
           },
           size: "sm"
         }
@@ -2639,19 +2650,19 @@ function Gl({
         {
           className: "nim-composer__input",
           disabled: a,
-          onChange: (A) => {
-            N(A.target.value), o == null || o();
+          onChange: (z) => {
+            N(z.target.value), c == null || c();
           },
-          onKeyDown: (A) => {
-            A.key === "Enter" && !A.shiftKey && (A.preventDefault(), P());
+          onKeyDown: (z) => {
+            z.key === "Enter" && !z.shiftKey && (z.preventDefault(), F());
           },
           placeholder: m,
-          ref: $,
+          ref: A,
           rows: 1,
-          value: p
+          value: _
         }
       ),
-      _.voice && I && W ? /* @__PURE__ */ e(
+      f.voice && B && W ? /* @__PURE__ */ e(
         O,
         {
           disabled: a,
@@ -2666,7 +2677,7 @@ function Gl({
           disabled: a || W,
           label: h.send,
           name: "send",
-          onClick: P,
+          onClick: F,
           size: "sm",
           variant: "solid"
         }
@@ -2678,8 +2689,8 @@ function Gl({
         accept: n,
         className: "nim-visually-hidden",
         multiple: !0,
-        onChange: (A) => {
-          H(A.target.files), A.target.value = "";
+        onChange: (z) => {
+          G(z.target.files), z.target.value = "";
         },
         ref: v,
         tabIndex: -1,
@@ -2691,10 +2702,10 @@ function Gl({
       {
         accept: "video/*",
         className: "nim-visually-hidden",
-        onChange: (A) => {
-          H(A.target.files), A.target.value = "";
+        onChange: (z) => {
+          G(z.target.files), z.target.value = "";
         },
-        ref: w,
+        ref: T,
         tabIndex: -1,
         type: "file"
       }
@@ -2709,32 +2720,32 @@ function hi({
   onClick: t,
   onRemove: s,
   removeLabel: d = "Remove",
-  selected: c = !1,
-  tone: o = "neutral"
+  selected: o = !1,
+  tone: c = "neutral"
 }) {
   const m = !!t;
   return /* @__PURE__ */ r(
     "span",
     {
       className: b("nim-chip", m && "nim-chip--interactive", l),
-      "data-selected": c || void 0,
-      "data-tone": o === "neutral" ? void 0 : o,
+      "data-selected": o || void 0,
+      "data-tone": c === "neutral" ? void 0 : c,
       children: [
         m ? /* @__PURE__ */ r(
           "button",
           {
-            "aria-pressed": c,
+            "aria-pressed": o,
             className: "nim-chip__body",
             disabled: i,
             onClick: t,
             type: "button",
             children: [
-              a ? /* @__PURE__ */ e(M, { name: a, size: "xs" }) : null,
+              a ? /* @__PURE__ */ e(x, { name: a, size: "xs" }) : null,
               n
             ]
           }
         ) : /* @__PURE__ */ r("span", { className: "nim-chip__body", children: [
-          a ? /* @__PURE__ */ e(M, { name: a, size: "xs" }) : null,
+          a ? /* @__PURE__ */ e(x, { name: a, size: "xs" }) : null,
           n
         ] }),
         s ? /* @__PURE__ */ e(
@@ -2745,14 +2756,14 @@ function hi({
             disabled: i,
             onClick: s,
             type: "button",
-            children: /* @__PURE__ */ e(M, { name: "close", size: "xs" })
+            children: /* @__PURE__ */ e(x, { name: "close", size: "xs" })
           }
         ) : null
       ]
     }
   );
 }
-function Hl({
+function Gl({
   className: n,
   disabled: l = !1,
   error: i,
@@ -2760,24 +2771,24 @@ function Hl({
   label: t,
   onChange: s,
   placeholder: d,
-  removeLabel: c = "Remove",
-  separators: o = ["Enter", ",", "Tab"],
+  removeLabel: o = "Remove",
+  separators: c = ["Enter", ",", "Tab"],
   validate: m,
   values: u
 }) {
-  const [h, _] = L(""), p = () => {
+  const [h, f] = E(""), _ = () => {
     const g = h.trim();
     if (g && !(m && !m(g))) {
       if (u.includes(g)) {
-        _("");
+        f("");
         return;
       }
-      s([...u, g]), _("");
+      s([...u, g]), f("");
     }
   }, N = (g) => {
-    if (o.includes(g.key)) {
+    if (c.includes(g.key)) {
       if (g.key === "Tab" && !h.trim()) return;
-      g.preventDefault(), p();
+      g.preventDefault(), _();
       return;
     }
     g.key === "Backspace" && !h && u.length > 0 && s(u.slice(0, -1));
@@ -2789,8 +2800,8 @@ function Hl({
         hi,
         {
           disabled: l,
-          onRemove: () => s(u.filter((f) => f !== g)),
-          removeLabel: `${c} ${g}`,
+          onRemove: () => s(u.filter((p) => p !== g)),
+          removeLabel: `${o} ${g}`,
           children: g
         },
         g
@@ -2802,8 +2813,8 @@ function Hl({
           "aria-label": t,
           className: "nim-chip-input__field",
           disabled: l,
-          onBlur: p,
-          onChange: (g) => _(g.target.value),
+          onBlur: _,
+          onChange: (g) => f(g.target.value),
           onKeyDown: N,
           placeholder: u.length === 0 ? d : void 0,
           value: h
@@ -2821,13 +2832,13 @@ function Kl({ className: n, layout: l = "rows", rows: i }) {
   ] }, a.id)) });
 }
 function ee({ children: n, className: l, error: i, hint: a, id: t, label: s, required: d }) {
-  const c = J(), o = t ?? `nim-${c}`, m = a ? `${o}-hint` : void 0, u = i ? `${o}-error` : void 0, h = [u, m].filter(Boolean).join(" ") || void 0;
+  const o = J(), c = t ?? `nim-${o}`, m = a ? `${c}-hint` : void 0, u = i ? `${c}-error` : void 0, h = [u, m].filter(Boolean).join(" ") || void 0;
   return /* @__PURE__ */ r("div", { className: b("nim-field", i && "nim-field--invalid", l), children: [
-    s ? /* @__PURE__ */ r("label", { className: "nim-field__label", htmlFor: o, children: [
+    s ? /* @__PURE__ */ r("label", { className: "nim-field__label", htmlFor: c, children: [
       s,
       d ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-field__required", children: "*" }) : null
     ] }) : null,
-    n({ control: o, describedBy: h }),
+    n({ control: c, describedBy: h }),
     i ? /* @__PURE__ */ e("p", { className: "nim-field__error", id: u, children: i }) : null,
     a && !i ? /* @__PURE__ */ e("p", { className: "nim-field__hint", id: m, children: a }) : null
   ] });
@@ -2835,8 +2846,8 @@ function ee({ children: n, className: l, error: i, hint: a, id: t, label: s, req
 function Wl({ children: n, ...l }) {
   return /* @__PURE__ */ e(ee, { ...l, children: () => n });
 }
-function pi({ className: n, error: l, hint: i, iconEnd: a, iconStart: t, id: s, label: d, required: c, ...o }) {
-  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: s, label: d, required: c, children: ({ control: m, describedBy: u }) => /* @__PURE__ */ r(
+function _i({ className: n, error: l, hint: i, iconEnd: a, iconStart: t, id: s, label: d, required: o, ...c }) {
+  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: s, label: d, required: o, children: ({ control: m, describedBy: u }) => /* @__PURE__ */ r(
     "div",
     {
       className: b(
@@ -2845,7 +2856,7 @@ function pi({ className: n, error: l, hint: i, iconEnd: a, iconStart: t, id: s, 
         a && "nim-input-shell--has-end"
       ),
       children: [
-        t ? /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--start", children: /* @__PURE__ */ e(M, { name: t, size: "sm" }) }) : null,
+        t ? /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--start", children: /* @__PURE__ */ e(x, { name: t, size: "sm" }) }) : null,
         /* @__PURE__ */ e(
           "input",
           {
@@ -2853,26 +2864,26 @@ function pi({ className: n, error: l, hint: i, iconEnd: a, iconStart: t, id: s, 
             "aria-invalid": l ? !0 : void 0,
             className: b("nim-input", n),
             id: m,
-            required: c,
-            ...o
+            required: o,
+            ...c
           }
         ),
-        a ? /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(M, { name: a, size: "sm" }) }) : null
+        a ? /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(x, { name: a, size: "sm" }) }) : null
       ]
     }
   ) });
 }
-function Zl({ className: n, error: l, hint: i, id: a, label: t, required: s, rows: d = 4, ...c }) {
-  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: s, children: ({ control: o, describedBy: m }) => /* @__PURE__ */ e(
+function Zl({ className: n, error: l, hint: i, id: a, label: t, required: s, rows: d = 4, ...o }) {
+  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: s, children: ({ control: c, describedBy: m }) => /* @__PURE__ */ e(
     "textarea",
     {
       "aria-describedby": m,
       "aria-invalid": l ? !0 : void 0,
       className: b("nim-textarea", n),
-      id: o,
+      id: c,
       required: s,
       rows: d,
-      ...c
+      ...o
     }
   ) });
 }
@@ -2884,10 +2895,10 @@ function Yl({
   label: t,
   options: s,
   placeholder: d,
-  required: c,
-  ...o
+  required: o,
+  ...c
 }) {
-  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: c, children: ({ control: m, describedBy: u }) => /* @__PURE__ */ r("div", { className: "nim-input-shell nim-input-shell--has-end", children: [
+  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: o, children: ({ control: m, describedBy: u }) => /* @__PURE__ */ r("div", { className: "nim-input-shell nim-input-shell--has-end", children: [
     /* @__PURE__ */ r(
       "select",
       {
@@ -2895,96 +2906,98 @@ function Yl({
         "aria-invalid": l ? !0 : void 0,
         className: b("nim-select", n),
         id: m,
-        required: c,
-        ...o,
+        required: o,
+        ...c,
         children: [
           d ? /* @__PURE__ */ e("option", { value: "", disabled: !0, children: d }) : null,
           s.map((h) => /* @__PURE__ */ e("option", { disabled: h.disabled, value: h.value, children: h.label }, h.value))
         ]
       }
     ),
-    /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(M, { name: "chevron-down", size: "sm" }) })
+    /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(x, { name: "chevron-down", size: "sm" }) })
   ] }) });
 }
 function jl({
-  className: n,
-  emptyState: l,
-  error: i,
-  hint: a,
-  id: t,
-  label: s,
-  onChange: d,
+  ariaLabel: n,
+  className: l,
+  emptyState: i,
+  error: a,
+  hint: t,
+  id: s,
+  label: d,
+  onChange: o,
   options: c,
-  placeholder: o,
-  required: m,
-  value: u
+  placeholder: m,
+  required: u,
+  value: h
 }) {
-  const h = J(), _ = c.find((w) => w.value === u) ?? null, [p, N] = L(""), [g, f] = L(!1), [k, y] = L(0), z = U(null), D = Y(() => {
-    const w = p.trim().toLowerCase();
-    return w ? c.filter((x) => x.label.toLowerCase().includes(w)) : c;
-  }, [c, p]), I = (w) => {
-    d(w.value), N(""), f(!1);
-  }, T = (w) => {
-    if (w.key === "Escape") {
-      N(""), f(!1);
+  const f = J(), _ = c.find((k) => k.value === h) ?? null, [N, g] = E(""), [p, w] = E(!1), [y, S] = E(0), I = U(null), B = Y(() => {
+    const k = N.trim().toLowerCase();
+    return k ? c.filter((L) => L.label.toLowerCase().includes(k)) : c;
+  }, [c, N]), M = (k) => {
+    o(k.value), g(""), w(!1);
+  }, v = (k) => {
+    if (k.key === "Escape") {
+      g(""), w(!1);
       return;
     }
-    if (!g && (w.key === "ArrowDown" || w.key === "ArrowUp")) {
-      f(!0);
+    if (!p && (k.key === "ArrowDown" || k.key === "ArrowUp")) {
+      w(!0);
       return;
     }
-    if (w.key === "ArrowDown" || w.key === "ArrowUp") {
-      w.preventDefault();
-      const x = w.key === "ArrowDown" ? 1 : -1, S = D.filter((E) => !E.disabled);
-      if (S.length === 0) return;
-      y((E) => (E + x + S.length) % S.length);
+    if (k.key === "ArrowDown" || k.key === "ArrowUp") {
+      k.preventDefault();
+      const L = k.key === "ArrowDown" ? 1 : -1, D = B.filter((A) => !A.disabled);
+      if (D.length === 0) return;
+      S((A) => (A + L + D.length) % D.length);
     }
-    if (w.key === "Enter") {
-      const S = D.filter((E) => !E.disabled)[k];
-      S && (w.preventDefault(), I(S));
+    if (k.key === "Enter") {
+      const D = B.filter((A) => !A.disabled)[y];
+      D && (k.preventDefault(), M(D));
     }
-  }, v = D.filter((w) => !w.disabled);
-  return /* @__PURE__ */ e(ee, { className: n, error: i, hint: a, id: t, label: s, required: m, children: ({ control: w, describedBy: x }) => /* @__PURE__ */ r("div", { className: "nim-combobox", children: [
+  }, T = B.filter((k) => !k.disabled);
+  return /* @__PURE__ */ e(ee, { className: l, error: a, hint: t, id: s, label: d, required: u, children: ({ control: k, describedBy: L }) => /* @__PURE__ */ r("div", { className: "nim-combobox", children: [
     /* @__PURE__ */ r("div", { className: b("nim-input-shell", "nim-input-shell--has-end"), children: [
       /* @__PURE__ */ e(
         "input",
         {
+          "aria-label": n ?? d,
           "aria-autocomplete": "list",
-          "aria-controls": g ? h : void 0,
-          "aria-describedby": x,
-          "aria-expanded": g,
+          "aria-controls": p ? f : void 0,
+          "aria-describedby": L,
+          "aria-expanded": p,
           className: "nim-input",
-          id: w,
-          onBlur: () => window.setTimeout(() => f(!1), 120),
-          onChange: (S) => {
-            N(S.target.value), y(0), f(!0);
+          id: k,
+          onBlur: () => window.setTimeout(() => w(!1), 120),
+          onChange: (D) => {
+            g(D.target.value), S(0), w(!0);
           },
-          onFocus: () => f(!0),
-          onKeyDown: T,
-          placeholder: o,
-          ref: z,
+          onFocus: () => w(!0),
+          onKeyDown: v,
+          placeholder: m,
+          ref: I,
           role: "combobox",
-          value: g ? p : (_ == null ? void 0 : _.label) ?? ""
+          value: p ? N : (_ == null ? void 0 : _.label) ?? ""
         }
       ),
-      /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(M, { name: "chevron-down", size: "sm" }) })
+      /* @__PURE__ */ e("span", { className: "nim-input-shell__affix nim-input-shell__affix--end", children: /* @__PURE__ */ e(x, { name: "chevron-down", size: "sm" }) })
     ] }),
-    g ? /* @__PURE__ */ e("div", { className: "nim-combobox__list", id: h, role: "listbox", children: v.length === 0 ? /* @__PURE__ */ e("div", { className: "nim-combobox__empty", children: l ? l(p) : `Nothing matches “${p}”.` }) : D.map((S) => /* @__PURE__ */ r(
+    p ? /* @__PURE__ */ e("div", { className: "nim-combobox__list", id: f, role: "listbox", children: T.length === 0 ? /* @__PURE__ */ e("div", { className: "nim-combobox__empty", children: i ? i(N) : `Nothing matches “${N}”.` }) : B.map((D) => /* @__PURE__ */ r(
       "button",
       {
-        "aria-selected": v.indexOf(S) === k,
+        "aria-selected": T.indexOf(D) === y,
         className: "nim-combobox__option",
-        disabled: S.disabled,
-        onClick: () => I(S),
-        onPointerEnter: () => y(v.indexOf(S)),
+        disabled: D.disabled,
+        onClick: () => M(D),
+        onPointerEnter: () => S(T.indexOf(D)),
         role: "option",
         type: "button",
         children: [
-          /* @__PURE__ */ e("span", { children: S.label }),
-          S.meta ? /* @__PURE__ */ e("span", { className: "nim-combobox__meta", children: S.meta }) : null
+          /* @__PURE__ */ e("span", { children: D.label }),
+          D.meta ? /* @__PURE__ */ e("span", { className: "nim-combobox__meta", children: D.meta }) : null
         ]
       },
-      S.value
+      D.value
     )) }) : null
   ] }) });
 }
@@ -2997,41 +3010,41 @@ function Vl({
   defaultStyle: t = "ledger",
   direction: s = "ltr",
   locale: d,
-  syncDocument: c = !0
+  syncDocument: o = !0
 }) {
-  const [o, m] = L(t), [u, h] = L(i), [_, p] = L(a);
+  const [c, m] = E(t), [u, h] = E(i), [f, _] = E(a);
   V(() => {
-    if (!c || typeof document > "u") return;
+    if (!o || typeof document > "u") return;
     const g = document.documentElement;
-    g.dataset.nimStyle = o, g.dataset.nimColorway = u, _ === "system" ? delete g.dataset.nimScheme : g.dataset.nimScheme = _, g.dir = s, d && (g.lang = d);
-  }, [u, s, d, _, o, c]);
+    g.dataset.nimStyle = c, g.dataset.nimColorway = u, f === "system" ? delete g.dataset.nimScheme : g.dataset.nimScheme = f, g.dir = s, d && (g.lang = d);
+  }, [u, s, d, f, c, o]);
   const N = Y(
-    () => ({ colorway: u, direction: s, locale: d, scheme: _, setColorway: h, setScheme: p, setStyle: m, style: o }),
-    [u, s, d, _, o]
+    () => ({ colorway: u, direction: s, locale: d, scheme: f, setColorway: h, setScheme: _, setStyle: m, style: c }),
+    [u, s, d, f, c]
   );
   return /* @__PURE__ */ e(Ye.Provider, { value: N, children: /* @__PURE__ */ e(
     "div",
     {
       className: b("nim-root", l),
       "data-nim-colorway": u,
-      "data-nim-scheme": _ === "system" ? void 0 : _,
-      "data-nim-style": o,
+      "data-nim-scheme": f === "system" ? void 0 : f,
+      "data-nim-style": c,
       dir: s,
       lang: d,
       children: n
     }
   ) });
 }
-function pe() {
+function _e() {
   const n = xe(Ye);
   if (!n) throw new Error("useNim must be used inside <NimProvider>");
   return n;
 }
 function ql() {
-  const { scheme: n, setScheme: l } = pe();
+  const { scheme: n, setScheme: l } = _e();
   return Z(() => l(n === "dark" ? "light" : "dark"), [n, l]);
 }
-const me = 864e5, _i = Date.UTC(622, 2, 22), fi = 365.2422, ie = (n) => n.toISOString().slice(0, 10), le = (n) => /* @__PURE__ */ new Date(`${n}T00:00:00Z`), _e = () => ie(/* @__PURE__ */ new Date()), Ni = new Intl.DateTimeFormat("en-u-ca-persian-nu-latn", {
+const me = 864e5, pi = Date.UTC(622, 2, 22), fi = 365.2422, ie = (n) => n.toISOString().slice(0, 10), le = (n) => /* @__PURE__ */ new Date(`${n}T00:00:00Z`), pe = () => ie(/* @__PURE__ */ new Date()), Ni = new Intl.DateTimeFormat("en-u-ca-persian-nu-latn", {
   day: "numeric",
   month: "numeric",
   timeZone: "UTC",
@@ -3043,7 +3056,7 @@ function ne(n, l) {
     return { day: i.getUTCDate(), month: i.getUTCMonth() + 1, year: i.getUTCFullYear() };
   const a = Ni.formatToParts(i), t = (s) => {
     var d;
-    return Number(((d = a.find((c) => c.type === s)) == null ? void 0 : d.value) ?? "0");
+    return Number(((d = a.find((o) => o.type === s)) == null ? void 0 : d.value) ?? "0");
   };
   return { day: t("day"), month: t("month"), year: t("year") };
 }
@@ -3052,13 +3065,13 @@ function te(n, l) {
   if (l === "gregory")
     return ie(new Date(Date.UTC(n.year, n.month - 1, n.day)));
   const i = Math.floor((n.year - 1) * fi) + (n.month <= 7 ? (n.month - 1) * 31 : 186 + (n.month - 7) * 30) + n.day - 1;
-  let a = new Date(_i + i * me);
+  let a = new Date(pi + i * me);
   const t = Ee(n);
   for (let s = 0; s < 40; s += 1) {
-    const d = ne(ie(a), "persian"), c = Ee(d);
-    if (c === t) break;
-    const o = (n.year - d.year) * 365 + (n.month - d.month) * 30 + (n.day - d.day);
-    a = new Date(a.getTime() + (o === 0 ? c < t ? 1 : -1 : o) * me);
+    const d = ne(ie(a), "persian"), o = Ee(d);
+    if (o === t) break;
+    const c = (n.year - d.year) * 365 + (n.month - d.month) * 30 + (n.day - d.day);
+    a = new Date(a.getTime() + (c === 0 ? o < t ? 1 : -1 : c) * me);
   }
   return ie(a);
 }
@@ -3067,8 +3080,8 @@ function bi(n, l) {
   return te({ ...i, day: 1 }, l);
 }
 function $e(n, l, i) {
-  const a = ne(n, i), t = a.year * 12 + (a.month - 1) + l, s = Math.floor(t / 12), d = t % 12 + 1, c = je(s, d, i);
-  return te({ day: Math.min(a.day, c), month: d, year: s }, i);
+  const a = ne(n, i), t = a.year * 12 + (a.month - 1) + l, s = Math.floor(t / 12), d = t % 12 + 1, o = je(s, d, i);
+  return te({ day: Math.min(a.day, o), month: d, year: s }, i);
 }
 function je(n, l, i) {
   const a = le(te({ day: 1, month: l, year: n }, i)).getTime(), t = l === 12 ? 1 : l + 1, s = l === 12 ? n + 1 : n, d = le(te({ day: 1, month: t, year: s }, i)).getTime();
@@ -3087,7 +3100,7 @@ function ki(n) {
   return Ie.set(l, t), t;
 }
 function we(n, l, i) {
-  const a = ne(n, i), t = ki(l), s = (d, c = 1) => String(d).padStart(c, "0").replace(/\d/g, (o) => t[Number(o)]);
+  const a = ne(n, i), t = ki(l), s = (d, o = 1) => String(d).padStart(o, "0").replace(/\d/g, (c) => t[Number(c)]);
   return `${s(a.year)}/${s(a.month, 2)}/${s(a.day, 2)}`;
 }
 function wi(n, l) {
@@ -3095,8 +3108,8 @@ function wi(n, l) {
   if (!a || a.length < 3) return null;
   const [t, s, d] = a.map(Number);
   if (s < 1 || s > 12 || d < 1 || d > je(t, s, l)) return null;
-  const c = te({ day: d, month: s, year: t }, l), o = ne(c, l);
-  return o.year === t && o.month === s && o.day === d ? c : null;
+  const o = te({ day: d, month: s, year: t }, l), c = ne(o, l);
+  return c.year === t && c.month === s && c.day === d ? o : null;
 }
 function Ci(n) {
   let l = "";
@@ -3118,29 +3131,29 @@ function Ve({
   month: t,
   onMonthChange: s,
   onSelect: d,
-  system: c,
-  value: o,
+  system: o,
+  value: c,
   weekStart: m
 }) {
-  const { locale: u } = pe(), h = c ?? Me(u), _ = m ?? yi(h), p = _e(), N = gi(u, h), g = Y(
+  const { locale: u } = _e(), h = o ?? Me(u), f = m ?? yi(h), _ = pe(), N = gi(u, h), g = Y(
     () => new Intl.DateTimeFormat(N, { month: "long", timeZone: "UTC", year: "numeric" }),
     [N]
-  ), f = Y(() => new Intl.NumberFormat(u), [u]), k = Y(
+  ), p = Y(() => new Intl.NumberFormat(u), [u]), w = Y(
     () => new Intl.DateTimeFormat(N, { timeZone: "UTC", weekday: "short" }),
     [N]
-  ), y = bi(t, h), z = ne(y, h).month, D = Y(() => {
-    const T = (vi(y) - _ + 7) % 7, v = ge(y, -T);
-    return Array.from({ length: 42 }, (w, x) => {
-      const S = ge(v, x), E = ne(S, h);
-      return { date: S, day: E.day, outside: E.month !== z };
+  ), y = bi(t, h), S = ne(y, h).month, I = Y(() => {
+    const M = (vi(y) - f + 7) % 7, v = ge(y, -M);
+    return Array.from({ length: 42 }, (T, k) => {
+      const L = ge(v, k), D = ne(L, h);
+      return { date: L, day: D.day, outside: D.month !== S };
     });
-  }, [y, z, h, _]), I = Y(() => {
-    const T = "2024-01-07";
-    return Array.from({ length: 7 }, (v, w) => ({
-      key: `${_}-${w}`,
-      label: k.format(/* @__PURE__ */ new Date(`${ge(T, (_ + w) % 7)}T00:00:00Z`))
+  }, [y, S, h, f]), B = Y(() => {
+    const M = "2024-01-07";
+    return Array.from({ length: 7 }, (v, T) => ({
+      key: `${f}-${T}`,
+      label: w.format(/* @__PURE__ */ new Date(`${ge(M, (f + T) % 7)}T00:00:00Z`))
     }));
-  }, [_, k]);
+  }, [f, w]);
   return /* @__PURE__ */ r("div", { className: b("nim-calendar", n), children: [
     /* @__PURE__ */ r("div", { className: "nim-calendar__header", children: [
       /* @__PURE__ */ e(
@@ -3164,24 +3177,24 @@ function Ve({
       )
     ] }),
     /* @__PURE__ */ r("div", { className: "nim-calendar__grid", role: "grid", children: [
-      I.map((T) => /* @__PURE__ */ e("span", { className: "nim-calendar__weekday", children: T.label }, T.key)),
-      D.map((T) => /* @__PURE__ */ e(
+      B.map((M) => /* @__PURE__ */ e("span", { className: "nim-calendar__weekday", children: M.label }, M.key)),
+      I.map((M) => /* @__PURE__ */ e(
         "button",
         {
-          "aria-selected": T.date === o,
+          "aria-selected": M.date === c,
           className: b(
             "nim-calendar__day",
-            T.outside && "nim-calendar__day--outside",
-            T.date === p && "nim-calendar__day--today",
-            l.includes(T.date) && "nim-calendar__day--marked"
+            M.outside && "nim-calendar__day--outside",
+            M.date === _ && "nim-calendar__day--today",
+            l.includes(M.date) && "nim-calendar__day--marked"
           ),
-          disabled: a !== void 0 && T.date < a || i !== void 0 && T.date > i,
-          onClick: () => d(T.date),
+          disabled: a !== void 0 && M.date < a || i !== void 0 && M.date > i,
+          onClick: () => d(M.date),
           role: "gridcell",
           type: "button",
-          children: f.format(T.day)
+          children: p.format(M.day)
         },
-        T.date
+        M.date
       ))
     ] })
   ] });
@@ -3195,7 +3208,7 @@ function qe({
   onChange: s,
   value: d
 }) {
-  const [c, o] = L(null);
+  const [o, c] = E(null);
   if (n === "gregory")
     return /* @__PURE__ */ e(
       "input",
@@ -3209,7 +3222,7 @@ function qe({
         value: d
       }
     );
-  const m = c ?? (d ? we(d, t, n) : "");
+  const m = o ?? (d ? we(d, t, n) : "");
   return /* @__PURE__ */ e(
     "input",
     {
@@ -3219,13 +3232,13 @@ function qe({
       dir: "ltr",
       id: i,
       inputMode: "numeric",
-      onBlur: () => o(null),
+      onBlur: () => c(null),
       onChange: (u) => {
-        o(u.target.value);
+        c(u.target.value);
         const h = wi(u.target.value, n);
         h ? s(h) : u.target.value.trim() === "" && s("");
       },
-      placeholder: we(_e(), t, n),
+      placeholder: we(pe(), t, n),
       type: "text",
       value: m
     }
@@ -3239,18 +3252,18 @@ function Ql({
   onChange: t,
   required: s,
   value: d,
-  ...c
+  ...o
 }) {
-  const { locale: o } = pe(), m = c.system ?? Me(o), [u, h] = L(d || _e());
-  return /* @__PURE__ */ e(ee, { error: n, hint: l, id: i, label: a, required: s, children: ({ control: _, describedBy: p }) => /* @__PURE__ */ r("div", { className: "nim-stack nim-stack--tight", children: [
+  const { locale: c } = _e(), m = o.system ?? Me(c), [u, h] = E(d || pe());
+  return /* @__PURE__ */ e(ee, { error: n, hint: l, id: i, label: a, required: s, children: ({ control: f, describedBy: _ }) => /* @__PURE__ */ r("div", { className: "nim-stack nim-stack--tight", children: [
     /* @__PURE__ */ e(
       qe,
       {
         calendar: m,
-        describedBy: p,
-        id: _,
+        describedBy: _,
+        id: f,
         invalid: !!n,
-        locale: o,
+        locale: c,
         onChange: (N) => {
           t(N), N && h(N);
         },
@@ -3260,7 +3273,7 @@ function Ql({
     /* @__PURE__ */ e(
       Ve,
       {
-        ...c,
+        ...o,
         month: u,
         onMonthChange: h,
         onSelect: (N) => {
@@ -3280,31 +3293,31 @@ function Xl({
   labels: t,
   onChange: s,
   required: d,
-  showEquivalent: c,
-  value: o,
+  showEquivalent: o,
+  value: c,
   ...m
 }) {
-  const { locale: u } = pe(), h = m.system ?? Me(u), [_, p] = L(!1), [N, g] = L(o || _e()), f = U(null), k = { clear: "Clear date", open: "Open calendar", ...t }, y = c ?? h === "persian", z = h === "persian" ? "gregory" : "persian";
-  return /* @__PURE__ */ e(ee, { error: n, hint: l, id: i, label: a, required: d, children: ({ control: D, describedBy: I }) => /* @__PURE__ */ r("div", { className: "nim-date-picker", children: [
+  const { locale: u } = _e(), h = m.system ?? Me(u), [f, _] = E(!1), [N, g] = E(c || pe()), p = U(null), w = { clear: "Clear date", open: "Open calendar", ...t }, y = o ?? h === "persian", S = h === "persian" ? "gregory" : "persian";
+  return /* @__PURE__ */ e(ee, { error: n, hint: l, id: i, label: a, required: d, children: ({ control: I, describedBy: B }) => /* @__PURE__ */ r("div", { className: "nim-date-picker", children: [
     /* @__PURE__ */ r("div", { className: "nim-date-picker__group", children: [
       /* @__PURE__ */ e(
         qe,
         {
           calendar: h,
-          describedBy: I,
-          id: D,
+          describedBy: B,
+          id: I,
           invalid: !!n,
           locale: u,
-          onChange: (T) => {
-            s(T), T && g(T);
+          onChange: (M) => {
+            s(M), M && g(M);
           },
-          value: o
+          value: c
         }
       ),
-      o ? /* @__PURE__ */ e(
+      c ? /* @__PURE__ */ e(
         O,
         {
-          label: k.clear,
+          label: w.clear,
           name: "close",
           onClick: () => s(""),
           size: "sm"
@@ -3313,37 +3326,37 @@ function Xl({
       /* @__PURE__ */ e(
         O,
         {
-          "aria-expanded": _,
-          label: k.open,
+          "aria-expanded": f,
+          label: w.open,
           name: "calendar",
-          onClick: () => p((T) => !T),
-          ref: f,
+          onClick: () => _((M) => !M),
+          ref: p,
           size: "sm"
         }
       )
     ] }),
-    y && o ? /* @__PURE__ */ r("p", { className: "nim-date-picker__equivalent", children: [
-      /* @__PURE__ */ e(M, { name: "calendar", size: "xs" }),
-      /* @__PURE__ */ e("span", { dir: z === "gregory" ? "ltr" : void 0, children: we(o, u, z) })
+    y && c ? /* @__PURE__ */ r("p", { className: "nim-date-picker__equivalent", children: [
+      /* @__PURE__ */ e(x, { name: "calendar", size: "xs" }),
+      /* @__PURE__ */ e("span", { dir: S === "gregory" ? "ltr" : void 0, children: we(c, u, S) })
     ] }) : null,
     /* @__PURE__ */ e(
       ja,
       {
-        label: a ?? k.open,
-        onClose: () => p(!1),
-        open: _,
-        triggerRef: f,
+        label: a ?? w.open,
+        onClose: () => _(!1),
+        open: f,
+        triggerRef: p,
         children: /* @__PURE__ */ e(
           Ve,
           {
             ...m,
             month: N,
             onMonthChange: g,
-            onSelect: (T) => {
-              s(T), g(T), p(!1);
+            onSelect: (M) => {
+              s(M), g(M), _(!1);
             },
             system: h,
-            value: o
+            value: c
           }
         )
       }
@@ -3358,17 +3371,17 @@ function Jl({
   dismissible: t = !0,
   footer: s,
   onClose: d,
-  open: c,
-  title: o
+  open: o,
+  title: c
 }) {
   const m = U(null);
   return V(() => {
     const u = m.current;
-    u && (c && !u.open && u.showModal(), !c && u.open && u.close());
-  }, [c]), V(() => {
+    u && (o && !u.open && u.showModal(), !o && u.open && u.close());
+  }, [o]), V(() => {
     const u = m.current;
     if (!u || t) return;
-    const h = (_) => _.preventDefault();
+    const h = (f) => f.preventDefault();
     return u.addEventListener("cancel", h), () => u.removeEventListener("cancel", h);
   }, [t]), V(() => {
     const u = m.current;
@@ -3386,7 +3399,7 @@ function Jl({
       children: [
         /* @__PURE__ */ r("div", { className: "nim-dialog__header", children: [
           /* @__PURE__ */ r("div", { children: [
-            /* @__PURE__ */ e("p", { className: "nim-title nim-title--md", children: o }),
+            /* @__PURE__ */ e("p", { className: "nim-title nim-title--md", children: c }),
             a ? /* @__PURE__ */ e("p", { className: "nim-caption", children: a }) : null
           ] }),
           t ? /* @__PURE__ */ e(O, { label: i, name: "close", onClick: d, size: "sm" }) : null
@@ -3406,22 +3419,22 @@ function et({
   value: s,
   ...d
 }) {
-  const c = typeof a == "number", o = Math.min(100, Math.max(0, a ?? 0)), m = typeof i == "string" ? i : void 0;
+  const o = typeof a == "number", c = Math.min(100, Math.max(0, a ?? 0)), m = typeof i == "string" ? i : void 0;
   return /* @__PURE__ */ r("div", { className: b("nim-resource-meter", n), "data-tone": t, ...d, children: [
     /* @__PURE__ */ r("div", { className: "nim-resource-meter__head", children: [
       /* @__PURE__ */ e("span", { className: "nim-resource-meter__label", children: i }),
       /* @__PURE__ */ e("span", { className: "nim-resource-meter__value", children: s })
     ] }),
-    c ? /* @__PURE__ */ e(
+    o ? /* @__PURE__ */ e(
       "div",
       {
         "aria-label": m,
         "aria-valuemax": 100,
         "aria-valuemin": 0,
-        "aria-valuenow": o,
+        "aria-valuenow": c,
         className: "nim-resource-meter__track",
         role: "meter",
-        children: /* @__PURE__ */ e("span", { className: "nim-resource-meter__fill", style: { inlineSize: `${o}%` } })
+        children: /* @__PURE__ */ e("span", { className: "nim-resource-meter__fill", style: { inlineSize: `${c}%` } })
       }
     ) : null,
     l ? /* @__PURE__ */ e("span", { className: "nim-resource-meter__detail", children: l }) : null
@@ -3435,11 +3448,11 @@ function nt({
   error: t,
   label: s,
   multiple: d = !1,
-  onFiles: c,
-  prompt: o
+  onFiles: o,
+  prompt: c
 }) {
-  const m = U(0), [u, h] = L(!1), _ = (p) => {
-    p.preventDefault(), p.stopPropagation();
+  const m = U(0), [u, h] = E(!1), f = (_) => {
+    _.preventDefault(), _.stopPropagation();
   };
   return /* @__PURE__ */ r("div", { className: b("nim-field", t && "nim-field--invalid", i), children: [
     /* @__PURE__ */ r(
@@ -3448,17 +3461,17 @@ function nt({
         className: "nim-file-drop",
         "data-over": u || void 0,
         "data-disabled": a || void 0,
-        onDragEnter: (p) => {
-          _(p), m.current += 1, a || h(!0);
+        onDragEnter: (_) => {
+          f(_), m.current += 1, a || h(!0);
         },
-        onDragLeave: (p) => {
-          _(p), m.current -= 1, m.current <= 0 && h(!1);
+        onDragLeave: (_) => {
+          f(_), m.current -= 1, m.current <= 0 && h(!1);
         },
-        onDragOver: _,
-        onDrop: (p) => {
-          if (_(p), m.current = 0, h(!1), a) return;
-          const N = Array.from(p.dataTransfer.files);
-          N.length > 0 && c(d ? N : N.slice(0, 1));
+        onDragOver: f,
+        onDrop: (_) => {
+          if (f(_), m.current = 0, h(!1), a) return;
+          const N = Array.from(_.dataTransfer.files);
+          N.length > 0 && o(d ? N : N.slice(0, 1));
         },
         children: [
           /* @__PURE__ */ e(
@@ -3468,16 +3481,16 @@ function nt({
               className: "nim-choice__input",
               disabled: a,
               multiple: d,
-              onChange: (p) => {
-                const N = Array.from(p.target.files ?? []);
-                N.length > 0 && c(N), p.target.value = "";
+              onChange: (_) => {
+                const N = Array.from(_.target.files ?? []);
+                N.length > 0 && o(N), _.target.value = "";
               },
               type: "file"
             }
           ),
-          /* @__PURE__ */ e(M, { className: "nim-file-drop__icon", name: "upload", size: "lg" }),
+          /* @__PURE__ */ e(x, { className: "nim-file-drop__icon", name: "upload", size: "lg" }),
           /* @__PURE__ */ e("span", { className: "nim-file-drop__label", children: s }),
-          o ? /* @__PURE__ */ e("span", { className: "nim-file-drop__prompt", children: o }) : null,
+          c ? /* @__PURE__ */ e("span", { className: "nim-file-drop__prompt", children: c }) : null,
           l ? /* @__PURE__ */ e("span", { className: "nim-file-drop__caption", children: l }) : null
         ]
       }
@@ -3525,30 +3538,30 @@ function Mi({
   rel: t,
   subtitle: s,
   target: d,
-  title: c,
-  trailing: o,
+  title: o,
+  trailing: c,
   ...m
 }) {
-  const u = !!(l || a), h = /* @__PURE__ */ r(G, { children: [
+  const u = !!(l || a), h = /* @__PURE__ */ r(H, { children: [
     i ? /* @__PURE__ */ e("span", { className: "nim-list-row__leading", children: i }) : null,
     /* @__PURE__ */ r("span", { className: "nim-list-row__content", children: [
-      /* @__PURE__ */ e("span", { className: "nim-list-row__title", children: c }),
+      /* @__PURE__ */ e("span", { className: "nim-list-row__title", children: o }),
       s ? /* @__PURE__ */ e("span", { className: "nim-list-row__subtitle", children: s }) : null
     ] }),
-    o ? /* @__PURE__ */ e("span", { className: "nim-list-row__trailing", children: o }) : null,
-    u && !o ? /* @__PURE__ */ e(M, { className: "nim-list-row__chevron", name: "chevron-forward", size: "sm" }) : null
-  ] }), _ = b("nim-list-row", u && "nim-list-row--interactive", n);
+    c ? /* @__PURE__ */ e("span", { className: "nim-list-row__trailing", children: c }) : null,
+    u && !c ? /* @__PURE__ */ e(x, { className: "nim-list-row__chevron", name: "chevron-forward", size: "sm" }) : null
+  ] }), f = b("nim-list-row", u && "nim-list-row--interactive", n);
   return l ? /* @__PURE__ */ e(
     "a",
     {
-      className: _,
+      className: f,
       href: l,
       rel: d === "_blank" ? t ?? "noreferrer" : t,
       target: d,
       ...m,
       children: h
     }
-  ) : a ? /* @__PURE__ */ e("button", { className: _, onClick: a, type: "button", ...m, children: h }) : /* @__PURE__ */ e("div", { className: _, ...m, children: h });
+  ) : a ? /* @__PURE__ */ e("button", { className: f, onClick: a, type: "button", ...m, children: h }) : /* @__PURE__ */ e("div", { className: f, ...m, children: h });
 }
 const Ti = {
   back: "Back",
@@ -3562,17 +3575,17 @@ function tt({
   labels: t,
   nextLabel: s,
   onDone: d,
-  onSkip: c,
-  onStep: o,
+  onSkip: o,
+  onStep: c,
   skipLabel: m,
   slides: u
 }) {
-  var k;
-  const [h, _] = L(0), p = { ...Ti, ...t }, N = u[Math.min(h, u.length - 1)], g = h === u.length - 1, f = Z(
+  var w;
+  const [h, f] = E(0), _ = { ...Ti, ...t }, N = u[Math.min(h, u.length - 1)], g = h === u.length - 1, p = Z(
     (y) => {
-      _(y), o == null || o(y);
+      f(y), c == null || c(y);
     },
-    [o]
+    [c]
   );
   return /* @__PURE__ */ r("section", { className: b("nim-onboarding", l), children: [
     /* @__PURE__ */ r("header", { className: "nim-onboarding__bar", children: [
@@ -3581,7 +3594,7 @@ function tt({
         X,
         {
           iconEnd: "chevron-forward",
-          onClick: c ?? d,
+          onClick: o ?? d,
           size: "sm",
           variant: "ghost",
           children: m
@@ -3594,7 +3607,7 @@ function tt({
         N.proof.icon ? /* @__PURE__ */ e("span", { className: "nim-onboarding__proof-icon", children: N.proof.icon }) : null,
         /* @__PURE__ */ r("span", { className: "nim-onboarding__proof-text", children: [
           /* @__PURE__ */ e("span", { className: "nim-onboarding__proof-title", children: N.proof.title }),
-          (k = N.proof.points) != null && k.length ? /* @__PURE__ */ e("span", { className: "nim-onboarding__proof-points", children: N.proof.points.join(" · ") }) : null
+          (w = N.proof.points) != null && w.length ? /* @__PURE__ */ e("span", { className: "nim-onboarding__proof-points", children: N.proof.points.join(" · ") }) : null
         ] })
       ] }) : null
     ] }),
@@ -3604,13 +3617,13 @@ function tt({
       N.body ? /* @__PURE__ */ e("p", { className: "nim-onboarding__body", children: N.body }) : null
     ] }),
     /* @__PURE__ */ r("footer", { className: "nim-onboarding__controls", children: [
-      /* @__PURE__ */ e("div", { className: "nim-onboarding__dots", children: u.map((y, z) => /* @__PURE__ */ e(
+      /* @__PURE__ */ e("div", { className: "nim-onboarding__dots", children: u.map((y, S) => /* @__PURE__ */ e(
         "button",
         {
-          "aria-current": z === h ? "step" : void 0,
-          "aria-label": p.dot(z),
+          "aria-current": S === h ? "step" : void 0,
+          "aria-label": _.dot(S),
           className: "nim-onboarding__dot",
-          onClick: () => f(z),
+          onClick: () => p(S),
           type: "button"
         },
         y.id
@@ -3619,9 +3632,9 @@ function tt({
         h > 0 ? /* @__PURE__ */ e(
           O,
           {
-            label: p.back,
+            label: _.back,
             name: "chevron-back",
-            onClick: () => f(h - 1),
+            onClick: () => p(h - 1),
             size: "lg",
             variant: "outline"
           }
@@ -3631,7 +3644,7 @@ function tt({
           {
             fullWidth: !0,
             iconEnd: g ? "arrow-forward" : void 0,
-            onClick: () => g ? d() : f(h + 1),
+            onClick: () => g ? d() : p(h + 1),
             size: "lg",
             variant: "accent",
             children: g ? i : s
@@ -3689,47 +3702,47 @@ function Li({
   label: t,
   length: s = 5,
   onChange: d,
-  onComplete: c,
-  value: o
+  onComplete: o,
+  value: c
 }) {
-  const m = U(null), u = o.slice(0, s).split(""), h = Z((f) => {
-    var y, z;
-    const k = (y = m.current) == null ? void 0 : y.querySelectorAll("input");
-    (z = k == null ? void 0 : k[Math.max(0, Math.min(f, k.length - 1))]) == null || z.focus();
+  const m = U(null), u = c.slice(0, s).split(""), h = Z((p) => {
+    var y, S;
+    const w = (y = m.current) == null ? void 0 : y.querySelectorAll("input");
+    (S = w == null ? void 0 : w[Math.max(0, Math.min(p, w.length - 1))]) == null || S.focus();
   }, []);
   V(() => {
     n && h(0);
   }, [n, h]);
-  const _ = Z(
-    (f, k) => {
-      const y = f.slice(0, s);
-      d(y), y.length === s ? c == null || c(y) : h(k);
+  const f = Z(
+    (p, w) => {
+      const y = p.slice(0, s);
+      d(y), y.length === s ? o == null || o(y) : h(w);
     },
-    [h, s, d, c]
-  ), p = Z(
-    (f, k) => {
-      const y = se(k);
+    [h, s, d, o]
+  ), _ = Z(
+    (p, w) => {
+      const y = se(w);
       if (!y) return;
-      const z = (o.slice(0, f) + y).slice(0, s);
-      _(z, z.length);
+      const S = (c.slice(0, p) + y).slice(0, s);
+      f(S, S.length);
     },
-    [_, s, o]
+    [f, s, c]
   ), N = Z(
-    (f, k) => {
-      if (k.key === "Backspace") {
-        k.preventDefault();
-        const y = o[f] ? f : f - 1;
+    (p, w) => {
+      if (w.key === "Backspace") {
+        w.preventDefault();
+        const y = c[p] ? p : p - 1;
         if (y < 0) return;
-        d(o.slice(0, y) + o.slice(y + 1)), h(y);
-      } else k.key === "ArrowLeft" ? h(f - 1) : k.key === "ArrowRight" && h(f + 1);
+        d(c.slice(0, y) + c.slice(y + 1)), h(y);
+      } else w.key === "ArrowLeft" ? h(p - 1) : w.key === "ArrowRight" && h(p + 1);
     },
-    [h, d, o]
+    [h, d, c]
   ), g = Z(
-    (f) => {
-      const k = se(f.clipboardData.getData("text"));
-      k && (f.preventDefault(), _(k.slice(0, s), k.length));
+    (p) => {
+      const w = se(p.clipboardData.getData("text"));
+      w && (p.preventDefault(), f(w.slice(0, s), w.length));
     },
-    [_, s]
+    [f, s]
   );
   return /* @__PURE__ */ r("div", { className: b("nim-otp", a && "nim-otp--invalid", l), children: [
     /* @__PURE__ */ e(
@@ -3741,23 +3754,23 @@ function Li({
         onPaste: g,
         ref: m,
         role: "group",
-        children: Array.from({ length: s }, (f, k) => /* @__PURE__ */ e(
+        children: Array.from({ length: s }, (p, w) => /* @__PURE__ */ e(
           "input",
           {
             "aria-invalid": a ? !0 : void 0,
-            "aria-label": i ? i(k) : `${t} ${k + 1}`,
-            autoComplete: k === 0 ? "one-time-code" : "off",
+            "aria-label": i ? i(w) : `${t} ${w + 1}`,
+            autoComplete: w === 0 ? "one-time-code" : "off",
             className: "nim-otp__box",
-            "data-filled": u[k] ? "true" : void 0,
+            "data-filled": u[w] ? "true" : void 0,
             enterKeyHint: "done",
             inputMode: "numeric",
-            onChange: (y) => p(k, y.target.value),
+            onChange: (y) => _(w, y.target.value),
             onFocus: (y) => y.currentTarget.select(),
-            onKeyDown: (y) => N(k, y),
+            onKeyDown: (y) => N(w, y),
             type: "text",
-            value: u[k] ?? ""
+            value: u[w] ?? ""
           },
-          k
+          w
         ))
       }
     ),
@@ -3777,50 +3790,50 @@ function $i({
   label: t,
   labels: s,
   required: d,
-  strength: c,
-  ...o
+  strength: o,
+  ...c
 }) {
-  const [m, u] = L(!1), h = { ...Ei, ...s };
-  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: d, children: ({ control: _, describedBy: p }) => /* @__PURE__ */ r(G, { children: [
+  const [m, u] = E(!1), h = { ...Ei, ...s };
+  return /* @__PURE__ */ e(ee, { error: l, hint: i, id: a, label: t, required: d, children: ({ control: f, describedBy: _ }) => /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ r("div", { className: "nim-input-shell nim-input-shell--has-end", children: [
       /* @__PURE__ */ e(
         "input",
         {
-          "aria-describedby": p,
+          "aria-describedby": _,
           "aria-invalid": l ? !0 : void 0,
-          autoComplete: o.autoComplete ?? "current-password",
+          autoComplete: c.autoComplete ?? "current-password",
           className: b("nim-input", n),
-          id: _,
+          id: f,
           required: d,
-          ...o,
+          ...c,
           type: m ? "text" : "password"
         }
       ),
       /* @__PURE__ */ e(
         "button",
         {
-          "aria-controls": _,
+          "aria-controls": f,
           "aria-label": m ? h.hide : h.show,
           "aria-pressed": m,
           className: "nim-password__toggle",
           onClick: () => u((N) => !N),
           type: "button",
-          children: /* @__PURE__ */ e(M, { name: "eye", size: "sm" })
+          children: /* @__PURE__ */ e(x, { name: "eye", size: "sm" })
         }
       )
     ] }),
-    c ? /* @__PURE__ */ e(
+    o ? /* @__PURE__ */ e(
       "div",
       {
-        "aria-label": h.strength(c),
+        "aria-label": h.strength(o),
         className: "nim-password__meter",
-        "data-level": c,
+        "data-level": o,
         role: "img",
         children: Fe.map((N, g) => /* @__PURE__ */ e(
           "span",
           {
             className: "nim-password__step",
-            "data-on": g <= Fe.indexOf(c) ? "true" : void 0
+            "data-on": g <= Fe.indexOf(o) ? "true" : void 0
           },
           N
         ))
@@ -3846,111 +3859,111 @@ function Bi({
   id: t,
   label: s,
   labels: d,
-  locale: c,
-  onChange: o,
+  locale: o,
+  onChange: c,
   onCountryChange: m,
   onSubmit: u,
   placeholder: h,
-  priority: _ = [],
-  required: p,
+  priority: f = [],
+  required: _,
   value: N
 }) {
-  const g = J(), f = t ?? `nim-${g}`, k = a ? `${f}-hint` : void 0, y = i ? `${f}-error` : void 0, z = { ...Ii, ...d }, [D, I] = L(!1), [T, v] = L(""), w = U(null), x = U(null), S = U(null), E = c ?? (typeof document > "u" ? "en" : document.documentElement.lang || "en"), $ = Y(() => Ai(E), [E]), B = Qe(l) ?? ue[0], H = Y(() => {
-    const C = new Intl.Collator(E), P = ue.map((A) => ({ ...A, name: $(A.iso2) })), W = (A) => {
-      const F = _.indexOf(A);
-      return F === -1 ? _.length : F;
+  const g = J(), p = t ?? `nim-${g}`, w = a ? `${p}-hint` : void 0, y = i ? `${p}-error` : void 0, S = { ...Ii, ...d }, [I, B] = E(!1), [M, v] = E(""), T = U(null), k = U(null), L = U(null), D = o ?? (typeof document > "u" ? "en" : document.documentElement.lang || "en"), A = Y(() => Ai(D), [D]), $ = Qe(l) ?? ue[0], G = Y(() => {
+    const C = new Intl.Collator(D), F = ue.map((z) => ({ ...z, name: A(z.iso2) })), W = (z) => {
+      const R = f.indexOf(z);
+      return R === -1 ? f.length : R;
     };
-    return P.sort(
-      (A, F) => W(A.iso2) - W(F.iso2) || C.compare(A.name, F.name)
+    return F.sort(
+      (z, R) => W(z.iso2) - W(R.iso2) || C.compare(z.name, R.name)
     );
-  }, [$, _, E]), K = Y(() => {
-    const C = T.trim().toLocaleLowerCase(E);
-    if (!C) return H;
-    const P = se(C);
-    return H.filter(
-      (W) => W.name.toLocaleLowerCase(E).includes(C) || W.iso2.toLowerCase().includes(C) || (P ? W.dial.startsWith(P) : !1)
+  }, [A, f, D]), K = Y(() => {
+    const C = M.trim().toLocaleLowerCase(D);
+    if (!C) return G;
+    const F = se(C);
+    return G.filter(
+      (W) => W.name.toLocaleLowerCase(D).includes(C) || W.iso2.toLowerCase().includes(C) || (F ? W.dial.startsWith(F) : !1)
     );
-  }, [H, T, E]);
+  }, [G, M, D]);
   V(() => {
     var W;
-    if (!D) return;
-    (W = S.current) == null || W.focus();
-    const C = (A) => {
-      var F;
-      (F = w.current) != null && F.contains(A.target) || I(!1);
-    }, P = (A) => {
-      var F;
-      A.key === "Escape" && (I(!1), (F = x.current) == null || F.focus());
+    if (!I) return;
+    (W = L.current) == null || W.focus();
+    const C = (z) => {
+      var R;
+      (R = T.current) != null && R.contains(z.target) || B(!1);
+    }, F = (z) => {
+      var R;
+      z.key === "Escape" && (B(!1), (R = k.current) == null || R.focus());
     };
-    return document.addEventListener("mousedown", C), document.addEventListener("keydown", P), () => {
-      document.removeEventListener("mousedown", C), document.removeEventListener("keydown", P);
+    return document.addEventListener("mousedown", C), document.addEventListener("keydown", F), () => {
+      document.removeEventListener("mousedown", C), document.removeEventListener("keydown", F);
     };
-  }, [D]);
-  const R = (C) => {
-    var P;
-    m(C), I(!1), v(""), (P = x.current) == null || P.focus();
+  }, [I]);
+  const P = (C) => {
+    var F;
+    m(C), B(!1), v(""), (F = k.current) == null || F.focus();
   };
   return /* @__PURE__ */ r("div", { className: b("nim-field", i && "nim-field--invalid", n), children: [
-    s ? /* @__PURE__ */ r("label", { className: "nim-field__label", htmlFor: f, children: [
+    s ? /* @__PURE__ */ r("label", { className: "nim-field__label", htmlFor: p, children: [
       s,
-      p ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-field__required", children: "*" }) : null
+      _ ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-field__required", children: "*" }) : null
     ] }) : null,
-    /* @__PURE__ */ r("div", { className: "nim-phone", ref: w, children: [
+    /* @__PURE__ */ r("div", { className: "nim-phone", ref: T, children: [
       /* @__PURE__ */ r("div", { className: "nim-phone__shell", dir: "ltr", children: [
         /* @__PURE__ */ r(
           "button",
           {
-            "aria-expanded": D,
+            "aria-expanded": I,
             "aria-haspopup": "listbox",
-            "aria-label": `${z.pickCountry}: ${$(B.iso2)} +${B.dial}`,
+            "aria-label": `${S.pickCountry}: ${A($.iso2)} +${$.dial}`,
             className: "nim-phone__country",
-            onClick: () => I((C) => !C),
-            ref: x,
+            onClick: () => B((C) => !C),
+            ref: k,
             type: "button",
             children: [
-              /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-phone__flag", children: B.flag }),
+              /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-phone__flag", children: $.flag }),
               /* @__PURE__ */ r("span", { className: "nim-phone__dial", children: [
                 "+",
-                B.dial
+                $.dial
               ] }),
-              /* @__PURE__ */ e(M, { className: "nim-phone__caret", name: "chevron-down", size: "xs" })
+              /* @__PURE__ */ e(x, { className: "nim-phone__caret", name: "chevron-down", size: "xs" })
             ]
           }
         ),
         /* @__PURE__ */ e(
           "input",
           {
-            "aria-describedby": [y, k].filter(Boolean).join(" ") || void 0,
+            "aria-describedby": [y, w].filter(Boolean).join(" ") || void 0,
             "aria-invalid": i ? !0 : void 0,
             autoComplete: "tel-national",
             className: "nim-phone__input",
             enterKeyHint: "go",
-            id: f,
+            id: p,
             inputMode: "tel",
-            onChange: (C) => o(se(C.target.value)),
+            onChange: (C) => c(se(C.target.value)),
             onKeyDown: (C) => {
               C.key === "Enter" && (u == null || u());
             },
             placeholder: h,
-            required: p,
+            required: _,
             type: "tel",
             value: N
           }
         )
       ] }),
-      D ? /* @__PURE__ */ r("div", { className: "nim-phone__picker", children: [
+      I ? /* @__PURE__ */ r("div", { className: "nim-phone__picker", children: [
         /* @__PURE__ */ r("div", { className: "nim-phone__search", children: [
-          /* @__PURE__ */ e(M, { name: "search", size: "sm" }),
+          /* @__PURE__ */ e(x, { name: "search", size: "sm" }),
           /* @__PURE__ */ e(
             "input",
             {
-              "aria-label": z.search,
+              "aria-label": S.search,
               className: "nim-phone__search-input",
               onChange: (C) => v(C.target.value),
-              placeholder: z.search,
-              ref: S,
+              placeholder: S.search,
+              ref: L,
               type: "search",
-              value: T
+              value: M
             }
           )
         ] }),
@@ -3958,9 +3971,9 @@ function Bi({
           K.map((C) => /* @__PURE__ */ e("li", { children: /* @__PURE__ */ r(
             "button",
             {
-              "aria-selected": C.iso2 === B.iso2,
+              "aria-selected": C.iso2 === $.iso2,
               className: "nim-phone__option",
-              onClick: () => R(C.iso2),
+              onClick: () => P(C.iso2),
               role: "option",
               type: "button",
               children: [
@@ -3973,12 +3986,12 @@ function Bi({
               ]
             }
           ) }, C.iso2)),
-          K.length === 0 ? /* @__PURE__ */ e("li", { className: "nim-phone__empty", children: z.noMatch }) : null
+          K.length === 0 ? /* @__PURE__ */ e("li", { className: "nim-phone__empty", children: S.noMatch }) : null
         ] })
       ] }) : null
     ] }),
     i ? /* @__PURE__ */ e("p", { className: "nim-field__error", id: y, children: i }) : null,
-    a && !i ? /* @__PURE__ */ e("p", { className: "nim-field__hint", id: k, children: a }) : null
+    a && !i ? /* @__PURE__ */ e("p", { className: "nim-field__hint", id: w, children: a }) : null
   ] });
 }
 function Pi(n, l) {
@@ -3998,41 +4011,41 @@ function Ri({
   name: t,
   onSelect: s,
   price: d,
-  priceCaption: c,
-  secondary: o,
+  priceCaption: o,
+  secondary: c,
   selected: m = !1,
   tagline: u
 }) {
-  const h = /* @__PURE__ */ r(G, { children: [
+  const h = /* @__PURE__ */ r(H, { children: [
     /* @__PURE__ */ r("div", { className: "nim-plan__top", children: [
-      a ? /* @__PURE__ */ e("span", { className: "nim-plan__icon", children: /* @__PURE__ */ e(M, { name: a, size: "md" }) }) : null,
+      a ? /* @__PURE__ */ e("span", { className: "nim-plan__icon", children: /* @__PURE__ */ e(x, { name: a, size: "md" }) }) : null,
       /* @__PURE__ */ r("div", { className: "nim-plan__heading", children: [
         /* @__PURE__ */ e("span", { className: "nim-plan__name", children: t }),
         u ? /* @__PURE__ */ e("span", { className: "nim-plan__tagline", children: u }) : null
       ] }),
       n ? /* @__PURE__ */ e("span", { className: "nim-plan__badge", children: n }) : null,
-      s ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-plan__radio", children: m ? /* @__PURE__ */ e(M, { name: "check", size: "xs" }) : null }) : null
+      s ? /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-plan__radio", children: m ? /* @__PURE__ */ e(x, { name: "check", size: "xs" }) : null }) : null
     ] }),
     /* @__PURE__ */ r("div", { className: "nim-plan__price-box", children: [
       /* @__PURE__ */ r("div", { children: [
-        c ? /* @__PURE__ */ e("span", { className: "nim-plan__price-caption", children: c }) : null,
+        o ? /* @__PURE__ */ e("span", { className: "nim-plan__price-caption", children: o }) : null,
         /* @__PURE__ */ e("strong", { className: "nim-plan__price", children: d })
       ] }),
-      o ? /* @__PURE__ */ r("div", { className: "nim-plan__secondary", children: [
-        /* @__PURE__ */ e("span", { className: "nim-plan__price-caption", children: o.caption }),
-        /* @__PURE__ */ e("strong", { className: "nim-plan__secondary-value", children: o.value })
+      c ? /* @__PURE__ */ r("div", { className: "nim-plan__secondary", children: [
+        /* @__PURE__ */ e("span", { className: "nim-plan__price-caption", children: c.caption }),
+        /* @__PURE__ */ e("strong", { className: "nim-plan__secondary-value", children: c.value })
       ] }) : null
     ] }),
-    i.length ? /* @__PURE__ */ e("ul", { className: "nim-plan__features", children: i.map((p, N) => {
-      const g = p.state ?? "included";
+    i.length ? /* @__PURE__ */ e("ul", { className: "nim-plan__features", children: i.map((_, N) => {
+      const g = _.state ?? "included";
       return /* @__PURE__ */ r("li", { className: "nim-plan__feature", "data-state": g, children: [
-        /* @__PURE__ */ e(M, { name: Fi[g], size: "xs" }),
-        /* @__PURE__ */ e("span", { className: "nim-plan__feature-label", children: p.label }),
-        p.note ? /* @__PURE__ */ e("span", { className: "nim-plan__feature-note", children: p.note }) : null
+        /* @__PURE__ */ e(x, { name: Fi[g], size: "xs" }),
+        /* @__PURE__ */ e("span", { className: "nim-plan__feature-label", children: _.label }),
+        _.note ? /* @__PURE__ */ e("span", { className: "nim-plan__feature-note", children: _.note }) : null
       ] }, N);
     }) }) : null
-  ] }), _ = b("nim-plan", m && "nim-plan--selected", l);
-  return s ? /* @__PURE__ */ e("button", { "aria-pressed": m, className: _, onClick: s, type: "button", children: h }) : /* @__PURE__ */ e("article", { className: _, children: h });
+  ] }), f = b("nim-plan", m && "nim-plan--selected", l);
+  return s ? /* @__PURE__ */ e("button", { "aria-pressed": m, className: f, onClick: s, type: "button", children: h }) : /* @__PURE__ */ e("article", { className: f, children: h });
 }
 function Oi({
   className: n,
@@ -4050,18 +4063,18 @@ function Oi({
       className: b("nim-segmented", l && "nim-segmented--full", n),
       role: "tablist",
       ...d,
-      children: t.map((c) => /* @__PURE__ */ e(
+      children: t.map((o) => /* @__PURE__ */ e(
         "button",
         {
-          "aria-selected": c.value === s,
+          "aria-selected": o.value === s,
           className: "nim-segmented__option",
-          disabled: c.disabled,
-          onClick: () => a(c.value),
+          disabled: o.disabled,
+          onClick: () => a(o.value),
           role: "tab",
           type: "button",
-          children: c.label
+          children: o.label
         },
-        c.value
+        o.value
       ))
     }
   );
@@ -4079,64 +4092,64 @@ function ct({
   defaultPlan: t,
   labels: s,
   note: d,
-  onCycleChange: c,
-  onPlanChange: o,
+  onCycleChange: o,
+  onPlanChange: c,
   onSubmit: m,
   plan: u,
   plans: h,
-  submitLabel: _
+  submitLabel: f
 }) {
-  var v, w;
-  const p = { ...Ui, ...s }, [N, g] = L(a ?? ((v = i[0]) == null ? void 0 : v.id) ?? ""), [f, k] = L(t ?? ((w = h[0]) == null ? void 0 : w.id) ?? ""), y = l ?? N, z = u ?? f, D = (x) => {
-    k(x), o == null || o(x);
-  }, I = (x) => {
-    g(x), c == null || c(x);
-  }, T = i.find((x) => x.id === y);
+  var v, T;
+  const _ = { ...Ui, ...s }, [N, g] = E(a ?? ((v = i[0]) == null ? void 0 : v.id) ?? ""), [p, w] = E(t ?? ((T = h[0]) == null ? void 0 : T.id) ?? ""), y = l ?? N, S = u ?? p, I = (k) => {
+    w(k), c == null || c(k);
+  }, B = (k) => {
+    g(k), o == null || o(k);
+  }, M = i.find((k) => k.id === y);
   return /* @__PURE__ */ r("section", { className: b("nim-plan-picker", n), children: [
     i.length > 1 ? /* @__PURE__ */ r("div", { className: "nim-plan-picker__cycles", children: [
       /* @__PURE__ */ e(
         Oi,
         {
           fullWidth: !0,
-          label: p.cycle,
-          onChange: I,
-          options: i.map((x) => ({ label: x.label, value: x.id })),
+          label: _.cycle,
+          onChange: B,
+          options: i.map((k) => ({ label: k.label, value: k.id })),
           value: y
         }
       ),
-      T != null && T.note ? /* @__PURE__ */ e("p", { className: "nim-plan-picker__save", children: T.note }) : null
+      M != null && M.note ? /* @__PURE__ */ e("p", { className: "nim-plan-picker__save", children: M.note }) : null
     ] }) : null,
-    /* @__PURE__ */ e("div", { className: "nim-plan-picker__plans", children: h.map(({ id: x, prices: S, ...E }) => {
-      const $ = S[y] ?? Object.values(S)[0];
+    /* @__PURE__ */ e("div", { className: "nim-plan-picker__plans", children: h.map(({ id: k, prices: L, ...D }) => {
+      const A = L[y] ?? Object.values(L)[0];
       return /* @__PURE__ */ nn(
         Ri,
         {
-          ...E,
-          key: x,
-          onSelect: () => D(x),
-          price: ($ == null ? void 0 : $.price) ?? "",
-          priceCaption: p.price,
-          secondary: ($ == null ? void 0 : $.monthly) === void 0 ? void 0 : { caption: p.monthly, value: $.monthly },
-          selected: x === z
+          ...D,
+          key: k,
+          onSelect: () => I(k),
+          price: (A == null ? void 0 : A.price) ?? "",
+          priceCaption: _.price,
+          secondary: (A == null ? void 0 : A.monthly) === void 0 ? void 0 : { caption: _.monthly, value: A.monthly },
+          selected: k === S
         }
       );
     }) }),
-    _ ? /* @__PURE__ */ r("div", { className: "nim-plan-picker__foot", children: [
+    f ? /* @__PURE__ */ r("div", { className: "nim-plan-picker__foot", children: [
       /* @__PURE__ */ e(
         X,
         {
           fullWidth: !0,
-          onClick: () => m == null ? void 0 : m(z, y),
+          onClick: () => m == null ? void 0 : m(S, y),
           size: "lg",
           variant: "accent",
-          children: _
+          children: f
         }
       ),
       d ? /* @__PURE__ */ e("p", { className: "nim-plan-picker__note", children: d }) : null
     ] }) : null
   ] });
 }
-function Gi({
+function Hi({
   action: n,
   className: l,
   description: i,
@@ -4160,15 +4173,15 @@ function ot({
   ...a
 }) {
   return /* @__PURE__ */ r("div", { className: b("nim-profile-screen", n), children: [
-    /* @__PURE__ */ e(Ha, { ...a }),
+    /* @__PURE__ */ e(Ga, { ...a }),
     i.map((t) => /* @__PURE__ */ r("section", { className: "nim-profile-screen__section", children: [
-      t.title ? /* @__PURE__ */ e(Gi, { description: t.description, title: t.title }) : null,
+      t.title ? /* @__PURE__ */ e(Hi, { description: t.description, title: t.title }) : null,
       /* @__PURE__ */ e(xi, { children: t.rows.map((s) => /* @__PURE__ */ e(
         Mi,
         {
           className: b(s.danger && "nim-list-row--danger"),
           href: s.href,
-          leading: s.icon ? /* @__PURE__ */ e(M, { name: s.icon, size: "md" }) : void 0,
+          leading: s.icon ? /* @__PURE__ */ e(x, { name: s.icon, size: "md" }) : void 0,
           onClick: s.onToggle ? void 0 : s.onSelect,
           subtitle: s.subtitle,
           title: s.label,
@@ -4183,8 +4196,8 @@ function ot({
                 "aria-label": typeof s.label == "string" ? s.label : void 0,
                 checked: s.checked ?? !1,
                 onChange: (d) => {
-                  var c;
-                  return (c = s.onToggle) == null ? void 0 : c.call(s, d.target.checked);
+                  var o;
+                  return (o = s.onToggle) == null ? void 0 : o.call(s, d.target.checked);
                 },
                 children: ""
               }
@@ -4206,14 +4219,14 @@ function dt({
   size: s = "md",
   value: d
 }) {
-  const c = J(), [o, m] = L(null), u = o ?? d;
+  const o = J(), [c, m] = E(null), u = c ?? d;
   return t || !a ? /* @__PURE__ */ e(
     "span",
     {
       "aria-label": `${i}: ${d}/${l}`,
       className: b("nim-rating", `nim-rating--${s}`, "nim-rating--static", n),
       role: "img",
-      children: Array.from({ length: l }, (h, _) => /* @__PURE__ */ e(Re, { fill: Math.min(Math.max(d - _, 0), 1) }, _))
+      children: Array.from({ length: l }, (h, f) => /* @__PURE__ */ e(Re, { fill: Math.min(Math.max(d - f, 0), 1) }, f))
     }
   ) : /* @__PURE__ */ r(
     "fieldset",
@@ -4222,23 +4235,23 @@ function dt({
       onMouseLeave: () => m(null),
       children: [
         /* @__PURE__ */ e("legend", { className: "nim-visually-hidden", children: i }),
-        Array.from({ length: l }, (h, _) => {
-          const p = _ + 1;
-          return /* @__PURE__ */ r("label", { className: "nim-rating__star", onMouseEnter: () => m(p), children: [
+        Array.from({ length: l }, (h, f) => {
+          const _ = f + 1;
+          return /* @__PURE__ */ r("label", { className: "nim-rating__star", onMouseEnter: () => m(_), children: [
             /* @__PURE__ */ e(
               "input",
               {
-                checked: d === p,
+                checked: d === _,
                 className: "nim-choice__input",
-                name: c,
-                onChange: () => a(p),
+                name: o,
+                onChange: () => a(_),
                 type: "radio",
-                value: p
+                value: _
               }
             ),
-            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: p }),
-            /* @__PURE__ */ e(Re, { fill: Math.min(Math.max(u - _, 0), 1) })
-          ] }, p);
+            /* @__PURE__ */ e("span", { className: "nim-visually-hidden", children: _ }),
+            /* @__PURE__ */ e(Re, { fill: Math.min(Math.max(u - f, 0), 1) })
+          ] }, _);
         })
       ]
     }
@@ -4246,11 +4259,11 @@ function dt({
 }
 function Re({ fill: n }) {
   return /* @__PURE__ */ r("span", { "aria-hidden": "true", className: "nim-rating__glyph", children: [
-    /* @__PURE__ */ e(M, { className: "nim-rating__outline", name: "star", size: "md" }),
-    /* @__PURE__ */ e("span", { className: "nim-rating__fill", style: { inlineSize: `${n * 100}%` }, children: /* @__PURE__ */ e(M, { name: "star", size: "md" }) })
+    /* @__PURE__ */ e(x, { className: "nim-rating__outline", name: "star", size: "md" }),
+    /* @__PURE__ */ e("span", { className: "nim-rating__fill", style: { inlineSize: `${n * 100}%` }, children: /* @__PURE__ */ e(x, { name: "star", size: "md" }) })
   ] });
 }
-const Hi = {
+const Gi = {
   back: "Back",
   codeLabel: "Verification code",
   codeSubtitle: (n) => `Enter the code we sent to ${n}`,
@@ -4278,61 +4291,61 @@ function mt({
   defaultCountry: t = "IR",
   defaultMethod: s = "code",
   footer: d,
-  methods: c = ["code", "password"],
-  onPasswordSignIn: o,
+  methods: o = ["code", "password"],
+  onPasswordSignIn: c,
   onRequestCode: m,
   onVerifyCode: u,
   priority: h = ["IR", "AE", "TR", "DE", "US", "GB"],
-  resendSeconds: _ = 60
+  resendSeconds: f = 60
 }) {
-  const p = { ...Hi, ...a }, [N, g] = L(
-    c.includes(s) ? s : c[0]
-  ), [f, k] = L(!1), [y, z] = L(t), [D, I] = L(""), [T, v] = L(""), [w, x] = L(""), [S, E] = L(""), [$, B] = L(!1), [H, K] = L(""), [R, C] = L(0), P = U(!1);
+  const _ = { ...Gi, ...a }, [N, g] = E(
+    o.includes(s) ? s : o[0]
+  ), [p, w] = E(!1), [y, S] = E(t), [I, B] = E(""), [M, v] = E(""), [T, k] = E(""), [L, D] = E(""), [A, $] = E(!1), [G, K] = E(""), [P, C] = E(0), F = U(!1);
   V(() => {
-    if (R <= 0) return;
+    if (P <= 0) return;
     const j = window.setTimeout(() => C((ae) => ae - 1), 1e3);
     return () => window.clearTimeout(j);
-  }, [R]);
-  const W = Pi(y, D), A = D.replace(/\D/g, "").length >= 6, F = Z(
+  }, [P]);
+  const W = Pi(y, I), z = I.replace(/\D/g, "").length >= 6, R = Z(
     async (j = !1) => {
-      if (!($ || !j && !A)) {
-        B(!0), K("");
+      if (!(A || !j && !z)) {
+        $(!0), K("");
         try {
-          await (m == null ? void 0 : m(W)), k(!0), v(""), C(_);
+          await (m == null ? void 0 : m(W)), w(!0), v(""), C(f);
         } catch (ae) {
-          K(ye(ae, p.sendCode));
+          K(ye(ae, _.sendCode));
         } finally {
-          B(!1);
+          $(!1);
         }
       }
     },
-    [$, W, m, A, _, p.sendCode]
+    [A, W, m, z, f, _.sendCode]
   ), q = Z(
     async (j) => {
-      if (!(P.current || j.length !== i)) {
-        P.current = !0, B(!0), K("");
+      if (!(F.current || j.length !== i)) {
+        F.current = !0, $(!0), K("");
         try {
           await (u == null ? void 0 : u(W, j));
         } catch (ae) {
-          K(ye(ae, p.verify)), v("");
+          K(ye(ae, _.verify)), v("");
         } finally {
-          P.current = !1, B(!1);
+          F.current = !1, $(!1);
         }
       }
     },
-    [i, W, u, p.verify]
+    [i, W, u, _.verify]
   ), Q = Z(async () => {
-    if (!($ || !w.trim() || !S)) {
-      B(!0), K("");
+    if (!(A || !T.trim() || !L)) {
+      $(!0), K("");
       try {
-        await (o == null ? void 0 : o(w.trim(), S));
+        await (c == null ? void 0 : c(T.trim(), L));
       } catch (j) {
-        K(ye(j, p.signIn));
+        K(ye(j, _.signIn));
       } finally {
-        B(!1);
+        $(!1);
       }
     }
-  }, [$, w, o, S, p.signIn]), re = c.length > 1 ? /* @__PURE__ */ e(
+  }, [A, T, c, L, _.signIn]), re = o.length > 1 ? /* @__PURE__ */ e(
     X,
     {
       onClick: () => {
@@ -4340,85 +4353,85 @@ function mt({
       },
       size: "sm",
       variant: "ghost",
-      children: N === "code" ? p.usePassword : p.usePhone
+      children: N === "code" ? _.usePassword : _.usePhone
     }
-  ) : null, fe = H ? /* @__PURE__ */ e(Za, { tone: "danger", children: H }) : null;
+  ) : null, fe = G ? /* @__PURE__ */ e(Za, { tone: "danger", children: G }) : null;
   return N === "password" ? /* @__PURE__ */ r(
     Ne,
     {
       action: {
-        disabled: !w.trim() || !S,
-        label: p.signIn,
-        loading: $,
+        disabled: !T.trim() || !L,
+        label: _.signIn,
+        loading: A,
         onClick: () => void Q()
       },
       brand: n,
       className: l,
-      footer: /* @__PURE__ */ r(G, { children: [
+      footer: /* @__PURE__ */ r(H, { children: [
         re,
         d
       ] }),
-      subtitle: p.passwordSubtitle,
-      title: p.passwordTitle,
+      subtitle: _.passwordSubtitle,
+      title: _.passwordTitle,
       children: [
         fe,
         /* @__PURE__ */ e(
-          pi,
+          _i,
           {
             autoComplete: "username",
-            label: p.identifierLabel,
-            onChange: (j) => x(j.target.value),
+            label: _.identifierLabel,
+            onChange: (j) => k(j.target.value),
             type: "email",
-            value: w
+            value: T
           }
         ),
         /* @__PURE__ */ e(
           $i,
           {
             autoComplete: "current-password",
-            label: p.passwordLabel,
-            onChange: (j) => E(j.target.value),
+            label: _.passwordLabel,
+            onChange: (j) => D(j.target.value),
             onKeyDown: (j) => {
               j.key === "Enter" && Q();
             },
-            value: S
+            value: L
           }
         )
       ]
     }
-  ) : f ? /* @__PURE__ */ r(
+  ) : p ? /* @__PURE__ */ r(
     Ne,
     {
       action: {
-        disabled: T.length !== i,
-        label: p.verify,
-        loading: $,
-        onClick: () => void q(T)
+        disabled: M.length !== i,
+        label: _.verify,
+        loading: A,
+        onClick: () => void q(M)
       },
       back: {
-        label: p.back,
+        label: _.back,
         onClick: () => {
-          k(!1), v(""), K("");
+          w(!1), v(""), K("");
         }
       },
       className: l,
-      footer: /* @__PURE__ */ r(G, { children: [
-        R > 0 ? /* @__PURE__ */ e("p", { children: p.resendIn(R) }) : /* @__PURE__ */ e(X, { onClick: () => void F(!0), size: "sm", variant: "ghost", children: p.resend }),
+      footer: /* @__PURE__ */ r(H, { children: [
+        P > 0 ? /* @__PURE__ */ e("p", { children: _.resendIn(P) }) : /* @__PURE__ */ e(X, { onClick: () => void R(!0), size: "sm", variant: "ghost", children: _.resend }),
         d
       ] }),
-      subtitle: p.codeSubtitle(W),
-      title: p.codeTitle,
+      subtitle: _.codeSubtitle(W),
+      title: _.codeTitle,
       children: [
         fe,
         /* @__PURE__ */ e(
           Li,
           {
             autoFocus: !0,
-            label: p.codeLabel,
+            label: _.codeLabel,
             length: i,
             onChange: v,
             onComplete: (j) => void q(j),
-            value: T
+            value: M
           }
         )
       ]
@@ -4427,31 +4440,31 @@ function mt({
     Ne,
     {
       action: {
-        disabled: !A,
-        label: p.sendCode,
-        loading: $,
-        onClick: () => void F()
+        disabled: !z,
+        label: _.sendCode,
+        loading: A,
+        onClick: () => void R()
       },
       brand: n,
       className: l,
-      footer: /* @__PURE__ */ r(G, { children: [
+      footer: /* @__PURE__ */ r(H, { children: [
         re,
         d
       ] }),
-      subtitle: p.phoneSubtitle,
-      title: p.phoneTitle,
+      subtitle: _.phoneSubtitle,
+      title: _.phoneTitle,
       children: [
         fe,
         /* @__PURE__ */ e(
           Bi,
           {
             country: y,
-            label: p.phoneLabel,
-            onChange: I,
-            onCountryChange: z,
-            onSubmit: () => void F(),
+            label: _.phoneLabel,
+            onChange: B,
+            onCountryChange: S,
+            onSubmit: () => void R(),
             priority: h,
-            value: D
+            value: I
           }
         )
       ]
@@ -4459,32 +4472,32 @@ function mt({
   );
 }
 function ut({ children: n, className: l, closeLabel: i = "Close", footer: a, onClose: t, open: s, title: d }) {
-  const c = U(null), o = U(null), m = J();
+  const o = U(null), c = U(null), m = J();
   return V(() => {
-    var _;
+    var f;
     if (!s) return;
-    o.current = document.activeElement;
+    c.current = document.activeElement;
     const u = document.body.style.overflow;
-    document.body.style.overflow = "hidden", (_ = c.current) == null || _.focus();
-    const h = (p) => {
-      var k, y;
-      if (p.key === "Escape" && t(), p.key !== "Tab") return;
-      const N = (k = c.current) == null ? void 0 : k.querySelectorAll(
+    document.body.style.overflow = "hidden", (f = o.current) == null || f.focus();
+    const h = (_) => {
+      var w, y;
+      if (_.key === "Escape" && t(), _.key !== "Tab") return;
+      const N = (w = o.current) == null ? void 0 : w.querySelectorAll(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       );
       if (!(N != null && N.length)) {
-        p.preventDefault(), (y = c.current) == null || y.focus();
+        _.preventDefault(), (y = o.current) == null || y.focus();
         return;
       }
-      const g = N[0], f = N[N.length - 1];
-      p.shiftKey && document.activeElement === g ? (p.preventDefault(), f.focus()) : !p.shiftKey && document.activeElement === f && (p.preventDefault(), g.focus());
+      const g = N[0], p = N[N.length - 1];
+      _.shiftKey && document.activeElement === g ? (_.preventDefault(), p.focus()) : !_.shiftKey && document.activeElement === p && (_.preventDefault(), g.focus());
     };
     return window.addEventListener("keydown", h), () => {
-      var p, N;
-      document.body.style.overflow = u, window.removeEventListener("keydown", h), (N = (p = o.current) == null ? void 0 : p.focus) == null || N.call(p);
+      var _, N;
+      document.body.style.overflow = u, window.removeEventListener("keydown", h), (N = (_ = c.current) == null ? void 0 : _.focus) == null || N.call(_);
     };
   }, [t, s]), !s || typeof document > "u" ? null : he(
-    /* @__PURE__ */ r(G, { children: [
+    /* @__PURE__ */ r(H, { children: [
       /* @__PURE__ */ e("div", { className: "nim-sheet__scrim", onClick: t }),
       /* @__PURE__ */ r(
         "div",
@@ -4493,7 +4506,7 @@ function ut({ children: n, className: l, closeLabel: i = "Close", footer: a, onC
           "aria-labelledby": d ? m : void 0,
           "aria-modal": "true",
           className: b("nim-sheet__panel", l),
-          ref: c,
+          ref: o,
           role: "dialog",
           tabIndex: -1,
           children: [
@@ -4519,9 +4532,9 @@ function ht({
   scale: t,
   step: s = 1,
   value: d,
-  ...c
+  ...o
 }) {
-  const o = i === a ? 0 : (d - a) / (i - a) * 100;
+  const c = i === a ? 0 : (d - a) / (i - a) * 100;
   return /* @__PURE__ */ r("div", { className: "nim-field", children: [
     l ? /* @__PURE__ */ e("span", { className: "nim-field__label", children: l }) : null,
     /* @__PURE__ */ e(
@@ -4532,16 +4545,16 @@ function ht({
         max: i,
         min: a,
         step: s,
-        style: { "--nim-slider-progress": `${o}%` },
+        style: { "--nim-slider-progress": `${c}%` },
         type: "range",
         value: d,
-        ...c
+        ...o
       }
     ),
     t ? /* @__PURE__ */ e("div", { "aria-hidden": "true", className: "nim-inline", style: { justifyContent: "space-between" }, children: t.map((m) => /* @__PURE__ */ e("span", { className: "nim-caption", children: m }, m)) }) : null
   ] });
 }
-function pt({ className: n, delta: l, deltaDirection: i = "up", label: a, unit: t, value: s, ...d }) {
+function _t({ className: n, delta: l, deltaDirection: i = "up", label: a, unit: t, value: s, ...d }) {
   return /* @__PURE__ */ r("div", { className: b("nim-stat", n), ...d, children: [
     /* @__PURE__ */ r("p", { className: "nim-stat__value", children: [
       s,
@@ -4549,15 +4562,15 @@ function pt({ className: n, delta: l, deltaDirection: i = "up", label: a, unit: 
     ] }),
     /* @__PURE__ */ e("p", { className: "nim-label nim-stat__label", children: a }),
     l ? /* @__PURE__ */ r("p", { className: "nim-stat__delta", "data-direction": i, children: [
-      /* @__PURE__ */ e(M, { name: i === "up" ? "trend-up" : "trend-down", size: "xs" }),
+      /* @__PURE__ */ e(x, { name: i === "up" ? "trend-up" : "trend-down", size: "xs" }),
       l
     ] }) : null
   ] });
 }
-function _t({ className: n, label: l = "Stages", stages: i }) {
+function pt({ className: n, label: l = "Stages", stages: i }) {
   return /* @__PURE__ */ e("ol", { "aria-label": l, className: b("nim-stages", n), children: i.map((a, t) => {
-    const s = /* @__PURE__ */ r(G, { children: [
-      /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-stages__marker", children: a.status === "done" ? /* @__PURE__ */ e(M, { name: "check", size: "xs" }) : a.status === "blocked" ? /* @__PURE__ */ e(M, { name: "close", size: "xs" }) : t + 1 }),
+    const s = /* @__PURE__ */ r(H, { children: [
+      /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-stages__marker", children: a.status === "done" ? /* @__PURE__ */ e(x, { name: "check", size: "xs" }) : a.status === "blocked" ? /* @__PURE__ */ e(x, { name: "close", size: "xs" }) : t + 1 }),
       /* @__PURE__ */ r("span", { className: "nim-stages__text", children: [
         /* @__PURE__ */ e("span", { className: "nim-stages__label", children: a.label }),
         a.caption ? /* @__PURE__ */ e("span", { className: "nim-stages__caption", children: a.caption }) : null
@@ -4583,8 +4596,8 @@ function ft({
   max: t = Number.MAX_SAFE_INTEGER,
   min: s = 0,
   onChange: d,
-  step: c = 1,
-  value: o
+  step: o = 1,
+  value: c
 }) {
   const m = (u) => Math.min(Math.max(u, s), t);
   return /* @__PURE__ */ r(
@@ -4593,12 +4606,12 @@ function ft({
       "aria-label": a,
       "aria-valuemax": t,
       "aria-valuemin": s,
-      "aria-valuenow": o,
+      "aria-valuenow": c,
       className: b("nim-stepper", n),
       role: "spinbutton",
       tabIndex: 0,
       onKeyDown: (u) => {
-        u.key === "ArrowUp" && (u.preventDefault(), d(m(o + c))), u.key === "ArrowDown" && (u.preventDefault(), d(m(o - c)));
+        u.key === "ArrowUp" && (u.preventDefault(), d(m(c + o))), u.key === "ArrowDown" && (u.preventDefault(), d(m(c - o)));
       },
       children: [
         /* @__PURE__ */ e(
@@ -4606,24 +4619,24 @@ function ft({
           {
             "aria-label": l,
             className: "nim-stepper__button",
-            disabled: o <= s,
-            onClick: () => d(m(o - c)),
+            disabled: c <= s,
+            onClick: () => d(m(c - o)),
             tabIndex: -1,
             type: "button",
-            children: /* @__PURE__ */ e(M, { name: "minus", size: "sm" })
+            children: /* @__PURE__ */ e(x, { name: "minus", size: "sm" })
           }
         ),
-        /* @__PURE__ */ e("span", { className: "nim-stepper__value", children: o }),
+        /* @__PURE__ */ e("span", { className: "nim-stepper__value", children: c }),
         /* @__PURE__ */ e(
           "button",
           {
             "aria-label": i,
             className: "nim-stepper__button",
-            disabled: o >= t,
-            onClick: () => d(m(o + c)),
+            disabled: c >= t,
+            onClick: () => d(m(c + o)),
             tabIndex: -1,
             type: "button",
-            children: /* @__PURE__ */ e(M, { name: "plus", size: "sm" })
+            children: /* @__PURE__ */ e(x, { name: "plus", size: "sm" })
           }
         )
       ]
@@ -4654,7 +4667,7 @@ function Nt({
   title: s,
   value: d
 }) {
-  const c = { ...Ki, ...a }, o = t.filter((h) => h.status === "done" || h.status === "skipped").length, m = d ?? (t.length ? Math.round(o / t.length * 100) : 0), u = t.some((h) => h.status === "failed");
+  const o = { ...Ki, ...a }, c = t.filter((h) => h.status === "done" || h.status === "skipped").length, m = d ?? (t.length ? Math.round(c / t.length * 100) : 0), u = t.some((h) => h.status === "failed");
   return /* @__PURE__ */ r(
     "section",
     {
@@ -4664,13 +4677,13 @@ function Nt({
         /* @__PURE__ */ r("header", { className: "nim-task__head", children: [
           s ? /* @__PURE__ */ e("h2", { className: "nim-task__title", children: s }) : null,
           l ? /* @__PURE__ */ e("p", { className: "nim-task__caption", children: l }) : null,
-          /* @__PURE__ */ e(Pa, { label: c.of(o, t.length), value: m })
+          /* @__PURE__ */ e(Pa, { label: o.of(c, t.length), value: m })
         ] }),
         /* @__PURE__ */ e("ol", { className: "nim-task__steps", children: t.map((h) => /* @__PURE__ */ r("li", { className: "nim-task__step", "data-status": h.status, children: [
-          /* @__PURE__ */ e("span", { className: "nim-task__marker", children: h.status === "active" ? /* @__PURE__ */ e(He, { size: "sm" }) : /* @__PURE__ */ e(M, { name: Wi[h.status], size: "xs" }) }),
+          /* @__PURE__ */ e("span", { className: "nim-task__marker", children: h.status === "active" ? /* @__PURE__ */ e(Ge, { size: "sm" }) : /* @__PURE__ */ e(x, { name: Wi[h.status], size: "xs" }) }),
           /* @__PURE__ */ r("span", { className: "nim-task__step-text", children: [
             /* @__PURE__ */ e("span", { className: "nim-task__step-label", children: h.label }),
-            /* @__PURE__ */ e("span", { className: "nim-task__step-detail", children: h.detail ?? c.status[h.status] })
+            /* @__PURE__ */ e("span", { className: "nim-task__step-detail", children: h.detail ?? o.status[h.status] })
           ] })
         ] }, h.id)) }),
         n ? /* @__PURE__ */ e("div", { className: "nim-task__action", children: n }) : null
@@ -4680,7 +4693,7 @@ function Nt({
 }
 function bt({ className: n, density: l = "default", entries: i }) {
   return /* @__PURE__ */ e("ol", { className: b("nim-timeline", l === "compact" && "nim-timeline--compact", n), children: i.map((a) => /* @__PURE__ */ r("li", { className: "nim-timeline__entry", "data-tone": a.tone, children: [
-    /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-timeline__marker", children: a.icon ? /* @__PURE__ */ e(M, { name: a.icon, size: "xs" }) : /* @__PURE__ */ e("span", { className: "nim-timeline__dot" }) }),
+    /* @__PURE__ */ e("span", { "aria-hidden": "true", className: "nim-timeline__marker", children: a.icon ? /* @__PURE__ */ e(x, { name: a.icon, size: "xs" }) : /* @__PURE__ */ e("span", { className: "nim-timeline__dot" }) }),
     /* @__PURE__ */ r("div", { className: "nim-timeline__content", children: [
       /* @__PURE__ */ r("div", { className: "nim-timeline__head", children: [
         /* @__PURE__ */ e("span", { className: "nim-timeline__title", children: a.title }),
@@ -4691,40 +4704,40 @@ function bt({ className: n, density: l = "default", entries: i }) {
   ] }, a.id)) });
 }
 function vt({ className: n, label: l, onChange: i, options: a, value: t, ...s }) {
-  const d = U(null), c = (o) => {
-    var p, N;
-    const m = o.key === "ArrowRight" ? 1 : o.key === "ArrowLeft" ? -1 : 0;
+  const d = U(null), o = (c) => {
+    var _, N;
+    const m = c.key === "ArrowRight" ? 1 : c.key === "ArrowLeft" ? -1 : 0;
     if (m === 0) return;
-    o.preventDefault();
-    const u = a.filter((g) => !g.disabled), h = u.findIndex((g) => g.value === t), _ = u[(h + m + u.length) % u.length];
-    _ && (i(_.value), (N = (p = d.current) == null ? void 0 : p.querySelector(`[data-value="${_.value}"]`)) == null || N.focus());
+    c.preventDefault();
+    const u = a.filter((g) => !g.disabled), h = u.findIndex((g) => g.value === t), f = u[(h + m + u.length) % u.length];
+    f && (i(f.value), (N = (_ = d.current) == null ? void 0 : _.querySelector(`[data-value="${f.value}"]`)) == null || N.focus());
   };
   return /* @__PURE__ */ e(
     "div",
     {
       "aria-label": l,
       className: b("nim-tabs", n),
-      onKeyDown: c,
+      onKeyDown: o,
       ref: d,
       role: "tablist",
       ...s,
-      children: a.map((o) => /* @__PURE__ */ r(
+      children: a.map((c) => /* @__PURE__ */ r(
         "button",
         {
-          "aria-selected": o.value === t,
+          "aria-selected": c.value === t,
           className: "nim-tab",
-          "data-value": o.value,
-          disabled: o.disabled,
-          onClick: () => i(o.value),
+          "data-value": c.value,
+          disabled: c.disabled,
+          onClick: () => i(c.value),
           role: "tab",
-          tabIndex: o.value === t ? 0 : -1,
+          tabIndex: c.value === t ? 0 : -1,
           type: "button",
           children: [
-            o.label,
-            o.count === void 0 ? null : /* @__PURE__ */ e("span", { className: "nim-tab__count", children: o.count })
+            c.label,
+            c.count === void 0 ? null : /* @__PURE__ */ e("span", { className: "nim-tab__count", children: c.count })
           ]
         },
-        o.value
+        c.value
       ))
     }
   );
@@ -4736,36 +4749,36 @@ const Xe = Ce(null), Zi = {
   success: "check-circle"
 };
 function gt({ children: n }) {
-  const [l, i] = L([]), a = U(0), t = Z((c) => {
-    i((o) => o.filter((m) => m.id !== c));
+  const [l, i] = E([]), a = U(0), t = Z((o) => {
+    i((c) => c.filter((m) => m.id !== o));
   }, []), s = Z(
-    (c) => {
-      const o = a.current++;
-      i((u) => [...u, { ...c, id: o }]);
-      const m = c.duration ?? 4e3;
-      m > 0 && window.setTimeout(() => t(o), m);
+    (o) => {
+      const c = a.current++;
+      i((u) => [...u, { ...o, id: c }]);
+      const m = o.duration ?? 4e3;
+      m > 0 && window.setTimeout(() => t(c), m);
     },
     [t]
   ), d = Y(() => s, [s]);
   return /* @__PURE__ */ r(Xe.Provider, { value: d, children: [
     n,
     typeof document < "u" ? he(
-      /* @__PURE__ */ e("div", { "aria-live": "polite", className: "nim-toast-stack", children: l.map((c) => /* @__PURE__ */ r("div", { className: b("nim-toast", `nim-toast--${c.tone ?? "neutral"}`), children: [
-        /* @__PURE__ */ e(M, { className: "nim-toast__icon", name: Zi[c.tone ?? "neutral"], size: "sm" }),
-        /* @__PURE__ */ e("span", { className: "nim-toast__message", children: c.message }),
-        c.action ? /* @__PURE__ */ e(
+      /* @__PURE__ */ e("div", { "aria-live": "polite", className: "nim-toast-stack", children: l.map((o) => /* @__PURE__ */ r("div", { className: b("nim-toast", `nim-toast--${o.tone ?? "neutral"}`), children: [
+        /* @__PURE__ */ e(x, { className: "nim-toast__icon", name: Zi[o.tone ?? "neutral"], size: "sm" }),
+        /* @__PURE__ */ e("span", { className: "nim-toast__message", children: o.message }),
+        o.action ? /* @__PURE__ */ e(
           "button",
           {
             className: "nim-toast__action",
             onClick: () => {
-              var o;
-              (o = c.action) == null || o.onPress(), t(c.id);
+              var c;
+              (c = o.action) == null || c.onPress(), t(o.id);
             },
             type: "button",
-            children: c.action.label
+            children: o.action.label
           }
         ) : null
-      ] }, c.id)) }),
+      ] }, o.id)) }),
       document.body
     ) : null
   ] });
@@ -4794,9 +4807,9 @@ function wt({
   onClose: t,
   onDone: s,
   onStep: d,
-  steps: c
+  steps: o
 }) {
-  const o = { ...Yi, ...a }, [m, u] = L(0), h = c[Math.min(m, c.length - 1)], _ = m === c.length - 1, p = Z(
+  const c = { ...Yi, ...a }, [m, u] = E(0), h = o[Math.min(m, o.length - 1)], f = m === o.length - 1, _ = Z(
     (N) => {
       u(N), d == null || d(N);
     },
@@ -4804,8 +4817,8 @@ function wt({
   );
   return /* @__PURE__ */ r("section", { className: b("nim-wizard", n), children: [
     /* @__PURE__ */ r("header", { className: "nim-wizard__bar", children: [
-      /* @__PURE__ */ e("span", { className: "nim-wizard__slot", children: m > 0 ? /* @__PURE__ */ e(O, { label: o.back, name: "chevron-back", onClick: () => p(m - 1), size: "sm" }) : null }),
-      /* @__PURE__ */ e("ol", { "aria-label": o.step(m, c.length), className: "nim-wizard__dots", children: c.map((N, g) => /* @__PURE__ */ e(
+      /* @__PURE__ */ e("span", { className: "nim-wizard__slot", children: m > 0 ? /* @__PURE__ */ e(O, { label: c.back, name: "chevron-back", onClick: () => _(m - 1), size: "sm" }) : null }),
+      /* @__PURE__ */ e("ol", { "aria-label": c.step(m, o.length), className: "nim-wizard__dots", children: o.map((N, g) => /* @__PURE__ */ e(
         "li",
         {
           className: "nim-wizard__dot",
@@ -4814,7 +4827,7 @@ function wt({
         },
         N.id
       )) }),
-      /* @__PURE__ */ e("span", { className: "nim-wizard__slot", children: t ? /* @__PURE__ */ e(O, { label: o.close, name: "close", onClick: t, size: "sm" }) : null })
+      /* @__PURE__ */ e("span", { className: "nim-wizard__slot", children: t ? /* @__PURE__ */ e(O, { label: c.close, name: "close", onClick: t, size: "sm" }) : null })
     ] }),
     h.question ? /* @__PURE__ */ r("div", { className: "nim-wizard__ask", children: [
       /* @__PURE__ */ e("h1", { className: "nim-wizard__question", children: h.question }),
@@ -4826,10 +4839,10 @@ function wt({
       {
         disabled: h.canContinue === !1,
         fullWidth: !0,
-        onClick: () => _ ? s() : p(m + 1),
+        onClick: () => f ? s() : _(m + 1),
         size: "lg",
         variant: "accent",
-        children: h.continueLabel ?? (_ ? i : l)
+        children: h.continueLabel ?? (f ? i : l)
       }
     ) })
   ] });
@@ -4842,31 +4855,31 @@ function Ct({
   options: t,
   selected: s
 }) {
-  const d = i && l !== void 0 && s.length >= l, c = (o) => {
+  const d = i && l !== void 0 && s.length >= l, o = (c) => {
     if (!i) {
-      a([o]);
+      a([c]);
       return;
     }
-    a(s.includes(o) ? s.filter((m) => m !== o) : [...s, o]);
+    a(s.includes(c) ? s.filter((m) => m !== c) : [...s, c]);
   };
-  return /* @__PURE__ */ e("div", { className: b("nim-choice-grid", n), role: i ? "group" : "radiogroup", children: t.map((o) => {
-    const m = s.includes(o.id);
+  return /* @__PURE__ */ e("div", { className: b("nim-choice-grid", n), role: i ? "group" : "radiogroup", children: t.map((c) => {
+    const m = s.includes(c.id);
     return /* @__PURE__ */ r(
       "button",
       {
         "aria-checked": m,
         className: "nim-choice-grid__tile",
         "data-on": m ? "true" : void 0,
-        disabled: o.disabled || d && !m,
-        onClick: () => c(o.id),
+        disabled: c.disabled || d && !m,
+        onClick: () => o(c.id),
         role: i ? "checkbox" : "radio",
         type: "button",
         children: [
-          o.icon ? /* @__PURE__ */ e("span", { className: "nim-choice-grid__icon", children: o.icon }) : null,
-          /* @__PURE__ */ e("span", { className: "nim-choice-grid__label", children: o.label })
+          c.icon ? /* @__PURE__ */ e("span", { className: "nim-choice-grid__icon", children: c.icon }) : null,
+          /* @__PURE__ */ e("span", { className: "nim-choice-grid__label", children: c.label })
         ]
       },
-      o.id
+      c.id
     );
   }) });
 }
@@ -4961,10 +4974,10 @@ export {
   Dl as Card,
   Bl as Chart,
   $l as Chat,
-  Gl as ChatComposer,
+  Hl as ChatComposer,
   ze as Checkbox,
   hi as Chip,
-  Hl as ChipInput,
+  Gl as ChipInput,
   Ct as ChoiceGrid,
   ul as CodeBlock,
   dl as Columns,
@@ -4984,10 +4997,10 @@ export {
   Wl as Field,
   nt as FileDrop,
   al as FilterChips,
-  M as Icon,
+  x as Icon,
   O as IconButton,
   lt as Inline,
-  pi as Input,
+  _i as Input,
   Tt as Label,
   xi as List,
   Mi as ListRow,
@@ -4997,7 +5010,7 @@ export {
   Fl as Messenger,
   rl as Metric,
   cl as MetricGrid,
-  pl as Mono,
+  _l as Mono,
   Vl as NimProvider,
   tt as Onboarding,
   Al as OptionCard,
@@ -5011,7 +5024,7 @@ export {
   Ri as PlanCard,
   ct as PlanPicker,
   ja as Popover,
-  Ha as ProfileHeader,
+  Ga as ProfileHeader,
   ot as ProfileScreen,
   Pa as Progress,
   wl as Radio,
@@ -5019,11 +5032,11 @@ export {
   fl as Rail,
   Nl as RailSection,
   dt as Rating,
-  _l as RecordLink,
+  pl as RecordLink,
   et as ResourceMeter,
   Rl as RoomHeader,
   zt as Rule,
-  Gi as SectionHeader,
+  Hi as SectionHeader,
   Oi as Segmented,
   Yl as Select,
   ut as Sheet,
@@ -5031,10 +5044,10 @@ export {
   Fa as Skeleton,
   ht as Slider,
   Pl as Sparkline,
-  He as Spinner,
+  Ge as Spinner,
   it as Stack,
-  _t as StageTrack,
-  pt as Stat,
+  pt as StageTrack,
+  _t as Stat,
   hl as StatusDot,
   ml as StatusHero,
   ft as Stepper,
@@ -5067,8 +5080,8 @@ export {
   bi as startOfMonth,
   se as toAsciiDigits,
   Pi as toE164,
-  _e as todayIso,
-  pe as useNim,
+  pe as todayIso,
+  _e as useNim,
   ql as useSchemeToggle,
   yt as useToast
 };

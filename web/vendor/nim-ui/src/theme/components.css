@@ -5891,6 +5891,55 @@
     padding: var(--nim-space-5);
   }
 
+  /* Primary sections answer which product area is open. This contextual rail
+     answers which workspace inside that area is open, so large consoles do
+     not collapse both levels into one undifferentiated menu. */
+  .nim-admin__context-layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 15.5rem minmax(0, 1fr);
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .nim-admin__context {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding: var(--nim-space-4) var(--nim-space-3);
+    background: var(--nim-surface);
+    border-inline-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-admin__context-head,
+  .nim-admin__context-foot {
+    display: grid;
+    gap: var(--nim-space-2);
+    padding: var(--nim-space-3);
+    font-size: var(--nim-type-label-size);
+    color: var(--nim-ink-tertiary);
+  }
+
+  .nim-admin__context-head {
+    border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-admin__context-foot {
+    margin-block-start: auto;
+    border-block-start: var(--nim-border-width) solid var(--nim-line-soft);
+  }
+
+  .nim-admin__context-nav {
+    min-inline-size: 0;
+    flex: 1;
+  }
+
+  .nim-admin__context-nav .nim-admin__nav {
+    padding-block: var(--nim-space-3);
+  }
+
   /* The shallow control-plane composition: identity and scope in one
      masthead, followed by a persistent row of primary destinations. */
   .nim-admin[data-navigation='sections'] {
@@ -6024,6 +6073,55 @@
       align-items: center;
       justify-content: space-between;
       gap: var(--nim-space-3);
+    }
+
+    .nim-admin__context-layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .nim-admin__context {
+      display: block;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: var(--nim-space-2) var(--nim-space-4);
+      border-inline-end: 0;
+      border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
+      scrollbar-width: none;
+    }
+
+    .nim-admin__context::-webkit-scrollbar,
+    .nim-admin__context-head,
+    .nim-admin__context-foot {
+      display: none;
+    }
+
+    .nim-admin__context-nav,
+    .nim-admin__context-nav .nim-admin__nav,
+    .nim-admin__context-nav .nim-admin__group {
+      display: flex;
+      align-items: center;
+      gap: var(--nim-space-2);
+      inline-size: max-content;
+      padding: 0;
+    }
+
+    .nim-admin__context-nav .nim-admin__group-label,
+    .nim-admin__context-nav .nim-admin__link > svg {
+      display: none;
+    }
+
+    .nim-admin__context-nav .nim-admin__link {
+      inline-size: auto;
+      min-block-size: calc(var(--nim-control-sm) * var(--nim-density));
+      padding-inline: var(--nim-space-3);
+      border: var(--nim-border-width) solid transparent;
+      border-radius: var(--nim-radius-pill);
+      white-space: nowrap;
+    }
+
+    .nim-admin__context-nav .nim-admin__link[data-active] {
+      border-color: var(--nim-accent-line);
     }
   }
 
@@ -7716,6 +7814,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--nim-space-2);
+    min-inline-size: 0;
     font-size: var(--nim-type-caption-size);
   }
 
@@ -7731,10 +7830,12 @@
   .nim-metric__delta[data-intent='bad'] { color: var(--nim-danger); }
 
   .nim-metric__hint {
-    overflow: hidden;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: visible;
     color: var(--nim-ink-tertiary);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   /* ─── Facts ─────────────────────────────────────────────────────────── */
@@ -8296,6 +8397,32 @@
 
   [data-nim-style='console'] .nim-admin__main {
     padding: var(--nim-space-6);
+  }
+
+  [data-nim-style='console'] .nim-admin__context {
+    inline-size: 15.5rem;
+    padding: var(--nim-space-4) var(--nim-space-3);
+    background: var(--nim-canvas);
+    border-color: var(--nim-line);
+  }
+
+  [data-nim-style='console'] .nim-admin__context-nav .nim-admin__nav {
+    gap: var(--nim-space-2);
+  }
+
+  [data-nim-style='console'] .nim-admin__context-nav .nim-admin__link {
+    min-block-size: var(--nim-control-lg);
+  }
+
+  @container (max-width: 60rem) {
+    [data-nim-style='console'] .nim-admin__context {
+      inline-size: auto;
+      padding: var(--nim-space-2) var(--nim-space-4);
+    }
+
+    [data-nim-style='console'] .nim-admin__context-nav .nim-admin__link {
+      min-block-size: var(--nim-control-sm);
+    }
   }
 
   [data-nim-style='console'] .nim-page {

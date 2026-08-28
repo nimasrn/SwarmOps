@@ -56,6 +56,7 @@ interface SourceDeployPageProps {
   managerID: string
   managerName?: string
   toast: ReturnType<typeof useToast>
+  view?: 'registry' | 'source'
 }
 
 const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
@@ -64,7 +65,7 @@ const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
   { label: 'Gitea or Forgejo', value: 'gitea' },
 ]
 
-export function SourceDeployPage({ managerID, managerName, toast }: SourceDeployPageProps) {
+export function SourceDeployPage({ managerID, managerName, toast, view = 'source' }: SourceDeployPageProps) {
   const [status, setStatus] = useState<SourceStatus | null>(null)
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
@@ -381,6 +382,10 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
     return <Page><Spinner label="Reading source deployment capability" /></Page>
   }
 
+  if (view === 'registry') {
+    return <RegistryBoundaryPage status={status} />
+  }
+
   const deployBlocks = deploymentBlocks({
     managerID,
     selectedService,
@@ -402,7 +407,7 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
       {error ? <Banner title="Source deployment needs attention" tone="danger">{error}</Banner> : null}
       {!status.enabled || !status.buildEnabled || !status.imagePrefixConfigured ? (
         <>
-        <DetailHeader subtitle="Configure the controller boundary that reads source, builds immutable images, and pushes them to your registry." title="Source & registry" />
+        <DetailHeader subtitle="Configure the sealed controller boundary that reads source evidence and hands approved builds to the container registry." title="Source deployment" />
         <Panel eyebrow="Setup required" marker={<Icon name="lock" size="sm" />} title="Connect source code and an image registry">
           <Rows>
             <Body size="sm">Source deployment is not ready yet. Complete the requirements below, restart the controller, then SwarmOps will validate providers, scan a repository, build a bounded image, and deploy it through the normal workload path.</Body>
@@ -646,6 +651,41 @@ export function SourceDeployPage({ managerID, managerName, toast }: SourceDeploy
           <CodeBlock label="Optional private provider" wrap>SWARMOPS_SOURCE_PRIVATE_HOSTS=git.example.com</CodeBlock>
           <Banner title="Credentials stay separate" tone="info">Provider tokens and registry credentials are entered only after this readiness check passes. They are never included in this configuration snippet.</Banner>
           <Button onClick={() => setSetupOpen(false)} variant="secondary">Done</Button>
+        </Rows>
+      </Sheet>
+    </Page>
+  )
+}
+
+function RegistryBoundaryPage({ status }: { status: SourceStatus }) {
+  const [open, setOpen] = useState(false)
+  const ready = status.imagePrefixConfigured && status.buildEnabled
+  return (
+    <Page>
+      <DetailHeader
+        actions={<Button onClick={() => setOpen(true)} variant="accent">Configure registry</Button>}
+        status={<StatusDot tone={ready ? 'success' : 'warning'}>{ready ? 'Registry boundary ready' : 'Setup required'}</StatusDot>}
+        subtitle="The registry is where SwarmOps pushes immutable application images. It is separate from source-provider access and from Docker’s runtime image inventory."
+        title="Container registry"
+      />
+      <Panel title="Current controller boundary">
+        <List plain>
+          <ListRow leading={<Icon name={status.imagePrefixConfigured ? 'check-circle' : 'alert'} size="sm" tone={status.imagePrefixConfigured ? 'success' : 'warning'} />} subtitle="The exact namespace SwarmOps may use for generated application images." title="Registry image prefix" trailing={<StatusDot tone={status.imagePrefixConfigured ? 'success' : 'warning'}>{status.imagePrefixConfigured ? 'Configured' : 'Required'}</StatusDot>} />
+          <ListRow leading={<Icon name={status.buildEnabled ? 'check-circle' : 'alert'} size="sm" tone={status.buildEnabled ? 'success' : 'warning'} />} subtitle="Only resource-bounded builds with allow-listed immutable tags can push." title="Bounded image builds" trailing={<StatusDot tone={status.buildEnabled ? 'success' : 'warning'}>{status.buildEnabled ? 'Enabled' : 'Required'}</StatusDot>} />
+          <ListRow leading={<Icon name="shield" size="sm" />} subtitle="Docker authentication is mounted from a protected controller file and is never returned to this browser." title="Registry credential" trailing={<StatusDot tone="neutral">Host-managed secret</StatusDot>} />
+        </List>
+      </Panel>
+      <Columns>
+        <Panel title="What belongs here"><Facts columns={1} items={[{ label: 'Image prefix', value: 'Registry host and namespace allowed for application images' }, { label: 'Push credential', value: 'Protected Docker config read only by the controller' }, { label: 'Build policy', value: 'CPU, memory, context size, and tag allow-list' }]} /></Panel>
+        <Panel title="What does not belong here"><Facts columns={1} items={[{ label: 'Source tokens', value: 'Settings → Source deployment' }, { label: 'Running images', value: 'Workloads → Images & builds' }, { label: 'Node pull access', value: 'Configured on each Docker host through reviewed deployment credentials' }]} /></Panel>
+      </Columns>
+      <Sheet closeLabel="Close registry setup" onClose={() => setOpen(false)} open={open} title="Configure the container registry">
+        <Rows>
+          <Body size="sm">These are protected controller startup settings. SwarmOps cannot safely rewrite its own environment or registry credential while it is running. Configure them on the controller host, restart Core, then return here to verify the boundary.</Body>
+          <Facts columns={1} items={[{ label: 'Image namespace', value: 'One reviewed registry host and namespace' }, { label: 'Allow-list', value: 'Prefixes Docker may build and push' }, { label: 'Credential file', value: 'Owner-readable Docker config.json outside the repository' }]} />
+          <CodeBlock label="Required controller settings" wrap>{'SWARMOPS_BUILD_ENABLED=true\nSWARMOPS_SOURCE_IMAGE_PREFIX=ghcr.io/your-org\nSWARMOPS_IMAGE_PREFIXES=ghcr.io/your-org/\nSWARMOPS_REGISTRY_CONFIG_FILE=/etc/swarmops/registry-config.json'}</CodeBlock>
+          <Banner title="No credential is pasted into this page" tone="info">The registry file remains on the controller host. The browser receives only readiness metadata—not its path contents, username, password, or token.</Banner>
+          <Inline><Button href="#core" variant="secondary">Open controller settings</Button><Button onClick={() => setOpen(false)} variant="ghost">Done</Button></Inline>
         </Rows>
       </Sheet>
     </Page>

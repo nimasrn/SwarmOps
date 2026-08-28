@@ -31,6 +31,16 @@ export interface AdminShellProps {
   /** Under the nav: session state, build version — the things an operator
       checks before believing a screen. */
   sidebarFooter?: ReactNode
+  /** Optional second-level navigation for section-based consoles. It stays
+      visible beside the workspace on wide containers and becomes a compact
+      horizontal strip on smaller ones. */
+  contextualGroups?: AdminNavGroup[]
+  /** Identity or scope shown above contextual navigation. */
+  contextualHeader?: ReactNode
+  /** Evidence or a recovery shortcut shown below contextual navigation. */
+  contextualFooter?: ReactNode
+  /** Active item in contextualGroups. Defaults to value. */
+  contextualValue?: string
   groups: AdminNavGroup[]
   labels?: { menu?: string; nav?: string; close?: string; collapse?: string; expand?: string }
   /** `sidebar` is the conventional deep console hierarchy. `sections` is a
@@ -72,6 +82,10 @@ export function AdminShell({
   children,
   className,
   collapsible = false,
+  contextualFooter,
+  contextualGroups,
+  contextualHeader,
+  contextualValue,
   groups,
   labels,
   navigation = 'sidebar',
@@ -86,16 +100,16 @@ export function AdminShell({
   const [collapsed, setCollapsed] = useState(false)
   const Title = titleRole === 'scope' ? 'div' : 'h1'
 
-  const nav = (
-    <nav aria-label={text.nav} className="nim-admin__nav">
-      {groups.map((group) => (
+  const renderNav = (items: AdminNavGroup[], activeValue: string, ariaLabel: string) => (
+    <nav aria-label={ariaLabel} className="nim-admin__nav">
+      {items.map((group) => (
         <div className="nim-admin__group" key={group.key}>
           {group.label ? <p className="nim-admin__group-label">
             {group.icon ? <Icon name={group.icon} size="xs" /> : null}
             {group.label}
           </p> : null}
           {group.items.map((item) => {
-            const active = item.key === value
+            const active = item.key === activeValue
             const content = (
               <>
                 {item.icon ? <Icon name={item.icon} size="sm" /> : null}
@@ -129,6 +143,10 @@ export function AdminShell({
       ))}
     </nav>
   )
+  const nav = renderNav(groups, value, text.nav)
+  const contextualNav = contextualGroups?.length
+    ? renderNav(contextualGroups, contextualValue ?? value, `${text.nav} · current section`)
+    : null
 
   return (
     <div
@@ -187,7 +205,16 @@ export function AdminShell({
           {toolbar ? <div className="nim-admin__toolbar">{toolbar}</div> : null}
         </header>
         {navigation === 'sections' ? <div className="nim-admin__sections">{nav}</div> : null}
-        <main className="nim-admin__main">{children}</main>
+        {contextualNav ? (
+          <div className="nim-admin__context-layout">
+            <aside className="nim-admin__context">
+              {contextualHeader ? <div className="nim-admin__context-head">{contextualHeader}</div> : null}
+              <div className="nim-admin__context-nav">{contextualNav}</div>
+              {contextualFooter ? <div className="nim-admin__context-foot">{contextualFooter}</div> : null}
+            </aside>
+            <main className="nim-admin__main">{children}</main>
+          </div>
+        ) : <main className="nim-admin__main">{children}</main>}
       </div>
     </div>
   )

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 )
@@ -553,6 +554,9 @@ func shouldRequestAgentUpdate(update domain.AgentUpdateStatus, now time.Time) bo
 
 func classifyAgentFailure(err error) (agentFailure, bool) {
 	if err == nil {
+		return agentFailure{}, false
+	}
+	if errors.Is(err, agentpull.ErrRequestNotCatalogued) {
 		return agentFailure{}, false
 	}
 	if errors.Is(err, ErrAgentAPIIncompatible) || isAgentRouteMissing(err) {

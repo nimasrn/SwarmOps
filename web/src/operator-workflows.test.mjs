@@ -6,12 +6,15 @@ const source = (name) => readFile(new URL(name, import.meta.url), 'utf8')
 
 test('navigation uses operator tasks and keeps every workspace directly reachable', async () => {
   const app = await source('app.tsx')
-  for (const group of ['Cluster', 'Workloads', 'Networking', 'Monitoring', 'Activity', 'Settings']) {
+  for (const group of ['Cluster', 'Workloads', 'Network', 'Monitoring', 'Activity', 'Settings']) {
     assert.match(app, new RegExp(`label: '${group}'`))
   }
-  for (const destination of ['servers', 'nodes', 'resources', 'applications', 'databases', 'traefik', 'insights', 'logs', 'commands', 'catalogue', 'audit', 'core', 'source-deploy']) {
-    assert.match(app, new RegExp(`setWorkspace\\('${destination}'\\)`))
+  for (const destination of ['servers', 'nodes', 'resources', 'applications', 'databases', 'services', 'stacks', 'builds', 'gateway', 'routes', 'dns', 'tls', 'insights', 'logs', 'observability', 'commands', 'catalogue', 'audit', 'core', 'source-deploy', 'registry']) {
+    assert.match(app, new RegExp(`${destination.replace('-', "['-]")}.*:`))
   }
+  assert.match(app, /navigation="sections"/)
+  assert.match(app, /contextualGroups=/)
+  assert.match(app, /Find a feature or setting/)
   assert.doesNotMatch(app, /label: 'Observe'/)
   assert.doesNotMatch(app, /label: 'Control plane'/)
 })
@@ -43,7 +46,18 @@ test('gateway and source dead ends have explicit setup actions', async () => {
   assert.match(gateway, /host-native or Docker Compose proxies/)
   assert.match(gateway, /another process already binds the configured HTTP or HTTPS ports/)
   assert.match(sourceDeploy, />Configure source deployment<\/Button>/)
+  assert.match(sourceDeploy, />Configure registry<\/Button>/)
   assert.match(sourceDeploy, /Hosted GitHub \/ GitLab/)
+})
+
+test('gateway, routes, DNS, and certificates are separate operator destinations', async () => {
+  const [app, gateway] = await Promise.all([source('app.tsx'), source('traefik-page.tsx')])
+  assert.match(app, /gateway: 'Gateway & ports'/)
+  assert.match(app, /routes: 'Routes'/)
+  assert.match(app, /dns: 'DNS providers'/)
+  assert.match(app, /tls: 'TLS certificates'/)
+  assert.match(gateway, /scope="gateway"/)
+  assert.match(gateway, /scope="dns"/)
 })
 
 test('controller recovery UI does not expose the internal Core name', async () => {

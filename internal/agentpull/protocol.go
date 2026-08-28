@@ -4,6 +4,7 @@
 package agentpull
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,6 +17,10 @@ const (
 	MaxBodyBytes     = 64 << 20
 	MaxResponseBytes = 4 << 20
 )
+
+// ErrRequestNotCatalogued identifies a Core-side transport contract error.
+// It is not evidence that the authenticated outbound agent is unreachable.
+var ErrRequestNotCatalogued = errors.New("agent pull request is not catalogued")
 
 // PollRequest is sent by an agent on every long poll. Cursor is the highest
 // request sequence the agent has durably accepted; AuthorityEpoch is the
@@ -63,7 +68,7 @@ type Response struct {
 
 func validateRequest(method, requestURI string) error {
 	if method != http.MethodGet && method != http.MethodPost {
-		return fmt.Errorf("agent pull method is not catalogued")
+		return fmt.Errorf("%w: method", ErrRequestNotCatalogued)
 	}
 	parsed, err := url.ParseRequestURI(requestURI)
 	if err != nil || parsed.IsAbs() || parsed.Host != "" {
@@ -72,9 +77,10 @@ func validateRequest(method, requestURI string) error {
 	path := parsed.Path
 	if path == "/v1/status" || path == "/v1/diagnostics" || path == "/v1/snapshot" ||
 		path == "/v1/provisioning/status" || path == "/v1/agent/update" ||
-		path == "/v1/commands" || strings.HasPrefix(path, "/v1/routing/") ||
+		path == "/v1/commands" || path == "/v1/logs/query" || path == "/v1/logs/status" ||
+		strings.HasPrefix(path, "/v1/routing/") ||
 		strings.HasPrefix(path, "/v1/traefik/") || strings.HasPrefix(path, "/v1/engine/") {
 		return nil
 	}
-	return fmt.Errorf("agent pull path is not catalogued")
+	return fmt.Errorf("%w: path", ErrRequestNotCatalogued)
 }

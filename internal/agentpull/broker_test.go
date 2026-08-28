@@ -97,3 +97,21 @@ func TestBrokerRejectsNonCataloguedPathAndStaleAuthority(t *testing.T) {
 		t.Fatalf("expected stale authority, got %v", err)
 	}
 }
+
+func TestBrokerCataloguesReviewedLogRoutes(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/logs/status"},
+		{method: http.MethodPost, path: "/v1/logs/query"},
+	} {
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			t.Parallel()
+			if err := validateRequest(test.method, test.path); err != nil {
+				t.Fatalf("reviewed log route was rejected: %v", err)
+			}
+		})
+	}
+}
