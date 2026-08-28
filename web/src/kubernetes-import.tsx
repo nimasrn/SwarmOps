@@ -11,7 +11,7 @@ import {
   Mono,
   Page,
   Panel,
-  Rows,
+  Stack as Rows,
   Textarea,
 } from '@nim.zone/ui'
 import { api } from './api'

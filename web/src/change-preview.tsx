@@ -8,7 +8,7 @@ import {
   Label,
   Mono,
   Panel,
-  Rows,
+  Stack as Rows,
 } from '@nim.zone/ui'
 import { api } from './api'
 import type { ChangePreview as Preview, PreviewConsequence } from './types'
