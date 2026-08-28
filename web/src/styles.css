@@ -59,54 +59,6 @@ body {
 /* The diagnosis fix block and refusal evidence list. Both are product copy
    arrangements rather than layouts — if either grows a grid or a breakpoint it
    has become a missing kit component and belongs there instead. */
-.swarmops-diagnosis__fix-label {
-  margin: 0;
-  font-size: var(--nim-text-14);
-  font-weight: var(--nim-weight-semibold);
-  color: var(--nim-ink);
-}
-
-.swarmops-diagnosis__fix-detail {
-  margin: var(--nim-space-1) 0 0;
-  font-size: var(--nim-text-12);
-  line-height: var(--nim-leading-normal);
-  color: var(--nim-ink-secondary);
-}
-
-.swarmops-diagnosis__fix-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nim-space-2);
-  margin-block-start: var(--nim-space-3);
-}
-
-.swarmops-diagnosis__evidence {
-  margin: var(--nim-space-4) 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--nim-space-2);
-}
-
-.swarmops-diagnosis__evidence > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--nim-space-4);
-  padding-block: var(--nim-space-2);
-  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
-}
-
-.swarmops-diagnosis__evidence dt {
-  font-family: var(--nim-font-mono);
-  font-size: var(--nim-text-12);
-  color: var(--nim-ink);
-}
-
-.swarmops-diagnosis__evidence dd {
-  margin: 0;
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-tertiary);
-}
 
 /* Change preview. The grid and the step list are the only two arrangements the
    kit has no component for yet; if either grows a variant it has become one. */
@@ -114,52 +66,16 @@ body {
 /* Only a consequence that should reassure gets colour. If every cell were
    toned, none of them would carry meaning. */
 
-.swarmops-preview__steps {
-  margin: var(--nim-space-2) 0 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-}
-
-.swarmops-preview__steps li {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto;
-  gap: var(--nim-space-3);
-  align-items: baseline;
-  padding-block: var(--nim-space-3);
-  border-block-end: var(--nim-border-width) solid var(--nim-line-soft);
-  counter-increment: step;
-}
-
-.swarmops-preview__steps li::before {
-  content: counter(step, decimal-leading-zero);
-  font-family: var(--nim-font-mono);
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-tertiary);
-}
-
-.swarmops-preview__step-title { font-size: var(--nim-text-13); color: var(--nim-ink); }
-.swarmops-preview__step-detail { display: block; font-size: var(--nim-text-12); color: var(--nim-ink-tertiary); }
-
 /* The engine's vocabulary, shown beside a refusal. Deliberately plain: it is
    context for "no rule fired", not a feature of its own. */
 .swarmops-diagnosis__rules { margin-block-start: var(--nim-space-4); }
 
-.swarmops-diagnosis__rules ul {
+/* A row of chips; the chips themselves are the kit's. */
+.swarmops-diagnosis__rules-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--nim-space-2);
-  margin: var(--nim-space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.swarmops-diagnosis__rules li {
-  border: var(--nim-border-width) solid var(--nim-line);
-  border-radius: var(--nim-radius-sm);
-  padding: 2px var(--nim-space-2);
-  font-size: var(--nim-text-11);
-  color: var(--nim-ink-secondary);
+  margin-block-start: var(--nim-space-2);
 }
 
 /* Hatched, for the same reason Caveat is: the absence has to survive
@@ -167,89 +83,12 @@ body {
 
 /* The decide row. Discard is not destructive — it clears a computed preview,
    nothing more — so it takes the quiet variant and Apply carries the accent. */
-.swarmops-preview__decide {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--nim-space-4);
-  flex-wrap: wrap;
-  padding-block-start: var(--nim-space-4);
-  border-block-start: var(--nim-border-width) solid var(--nim-line);
-}
-
-.swarmops-preview__decide > div { display: flex; gap: var(--nim-space-2); }
-
-.swarmops-import__decide {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--nim-space-4);
-  flex-wrap: wrap;
-  margin-block-start: var(--nim-space-4);
-  padding-block-start: var(--nim-space-4);
-  border-block-start: var(--nim-border-width) solid var(--nim-line);
-}
 
 /* The diagnosis and its rail. The comparison and the trail sit beside the
    chain rather than under it: both are read WHILE the chain is, not after. */
-.swarmops-diagnosis__layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: var(--nim-space-5);
-  align-items: start;
-}
-
-.swarmops-diagnosis__rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nim-space-5);
-  padding-inline-start: var(--nim-space-5);
-  border-inline-start: var(--nim-border-width) solid var(--nim-line);
-}
-
-.swarmops-diagnosis__rail-head {
-  margin: 0 0 var(--nim-space-1);
-  font-size: var(--nim-text-11);
-  font-weight: var(--nim-weight-medium);
-  letter-spacing: var(--nim-tracking-wide);
-  text-transform: uppercase;
-  color: var(--nim-ink-tertiary);
-}
-
-.swarmops-diagnosis__commands {
-  margin: var(--nim-space-2) 0;
-  padding: var(--nim-space-3);
-  list-style: none;
-  counter-reset: cmd;
-  border: var(--nim-border-width) solid var(--nim-line);
-  border-radius: var(--nim-radius-sm);
-  background: var(--nim-canvas);
-  overflow-x: auto;
-}
-
-.swarmops-diagnosis__commands li {
-  counter-increment: cmd;
-  white-space: nowrap;
-  font-size: var(--nim-text-11);
-  line-height: 1.9;
-  color: var(--nim-ink-secondary);
-}
-
-.swarmops-diagnosis__commands li::before {
-  content: counter(cmd) '. ';
-  color: var(--nim-ink-tertiary);
-}
 
 /* The last step is the one that costs judgement rather than a query, so it is
    the one that should catch the eye. */
-.swarmops-diagnosis__commands li:last-child { color: var(--nim-danger); }
 
 @media (max-width: 1080px) {
-  .swarmops-diagnosis__layout { grid-template-columns: minmax(0, 1fr); }
-  .swarmops-diagnosis__rail {
-    border-inline-start: 0;
-    padding-inline-start: 0;
-    border-block-start: var(--nim-border-width) solid var(--nim-line);
-    padding-block-start: var(--nim-space-4);
-  }
 }

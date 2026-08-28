@@ -5,8 +5,11 @@ import {
   Button,
   CausalChain,
   Caveat,
-  EvidenceTrail,
+  Chip,
+  CommandList,
+  DetailLayout,
   EmptyState,
+  EvidenceTrail,
   Mono,
   Panel,
 } from '@nim.zone/ui'
@@ -109,7 +112,40 @@ export function ServiceDiagnosis({
         eyebrow={<Mono>{chain.rule}</Mono>}
         title={`Why ${serviceName} is not converged`}
       >
-        <div className="swarmops-diagnosis__layout">
+        <DetailLayout
+          aside={
+            <>
+              {chain.elsewhere ? (
+                <section>
+                  <p className="swarmops-diagnosis__rail-head">The same answer, elsewhere</p>
+                  <Body size="sm">
+                    On Kubernetes this diagnosis is {chain.elsewhere.commands.length} commands
+                    {chain.elsewhere.note ? ' and a judgement call' : ''}.
+                  </Body>
+                  <CommandList
+                    commands={chain.elsewhere.commands}
+                    costlyIndex={chain.elsewhere.commands.length - 1}
+                    note={chain.elsewhere.note}
+                  />
+                </section>
+              ) : null}
+
+              {chain.evidence?.length ? (
+                <section>
+                  <p className="swarmops-diagnosis__rail-head">Evidence trail</p>
+                  <EvidenceTrail
+                    caption="Every measurement this chain used, with when it was taken."
+                    entries={chain.evidence.map((item) => ({
+                      age: age(item.observedAt),
+                      label: item.label,
+                      source: item.source,
+                    }))}
+                  />
+                </section>
+              ) : null}
+            </>
+          }
+        >
         <CausalChain
           caveat={
             chain.caveats?.length ? (
@@ -121,10 +157,10 @@ export function ServiceDiagnosis({
           links={links}
           resolution={
             primary ? (
-              <div className="swarmops-diagnosis__fix">
-                <p className="swarmops-diagnosis__fix-label">{primary.label}</p>
-                {primary.detail ? <p className="swarmops-diagnosis__fix-detail">{primary.detail}</p> : null}
-                <div className="swarmops-diagnosis__fix-actions">
+              <div className="nim-causal__resolution-body">
+                <p className="nim-causal__resolution-title">{primary.label}</p>
+                {primary.detail ? <p className="nim-causal__resolution-detail">{primary.detail}</p> : null}
+                <div className="nim-causal__resolution-actions">
                   {/* These take you to the screen that owns the action rather
                       than performing it here. Prune is gated behind an explicit
                       confirmation, and running a destructive command from the
@@ -144,38 +180,7 @@ export function ServiceDiagnosis({
           }
         />
 
-        <aside className="swarmops-diagnosis__rail">
-          {chain.elsewhere ? (
-            <section>
-              <p className="swarmops-diagnosis__rail-head">The same answer, elsewhere</p>
-              <Body size="sm">
-                On Kubernetes this diagnosis is {chain.elsewhere.commands.length} commands
-                {chain.elsewhere.note ? ' and a judgement call' : ''}.
-              </Body>
-              <ol className="swarmops-diagnosis__commands">
-                {chain.elsewhere.commands.map((command) => (
-                  <li key={command}><Mono>{command}</Mono></li>
-                ))}
-              </ol>
-              {chain.elsewhere.note ? <Body size="sm">{chain.elsewhere.note}</Body> : null}
-            </section>
-          ) : null}
-
-          {chain.evidence?.length ? (
-            <section>
-              <p className="swarmops-diagnosis__rail-head">Evidence trail</p>
-              <Body size="sm">Every measurement this chain used, with when it was taken.</Body>
-              <EvidenceTrail
-                entries={chain.evidence.map((item) => ({
-                  age: age(item.observedAt),
-                  label: item.label,
-                  source: item.source,
-                }))}
-              />
-            </section>
-          ) : null}
-        </aside>
-        </div>
+        </DetailLayout>
       </Panel>
     )
   }
@@ -196,20 +201,19 @@ export function ServiceDiagnosis({
             SwarmOps can currently explain {rules.length} kind{rules.length === 1 ? '' : 's'} of failure. None of them fits
             what this service is doing, which may mean the cause is outside that list rather than absent.
           </Body>
-          <ul>
-            {rules.map((rule) => <li key={rule}><Mono>{rule}</Mono></li>)}
-          </ul>
+          <div className="swarmops-diagnosis__rules-row">
+            {rules.map((rule) => <Chip key={rule}>{rule}</Chip>)}
+          </div>
         </div>
       ) : null}
       {refusal?.evidence?.length ? (
-        <dl className="swarmops-diagnosis__evidence">
-          {refusal.evidence.map((item) => (
-            <div key={`${item.source}-${item.label}`}>
-              <dt>{item.label}</dt>
-              <dd>{source(item)}</dd>
-            </div>
-          ))}
-        </dl>
+        <EvidenceTrail
+          entries={refusal.evidence.map((item) => ({
+            age: age(item.observedAt),
+            label: item.label,
+            source: item.source,
+          }))}
+        />
       ) : null}
     </Panel>
   )

@@ -5,6 +5,7 @@ import {
   Button,
   Caveat,
   CodeBlock,
+  DecideBar,
   DataTable,
   EmptyState,
   Label,
@@ -133,8 +134,7 @@ export function KubernetesImportPage() {
               title="Generated stack"
             >
               <CodeBlock>{report.compose}</CodeBlock>
-              <div className="swarmops-import__decide">
-                <Body size="sm">Nothing runs until you review the generated stack and preview it.</Body>
+              <DecideBar note="Nothing runs until you review the generated stack and preview it.">
                 <Button
                   onClick={() => {
                     // Handing the file over rather than deploying it: the value
@@ -146,7 +146,7 @@ export function KubernetesImportPage() {
                 >
                   Copy the Compose stack
                 </Button>
-              </div>
+              </DecideBar>
             </Panel>
           ) : null}
         </>

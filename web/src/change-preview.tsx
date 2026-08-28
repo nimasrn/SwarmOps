@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import {
   Banner,
-  Body,
   Button,
   Caveat,
+  DecideBar,
   Diff,
   Input,
   Label,
   Metric,
   MetricGrid,
-  Mono,
   Panel,
   Stack as Rows,
+  Timeline,
 } from '@nim.zone/ui'
 import { api } from './api'
 import type { ChangePreview as Preview, PreviewConsequence } from './types'
@@ -90,15 +90,17 @@ export function ChangePreviewPanel({
 
             <div>
               <Label as="p">The sequence, in the order Swarm will perform it</Label>
-              <ol className="swarmops-preview__steps">
-                {preview.steps.map((step, index) => (
-                  <li key={`${step.title}-${index}`}>
-                    <span className="swarmops-preview__step-title">{step.title}</span>
-                    {step.detail ? <span className="swarmops-preview__step-detail">{step.detail}</span> : null}
-                    {step.mark ? <Mono>{step.mark}</Mono> : null}
-                  </li>
-                ))}
-              </ol>
+              {/* Timeline, not a bespoke list: its whole claim is that these
+                  happen in this order, which is what an ordered list says to a
+                  screen reader and a stack of divs does not. */}
+              <Timeline
+                entries={preview.steps.map((step, index) => ({
+                  body: step.detail,
+                  id: `${index}`,
+                  time: step.mark,
+                  title: step.title,
+                }))}
+              />
             </div>
 
             {preview.diff?.length ? (
@@ -114,15 +116,12 @@ export function ChangePreviewPanel({
               {preview.unknowns.map((line) => <p key={line}>{line}</p>)}
             </Caveat>
 
-            <div className="swarmops-preview__decide">
-              <Body size="sm">This preview is recorded whether or not you apply it.</Body>
-              <div>
-                <Button onClick={() => setPreview(null)} variant="secondary">Discard</Button>
-                <Button onClick={() => onApply?.(image)} variant="accent">
-                  Apply — {preview.consequences.find((c) => c.label === 'Tasks replaced')?.value ?? ''} tasks
-                </Button>
-              </div>
-            </div>
+            <DecideBar note="This preview is recorded whether or not you apply it.">
+              <Button onClick={() => setPreview(null)} variant="secondary">Discard</Button>
+              <Button onClick={() => onApply?.(image)} variant="accent">
+                Apply — {preview.consequences.find((c) => c.label === 'Tasks replaced')?.value ?? ''} tasks
+              </Button>
+            </DecideBar>
           </>
         ) : null}
       </Rows>
