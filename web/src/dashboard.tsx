@@ -14,6 +14,7 @@ import {
   StatusDot,
 } from '@nim.zone/ui'
 import type { StatusTone } from '@nim.zone/ui'
+import { EvidenceLedger } from './evidence-ledger'
 import type {
   Capacity,
   Health,
@@ -26,6 +27,7 @@ import type {
 } from './types'
 
 interface OverviewDashboardProps {
+  onOpen?: (page: string) => void
   observability: ObservabilityStatus
   overview: Overview
   stacks: Stack[]
@@ -53,7 +55,7 @@ interface CapacityConstraint {
   percent: number
 }
 
-export function OverviewDashboard({ observability, overview, stacks, traefik }: OverviewDashboardProps) {
+export function OverviewDashboard({ observability, onOpen, overview, stacks, traefik }: OverviewDashboardProps) {
   const { nodes, services, summary } = overview
   const hostProbes = nodes.filter((node) => node.agent.healthy).length
   const hasCompleteHostCoverage = nodes.length > 0 && hostProbes === nodes.length
@@ -74,6 +76,11 @@ export function OverviewDashboard({ observability, overview, stacks, traefik }: 
 
   return (
     <Page>
+      {/* The ledger leads: the distinction between what is measured and what is
+          not is the first thing an operator should see, and the metric grid
+          below reads differently once that is established. */}
+      <EvidenceLedger observability={observability} onOpen={onOpen} overview={overview} traefik={traefik} />
+
       <DetailHeader
         meta={`Snapshot generated ${formatDateTime(overview.generatedAt)} · ${hostProbeSummary(hostProbes, nodes.length)}`}
         status={<StatusDot tone={healthTone(overview.health)}>{healthLabel(overview.health)}</StatusDot>}

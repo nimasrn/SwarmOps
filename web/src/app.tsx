@@ -623,6 +623,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 			  else toast({ message: `No screen owns "${kind}" yet.`, tone: 'neutral' })
 			}}
 			onDiagnostics={() => setWorkspace('agent-diagnostics')}
+			onOpenPage={(next) => setWorkspace(next as WorkspacePage)}
 			onReadiness={() => setWorkspace('provisioning')}
 			page={workspace as ClusterPage}
 			toast={toast}
@@ -640,6 +641,7 @@ function PageRouter({
   onDiagnostics,
   onReadiness,
   onDiagnosisAction,
+  onOpenPage,
   page,
   toast,
 }: {
@@ -647,6 +649,7 @@ function PageRouter({
   data: DashboardData
   onAddNode: () => void
   onDiagnosisAction: (kind: string) => void
+  onOpenPage: (page: string) => void
   onDiagnostics: () => void
   onReadiness: () => void
   page: ClusterPage
@@ -667,7 +670,7 @@ function PageRouter({
     case 'applications': return <ApplicationsPage toast={toast} />
     case 'resources': return <ResourcesPage toast={toast} />
     case 'insights': return <InsightsPage toast={toast} />
-    case 'overview': return <OverviewDashboard observability={data.observability} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
+    case 'overview': return <OverviewDashboard observability={data.observability} onOpen={onOpenPage} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
   }
 }
 
@@ -1432,7 +1435,11 @@ function ServicesPage({ onDiagnosisAction, services, toast }: { onDiagnosisActio
             {scaleError ? <Banner tone="warning">{scaleError}</Banner> : null}
           </Rows>
         </Panel>
-        <ChangePreviewPanel currentImage={selected.image} serviceID={selected.id} />
+        <ChangePreviewPanel
+          currentImage={selected.image}
+          onApply={() => toast({ message: 'Applying from the preview is not wired yet — deploy from the source screen.', tone: 'neutral' })}
+          serviceID={selected.id}
+        />
         <Panel eyebrow="Last 200 lines" title="Service logs">
           {logsError ? <Banner tone="danger">{logsError}</Banner> : null}
           {logs ? <CodeBlock label={`Last 200 lines · ${selected.name}`}>{logs}</CodeBlock> : <EmptyState description="Select a service name or use Read logs to fetch an on-demand, bounded log tail." icon="document" title="Logs are not loaded" />}

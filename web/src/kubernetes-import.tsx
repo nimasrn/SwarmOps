@@ -71,6 +71,15 @@ export function KubernetesImportPage() {
 
       {report ? (
         <>
+          <Banner
+            title={`${report.mappings.length} of ${report.mappings.length + report.gaps.length} objects map cleanly.${report.gaps.length ? ` ${report.gaps.length} have no equivalent and are listed below.` : ''}`}
+            tone={report.gaps.length ? 'warning' : 'success'}
+          >
+            {report.gaps.length
+              ? 'Read those before you decide. If you need any of them, Swarm is the wrong target and SwarmOps will not pretend otherwise.'
+              : 'Nothing in these manifests needs a decision. Review the generated stack before deploying it.'}
+          </Banner>
+
           {report.errors?.length ? (
             <Banner title="Some documents could not be read" tone="danger">
               {report.errors.map((line) => <p key={line}>{line}</p>)}
@@ -94,7 +103,7 @@ export function KubernetesImportPage() {
           {report.gaps.length ? (
             <Panel
               description="These have no honest equivalent. Read them before you decide: if you need any of them, Swarm is the wrong target and SwarmOps will not pretend otherwise."
-              title={`${report.gaps.length} object(s) need a decision`}
+              title={`No equivalent in Swarm — ${report.gaps.length} object${report.gaps.length === 1 ? '' : 's'} need a decision`}
             >
               <Rows>
                 {report.gaps.map((gap: ImportGap) => (
@@ -124,6 +133,20 @@ export function KubernetesImportPage() {
               title="Generated stack"
             >
               <CodeBlock>{report.compose}</CodeBlock>
+              <div className="swarmops-import__decide">
+                <Body size="sm">Nothing runs until you review the generated stack and preview it.</Body>
+                <Button
+                  onClick={() => {
+                    // Handing the file over rather than deploying it: the value
+                    // of this screen is the review, and a one-click deploy from
+                    // here would skip it.
+                    void navigator.clipboard?.writeText(report.compose ?? '')
+                  }}
+                  variant="secondary"
+                >
+                  Copy the Compose stack
+                </Button>
+              </div>
             </Panel>
           ) : null}
         </>

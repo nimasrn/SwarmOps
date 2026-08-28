@@ -108,6 +108,7 @@ export function ServiceDiagnosis({
         eyebrow={<Mono>{chain.rule}</Mono>}
         title={`Why ${serviceName} is not converged`}
       >
+        <div className="swarmops-diagnosis__layout">
         <CausalChain
           caveat={
             chain.caveats?.length ? (
@@ -141,6 +142,40 @@ export function ServiceDiagnosis({
             ) : undefined
           }
         />
+
+        <aside className="swarmops-diagnosis__rail">
+          {chain.elsewhere ? (
+            <section>
+              <p className="swarmops-diagnosis__rail-head">The same answer, elsewhere</p>
+              <Body size="sm">
+                On Kubernetes this diagnosis is {chain.elsewhere.commands.length} commands
+                {chain.elsewhere.note ? ' and a judgement call' : ''}.
+              </Body>
+              <ol className="swarmops-diagnosis__commands">
+                {chain.elsewhere.commands.map((command) => (
+                  <li key={command}><Mono>{command}</Mono></li>
+                ))}
+              </ol>
+              {chain.elsewhere.note ? <Body size="sm">{chain.elsewhere.note}</Body> : null}
+            </section>
+          ) : null}
+
+          {chain.evidence?.length ? (
+            <section>
+              <p className="swarmops-diagnosis__rail-head">Evidence trail</p>
+              <Body size="sm">Every measurement this chain used, with when it was taken.</Body>
+              <dl className="swarmops-diagnosis__trail">
+                {chain.evidence.map((item, index) => (
+                  <div key={`${item.source}-${index}`}>
+                    <dt>{item.label}<span>{item.source}</span></dt>
+                    <dd><Mono>{age(item.observedAt)}</Mono></dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
+        </aside>
+        </div>
       </Panel>
     )
   }

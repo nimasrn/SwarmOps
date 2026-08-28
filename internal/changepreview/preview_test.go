@@ -145,3 +145,40 @@ func TestUnknownsAreNeverEmpty(t *testing.T) {
 		t.Fatalf("a preview that promises everything is lying: %+v", p.Unknowns)
 	}
 }
+
+// The diff shows the image moving and everything else holding still. An
+// operator approving a deploy is checking that nothing ELSE changed, so the
+// context lines are the substance rather than decoration.
+func TestDiffShowsTheImageMovingAndTheRestHolding(t *testing.T) {
+	service := svc(3, domain.UpdatePolicy{Known: true, Parallelism: 1})
+	service.Constraints = []string{"node.labels.tier==edge"}
+	p := ForImageChange(service, "ghcr.io/nimasrn/api-gateway:9f2c1ab", nil)
+
+	var removed, added int
+	for _, line := range p.Diff {
+		if line.Kind == "removed" {
+			removed++
+			if !strings.Contains(line.Text, "7c41b8e") {
+				t.Fatalf("the removed line must be the old image: %q", line.Text)
+			}
+		}
+		if line.Kind == "added" {
+			added++
+			if !strings.Contains(line.Text, "9f2c1ab") {
+				t.Fatalf("the added line must be the new image: %q", line.Text)
+			}
+		}
+	}
+	if removed != 1 || added != 1 {
+		t.Fatalf("exactly one line moves; got %d removed and %d added", removed, added)
+	}
+	joined := ""
+	for _, line := range p.Diff {
+		joined += line.Text + "\n"
+	}
+	for _, want := range []string{"replicas: 3", "node.labels.tier==edge", "parallelism 1"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("context is missing %q — the reader cannot confirm it held still:\n%s", want, joined)
+		}
+	}
+}

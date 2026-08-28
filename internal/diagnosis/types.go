@@ -75,6 +75,19 @@ type Action struct {
 	Primary bool `json:"primary,omitempty"`
 }
 
+// Elsewhere is what reaching the same answer costs on Kubernetes.
+//
+// It belongs to the rule rather than the console because it is a claim about
+// the failure, not a decoration: a different failure takes a different number
+// of commands, and a fixed list on the page would be marketing.
+type Elsewhere struct {
+	// Commands are the steps, in order, the last of which is usually the one
+	// that requires judgement rather than a query.
+	Commands []string `json:"commands"`
+	// Note names what the final step actually demands of the operator.
+	Note string `json:"note,omitempty"`
+}
+
 // Chain is a complete diagnosis.
 type Chain struct {
 	// Rule names which rule produced this, so a wrong answer is traceable to
@@ -83,6 +96,12 @@ type Chain struct {
 	Subject string   `json:"subject"`
 	Links   []Link   `json:"links"`
 	Actions []Action `json:"actions,omitempty"`
+	// Elsewhere is the same answer's cost on Kubernetes, where it is known.
+	Elsewhere *Elsewhere `json:"elsewhere,omitempty"`
+	// Evidence is every measurement this chain used, gathered for the trail
+	// beside it — the same readings the links carry, listed so their ages can
+	// be read together rather than one link at a time.
+	Evidence []Evidence `json:"evidence,omitempty"`
 	// Caveats are what this diagnosis cannot see. Always populated where a
 	// genuine blind spot exists; the console renders them on hatched ground.
 	Caveats []string `json:"caveats,omitempty"`

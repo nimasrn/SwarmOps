@@ -90,6 +90,15 @@ func (e *Engine) Diagnose(f Facts) Result {
 	}
 	for _, r := range e.rules {
 		if chain := r.Evaluate(f); chain != nil {
+			// The trail is derived from the links rather than assembled
+			// separately, so it cannot list a measurement the chain did not
+			// actually use — which would be the trail quietly lying about the
+			// reasoning it claims to document.
+			for _, link := range chain.Links {
+				if link.Evidence != nil {
+					chain.Evidence = append(chain.Evidence, *link.Evidence)
+				}
+			}
 			return Result{Chain: chain}
 		}
 	}

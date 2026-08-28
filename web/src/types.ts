@@ -1044,6 +1044,14 @@ export interface DiagnosisAction {
   primary?: boolean
 }
 
+/** What reaching the same answer costs on Kubernetes. Carried by the rule
+ *  rather than the page, because a different failure costs a different number
+ *  of steps — a fixed list would be marketing. */
+export interface DiagnosisElsewhere {
+  commands: string[]
+  note?: string
+}
+
 export interface DiagnosisChain {
   /** Which rule produced this, so a wrong answer is traceable to the rule that
    *  made it rather than to "the engine". */
@@ -1051,6 +1059,10 @@ export interface DiagnosisChain {
   subject: string
   links: DiagnosisLink[]
   actions?: DiagnosisAction[]
+  elsewhere?: DiagnosisElsewhere
+  /** Every measurement the chain used, derived from its own links so the trail
+   *  cannot document reasoning that did not happen. */
+  evidence?: DiagnosisEvidence[]
   caveats?: string[]
 }
 
@@ -1109,12 +1121,21 @@ export interface PreviewConsequence {
   tone?: 'caution' | 'good' | 'neutral'
 }
 
+export interface PreviewDiffLine {
+  kind: 'added' | 'context' | 'removed'
+  text: string
+}
+
 export interface ChangePreview {
   service: string
   from?: string
   to?: string
   consequences: PreviewConsequence[]
   steps: PreviewStep[]
+  /** The spec change itself, computed server-side: what moved is a fact about
+   *  the cluster, and a client deriving it could disagree with the
+   *  consequences listed beside it. */
+  diff: PreviewDiffLine[]
   /** What happens when a step fails, read from the service's own failure
    *  action rather than assumed. */
   rollback: string

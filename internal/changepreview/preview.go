@@ -37,6 +37,15 @@ type Consequence struct {
 	Tone string `json:"tone,omitempty"`
 }
 
+// DiffLine is one line of the spec change, in the shape the console's Diff
+// component renders. Computed here rather than in the browser: what changed is
+// a fact about the cluster, and a client that derived it could disagree with
+// the consequences listed beside it.
+type DiffLine struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
 // Preview is the whole answer.
 type Preview struct {
 	Service      string        `json:"service"`
@@ -47,6 +56,9 @@ type Preview struct {
 	// Rollback states what happens when a step fails, read from the service's
 	// own failure action rather than assumed.
 	Rollback string `json:"rollback"`
+	// Diff is the spec change itself, so the reader can see what moved rather
+	// than only what it will cost.
+	Diff []DiffLine `json:"diff"`
 	// Unknowns are what this preview cannot promise. Always populated: there is
 	// always at least one, because whether a new image starts cleanly is only
 	// knowable by running it.
@@ -114,6 +126,7 @@ func ForImageChange(service domain.Service, newImage string, stackPeers []domain
 		})
 	}
 
+	p.Diff = specDiff(service, newImage)
 	p.Steps = steps(service, newImage, replicas, parallelism)
 	p.Rollback = rollback(service)
 	p.Unknowns = []string{
@@ -125,6 +138,29 @@ func ForImageChange(service domain.Service, newImage string, stackPeers []domain
 			"This service declares no update policy, so Docker's defaults apply. The sequence below is those defaults, not a configuration anyone chose.")
 	}
 	return p
+}
+
+// specDiff renders the change as context, removal and addition. Only the image
+// line actually moves — everything else is context, and showing it is the
+// point: an operator approving a deploy is checking that nothing ELSE changed.
+func specDiff(service domain.Service, newImage string) []DiffLine {
+	out := []DiffLine{
+		{Kind: "context", Text: "services:"},
+		{Kind: "context", Text: "  " + service.Name + ":"},
+		{Kind: "removed", Text: "    image: " + service.Image},
+		{Kind: "added", Text: "    image: " + newImage},
+	}
+	if service.DesiredTasks > 0 {
+		out = append(out, DiffLine{Kind: "context", Text: fmt.Sprintf("    deploy:")})
+		out = append(out, DiffLine{Kind: "context", Text: fmt.Sprintf("      replicas: %d", service.DesiredTasks)})
+	}
+	for _, constraint := range service.Constraints {
+		out = append(out, DiffLine{Kind: "context", Text: "      placement: " + constraint})
+	}
+	if service.Update.Known {
+		out = append(out, DiffLine{Kind: "context", Text: fmt.Sprintf("      update: parallelism %d", service.Update.Parallelism)})
+	}
+	return out
 }
 
 func replacementNote(replicas, parallelism uint64, known bool) string {

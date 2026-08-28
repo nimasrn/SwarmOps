@@ -71,6 +71,15 @@ func (r constraintUnsatisfiable) Evaluate(f Facts) *Chain {
 			{Kind: "edit-constraint", Label: "Relax the constraint", Detail: "Edit the service's placement rule so an existing node can satisfy it.", Primary: true},
 			{Kind: "label-node", Label: "Label a node to match", Detail: "Add the required label to a node that should carry this workload."},
 		},
+		Elsewhere: &Elsewhere{
+			Commands: []string{
+				"kubectl get pods -l app=" + f.Service.Name,
+				"kubectl describe pod <name>",
+				"kubectl get events --sort-by=.lastTimestamp",
+				"kubectl get nodes --show-labels",
+			},
+			Note: "The last step is a comparison you do in your head: the pod's nodeSelector against every node's labels.",
+		},
 		Caveats: []string{
 			"This checks labels, role, hostname and id. A constraint using any other expression is not evaluated here, and the engine declines rather than guessing at it.",
 		},
@@ -148,6 +157,17 @@ func (r nodeCannotHoldImage) Evaluate(f Facts) *Chain {
 			{Kind: "prune", Label: "Reclaim space on " + roomiest.Hostname, Detail: "Prune images no running or desired task references. The run is recorded in the audit trail.", Primary: true},
 			{Kind: "reschedule", Label: "Place on another node", Detail: "Move this workload to a node with more room."},
 		},
+		Elsewhere: &Elsewhere{
+			Commands: []string{
+				"kubectl get pods -l app=" + f.Service.Name,
+				"kubectl describe pod <name>",
+				"kubectl get events --sort-by=.lastTimestamp",
+				"kubectl describe node " + roomiest.Hostname,
+				"ssh " + roomiest.Hostname + " df -h",
+				"# then compare free space against the image size by hand",
+			},
+			Note: "The last two leave the cluster entirely: node capacity does not include image size, so the comparison is done off-cluster.",
+		},
 		Caveats: append([]string{
 			"Disk is the only capacity checked here. A pull can also fail on registry authentication, which cannot be tested without attempting it.",
 		}, probeCaveat(f)...),
@@ -205,6 +225,14 @@ func (r taskFailing) Evaluate(f Facts) *Chain {
 		Links:   links,
 		Actions: []Action{
 			{Kind: "logs", Label: "Read this task's logs", Detail: "The container's own output is the only thing that says why it exited.", Primary: true},
+		},
+		Elsewhere: &Elsewhere{
+			Commands: []string{
+				"kubectl get pods -l app=" + f.Service.Name,
+				"kubectl describe pod <name>",
+				"kubectl logs <name> --previous",
+			},
+			Note: "--previous is the step people forget: without it you read the logs of the container that has not failed yet.",
 		},
 		Caveats: []string{
 			"SwarmOps reports the error the scheduler recorded. Why the process exited is in the container's logs, which this chain does not read or interpret.",

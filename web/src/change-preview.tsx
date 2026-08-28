@@ -4,6 +4,7 @@ import {
   Body,
   Button,
   Caveat,
+  Diff,
   Input,
   Label,
   Mono,
@@ -29,7 +30,18 @@ function Consequence({ item }: { item: PreviewConsequence }) {
   )
 }
 
-export function ChangePreviewPanel({ serviceID, currentImage }: { serviceID: string; currentImage?: string }) {
+export function ChangePreviewPanel({
+  currentImage,
+  onApply,
+  serviceID,
+}: {
+  currentImage?: string
+  /** Applying is the owning screen's job. This panel exists so the decision
+   *  can be made, and handing the action outward keeps it from becoming a
+   *  second place that queues deploys. */
+  onApply?: (image: string) => void
+  serviceID: string
+}) {
   const [image, setImage] = useState(currentImage ?? '')
   const [preview, setPreview] = useState<Preview | null>(null)
   const [error, setError] = useState('')
@@ -86,11 +98,28 @@ export function ChangePreviewPanel({ serviceID, currentImage }: { serviceID: str
               </ol>
             </div>
 
+            {preview.diff?.length ? (
+              <Diff
+                caption={`${preview.service} · ${preview.from ?? '—'} → ${preview.to ?? '—'}`}
+                lines={preview.diff}
+              />
+            ) : null}
+
             <Banner title="If a step fails" tone="neutral">{preview.rollback}</Banner>
 
             <Caveat title="What this preview cannot promise">
               {preview.unknowns.map((line) => <p key={line}>{line}</p>)}
             </Caveat>
+
+            <div className="swarmops-preview__decide">
+              <Body size="sm">This preview is recorded whether or not you apply it.</Body>
+              <div>
+                <Button onClick={() => setPreview(null)} variant="secondary">Discard</Button>
+                <Button onClick={() => onApply?.(image)} variant="accent">
+                  Apply — {preview.consequences.find((c) => c.label === 'Tasks replaced')?.value ?? ''} tasks
+                </Button>
+              </div>
+            </div>
           </>
         ) : null}
       </Rows>

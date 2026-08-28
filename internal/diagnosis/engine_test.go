@@ -191,3 +191,69 @@ func TestEveryRuleIsNamedAndEveryChainCarriesItsRule(t *testing.T) {
 		}
 	}
 }
+
+// The trail must be derived from the links, never assembled separately: a
+// trail listing a measurement the chain did not use would be documenting
+// reasoning that did not happen.
+func TestEvidenceTrailIsExactlyWhatTheLinksUsed(t *testing.T) {
+	f := baseFacts()
+	f.Constraints = []string{"node.labels.tier==gpu"}
+	got := NewEngine().Diagnose(f)
+	if got.Chain == nil {
+		t.Fatal("expected a chain")
+	}
+	linkEvidence := 0
+	for _, link := range got.Chain.Links {
+		if link.Evidence != nil {
+			linkEvidence++
+		}
+	}
+	if len(got.Chain.Evidence) != linkEvidence {
+		t.Fatalf("trail has %d entries for %d evidenced links", len(got.Chain.Evidence), linkEvidence)
+	}
+	for i, e := range got.Chain.Evidence {
+		if e.Label == "" || e.Source == "" {
+			t.Fatalf("trail entry %d is unattributed: %+v", i, e)
+		}
+	}
+}
+
+// The comparison belongs to the rule. A fixed list on the page would be
+// marketing; a different failure genuinely costs a different number of steps.
+func TestEachRuleStatesWhatTheSameAnswerCostsElsewhere(t *testing.T) {
+	cases := []struct {
+		name  string
+		facts func() Facts
+	}{
+		{"constraint", func() Facts { f := baseFacts(); f.Constraints = []string{"node.labels.tier==gpu"}; return f }},
+		{"disk", func() Facts {
+			f := baseFacts()
+			f.Nodes = []domain.Node{node("worker-03", "n3", nil, 1.4e9, 40e9, true)}
+			f.ImageBytes, f.ImageKnown = 2.1e9, true
+			return f
+		}},
+		{"failing", func() Facts {
+			f := baseFacts()
+			f.Tasks = []domain.Task{{ID: "t3", NodeID: "n1", DesiredState: "running", Error: "non-zero exit"}}
+			return f
+		}},
+	}
+	seen := map[string]bool{}
+	for _, tc := range cases {
+		got := NewEngine().Diagnose(tc.facts())
+		if got.Chain == nil {
+			t.Fatalf("%s: expected a chain", tc.name)
+		}
+		if got.Chain.Elsewhere == nil || len(got.Chain.Elsewhere.Commands) == 0 {
+			t.Fatalf("%s: no comparison stated", tc.name)
+		}
+		if got.Chain.Elsewhere.Note == "" {
+			t.Fatalf("%s: the comparison must say what the final step demands", tc.name)
+		}
+		key := strings.Join(got.Chain.Elsewhere.Commands, "|")
+		if seen[key] {
+			t.Fatalf("%s: reused another rule's command list — then it is not a claim about this failure", tc.name)
+		}
+		seen[key] = true
+	}
+}
