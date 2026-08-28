@@ -11,6 +11,17 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.3 — 2026-08-28
+
+This patch makes every native Core access path enforce the same bounded client
+network policy before a configuration can reach systemd.
+
+- **Consistent access validation** — the installer and `access set-cidrs`
+  command now reject IPv4 and IPv6 catch-all networks just as Core startup does.
+- **Safe production migration** — existing unrestricted installations can be
+  narrowed transactionally; certificate-IP and loopback access are preserved,
+  readiness is checked, and a failed restart restores the previous policy.
+
 ## 0.7.2 — 2026-08-28
 
 This patch restores direct Warden upgrades from every supported pre-0.7 Core

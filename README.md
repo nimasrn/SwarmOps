@@ -277,7 +277,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current version is `0.7.2`. Release history is in
+The current version is `0.7.3`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).

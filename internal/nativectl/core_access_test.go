@@ -22,7 +22,7 @@ func TestSetCoreAllowedCIDRsPreservesCertificateAndLoopbackAccess(t *testing.T) 
 	environmentFile := writeCoreAccessFixture(t)
 	var readyURL string
 	restarts := 0
-	updated, err := SetCoreAllowedCIDRs(context.Background(), environmentFile, []string{"0.0.0.0/0", "2001:db8:1234::99/48", "0.0.0.0/0"}, CoreAccessHooks{
+	updated, err := SetCoreAllowedCIDRs(context.Background(), environmentFile, []string{"198.51.100.8/32", "2001:db8:1234::99/48", "198.51.100.8/32"}, CoreAccessHooks{
 		Restart: func(context.Context) error { restarts++; return nil },
 		Ready: func(_ context.Context, value string) error {
 			readyURL = value
@@ -32,7 +32,7 @@ func TestSetCoreAllowedCIDRsPreservesCertificateAndLoopbackAccess(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(updated, ",") != "0.0.0.0/0,2001:db8:1234::/48" {
+	if strings.Join(updated, ",") != "198.51.100.8/32,2001:db8:1234::/48" {
 		t.Fatalf("updated operator CIDRs = %v", updated)
 	}
 	if restarts != 1 {
@@ -45,7 +45,7 @@ func TestSetCoreAllowedCIDRsPreservesCertificateAndLoopbackAccess(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "SWARMOPS_ALLOWED_CLIENT_CIDRS=0.0.0.0/0,2001:db8:1234::/48,109.122.247.57/32,127.0.0.1/32\n") {
+	if !strings.Contains(string(data), "SWARMOPS_ALLOWED_CLIENT_CIDRS=198.51.100.8/32,2001:db8:1234::/48,109.122.247.57/32,127.0.0.1/32\n") {
 		t.Fatalf("updated environment:\n%s", data)
 	}
 	info, err := os.Stat(environmentFile)
@@ -96,7 +96,22 @@ func TestSetCoreAllowedCIDRsRejectsUnspecifiedHostPrefix(t *testing.T) {
 		Restart: func(context.Context) error { restarts++; return nil },
 		Ready:   func(context.Context, string) error { return nil },
 	})
-	if err == nil || !strings.Contains(err.Error(), "use 0.0.0.0/0") {
+	if err == nil || !strings.Contains(err.Error(), "specific trusted IPv4 network") {
+		t.Fatalf("error = %v", err)
+	}
+	if restarts != 0 {
+		t.Fatalf("restart count = %d, want 0", restarts)
+	}
+}
+
+func TestSetCoreAllowedCIDRsRejectsUnrestrictedNetwork(t *testing.T) {
+	environmentFile := writeCoreAccessFixture(t)
+	restarts := 0
+	_, err := SetCoreAllowedCIDRs(context.Background(), environmentFile, []string{"0.0.0.0/0"}, CoreAccessHooks{
+		Restart: func(context.Context) error { restarts++; return nil },
+		Ready:   func(context.Context, string) error { return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "must not permit every address") {
 		t.Fatalf("error = %v", err)
 	}
 	if restarts != 0 {

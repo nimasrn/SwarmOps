@@ -32,7 +32,7 @@ const (
 	provisionTimeout = 50 * time.Minute
 )
 
-var version = "0.7.2"
+var version = "0.7.3"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {

@@ -124,11 +124,14 @@ func normalizeOperatorCIDRs(requested []string) ([]string, error) {
 			return nil, fmt.Errorf("invalid operator CIDR %q: %w", value, err)
 		}
 		prefix = prefix.Masked()
+		if prefix.Bits() == 0 {
+			return nil, errors.New("operator CIDRs must not permit every address; use a specific trusted network")
+		}
 		if prefix.Addr().IsUnspecified() && prefix.Bits() != 0 {
 			if prefix.Addr().Is4() {
-				return nil, errors.New("0.0.0.0/32 permits only the unspecified address; use 0.0.0.0/0 for every IPv4 client")
+				return nil, errors.New("0.0.0.0/32 permits only the unspecified address; use a specific trusted IPv4 network")
 			}
-			return nil, errors.New("::/128 permits only the unspecified address; use ::/0 for every IPv6 client")
+			return nil, errors.New("::/128 permits only the unspecified address; use a specific trusted IPv6 network")
 		}
 		normalized = appendUnique(normalized, prefix.String())
 	}

@@ -360,11 +360,14 @@ validate_allowed_cidr() {
     maximum=32
   fi
   ((prefix >= 0 && prefix <= maximum)) || fail '--allow-cidr prefix length is outside the valid range'
+  if [[ "$prefix" == 0 ]]; then
+    fail '--allow-cidr must not permit every address; use a specific trusted operator network'
+  fi
   if [[ "$address" == 0.0.0.0 && "$prefix" != 0 ]]; then
-    fail '0.0.0.0/32 permits only the unspecified address; use 0.0.0.0/0 for every IPv4 client'
+    fail '0.0.0.0/32 permits only the unspecified address; use a specific trusted IPv4 network'
   fi
   if [[ "$address" == :: && "$prefix" != 0 ]]; then
-    fail '::/128 permits only the unspecified address; use ::/0 for every IPv6 client'
+    fail '::/128 permits only the unspecified address; use a specific trusted IPv6 network'
   fi
   ip route get "$address" >/dev/null 2>&1 || fail '--allow-cidr must contain a valid IPv4 or IPv6 address'
 }
