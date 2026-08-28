@@ -94,7 +94,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
     try {
       setHealth(await api.requestAgentUpdate(server.id))
       await onRefreshServers()
-      toast({ message: 'Core requested the server’s local agent update check', tone: 'success' })
+      toast({ message: 'The controller requested the server’s local agent update check', tone: 'success' })
     } catch (reason) {
       setError(messageOf(reason))
     } finally {
@@ -132,7 +132,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
           <Metric hint={current?.detail || 'No authenticated probe has completed yet.'} icon="activity" label="Agent health" tone={metricTone(state)} value={statusLabel(state, current?.summary)} />
           <Metric hint={current?.protocolVersion ? `Machine API protocol ${current.protocolVersion}` : 'The server has not reported its fixed agent protocol yet.'} icon="server" label="Agent version" tone={current?.agentVersion ? 'success' : 'neutral'} value={current?.agentVersion || 'Unknown'} />
           <Metric hint={current?.lastReachableAt ? `Last reachable ${formatDateTime(current.lastReachableAt)}` : 'No successful authenticated probe has been retained.'} icon="clock" label="Last probe" tone={current?.lastReachableAt ? 'success' : 'warning'} value={current?.lastReachableAt ? formatDateTime(current.lastReachableAt) : 'No response'} />
-          <Metric hint={update?.automatic ? 'A trusted local Git check runs every six hours even if Core is unavailable.' : 'Automatic updates are not configured on this agent.'} icon="refresh" label="Automatic updates" tone={update?.automatic ? 'success' : 'neutral'} value={update?.state ? update.state.replace('_', ' ') : update?.automatic ? 'Scheduled' : 'Not configured'} />
+          <Metric hint={update?.automatic ? 'A trusted local Git check runs every six hours even if the controller is unavailable.' : 'Automatic updates are not configured on this agent.'} icon="refresh" label="Automatic updates" tone={update?.automatic ? 'success' : 'neutral'} value={update?.state ? update.state.replace('_', ' ') : update?.automatic ? 'Scheduled' : 'Not configured'} />
         </MetricGrid>
         <Panel title="Safe connection evidence">
           <Facts items={[
@@ -146,7 +146,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
         </Panel>
         {compatibilityIssue ? (
           <Banner title="This agent needs a one-time manual upgrade" tone="warning">
-            The core reached the server, but this older agent does not have the fixed update endpoint. Run the current one-command installer once on that server. It preserves the existing API key on reinstall and enables future automatic updates.
+            The controller reached the server, but this older agent does not have the fixed update endpoint. Run the current one-command installer once on that server. It preserves the existing API key on reinstall and enables future automatic updates.
             <Rows gap="tight">
               <Body size="sm">Use one of these commands:</Body>
               <CodeBlock label="Linux" wrap>{agentUpgradeCommand('linux')}</CodeBlock>
@@ -156,7 +156,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
         ) : null}
         <Panel title="Update policy">
           <Rows gap="tight">
-            <Body size="sm">When the core can reach a current agent, it asks the server to run its own trusted Git check. When it cannot, the server’s local timer performs the same check. No browser or core request can supply a repository, branch, command, or binary.</Body>
+            <Body size="sm">When the controller can reach a current agent, it asks the server to run its own trusted Git check. When it cannot, the server’s local timer performs the same check. No browser or controller request can supply a repository, branch, command, or binary.</Body>
             <Inline>
               <Button disabled={!update?.automatic || compatibilityIssue || state === 'unhealthy' || updating} iconStart="refresh" loading={updating} onClick={() => void requestUpdate()} variant="accent">Check and update agent</Button>
               <Body size="sm">{compatibilityIssue ? 'Manual one-time upgrade required' : update?.automatic ? `Last requested ${formatDateTime(update.requestedAt)}` : 'Automatic updates are disabled on this server'}</Body>
@@ -164,7 +164,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
           </Rows>
         </Panel>
         <Panel title="Agent event history">
-          {events.length ? <List plain>{events.map((event) => <ListRow key={`${event.source}-${event.occurredAt}-${event.code}`} leading={<Icon name={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'alert' : 'activity'} size="sm" tone={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'warning' : 'accent'} />} subtitle={`${event.source === 'core' ? 'Core observation' : 'Machine agent'} · ${formatDateTime(event.occurredAt)}`} title={event.message} trailing={<Mono>{event.code}</Mono>} />)}</List> : <Body size="sm">No safe event has been retained yet. Refresh diagnostics after the agent completes an authenticated probe.</Body>}
+          {events.length ? <List plain>{events.map((event) => <ListRow key={`${event.source}-${event.occurredAt}-${event.code}`} leading={<Icon name={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'alert' : 'activity'} size="sm" tone={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'warning' : 'accent'} />} subtitle={`${event.source === 'core' ? 'Controller observation' : 'Machine agent'} · ${formatDateTime(event.occurredAt)}`} title={event.message} trailing={<Mono>{event.code}</Mono>} />)}</List> : <Body size="sm">No safe event has been retained yet. Refresh diagnostics after the agent completes an authenticated probe.</Body>}
         </Panel>
       </>}
     </Page>

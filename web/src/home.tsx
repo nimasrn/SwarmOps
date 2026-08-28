@@ -115,7 +115,7 @@ export function HomePage({
 
       <Columns template="two-fifths">
         <StatusHero
-          description={healthy ? 'All systems operational' : cluster ? `${attention.length} issue${attention.length === 1 ? '' : 's'} require review.` : 'Core is active; select a Swarm manager to begin cluster inspection.'}
+          description={healthy ? 'All systems operational' : cluster ? `${attention.length} issue${attention.length === 1 ? '' : 's'} require review.` : 'The controller is active; select a Swarm manager to begin cluster inspection.'}
           icon={healthy ? 'check' : attention.length ? 'alert' : 'activity'}
           title={healthy ? 'Cluster is healthy' : attention.length ? 'Cluster needs attention' : 'Connect a cluster'}
           tone={healthy ? 'success' : attention.length ? 'warning' : 'accent'}
@@ -124,7 +124,7 @@ export function HomePage({
           {attention.length ? <Table columns={[
             { header: 'Resource', key: 'resource', render: (item: AttentionItem) => <StatusDot tone={item.tone}>{item.label}</StatusDot> },
             { header: 'Diagnosis', key: 'detail', render: (item: AttentionItem) => item.detail },
-          ]} rowKey={(item) => item.id} rows={attention.slice(0, 3)} /> : <Body size="sm" tone="muted">No current Core, agent, cluster, or command issue needs operator attention.</Body>}
+          ]} rowKey={(item) => item.id} rows={attention.slice(0, 3)} /> : <Body size="sm" tone="muted">No current controller, agent, cluster, or command issue needs operator attention.</Body>}
         </Panel>
       </Columns>
 
@@ -175,7 +175,7 @@ export function HomePage({
 
       <Panel title="Platform status">
         <Facts items={[
-          { label: 'Core identity', mono: true, value: activeCore?.name ?? core.localId },
+          { label: 'Controller identity', mono: true, value: activeCore?.name ?? core.localId },
           { label: 'Traefik', value: cluster ? serviceState(cluster.traefik.service?.health) : 'Not observed' },
           { label: 'Prometheus + Jaeger', value: cluster ? installedState(cluster.observability.coreInstalled, cluster.observability.coreHealthy) : 'Not observed' },
           { label: 'Fluentd', value: cluster ? installedState(cluster.observability.logsEnabled, cluster.observability.logsHealthy) : 'Not observed' },
@@ -187,10 +187,10 @@ export function HomePage({
 
 function attentionItems(core: CoreTopology, cluster: HomeClusterData | undefined, servers: Server[], commands: Command[]): AttentionItem[] {
   const items: AttentionItem[] = []
-  if (!core.controlEnabled) items.push({ detail: 'Mutations are fenced until this Core owns the active authority epoch.', id: 'core-fenced', label: 'Core is read-only', tone: 'warning' })
+  if (!core.controlEnabled) items.push({ detail: 'Mutations are fenced until this controller owns the active authority epoch.', id: 'core-fenced', label: 'Controller is read-only', tone: 'warning' })
   if (!cluster) items.push({ detail: 'Select a connected Swarm manager to resume cluster reads and operations.', id: 'manager-missing', label: 'Cluster manager is not connected', tone: 'warning' })
   for (const server of servers.filter((candidate) => candidate.connectionState !== 'connected' || candidate.agentHealth?.state === 'unhealthy').slice(0, 2)) {
-    items.push({ detail: server.agentHealth?.summary ?? 'The agent cannot currently be reached by Core.', id: `server-${server.id}`, label: `${server.name} needs connectivity review`, tone: 'danger' })
+    items.push({ detail: server.agentHealth?.summary ?? 'The agent cannot currently be reached by the controller.', id: `server-${server.id}`, label: `${server.name} needs connectivity review`, tone: 'danger' })
   }
   for (const command of commands.filter((candidate) => candidate.state === 'needs_attention' || candidate.state === 'failed').slice(0, 2)) {
     items.push({ detail: `${command.action} on ${command.target || command.nodeId} stopped in ${stateLabel(command.state).toLowerCase()}.`, id: `command-${command.id}`, label: 'Operation needs attention', tone: 'danger' })

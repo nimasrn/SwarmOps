@@ -11,6 +11,19 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.6 — 2026-08-28
+
+This patch closes two safety and language gaps found during the authenticated
+production walkthrough.
+
+- **Truthful gateway status** — the panel now says that no SwarmOps-managed
+  gateway is present without claiming host-native or Docker Compose proxies are
+  absent, and the install review explicitly requires checking HTTP/HTTPS port
+  ownership first.
+- **Consistent controller language** — control-plane recovery, enrollment,
+  diagnostics, and overview copy now use “controller” instead of exposing the
+  internal Core implementation term.
+
 ## 0.7.5 — 2026-08-28
 
 This patch makes automatic Core updates schedule correctly even when the

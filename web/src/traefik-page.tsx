@@ -123,13 +123,13 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
     <Page>
       <DetailHeader
         actions={<Inline>{!installed ? <Button onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : <Button onClick={() => setTab('routes')} variant="accent">Add route</Button>}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button><Button onClick={() => setTab('dns')} variant="secondary">Configure gateway</Button><Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
-        status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not installed' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
+        status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not managed by SwarmOps' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
         title="Gateway, routes & DNS"
       />
       <Banner title="What lives here" tone="info">Install and operate the Traefik gateway, publish application routes, configure listening ports, issue TLS certificates, and manage Cloudflare or ArvanCloud DNS access. Provider credentials are under Gateway configuration—not under entrypoints.</Banner>
       {tab !== 'overview' ? (!installed ? (
-        <Banner title="Traefik is not installed on this cluster" tone="info">
-          Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. Stored routing declarations are preserved and do not imply that a gateway is running.
+        <Banner title="No SwarmOps-managed Traefik is installed" tone="info">
+          Runtime routes, access logs, certificates, and Prometheus targets remain empty until the reviewed Traefik stack is deployed. SwarmOps does not claim that host-native or Docker Compose gateways are absent; check the selected host before installing.
         </Banner>
       ) : (
         <Banner title="One gateway, one accepted failure domain" tone="warning">
@@ -147,7 +147,8 @@ export function TraefikControlPage({ status, toast }: { status: TraefikStatus; t
       <Sheet closeLabel="Close gateway installation" onClose={() => { setInstallOpen(false); setInstallConfirmation('') }} open={installOpen} title="Install Traefik gateway">
         <Rows>
           <Body size="sm">SwarmOps will deploy its reviewed singleton Traefik stack on the selected manager. Routes, certificates, access logs, and metrics become available after the run succeeds.</Body>
-          <Facts columns={1} items={[{ label: 'Target', value: 'Selected Swarm manager' }, { label: 'Result', value: 'One Traefik gateway service managed by SwarmOps' }, { label: 'Impact', value: 'Publishes configured gateway ports; existing services are not changed.' }]} />
+          <Banner title="Check for an existing gateway first" tone="warning">SwarmOps detects its own Swarm service, but not host-native or Docker Compose proxies. Do not continue if another process already binds the configured HTTP or HTTPS ports.</Banner>
+          <Facts columns={1} items={[{ label: 'Target', value: 'Selected Swarm manager' }, { label: 'Result', value: 'One Traefik gateway service managed by SwarmOps' }, { label: 'Impact', value: 'Publishes configured gateway ports. A port conflict prevents the new gateway from starting; existing services are not replaced.' }]} />
           <Input hint="Type DEPLOY_TRAEFIK exactly." label="Confirmation" onChange={(event) => setInstallConfirmation(event.target.value)} placeholder="DEPLOY_TRAEFIK" value={installConfirmation} />
           <Inline><Button disabled={installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
         </Rows>

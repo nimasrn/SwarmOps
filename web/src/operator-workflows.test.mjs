@@ -39,6 +39,18 @@ test('gateway and source dead ends have explicit setup actions', async () => {
   const [gateway, sourceDeploy] = await Promise.all([source('traefik-page.tsx'), source('source-deploy.tsx')])
   assert.match(gateway, />Install gateway<\/Button>/)
   assert.match(gateway, /Cloudflare and ArvanCloud/)
+  assert.match(gateway, /Not managed by SwarmOps/)
+  assert.match(gateway, /host-native or Docker Compose proxies/)
+  assert.match(gateway, /another process already binds the configured HTTP or HTTPS ports/)
   assert.match(sourceDeploy, />Configure source deployment<\/Button>/)
   assert.match(sourceDeploy, /Hosted GitHub \/ GitLab/)
+})
+
+test('controller recovery UI does not expose the internal Core name', async () => {
+  const topology = await source('core-topology.tsx')
+  for (const oldLabel of ['Open Core logs', 'Move Core', 'Core identity', 'Core members', 'Install new Core standby']) {
+    assert.doesNotMatch(topology, new RegExp(oldLabel))
+  }
+  assert.match(topology, /title="Controller"/)
+  assert.match(topology, /Controller members/)
 })

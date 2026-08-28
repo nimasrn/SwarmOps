@@ -231,12 +231,12 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
 	useEffect(() => {
 		void api.agentIdentity().then((identity) => {
 			setCoreFingerprint(identity.coreFingerprint ?? '')
-			setIdentityError(identity.coreFingerprint ? '' : 'Core did not publish its TLS fingerprint.')
+			setIdentityError(identity.coreFingerprint ? '' : 'The controller did not publish its TLS fingerprint.')
 		}).catch((reason) => setIdentityError(messageOf(reason)))
 	}, [])
 	const command = coreFingerprint
 		? `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --core-fingerprint '${coreFingerprint}'`
-		: 'Reading the pinned Core identity…'
+		: 'Reading the pinned controller identity…'
   return (
     <main className="swarmops-auth-page">
       <AuthScreen
@@ -247,9 +247,9 @@ function AgentSetupScreen({ onBack }: { onBack: () => void }) {
         title="Connect your first server"
       >
 		<Rows gap="tight">
-		  {identityError ? <Banner title="Pinned Core identity unavailable" tone="danger">{identityError}</Banner> : null}
+		  {identityError ? <Banner title="Pinned controller identity unavailable" tone="danger">{identityError}</Banner> : null}
 		  <CodeBlock label="Ubuntu 22.04 or 24.04" wrap>{command}</CodeBlock>
-		  <Body size="sm">The agent creates its private key locally and waits for approval. It then receives a renewable client certificate and connects to Core with outbound HTTPS long polls. No inbound agent port, SSH access, Docker socket proxy, or long-lived printed key is required.</Body>
+		  <Body size="sm">The agent creates its private key locally and waits for approval. It then receives a renewable client certificate and connects to the controller with outbound HTTPS long polls. No inbound agent port, SSH access, Docker socket proxy, or long-lived printed key is required.</Body>
 		  <TaskProgress steps={[{ id: 'install', label: 'Run the command on the host', status: 'active' }, { id: 'approve', label: 'Sign in and approve its code in Infrastructure → Agents', status: 'pending' }, { id: 'connect', label: 'Watch compatibility and host health appear', status: 'pending' }]} title="Install-first enrollment" />
 		</Rows>
       </AuthScreen>
@@ -278,8 +278,8 @@ function OutboundEnrollmentGuide({ toast }: { toast: ReturnType<typeof useToast>
 	return (
 		<Panel eyebrow="Recommended · outbound HTTPS" title="Install and enroll with one command">
 			<Rows>
-				<Body size="sm">Core creates a short-lived, one-time certificate grant. The Ubuntu agent generates its private key locally, pins this Core, installs as a systemd service, and reconnects through outbound long polls. No inbound agent port or SSH access is required.</Body>
-				{!secureOrigin ? <Banner title="HTTPS is required" tone="warning">Open the production HTTPS Core URL to generate an install command. Loopback HTTP remains available only for local development.</Banner> : null}
+				<Body size="sm">The controller creates a short-lived, one-time certificate grant. The Ubuntu agent generates its private key locally, pins this controller, installs as a systemd service, and reconnects through outbound long polls. No inbound agent port or SSH access is required.</Body>
+				{!secureOrigin ? <Banner title="HTTPS is required" tone="warning">Open the production HTTPS controller URL to generate an install command. Loopback HTTP remains available only for local development.</Banner> : null}
 				<Input hint="Optional. The host name is used when this is empty." label="Agent name" onChange={(event) => setName(event.target.value)} value={name} />
 				<Button disabled={!secureOrigin || pending} loading={pending} onClick={() => void create()} variant="accent">Generate one-time install command</Button>
 				{token ? <><CodeBlock label="Run once on Ubuntu 22.04 or 24.04" wrap>{command}</CodeBlock><Body size="sm">Expires {formatDateTime(token.expiresAt)}. Generate another command if it expires; this code cannot be reused after enrollment.</Body></> : null}
@@ -312,8 +312,8 @@ function StandaloneClaimGuide({ onApproved, toast }: { onApproved: () => Promise
 	return (
 		<Panel eyebrow="Standalone · install first" title="Enter the code printed by the agent">
 			<Rows as="form" onSubmit={approve}>
-				<Body size="sm">Run the installer with the Core certificate pin. The agent keeps its private key and redemption secret, prints a short-lived code, and waits. Approving the code issues the same renewable client certificate as the dashboard-generated flow.</Body>
-				<CodeBlock label="Install first on Ubuntu 22.04 or 24.04" wrap>{coreFingerprint ? `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --core-fingerprint '${coreFingerprint}'` : 'Reading the pinned Core identity…'}</CodeBlock>
+				<Body size="sm">Run the installer with the controller certificate pin. The agent keeps its private key and redemption secret, prints a short-lived code, and waits. Approving the code issues the same renewable client certificate as the dashboard-generated flow.</Body>
+				<CodeBlock label="Install first on Ubuntu 22.04 or 24.04" wrap>{coreFingerprint ? `curl --fail --show-error --location '${AGENT_INSTALL_URL}' | sudo bash -s -- --core '${window.location.origin}' --core-fingerprint '${coreFingerprint}'` : 'Reading the pinned controller identity…'}</CodeBlock>
 				<Input autoComplete="off" hint="Four groups of four characters; expires after 15 minutes." label="Agent enrollment code" onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="ABCD-EFGH-JKLM-NPQR" required value={code} />
 				<Button disabled={pending || code.replaceAll('-', '').length !== 16} loading={pending} type="submit" variant="accent">Approve and enroll agent</Button>
 			</Rows>
