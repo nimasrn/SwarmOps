@@ -13,6 +13,8 @@ import {
   Facts,
   Inline,
   Input,
+  List,
+  ListRow,
   Metric,
   MetricGrid,
   Mono,
@@ -47,6 +49,7 @@ import type {
   RoutingState,
   ServiceRouteRole,
   TraefikSettings,
+  TraefikInstallPreflight,
   TraefikStatus,
 } from './types'
 
@@ -73,6 +76,10 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
   const [installOpen, setInstallOpen] = useState(false)
   const [installConfirmation, setInstallConfirmation] = useState('')
   const [installing, setInstalling] = useState(false)
+  const [installCommand, setInstallCommand] = useState<Command | null>(null)
+  const [installError, setInstallError] = useState('')
+  const [preflight, setPreflight] = useState<TraefikInstallPreflight | null>(null)
+  const [preflightError, setPreflightError] = useState('')
 
   const load = async (refreshRuntime = false) => {
     setError('')
@@ -87,12 +94,15 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
       setState(nextState)
       setRoutes(nextRoutes)
       setCertificates(nextCertificates)
-      const [nextPrometheus, nextCutover] = await Promise.allSettled([
+      const [nextPrometheus, nextCutover, nextPreflight] = await Promise.allSettled([
         api.traefikPrometheus(),
         api.traefikCutoverPlan(),
+        api.traefikPreflight(),
       ])
       setPrometheus(nextPrometheus.status === 'fulfilled' ? nextPrometheus.value : null)
       setCutover(nextCutover.status === 'fulfilled' ? nextCutover.value : null)
+      setPreflight(nextPreflight.status === 'fulfilled' ? nextPreflight.value : null)
+      setPreflightError(nextPreflight.status === 'rejected' ? messageOf(nextPreflight.reason) : '')
     } catch (reason) {
       setError(messageOf(reason))
     } finally {
@@ -107,20 +117,30 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
   const running = status.service?.health === 'healthy'
   const install = async () => {
     setInstalling(true)
+    setInstallError('')
+    setInstallCommand(null)
     try {
       const command = await api.reconcileTraefik(installConfirmation)
       queuedToast(toast, command, 'Gateway installation')
+      setInstallCommand(command)
       setInstallOpen(false)
       setInstallConfirmation('')
-      await load(false)
+      const completed = await api.waitForCommand(command.id, 30000)
+      setInstallCommand(completed)
+      if (completed.state === 'succeeded') {
+        toast({ message: `Gateway installation completed (${completed.id.slice(0, 12)})`, tone: 'success' })
+        await load(true)
+      } else if (commandFailed(completed)) {
+        toast({ message: completed.failureSummary ?? completed.lastError ?? 'Gateway installation needs attention.', tone: 'danger', duration: 0 })
+      }
     } catch (reason) {
-      setError(messageOf(reason))
+      setInstallError(messageOf(reason))
     } finally { setInstalling(false) }
   }
   return (
     <Page>
       <DetailHeader
-        actions={<Inline>{!installed ? <Button onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : tab === 'routes' ? <Button onClick={() => window.location.hash = 'routes'} variant="accent">Add route</Button> : null}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button>{tab !== 'dns' ? <Button onClick={() => window.location.hash = 'dns'} variant="secondary">DNS providers</Button> : null}<Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
+        actions={<Inline>{!installed ? <Button disabled={installing} onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : tab === 'routes' ? <Button onClick={() => window.location.hash = 'routes'} variant="accent">Add route</Button> : null}<Button onClick={() => window.dispatchEvent(new Event('swarmops:open-logs'))} variant="ghost">Open gateway logs</Button>{tab !== 'dns' ? <Button onClick={() => window.location.hash = 'dns'} variant="secondary">DNS providers</Button> : null}<Button disabled={loading || refreshing} loading={refreshing} onClick={() => void load(true)} size="sm" variant="ghost">Refresh</Button></Inline>}
         status={<Badge dot variant={!installed ? 'neutral' : running ? 'success' : 'danger'}>{!installed ? 'Not managed by SwarmOps' : running ? 'Singleton healthy' : 'Singleton unhealthy'}</Badge>}
         subtitle={tab === 'overview' ? 'Install and configure Traefik listening ports and its reviewed singleton runtime.' : tab === 'routes' ? 'Publish explicitly typed HTTP, TCP, or UDP routes for reviewed services.' : tab === 'dns' ? 'Store Cloudflare or ArvanCloud credentials and manage owned DNS records.' : 'Inspect certificate issuance, validation, expiry, and recovery evidence.'}
         title={TAB_TITLE[tab]}
@@ -136,21 +156,51 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
         </Banner>
       )) : null}
       {error ? <Banner title="Routing state unavailable" tone="danger">{error}</Banner> : null}
+      {preflightError ? <Banner title="Installation prerequisites unavailable" tone="danger">{preflightError}</Banner> : null}
+      {!installOpen && installError ? <Banner title="Gateway installation blocked" tone="danger">{installError}</Banner> : null}
+      {installCommand && commandFailed(installCommand) ? (
+        <Banner title="Gateway installation needs attention" tone="danger">
+          <Rows gap="tight">
+            <Body size="sm">{installCommand.failureSummary ?? installCommand.lastError ?? 'SwarmOps could not confirm that Traefik was installed.'}</Body>
+            {installCommand.recoveryHint ? <Body size="sm"><strong>How to recover:</strong> {installCommand.recoveryHint}</Body> : null}
+            <Inline><Mono>{installCommand.id}</Mono><Button onClick={() => window.location.hash = 'commands'} size="sm" variant="secondary">Open run details</Button></Inline>
+          </Rows>
+        </Banner>
+      ) : installCommand && installCommand.state !== 'succeeded' ? (
+        <Banner title="Gateway installation is running" tone="info"><Inline><Body size="sm">Run {installCommand.id.slice(0, 12)} remains {installCommand.state.replaceAll('_', ' ')}.</Body><Button onClick={() => window.location.hash = 'commands'} size="sm" variant="secondary">Open run details</Button></Inline></Banner>
+      ) : null}
       {loading || !state ? <Panel><Rows><Body>Loading the selected manager’s sealed routing state…</Body></Rows></Panel> : null}
-      {!loading && state && tab === 'overview' ? <Rows><TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /><DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /></Rows> : null}
+      {!loading && state && tab === 'overview' ? <Rows>{!installed && preflight ? <TraefikPreflightPanel preflight={preflight} /> : null}<TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /><DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /></Rows> : null}
       {!loading && state && tab === 'routes' ? <RoutesTab cutover={cutover} onQueued={() => void load(false)} routes={routes} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
       {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} scope="dns" state={state} toast={toast} /> : null}
       <Sheet closeLabel="Close gateway installation" onClose={() => { setInstallOpen(false); setInstallConfirmation('') }} open={installOpen} title="Install Traefik gateway">
         <Rows>
           <Body size="sm">SwarmOps will deploy its reviewed singleton Traefik stack on the selected manager. Routes, certificates, access logs, and metrics become available after the run succeeds.</Body>
+          {installError ? <Banner title="Gateway installation blocked" tone="danger">{installError}</Banner> : null}
+          {preflight ? <TraefikPreflightPanel preflight={preflight} /> : <Banner title="Prerequisites not loaded" tone="warning">Refresh Gateway & ports before installing so SwarmOps can verify the selected manager.</Banner>}
           <Banner title="Check for an existing gateway first" tone="warning">SwarmOps detects its own Swarm service, but not host-native or Docker Compose proxies. Do not continue if another process already binds the configured HTTP or HTTPS ports.</Banner>
           <Facts columns={1} items={[{ label: 'Target', value: 'Selected Swarm manager' }, { label: 'Result', value: 'One Traefik gateway service managed by SwarmOps' }, { label: 'Impact', value: 'Publishes configured gateway ports. A port conflict prevents the new gateway from starting; existing services are not replaced.' }]} />
           <Input hint="Type DEPLOY_TRAEFIK exactly." label="Confirmation" onChange={(event) => setInstallConfirmation(event.target.value)} placeholder="DEPLOY_TRAEFIK" value={installConfirmation} />
-          <Inline><Button disabled={installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
+          <Inline><Button disabled={installing || !preflight?.ready || installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
         </Rows>
       </Sheet>
     </Page>
+  )
+}
+
+function TraefikPreflightPanel({ preflight }: { preflight: TraefikInstallPreflight }) {
+  const blockers = preflight.checks.filter((check) => check.required && check.state === 'blocked').length
+  return (
+    <Panel caption={`Certificate challenge: ${preflight.challenge.toUpperCase()}`} title="Installation prerequisites">
+      <Rows gap="tight">
+        <Banner title={preflight.ready ? 'Ready to install' : `${blockers} required item${blockers === 1 ? '' : 's'} incomplete`} tone={preflight.ready ? 'success' : 'warning'}>
+          DNS provider credentials are optional. When no usable Cloudflare or ArvanCloud credential exists, SwarmOps renders HTTP-01 automatically. Wildcard certificates still require DNS-01.
+        </Banner>
+        <List plain>{preflight.checks.map((check) => <ListRow key={check.id} subtitle={`${check.detail}${check.recovery ? ` ${check.recovery}` : ''}`} title={check.label} trailing={<StatusDot tone={check.state === 'ready' ? 'success' : check.state === 'blocked' ? 'danger' : check.state === 'automatic' ? 'accent' : 'neutral'}>{check.state === 'automatic' ? 'Created during install' : check.state}</StatusDot>} />)}</List>
+        {!preflight.ready ? <Inline><Button onClick={() => window.location.hash = 'nodes'} size="sm" variant="secondary">Swarm placement</Button><Button onClick={() => window.location.hash = 'resources'} size="sm" variant="secondary">Docker resources</Button></Inline> : null}
+      </Rows>
+    </Panel>
   )
 }
 
@@ -636,3 +686,7 @@ function dateTime(value?: string) { return value ? new Intl.DateTimeFormat(undef
 function capitalize(value: string) { return value ? `${value[0]?.toUpperCase()}${value.slice(1)}` : value }
 function messageOf(reason: unknown) { return reason instanceof Error ? reason.message : 'The operation failed.' }
 function queuedToast(toast: Toast, command: Command, label: string) { toast({ message: `${label} queued (${command.id.slice(0, 12)})`, tone: 'success' }) }
+
+function commandFailed(command: Command) {
+  return command.state === 'failed' || command.state === 'needs_attention' || command.state === 'superseded' || command.state === 'cancelled'
+}

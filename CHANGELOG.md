@@ -11,6 +11,25 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.9.2 — 2026-08-28
+
+Traefik installation now explains its live prerequisites before queueing and
+uses HTTP-01 automatically when no DNS provider credential exists.
+
+- **Visible installation gate** — Gateway & ports reads the selected manager
+  and lists the external encrypted `traefik` network, `nim.edge=true` manager,
+  dynamic configuration, dashboard-auth secret, ACME email, and compatible
+  agent protocol before enabling installation.
+- **Automatic static configuration** — the checklist distinguishes resources
+  an operator must provide from the immutable static configuration SwarmOps
+  creates during the reviewed reconcile.
+- **HTTP-01 without DNS secrets** — Cloudflare and ArvanCloud credentials are
+  optional. Resolvers fall back to HTTP-01 when neither credential is usable;
+  wildcard certificates remain blocked until DNS-01 credentials exist.
+- **Actionable durable failures** — prerequisite races are rechecked before
+  execution and become bounded, non-secret queue summaries instead of opaque
+  failed runs.
+
 ## 0.9.1 — 2026-08-28
 
 This hotfix restores the native Core command router removed during the 0.8.0

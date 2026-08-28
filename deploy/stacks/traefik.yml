@@ -1,5 +1,6 @@
 # Shared Swarm edge. Deploy first, after creating the external traefik overlay
-# plus versioned Cloudflare DNS-token and ArvanCloud API-key secrets.
+# plus the versioned dashboard-auth secret. SwarmOps adds a provider secret
+# only when that DNS-01 credential exists; otherwise it renders HTTP-01.
 version: "3.9"
 
 services:
@@ -7,9 +8,6 @@ services:
     image: ${TRAEFIK_IMAGE:-traefik:v3.6.13}
     command:
       - --configFile=/etc/traefik/traefik.yml
-    environment:
-      CF_DNS_API_TOKEN_FILE: /run/secrets/traefik_cf_dns_token
-      ARVANCLOUD_API_KEY_FILE: /run/secrets/traefik_arvan_api_key
     ports:
       - target: 80
         published: 80
@@ -28,12 +26,6 @@ services:
       - source: traefik_dynamic
         target: /etc/traefik/dynamic.yml
     secrets:
-      - source: traefik_cf_dns_token
-        target: traefik_cf_dns_token
-        mode: 0400
-      - source: traefik_arvan_api_key
-        target: traefik_arvan_api_key
-        mode: 0400
       - source: traefik_dashboard_auth
         target: traefik_dashboard_auth
         mode: 0400
@@ -99,12 +91,6 @@ configs:
     name: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}
 
 secrets:
-  traefik_cf_dns_token:
-    external: true
-    name: ${TRAEFIK_CF_DNS_TOKEN_SECRET:-traefik_cf_dns_token_v1}
-  traefik_arvan_api_key:
-    external: true
-    name: ${TRAEFIK_ARVAN_API_KEY_SECRET:-traefik_arvan_api_key_v1}
   traefik_dashboard_auth:
     external: true
     name: ${TRAEFIK_DASHBOARD_AUTH_SECRET:-traefik_dashboard_auth_v1}

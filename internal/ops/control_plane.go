@@ -103,9 +103,9 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 	}
 }
 
-// ReconcileTraefik deploys only the checked-in Traefik stack asset. It does
-// not accept routing, DNS, certificate, or secret values from the browser.
-func (c *ControlPlane) ReconcileTraefik(ctx context.Context, actor, requestID, confirmation string) error {
+// ValidateTraefikReconcile checks controller-owned, non-secret installation
+// prerequisites without contacting Docker or mutating routing state.
+func (c *ControlPlane) ValidateTraefikReconcile(confirmation string) error {
 	if !c.Mutations {
 		return fmt.Errorf("cluster mutations are disabled")
 	}
@@ -117,6 +117,40 @@ func (c *ControlPlane) ReconcileTraefik(ctx context.Context, actor, requestID, c
 	}
 	if strings.TrimSpace(c.TraefikStackFile) == "" {
 		return fmt.Errorf("Traefik stack file is not configured")
+	}
+	if c.Routing != nil && validClusterID(c.ServerID) {
+		state, err := c.Routing.Snapshot(c.ServerID)
+		if err != nil {
+			return err
+		}
+		if err := state.Settings.Validate(); err != nil {
+			return err
+		}
+		settings := c.TraefikSettings
+		settings.ACMEEmail = state.Settings.ACMEEmail
+		return settings.Validate()
+	}
+	return c.TraefikSettings.Validate()
+}
+
+// ReconcileTraefik deploys only the checked-in Traefik stack asset. It does
+// not accept routing, DNS, certificate, or secret values from the browser.
+func (c *ControlPlane) ReconcileTraefik(ctx context.Context, actor, requestID, confirmation string) error {
+	if err := c.ValidateTraefikReconcile(confirmation); err != nil {
+		return err
+	}
+	if c.Docker != nil {
+		preflight, err := c.TraefikInstallPreflight(ctx)
+		if err != nil {
+			return err
+		}
+		if !preflight.Ready {
+			for _, check := range preflight.Checks {
+				if check.Required && check.State == "blocked" {
+					return fmt.Errorf("Traefik prerequisite %s is incomplete: %s", check.Label, check.Detail)
+				}
+			}
+		}
 	}
 	raw, err := os.ReadFile(c.TraefikStackFile)
 	if err == nil {

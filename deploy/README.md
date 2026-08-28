@@ -273,11 +273,6 @@ umask 077
 openssl rand -base64 32 > /secure/swarmops-data-key.base64
 
 make secret-create HOST=manager-01 \
-  SECRET=traefik_cf_dns_token_v1 FILE=/secure/traefik-cf-dns-token
-make secret-create HOST=manager-01 \
-  SECRET=traefik_arvan_api_key_v1 FILE=/secure/traefik-arvan-api-key
-
-make secret-create HOST=manager-01 \
   SECRET=traefik_dashboard_auth_v1 FILE=/secure/traefik-dashboard.htpasswd
 make secret-create HOST=manager-01 \
   SECRET=swarmops_admin_password_hash_v1 FILE=/secure/swarmops-admin.bcrypt
@@ -298,6 +293,20 @@ make config-create HOST=manager-01 \
 make secret-create HOST=manager-01 \
   SECRET=ai_gateway_config_v1 FILE=/secure/ai-gateway.production.json
 ```
+
+Cloudflare and ArvanCloud credentials are optional. Create only the provider
+secret used by a DNS-01 resolver:
+
+```bash
+make secret-create HOST=manager-01 \
+  SECRET=traefik_cf_dns_token_v1 FILE=/secure/traefik-cf-dns-token
+make secret-create HOST=manager-01 \
+  SECRET=traefik_arvan_api_key_v1 FILE=/secure/traefik-arvan-api-key
+```
+
+When no usable provider credential exists, SwarmOps renders HTTP-01 on the
+public `web` entrypoint. A wildcard certificate cannot use that fallback and
+remains blocked until its DNS-01 credential is configured.
 
 Set non-secret deployment settings such as `TRAEFIK_ACME_EMAIL`,
 `SWARMOPS_HOST`, `TRAEFIK_DASHBOARD_HOST`, and
@@ -361,7 +370,7 @@ Runtime configuration is a versioned Swarm secret, never an image layer,
 
 | Stack | Secret name default | Mount / consumption |
 | --- | --- | --- |
-| `traefik` | `traefik_cf_dns_token_v1`, `traefik_arvan_api_key_v1`, `traefik_dashboard_auth_v1` | Cloudflare token via `CF_DNS_API_TOKEN_FILE`, ArvanCloud API key via `ARVANCLOUD_API_KEY_FILE`, protected dashboard auth file |
+| `traefik` | required: `traefik_dashboard_auth_v1`; optional: `traefik_cf_dns_token_v1`, `traefik_arvan_api_key_v1` | Protected dashboard auth file; optional Cloudflare or ArvanCloud credential for DNS-01. Without a usable DNS credential SwarmOps renders HTTP-01 automatically. |
 | `swarmops` | `swarmops_admin_password_hash_v1`, `swarmops_session_key_v1`, `swarmops_data_encryption_key_v1`, `swarmops_agent_token_v1`, `swarmops_registry_config_v1` | bcrypt operator hash, session HMAC key, and a base64-encoded random 32-byte AES-256-GCM data key for the API; node-agent token for the optional agent; standard Docker `config.json` for capped remote Engine builds only. Private stack pulls use reviewed credentials on the remote Swarm nodes. |
 | `swarmops-agent` | `swarmops_agent_token_v1` | Optional global read-only host inventory agent; the companion node-exporter has no credential and remains internal |
 | `swarmops-observability` | none | Prometheus, Alertmanager, and Jaeger remain internal; Alertmanager uses a checked-in blackhole receiver until an operator supplies a reviewed, credential-safe receiver config |

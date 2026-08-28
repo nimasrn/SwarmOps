@@ -76,6 +76,16 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "execution_interrupted", "The controller stopped before it could confirm the remote result.", "Verify the target's current state, then retry only if the intended change is still missing."
 	case strings.Contains(message, "server is not connected") || strings.Contains(message, "select a connected server"):
 		return "target_disconnected", "The selected server was not connected when execution started.", "Open Diagnostics, restore the agent connection, then retry this command."
+	case action == "traefik.reconcile" && strings.Contains(message, "traefik acme email"):
+		return "traefik_acme_email_required", "Traefik cannot be installed until a valid ACME contact email is configured.", "Open Gateway & ports, enter the ACME email under static settings, apply it, then retry the installation."
+	case action == "traefik.reconcile" && strings.Contains(message, "external traefik overlay network"):
+		return "traefik_network_required", "Traefik requires the external attachable overlay network named traefik.", "Open Docker resources and create the reviewed encrypted traefik overlay, then retry."
+	case action == "traefik.reconcile" && strings.Contains(message, "nim.edge=true"):
+		return "traefik_edge_label_required", "Traefik has no eligible manager because nim.edge=true is missing.", "Open Swarm & placement, label the reviewed manager nim.edge=true, then retry."
+	case action == "traefik.reconcile" && strings.Contains(message, "dynamic config"):
+		return "traefik_dynamic_config_required", "The reviewed Traefik dynamic config is missing.", "Create the configured dynamic Swarm config, then retry."
+	case action == "traefik.reconcile" && strings.Contains(message, "dashboard") && strings.Contains(message, "secret"):
+		return "traefik_dashboard_auth_required", "The Traefik dashboard-auth secret is missing.", "Create the configured htpasswd Swarm secret, then retry."
 	case strings.Contains(message, "traefik singleton service was not found"):
 		return "gateway_required", "The managed Traefik gateway is required before this stack can create private routes.", "Install and verify Traefik under Gateway, routes & DNS, then retry."
 	case strings.Contains(message, "nim.stateful"):

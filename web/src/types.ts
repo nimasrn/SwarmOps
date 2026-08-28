@@ -393,6 +393,21 @@ export interface TraefikSettings {
   version: number
 }
 
+export interface TraefikInstallCheck {
+  detail: string
+  id: string
+  label: string
+  recovery?: string
+  required: boolean
+  state: 'automatic' | 'blocked' | 'optional' | 'ready'
+}
+
+export interface TraefikInstallPreflight {
+  challenge: 'dns-01' | 'http-01'
+  checks: TraefikInstallCheck[]
+  ready: boolean
+}
+
 export interface DNSCredentialMetadata {
   createdAt: string
   id: string

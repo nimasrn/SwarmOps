@@ -62,6 +62,7 @@ import type {
   RoutingState,
   ServiceRouteRole,
   TraefikLogRecord,
+  TraefikInstallPreflight,
   TraefikSettings,
   LogPage,
   LogStatus,
@@ -432,6 +433,8 @@ export class SwarmOpsAPI {
       body: JSON.stringify({ confirmation }),
     })
   }
+
+  traefikPreflight() { return this.request<TraefikInstallPreflight>('/api/v1/traefik/preflight') }
 
   traefikRoutingState(refresh = false) {
     return this.request<RoutingState>(`/api/v1/traefik/state?refresh=${String(refresh)}`)

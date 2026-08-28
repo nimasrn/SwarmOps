@@ -88,6 +88,17 @@ named for what the operator is doing rather than for the subsystem underneath.
    a manager, or a manager that is not selected — and offers the button for
    that one. Everything not gated by a cluster stays open, so setup is never a
    dead end.
+10. Queue acceptance is not operation success. The screen that starts a
+    mutation follows its run long enough to show a terminal result, preserves
+    safe typed prerequisite failures beside the initiating control, and links
+    to **Runs** for the durable lifecycle. Raw remote output, response bodies,
+    and secrets remain excluded from both surfaces.
+11. **Gateway & ports** owns a live installation-prerequisite checklist. It
+    distinguishes required resources from items SwarmOps creates during the
+    run and optional DNS credentials. An absent DNS provider credential selects
+    HTTP-01; it does not masquerade as a failed prerequisite. Agent compatibility
+    is based on the machine protocol, while the reported release remains visible
+    as evidence.
 
 ## Responsive and accessibility contract
 

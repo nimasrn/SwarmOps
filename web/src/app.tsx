@@ -2077,7 +2077,7 @@ function CommandQueuePage({ commands, dashboard, highlightedID, onOpenDiagnostic
         ...(selected.lastAttemptAt ? [{ action: `attempt ${selected.attempt} started`, at: selected.lastAttemptAt, id: `${selected.id}-attempt`, target: selected.action, tone: 'warning' as const }] : []),
         { action: `recorded ${selected.state.replaceAll('_', ' ')}`, at: selected.updatedAt, id: `${selected.id}-result`, target: selected.action, tone: selected.state === 'succeeded' ? 'success' : selected.state === 'needs_attention' || selected.state === 'failed' ? 'danger' : 'default' },
       ]} /></Panel> : null}
-      {attention.length > 0 ? <Panel caption="Uncertain outcomes are never replayed blindly" title="Failure evidence"><List plain>{attention.map((command) => <ListRow key={command.id} subtitle={command.lastError ?? 'Inspect the explicit target before retrying.'} title={`${command.action} · ${command.target}`} trailing={<CommandStateBadge state={command.state} />} />)}</List></Panel> : null}
+      {attention.length > 0 ? <Panel caption="Uncertain outcomes are never replayed blindly" title="Failure evidence"><List plain>{attention.map((command) => <ListRow key={command.id} subtitle={command.failureSummary ?? command.lastError ?? 'Inspect the explicit target before retrying.'} title={`${command.action} · ${command.target}`} trailing={<CommandStateBadge state={command.state} />} />)}</List></Panel> : null}
     </Page>
   )
 }

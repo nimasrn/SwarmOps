@@ -208,9 +208,10 @@ type Network struct {
 		} `json:"Config"`
 		Driver string `json:"Driver"`
 	} `json:"IPAM"`
-	Labels map[string]string `json:"Labels"`
-	Name   string            `json:"Name"`
-	Scope  string            `json:"Scope"`
+	Labels  map[string]string `json:"Labels"`
+	Name    string            `json:"Name"`
+	Options map[string]string `json:"Options"`
+	Scope   string            `json:"Scope"`
 }
 
 type NetworkDetail struct {

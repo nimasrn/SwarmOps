@@ -154,6 +154,21 @@ type TraefikSettings struct {
 	Version        int                `json:"version"`
 }
 
+type TraefikInstallCheck struct {
+	Detail   string `json:"detail"`
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Recovery string `json:"recovery,omitempty"`
+	Required bool   `json:"required"`
+	State    string `json:"state"`
+}
+
+type TraefikInstallPreflight struct {
+	Challenge string                `json:"challenge"`
+	Checks    []TraefikInstallCheck `json:"checks"`
+	Ready     bool                  `json:"ready"`
+}
+
 type DNSCredentialMetadata struct {
 	CreatedAt   time.Time   `json:"createdAt"`
 	ID          string      `json:"id"`

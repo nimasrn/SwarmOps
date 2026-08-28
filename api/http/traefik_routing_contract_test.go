@@ -16,6 +16,7 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/config"
+	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/remote"
 	"golang.org/x/crypto/bcrypt"
@@ -180,6 +181,108 @@ func TestTraefikSettingsSubmissionReturnsCommandWithoutMutationPayload(t *testin
 	handler.ServeHTTP(conflictResponse, conflict)
 	if conflictResponse.Code != http.StatusConflict {
 		t.Fatalf("conflict status = %d body=%s", conflictResponse.Code, conflictResponse.Body.String())
+	}
+}
+
+func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
+	t.Parallel()
+	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
+	control := ops.NewControlPlane(nil, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
+		Mutations:        true,
+		TraefikSettings:  ops.TraefikStackSettings{},
+		TraefikStackFile: filepath.Join(t.TempDir(), "traefik.yml"),
+	})
+	server.targets = TargetResolverFunc(func(id string) (Target, error) {
+		if id != "manager-1" {
+			return Target{}, fmt.Errorf("select a connected server")
+		}
+		return Target{Control: control}, nil
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/traefik/reconcile", strings.NewReader(`{"confirmation":"DEPLOY_TRAEFIK"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "install-missing-acme")
+	request.Header.Set("X-SwarmOps-Cluster-ID", "default")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.Header.Set("X-SwarmOps-Server-ID", "manager-1")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Traefik ACME email is not configured") {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	commands, err := server.commands.List(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 0 {
+		t.Fatalf("invalid install was queued: %#v", commands)
+	}
+}
+
+func TestTraefikPreflightUsesExplicitTargetAndReturnsSafeChecklist(t *testing.T) {
+	t.Parallel()
+	server, _, cookie := buildTraefikContractServer(t, "manager-1")
+	machine := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/networks":
+			_, _ = response.Write([]byte(`[{"Attachable":true,"Driver":"overlay","Name":"traefik","Options":{"encrypted":""},"Scope":"swarm"}]`))
+		case "/nodes":
+			_, _ = response.Write([]byte(`[{"ID":"manager-1","Spec":{"Availability":"active","Labels":{"nim.edge":"true"},"Role":"manager"},"Status":{"State":"ready"}}]`))
+		case "/configs":
+			_, _ = response.Write([]byte(`[{"Spec":{"Name":"nim_traefik_dynamic_v1"}}]`))
+		case "/secrets":
+			_, _ = response.Write([]byte(`[{"Spec":{"Name":"traefik_dashboard_auth_v1"}}]`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(machine.Close)
+	docker, err := dockerapi.NewForURL(machine.URL, machine.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := ops.NewControlPlane(docker, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
+		TraefikSettings: ops.TraefikStackSettings{
+			ACMEEmail: "ops@example.com", ArvanAPIKeySecret: "traefik_arvan_api_key_v1", CFDNSTokenSecret: "traefik_cf_dns_token_v1",
+			DashboardAuthSecret: "traefik_dashboard_auth_v1", DashboardHost: "traefik.example.com", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
+		},
+	})
+	server.targets = TargetResolverFunc(func(id string) (Target, error) {
+		if id != "manager-1" {
+			return Target{}, fmt.Errorf("select a connected server")
+		}
+		return Target{Control: control}, nil
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/traefik/preflight", nil)
+	request.Header.Set("X-SwarmOps-Server-ID", "manager-1")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	var preflight ops.TraefikInstallPreflight
+	if err := json.NewDecoder(response.Body).Decode(&preflight); err != nil {
+		t.Fatal(err)
+	}
+	if preflight.Challenge != "http-01" || len(preflight.Checks) < 9 {
+		t.Fatalf("preflight = %#v", preflight)
+	}
+	foundAgent := false
+	for _, check := range preflight.Checks {
+		if check.ID == "agent-version" {
+			foundAgent = true
+			if !strings.Contains(check.Detail, "protocol") {
+				t.Fatalf("agent check = %#v", check)
+			}
+		}
+	}
+	if !foundAgent {
+		t.Fatal("agent compatibility check was omitted")
 	}
 }
 

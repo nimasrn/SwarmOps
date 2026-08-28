@@ -182,6 +182,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/services/{id}/actions", s.withActiveAuth(s.serviceAction))
 	mux.HandleFunc("POST /api/v1/builds", s.withActiveAuth(s.buildImage))
 	mux.HandleFunc("GET /api/v1/traefik/status", s.withAuth(false, s.traefikStatus))
+	mux.HandleFunc("GET /api/v1/traefik/preflight", s.withAuth(false, s.traefikPreflight))
 	mux.HandleFunc("POST /api/v1/traefik/reconcile", s.withActiveAuth(s.traefikReconcile))
 	mux.HandleFunc("GET /api/v1/traefik/state", s.withAuth(false, s.traefikRoutingState))
 	mux.HandleFunc("GET /api/v1/traefik/routes", s.withAuth(false, s.traefikRoutes))
@@ -672,7 +673,85 @@ func (s *Server) traefikReconcile(response http.ResponseWriter, request *http.Re
 	if !decodeJSON(response, request, &input) {
 		return
 	}
+	if input.Confirmation != "DEPLOY_TRAEFIK" {
+		writeError(response, http.StatusUnprocessableEntity, "deployment requires confirmation DEPLOY_TRAEFIK")
+		return
+	}
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	// Installation prerequisites are controller-owned, non-secret settings.
+	// Reject them before enqueueing so the initiating panel can explain the
+	// exact corrective action; the worker validates again before mutation.
+	if err := target.Control.ValidateTraefikReconcile(input.Confirmation); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	preflight, err := s.traefikPreflightFor(request, target)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	if !preflight.Ready {
+		for _, check := range preflight.Checks {
+			if check.Required && check.State == "blocked" {
+				writeError(response, http.StatusUnprocessableEntity, check.Detail)
+				return
+			}
+		}
+	}
 	s.submitTraefik(response, request, claims, input.Confirmation)
+}
+
+func (s *Server) traefikPreflight(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	preflight, err := s.traefikPreflightFor(request, target)
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, preflight)
+}
+
+func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.TraefikInstallPreflight, error) {
+	preflight, err := target.Control.TraefikInstallPreflight(request.Context())
+	if err != nil {
+		return ops.TraefikInstallPreflight{}, err
+	}
+	serverID := strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
+	version := "Not reported"
+	protocol := uint(0)
+	for _, profile := range s.servers.List() {
+		if profile.ID == serverID {
+			if profile.AgentHealth.AgentVersion != "" {
+				version = profile.AgentHealth.AgentVersion
+			}
+			protocol = profile.AgentHealth.ProtocolVersion
+			break
+		}
+	}
+	compatible := protocol == agentpull.ProtocolVersion
+	check := ops.TraefikInstallCheck{
+		Detail:   fmt.Sprintf("Agent %s reports protocol %d; Core requires protocol %d.", version, protocol, agentpull.ProtocolVersion),
+		ID:       "agent-version",
+		Label:    "Machine agent compatibility",
+		Recovery: "Update the selected server's agent before installing Traefik.",
+		Required: true,
+		State:    "blocked",
+	}
+	if compatible {
+		check.State = "ready"
+		check.Recovery = ""
+	}
+	preflight.Checks = append(preflight.Checks, check)
+	if !compatible {
+		preflight.Ready = false
+	}
+	return preflight, nil
 }
 
 // metricsTargets serves the Prometheus HTTP service-discovery document for
