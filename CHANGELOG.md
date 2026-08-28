@@ -11,6 +11,23 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.9.1 — 2026-08-28
+
+This hotfix restores the native Core command router removed during the 0.8.0
+release bump.
+
+- **Manual upgrades work again** — `swarmops-core upgrade` reaches the fixed
+  Warden service instead of attempting to start a second API process without
+  its systemd environment.
+- **Fresh native installation works again** — the released Core binary once
+  again provides the installer-only `password-hash` mode, so bootstrap creates
+  the initial bcrypt credential without source code or a Go compiler.
+- **Recovery and diagnostics stay reachable** — `--version` and
+  `access set-cidrs` are routed before API configuration is loaded.
+- **Executable contract coverage** — release tests now build the real Core
+  binary and invoke every published command entry point, preventing ordinary
+  package compilation from hiding a disconnected command implementation.
+
 ## 0.9.0 — 2026-08-28
 
 The console's information architecture is rebuilt around what an operator is
