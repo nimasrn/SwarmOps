@@ -330,7 +330,7 @@ function RoutesTab({ cutover, onQueued, routes, state, toast }: { cutover: Cutov
     { header: 'Route', key: 'route', render: (row) => row.route.key ? <Rows gap="tight"><Mono>{row.route.key}</Mono><Body size="sm">{row.route.protocol.toUpperCase()} · {row.route.scope}</Body></Rows> : 'Needs configuration' },
     { header: 'Role', key: 'role', render: (row) => <Badge variant={roleVariant(row.declaration.role)}>{row.declaration.role}</Badge> },
     { header: 'Status', key: 'status', render: (row) => <Badge dot variant={statusVariant(row.status)}>{row.status}</Badge> },
-    { header: 'Enabled', key: 'enabled', render: (row) => row.declaration.role === 'routed' ? (row.route.enabled ? 'Yes' : 'No') : '—' },
+    { header: 'Enabled', key: 'enabled', render: (row) => row.declaration.role === 'routed' ? (row.route.enabled ? 'Yes' : 'No') : 'Not routed' },
     { header: 'Inspect', key: 'inspect', render: (row) => <Button onClick={() => setSelectedKey(row.route.serviceKey)} size="sm" variant={row.route.serviceKey === selected?.route.serviceKey ? 'primary' : 'secondary'}>Open</Button> },
   ]
 
@@ -470,7 +470,7 @@ function CertificatesTab({ certificates, onQueued, routes, toast }: { certificat
   }
   const columns: TableColumn<RouteInventoryRow>[] = [
     { header: 'Domain', key: 'domain', render: (row) => <Mono>{[...(row.route.match.hosts ?? []), ...(row.route.match.sni ?? [])].join(', ')}</Mono> },
-    { header: 'Resolver', key: 'resolver', render: (row) => row.route.resolver || '—' },
+    { header: 'Resolver', key: 'resolver', render: (row) => row.route.resolver || 'None configured' },
     { header: 'State', key: 'state', render: (row) => { const value = byRoute.get(row.route.key); return <Badge dot variant={value?.handshakeValid ? 'success' : value?.state === 'failed' ? 'danger' : 'warning'}>{value?.state ?? 'not observed'}</Badge> } },
     { header: 'Expires', key: 'expires', render: (row) => dateTime(byRoute.get(row.route.key)?.notAfter) },
     { header: 'Last attempt', key: 'attempt', render: (row) => dateTime(byRoute.get(row.route.key)?.lastAttempt) },
@@ -483,7 +483,7 @@ function CertificatesTab({ certificates, onQueued, routes, toast }: { certificat
       <Columns>
         {eligible.map((row) => {
           const certificate = byRoute.get(row.route.key)
-          return <Panel eyebrow={row.route.key} key={row.route.key} title={(row.route.match.hosts ?? row.route.match.sni ?? []).join(', ')}><Facts items={[{ label: 'Issuer', value: certificate?.issuer ?? 'Not observed' }, { label: 'SANs', mono: true, value: certificate?.domains.join(', ') || '—' }, { label: 'Fingerprint', mono: true, value: certificate?.fingerprint ?? '—' }, { label: 'Valid from', value: dateTime(certificate?.notBefore) }, { label: 'Valid until', value: dateTime(certificate?.notAfter) }, { label: 'Handshake', value: certificate?.handshakeValid ? 'Validated' : 'Not validated' }]} />{certificate?.failureSummary ? <Banner title="Last failure" tone="danger">{certificate.failureSummary}</Banner> : null}</Panel>
+          return <Panel eyebrow={row.route.key} key={row.route.key} title={(row.route.match.hosts ?? row.route.match.sni ?? []).join(', ')}><Facts items={[{ label: 'Issuer', value: certificate?.issuer ?? 'Not observed' }, { label: 'SANs', mono: true, value: certificate?.domains.join(', ') || 'None issued' }, { label: 'Fingerprint', mono: true, value: certificate?.fingerprint || 'None issued' }, { label: 'Valid from', value: dateTime(certificate?.notBefore) }, { label: 'Valid until', value: dateTime(certificate?.notAfter) }, { label: 'Handshake', value: certificate?.handshakeValid ? 'Validated' : 'Not validated' }]} />{certificate?.failureSummary ? <Banner title="Last failure" tone="danger">{certificate.failureSummary}</Banner> : null}</Panel>
         })}
       </Columns>
     </Rows>

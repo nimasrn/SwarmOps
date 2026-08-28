@@ -140,7 +140,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
             { label: 'Last reachable', value: formatDateTime(current?.lastReachableAt) },
             { label: 'Last failed probe', value: formatDateTime(current?.lastFailureAt) },
             { label: 'Agent uptime', value: formatDuration(current?.uptimeSeconds) },
-            { label: 'Git revision', value: update?.revision ? <Mono>{update.revision}</Mono> : '—' },
+            { label: 'Git revision', value: update?.revision ? <Mono>{update.revision}</Mono> : 'Not reported' },
             { label: 'Last local update', value: formatDateTime(update?.lastUpdatedAt) },
           ]} />
         </Panel>

@@ -196,8 +196,8 @@ export function ServerReadinessPage({ servers, toast }: ServerReadinessPageProps
               <Facts columns={1} items={[
                 { label: 'Hostname', mono: true, value: readiness.host.nodeName || server.name },
                 { label: 'Operating system', value: readiness.host.os.name || readiness.os.name || 'Unknown' },
-                { label: 'Kernel', mono: true, value: readiness.host.os.kernel || '—' },
-                { label: 'Architecture', value: readiness.host.os.architecture || '—' },
+                { label: 'Kernel', mono: true, source: 'host probe', unmeasured: !readiness.host.os.kernel, value: readiness.host.os.kernel || 'not reported', why: 'the agent did not report a kernel version' },
+                { label: 'Architecture', source: 'host probe', unmeasured: !readiness.host.os.architecture, value: readiness.host.os.architecture || 'not reported', why: 'the agent did not report an architecture' },
                 { label: 'Agent', mono: true, value: versionLabel(readiness.host.version || server.agentHealth?.agentVersion) },
                 { label: 'Uptime', value: formatDuration(readiness.host.hardware.uptimeSeconds) },
               ]} />

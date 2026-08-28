@@ -224,7 +224,7 @@ export function HomePage({
             hint={containerEvidence === 'available' ? 'Docker containers, including Compose workloads' : containerEvidence === 'loading' ? 'Reading Docker container inventory' : 'Open Docker resources for current evidence'}
             icon="package"
             label="Containers"
-            value={containerEvidence === 'available' ? String(containers.length) : '—'}
+            value={containerEvidence === 'available' ? String(containers.length) : 'cannot see'}
           />
           <Metric
             hint={cluster?.overview.summary.services ? 'Processes scheduled by Docker Swarm' : 'Swarm can be active while running zero services'}
@@ -238,7 +238,7 @@ export function HomePage({
             icon="globe"
             label="Edge gateway"
             tone={cluster ? (cluster.traefik.service ? 'success' : 'warning') : undefined}
-            value={cluster ? (cluster.traefik.service ? 'Running' : 'None') : '—'}
+            value={cluster ? (cluster.traefik.service ? 'Running' : 'None') : 'cannot see'}
           />
         </MetricGrid>
       </Panel>

@@ -122,7 +122,7 @@ export function OverviewDashboard({ observability, onOpen, overview, stacks, tra
           icon="database"
           label="Tightest headroom"
           tone={constraint ? capacityTone(constraint.percent) : 'neutral'}
-          value={constraint ? `${formatPercent(100 - constraint.percent)}` : '—'}
+          value={constraint ? `${formatPercent(100 - constraint.percent)}` : 'no probe'}
         />
       </MetricGrid>
 
