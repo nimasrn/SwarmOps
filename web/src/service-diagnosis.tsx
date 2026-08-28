@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  Banner,
+  Body,
   Button,
   CausalChain,
   Caveat,
@@ -27,14 +29,43 @@ function source(evidence: DiagnosisEvidence): string {
 }
 
 export function ServiceDiagnosis({
+  error,
+  loading,
   onAction,
   result,
   serviceName,
 }: {
+  /** Set when the diagnosis could not be fetched at all. */
+  error?: string | null
+  loading?: boolean
   onAction?: (kind: string) => void
-  result: DiagnosisResult
+  result: DiagnosisResult | null
   serviceName: string
 }) {
+  // A failed request must not render as nothing. This panel only appears for a
+  // service that is already degraded, so an empty space where the explanation
+  // should be reads as "nothing is wrong" — the single most misleading thing
+  // this console could do, and the opposite of what it is for.
+  if (error) {
+    return (
+      <Panel eyebrow={<Mono>unavailable</Mono>} title={`Why ${serviceName} is not converged`}>
+        <Banner title="The diagnosis could not be fetched" tone="danger">
+          {error}. This says nothing about the service — only that the controller could not be reached to ask.
+        </Banner>
+      </Panel>
+    )
+  }
+
+  if (loading && !result) {
+    return (
+      <Panel eyebrow={<Mono>working</Mono>} title={`Why ${serviceName} is not converged`}>
+        <Body size="sm">Gathering measurements from the manager and the host probes.</Body>
+      </Panel>
+    )
+  }
+
+  if (!result) return null
+
   const { chain, refusal } = result
 
   if (chain) {

@@ -1403,8 +1403,10 @@ function ServicesPage({ onDiagnosisAction, services, toast }: { onDiagnosisActio
     <Page>
       <DetailHeader actions={<Button onClick={openLogsWorkspace} variant="ghost">Open Logs workspace</Button>} subtitle="Long-running processes scheduled by Docker Swarm. Compose and standalone containers are listed under Cluster → Docker resources. Restarts and rollbacks use fixed audited command shapes." title="Swarm services" />
       <Panel flush><DataTable caption="Docker Swarm services" columns={columns} empty={<EmptyState description="No services were returned by the remote Docker Engine." icon="layers" title="No services" />} rowKey={(service) => service.id} rows={services} /></Panel>
-      {degraded && diagnosis.result ? (
+      {degraded ? (
         <ServiceDiagnosis
+          error={diagnosis.error}
+          loading={diagnosis.loading}
           onAction={onDiagnosisAction}
           result={diagnosis.result}
           serviceName={selected.name}

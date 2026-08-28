@@ -3,7 +3,6 @@ package diagnosis
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
 )
@@ -224,5 +223,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n-1] + "…"
 }
-
-var _ = time.Second
