@@ -32,7 +32,7 @@ const (
 	provisionTimeout = 50 * time.Minute
 )
 
-var version = "0.7.3"
+var version = "0.7.4"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
@@ -106,9 +106,39 @@ func main() {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		healthAddress, err := outboundHealthAddress(runtime.listenAddr)
+		if err != nil {
+			logger.Error("configure outbound health listener", "error", err)
+			os.Exit(1)
+		}
+		listener, err := net.Listen("tcp", healthAddress)
+		if err != nil {
+			logger.Error("start outbound health listener", "address", healthAddress, "error", err)
+			os.Exit(1)
+		}
+		healthServer := &http.Server{
+			Handler:           agentServer.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       30 * time.Second,
+		}
+		go func() {
+			logger.Info("SwarmOps outbound agent health listening", "address", healthAddress, "version", version)
+			if serveErr := healthServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				logger.Error("serve outbound health", "error", serveErr)
+				os.Exit(1)
+			}
+		}()
 		logger.Info("SwarmOps agent connecting outbound", "core", runtime.coreURL, "version", version)
-		if err := client.Run(ctx); err != nil && ctx.Err() == nil {
-			logger.Error("outbound Core connection stopped", "error", err)
+		clientErr := client.Run(ctx)
+		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := healthServer.Shutdown(shutdown); err != nil {
+			logger.Error("shutdown outbound health server", "error", err)
+		}
+		if clientErr != nil && ctx.Err() == nil {
+			logger.Error("outbound Core connection stopped", "error", clientErr)
 			os.Exit(1)
 		}
 		return
@@ -443,6 +473,18 @@ func listenAddressIsLoopback(address string) (bool, error) {
 		return false, fmt.Errorf("SWARMOPS_AGENT_LISTEN_ADDR must use an IP address or localhost")
 	}
 	return ip.IsLoopback(), nil
+}
+
+func outboundHealthAddress(address string) (string, error) {
+	_, port, err := net.SplitHostPort(strings.TrimSpace(address))
+	if err != nil || port == "" {
+		return "", fmt.Errorf("SWARMOPS_AGENT_LISTEN_ADDR must be a host:port address")
+	}
+	parsedPort, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || parsedPort == 0 {
+		return "", fmt.Errorf("SWARMOPS_AGENT_LISTEN_ADDR has an invalid port")
+	}
+	return net.JoinHostPort("127.0.0.1", port), nil
 }
 
 func boolEnv(key string, fallback bool) bool {

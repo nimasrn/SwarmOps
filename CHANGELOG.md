@@ -11,6 +11,17 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.7.4 — 2026-08-28
+
+This patch completes the native update path for outbound machine agents.
+
+- **Health-checked outbound upgrades** — an outbound Agent now serves its
+  existing health handler on IPv4 loopback only, giving Warden a local liveness
+  gate without opening an inbound control port.
+- **Older-install compatibility** — `swarmops-agent upgrade` prefers the fixed
+  Warden unit and falls back to the older fixed Git updater unit when that is
+  the installation contract present on the host.
+
 ## 0.7.3 — 2026-08-28
 
 This patch makes every native Core access path enforce the same bounded client

@@ -66,7 +66,13 @@ func StartWarden(ctx context.Context, component Component, platform Platform, ru
 			return err
 		}
 		if err := run(ctx, platform.SystemctlPath, "start", unit); err != nil {
-			return fmt.Errorf("start %s: %w", unit, err)
+			if component != Agent {
+				return fmt.Errorf("start %s: %w", unit, err)
+			}
+			legacyUnit := "swarmops-agent-update.service"
+			if legacyErr := run(ctx, platform.SystemctlPath, "start", legacyUnit); legacyErr != nil {
+				return fmt.Errorf("start %s: %w; legacy updater %s also failed: %v", unit, err, legacyUnit, legacyErr)
+			}
 		}
 		return nil
 	case "darwin":

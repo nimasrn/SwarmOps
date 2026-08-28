@@ -28,7 +28,7 @@ func runAgentUpgrade(args []string) {
 		fmt.Fprintln(os.Stderr, "swarmops-agent upgrade:", err)
 		os.Exit(1)
 	}
-	fmt.Println("SwarmOps Agent upgrade completed through its local Warden.")
+	fmt.Println("SwarmOps Agent upgrade completed through its local updater.")
 }
 
 func runGenerateKey(args []string) {

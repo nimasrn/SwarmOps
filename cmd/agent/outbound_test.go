@@ -84,3 +84,20 @@ func TestEnrollmentHTTPClientRejectsMalformedFingerprint(t *testing.T) {
 		}
 	}
 }
+
+func TestOutboundHealthAddressAlwaysUsesLoopback(t *testing.T) {
+	for _, input := range []string{":9180", "0.0.0.0:9180", "[::]:9180", "192.0.2.10:9180"} {
+		address, err := outboundHealthAddress(input)
+		if err != nil {
+			t.Fatalf("outboundHealthAddress(%q): %v", input, err)
+		}
+		if address != "127.0.0.1:9180" {
+			t.Fatalf("outboundHealthAddress(%q) = %q", input, address)
+		}
+	}
+	for _, input := range []string{"9180", ":0", ":not-a-port"} {
+		if _, err := outboundHealthAddress(input); err == nil {
+			t.Fatalf("outboundHealthAddress(%q) accepted an invalid listener", input)
+		}
+	}
+}

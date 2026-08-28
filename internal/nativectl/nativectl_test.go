@@ -30,6 +30,26 @@ func TestStartWardenUsesOnlyFixedServiceUnits(t *testing.T) {
 	}
 }
 
+func TestStartWardenFallsBackToFixedLegacyAgentUpdater(t *testing.T) {
+	var calls [][]string
+	run := func(_ context.Context, executable string, arguments ...string) error {
+		calls = append(calls, append([]string{executable}, arguments...))
+		if len(calls) == 1 {
+			return errors.New("unit not found")
+		}
+		return nil
+	}
+	platform := Platform{OS: "linux", SystemctlPath: "systemctl"}
+	if err := StartWarden(context.Background(), Agent, platform, run); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(calls[0], " ") + "\n" + strings.Join(calls[1], " ")
+	want := "systemctl start swarmops-agent-warden.service\nsystemctl start swarmops-agent-update.service"
+	if got != want {
+		t.Fatalf("updater calls = %q, want %q", got, want)
+	}
+}
+
 func TestRotateAgentKeyReplacesKeyAndRestarts(t *testing.T) {
 	directory := t.TempDir()
 	keyFile := filepath.Join(directory, "api-key")
