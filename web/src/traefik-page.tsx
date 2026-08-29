@@ -293,7 +293,7 @@ function TrafficOverview({ certificates, prometheus, routes, state }: { certific
       </Columns>
       <Columns template="thirds">
         <Panel title="Traffic by protocol"><Facts items={['http', 'tcp', 'udp'].map((value) => ({ label: value.toUpperCase(), value: String(routes.filter((row) => row.route.protocol === value).length) }))} /></Panel>
-        <Panel title="Prometheus targets"><Facts items={[{ label: 'Collected', value: prometheus?.collected ? 'Yes' : 'No' }, { label: 'Targets', value: String(prometheus?.targets.length ?? 0) }, { label: 'Failing', value: String(failingTargets) }]} /></Panel>
+        <Panel title="Prometheus targets"><Facts items={[{ label: 'Collected', value: prometheus?.collected ? 'Yes' : 'No' }, { label: 'Targets', value: String(prometheus?.targets?.length ?? 0) }, { label: 'Failing', value: String(failingTargets) }]} /></Panel>
         <Panel title="Internal dependency routes">{state.bindings.length ? <Rows gap="tight">{state.bindings.map((binding) => <StatusDot key={`${binding.callerService}-${binding.targetRoute}`} tone="success">{binding.callerService} → {binding.targetRoute}</StatusDot>)}</Rows> : <Body size="sm">No managed east-west binding is declared.</Body>}</Panel>
       </Columns>
     </Rows>
