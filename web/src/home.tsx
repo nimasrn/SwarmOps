@@ -86,7 +86,14 @@ export function HomePage({
   const nodes = cluster?.overview.nodes ?? []
   const [containers, setContainers] = useState<ContainerSummary[]>([])
   const [containerEvidence, setContainerEvidence] = useState<'available' | 'loading' | 'unavailable'>('loading')
-  const operating = core.controlEnabled && connectedServer?.connectionState === 'connected' && cluster?.overview.health !== 'unhealthy'
+  // The verdict has to answer to the rows underneath it. `serving` is what the
+  // cluster is doing; `blocked` is what an operator cannot currently do. The
+  // old check ignored `attention` entirely, so the hero could read a green
+  // "Production is operating" directly above two rows marked Blocking — which
+  // is exactly how a standing verdict stops being read.
+  const serving = core.controlEnabled && connectedServer?.connectionState === 'connected' && cluster?.overview.health !== 'unhealthy'
+  const blocked = attention.filter((item) => item.tone === 'danger').length
+  const operating = serving && blocked === 0
   const running = commands.filter((command) => command.state === 'running' || command.state === 'preparing' || command.state === 'leased')
   const visibleCommands = commands.slice(0, 6)
   const primaryAttention = attention[0]
@@ -150,7 +157,13 @@ export function HomePage({
         actions={<Button iconStart={next.icon} onClick={run} variant={operating && !primaryAttention ? 'secondary' : 'accent'}>{next.label}</Button>}
         description={next.detail}
         icon={operating ? 'check' : 'alert'}
-        title={operating ? 'Production is operating' : 'Production evidence is incomplete'}
+        title={
+          operating
+            ? 'Production is operating'
+            : serving
+              ? `Production is serving, and ${blocked} operation${blocked === 1 ? ' is' : 's are'} blocked`
+              : 'Production evidence is incomplete'
+        }
         tone={operating ? 'success' : 'warning'}
       />
 
@@ -303,10 +316,28 @@ function attentionItems(core: CoreTopology, cluster: HomeClusterData | undefined
   for (const server of servers.filter((candidate) => candidate.connectionState !== 'connected' || candidate.agentHealth?.state === 'unhealthy').slice(0, 2)) {
     items.push({ detail: server.agentHealth?.summary ?? 'The agent cannot currently be reached by the controller.', id: `server-${server.id}`, label: `${server.name} needs connectivity review`, tone: 'danger' })
   }
-  for (const command of commands.filter((candidate) => candidate.state === 'needs_attention' || candidate.state === 'failed').slice(0, 2)) {
+  // One decision per ACTION, not per record. A failed operation and its failed
+  // retry are two rows in the ledger and one thing for an operator to decide;
+  // listing both produced two identical lines and a count that said "2 open
+  // decisions" when there was one.
+  const stalled = commands.filter((candidate) => candidate.state === 'needs_attention' || candidate.state === 'failed')
+  const byAction = new Map<string, { attempts: number; command: Command }>()
+  for (const command of stalled) {
+    const seen = byAction.get(command.action)
+    if (!seen) {
+      byAction.set(command.action, { attempts: 1, command })
+      continue
+    }
+    seen.attempts += 1
+    // Keep the newest, because that is the one whose error is current.
+    if (Date.parse(command.createdAt) > Date.parse(seen.command.createdAt)) seen.command = command
+  }
+
+  for (const { attempts, command } of [...byAction.values()].slice(0, 2)) {
+    const base = command.failureSummary ?? command.lastError ?? `${command.action} on ${command.target || command.nodeId} stopped in ${stateLabel(command.state).toLowerCase()}.`
     items.push({
-      detail: command.failureSummary ?? command.lastError ?? `${command.action} on ${command.target || command.nodeId} stopped in ${stateLabel(command.state).toLowerCase()}.`,
-      id: `command-${command.id}`,
+      detail: attempts > 1 ? `${base} ${attempts} attempts have stopped this way.` : base,
+      id: `command-${command.action}`,
       label: command.action === 'observability.core' ? 'Monitoring deployment needs review' : `${command.action} needs review`,
       tone: 'danger',
     })

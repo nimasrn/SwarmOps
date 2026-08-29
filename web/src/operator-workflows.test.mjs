@@ -140,3 +140,34 @@ test('runs explain observability failures and block unsafe retries', async () =>
   assert.match(app, />Agent diagnostics<\/Button>/)
   assert.match(app, /command\.failureSummary \?\? command\.lastError/)
 })
+
+test('the command center verdict answers to the blockers listed under it', async () => {
+  const home = await source('home.tsx')
+
+  // The hero read a green "Production is operating" while rows beneath it were
+  // marked Blocking, because the verdict was computed without reference to
+  // them. A standing verdict that contradicts its own evidence is one
+  // operators learn to stop reading.
+  assert.match(home, /const blocked = attention\.filter\(\(item\) => item\.tone === 'danger'\)\.length/)
+  assert.match(home, /const operating = serving && blocked === 0/)
+
+  // Serving and unblocked are different claims, and the hero states which.
+  assert.match(home, /Production is serving, and \$\{blocked\} operation/)
+  assert.doesNotMatch(home, /title=\{operating \? 'Production is operating' : 'Production evidence is incomplete'\}/)
+})
+
+test('one stalled action is one decision, however many times it was attempted', async () => {
+  const home = await source('home.tsx')
+
+  // A failed operation and its failed retry are two records and one decision.
+  // Listing both produced two identical rows and a count that said "2 open
+  // decisions" when there was one.
+  assert.match(home, /const byAction = new Map/)
+  assert.match(home, /id: `command-\$\{command\.action\}`/)
+  assert.doesNotMatch(home, /id: `command-\$\{command\.id\}`/)
+
+  // The newest record is kept, because its error is the current one, and the
+  // repeat count is surfaced rather than silently collapsed.
+  assert.match(home, /Date\.parse\(command\.createdAt\) > Date\.parse\(seen\.command\.createdAt\)/)
+  assert.match(home, /attempts have stopped this way/)
+})
