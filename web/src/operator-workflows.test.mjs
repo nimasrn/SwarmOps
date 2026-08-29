@@ -142,6 +142,9 @@ test('runs explain observability failures and block unsafe retries', async () =>
   assert.match(app, />Gateway setup<\/Button>/)
   assert.match(app, />Agent diagnostics<\/Button>/)
   assert.match(app, /command\.failureSummary \?\? command\.lastError/)
+	assert.match(app, /label: 'Failure code'/)
+	assert.match(app, /selected\.action === 'traefik\.reconcile'/)
+	assert.match(app, />Gateway &amp; ports<\/Button>/)
 })
 
 test('the command center verdict answers to the blockers listed under it', async () => {
@@ -224,4 +227,21 @@ test('every field read behind an object guard is guarded itself', async () => {
   // An empty array is truthy, so `!cutover` passes for a cutover with no
   // blockers and the read below it must still be guarded.
   assert.match(gateway, /cutover\.blockers\?\.length/)
+})
+
+test('a screen that fails does not take the navigation with it', async () => {
+  const app = await source('app.tsx')
+
+  // React unmounts from the root when a render throws and nothing catches it.
+  // Six crashes in this console did exactly that: the workspace went blank AND
+  // the rail disappeared, leaving an operator with no way back and no sign
+  // that anything had failed rather than finished loading.
+  assert.match(app, /<ErrorBoundary resetKey=\{workspace\}>/)
+
+  // Around the workspace, never the shell. The chrome that lets someone leave
+  // a broken screen has to outlive it, so a boundary wrapping AdminShell would
+  // protect nothing worth protecting.
+  const shellAt = app.indexOf('<AdminShell')
+  const boundaryAt = app.indexOf('<ErrorBoundary')
+  assert.ok(shellAt > -1 && boundaryAt > shellAt, 'the boundary must sit inside the shell')
 })

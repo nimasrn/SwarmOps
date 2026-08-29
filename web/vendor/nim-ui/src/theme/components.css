@@ -9658,3 +9658,48 @@
   gap: var(--nim-space-2);
   margin-block-start: var(--nim-space-3);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ERROR BOUNDARY — a failure that stays in its region
+   ═══════════════════════════════════════════════════════════════════════════ */
+.nim-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--nim-space-3);
+  padding: var(--nim-space-6);
+  border: var(--nim-border-width) dashed var(--nim-line-strong);
+  border-radius: var(--nim-radius-lg);
+  background: var(--nim-surface);
+  color: var(--nim-ink-secondary);
+}
+
+.nim-boundary__title {
+  margin: 0;
+  font-size: var(--nim-text-14);
+  font-weight: var(--nim-weight-semibold);
+  color: var(--nim-ink);
+}
+
+.nim-boundary__body {
+  margin: 0;
+  max-inline-size: 62ch;
+  font-size: var(--nim-text-13);
+  line-height: var(--nim-leading-normal);
+}
+
+/* The message is developer-facing and shown deliberately: an operator reading
+   "something went wrong" cannot tell anyone what, and the person who can fix it
+   is usually the one being asked. */
+.nim-boundary__detail {
+  margin: 0;
+  max-inline-size: 100%;
+  padding: var(--nim-space-3);
+  border-radius: var(--nim-radius-sm);
+  background: var(--nim-canvas);
+  font-family: var(--nim-font-mono);
+  font-size: var(--nim-text-11);
+  line-height: var(--nim-leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

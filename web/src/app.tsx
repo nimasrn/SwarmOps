@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import {
   ActivityFeed,
   AdminShell,
+  ErrorBoundary,
   AuthScreen,
   Badge,
   Banner,
@@ -552,6 +553,16 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
         />
       )}
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
+
+      {/* The workspace, not the shell. React unmounts from the root when a
+          render throws and nothing catches it, so a screen that failed used to
+          take the navigation rail with it and leave an operator on a blank
+          page with no way back. The chrome that lets someone leave a broken
+          screen has to survive it.
+
+          resetKey is the workspace, so navigating away clears the wreckage
+          rather than stranding the reader on it. */}
+      <ErrorBoundary resetKey={workspace}>
 	  {workspace === 'servers' ? (
 		<ServersPage activeServerID={activeServerID} onConnected={connected} onDiagnostics={(id) => { selectServer(id); setWorkspace('agent-diagnostics') }} onProvision={() => setWorkspace('provisioning')} onRefresh={refreshServers} onSelect={selectServer} servers={servers} toast={toast} />
 	  ) : workspace === 'agent-diagnostics' ? (
@@ -636,6 +647,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  />}
         </>
       )}
+      </ErrorBoundary>
     </AdminShell>
   )
 }
@@ -2093,9 +2105,10 @@ function CommandQueuePage({ commands, dashboard, highlightedID, onOpenDiagnostic
             title={commandLabel(selected.action)}
           >
             <Rows>
-				{guidance ? <Banner title="Why this needs attention" tone="warning"><Rows gap="tight"><Body size="sm">{guidance.summary}</Body>{guidance.blockers.length ? <List plain>{guidance.blockers.map((blocker) => <ListRow key={blocker} subtitle={blocker} title="Current blocker" />)}</List> : null}<Body size="sm"><strong>How to recover:</strong> {guidance.recovery}</Body>{selected.action === 'observability.core' ? <Inline><Button onClick={onOpenGateway} size="sm" variant="secondary">Gateway setup</Button><Button onClick={onOpenSwarm} size="sm" variant="secondary">Swarm placement</Button><Button onClick={onOpenDiagnostics} size="sm" variant="ghost">Agent diagnostics</Button></Inline> : null}</Rows></Banner> : null}
+				{guidance ? <Banner title="Why this needs attention" tone="warning"><Rows gap="tight"><Body size="sm">{guidance.summary}</Body>{guidance.blockers.length ? <List plain>{guidance.blockers.map((blocker) => <ListRow key={blocker} subtitle={blocker} title="Current blocker" />)}</List> : null}<Body size="sm"><strong>How to recover:</strong> {guidance.recovery}</Body>{selected.action === 'observability.core' ? <Inline><Button onClick={onOpenGateway} size="sm" variant="secondary">Gateway setup</Button><Button onClick={onOpenSwarm} size="sm" variant="secondary">Swarm placement</Button><Button onClick={onOpenDiagnostics} size="sm" variant="ghost">Agent diagnostics</Button></Inline> : selected.action === 'traefik.reconcile' ? <Inline><Button onClick={onOpenGateway} size="sm" variant="secondary">Gateway &amp; ports</Button><Button onClick={onOpenSwarm} size="sm" variant="secondary">Swarm placement</Button></Inline> : null}</Rows></Banner> : null}
               <Facts columns={1} items={[
                 { label: 'Command ID', mono: true, value: selected.id },
+				...(selected.failureCode ? [{ label: 'Failure code', mono: true, value: selected.failureCode }] : []),
                 { label: 'Explicit target', mono: true, value: selected.target || selected.nodeId },
                 { label: 'Server', value: servers.find((server) => server.id === selected.serverId)?.name ?? shortID(selected.serverId) },
                 { label: 'Actor', value: selected.actor },
@@ -2163,6 +2176,7 @@ function commandAttentionGuidance(command: Command, dashboard: DashboardData | n
 
 function commandLabel(action: string) {
 	if (action === 'observability.core') return 'Core monitoring change'
+	if (action === 'traefik.reconcile') return 'Gateway installation'
 	return action
 }
 
