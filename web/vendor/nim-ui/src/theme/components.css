@@ -9392,10 +9392,16 @@
   font-weight: var(--nim-weight-semibold);
 }
 
+/* Ink, not the accent. --nim-accent-strong means "darker" and is therefore
+   backwards on a dark ground: it measured 6.07:1 in light and 3.07:1 in dark,
+   and no single accent token clears 4.5:1 in both (--nim-accent is the mirror
+   failure at 3.78 light / 5.70 dark). The column is already marked as measured
+   by its tinted ground and its accent border, so the text need not carry the
+   colour too — and a label legible in only one scheme is not carrying it. */
 .nim-ledger__col[data-kind='measured'] .nim-ledger__head {
   background: var(--nim-accent-soft);
   border-block-end-color: var(--nim-accent-line);
-  color: var(--nim-accent-strong);
+  color: var(--nim-ink);
 }
 
 .nim-ledger__col[data-kind='absent'] .nim-ledger__head {
