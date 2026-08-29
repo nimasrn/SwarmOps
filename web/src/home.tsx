@@ -236,18 +236,15 @@ export function HomePage({
             signal. This names which signals are measurements at all, and which
             are absences the console refuses to average into a figure. Same
             argument, one level deeper. */}
+        {/* EvidenceLedger brings its own Panel — wrapping it in a second one
+            printed the heading and its description twice. */}
         {cluster ? (
-          <Panel
-            description="Everything on the left is measured, with the thing that produced it named. Everything on the right is not yet evidence — shown so the gap is visible, never averaged into the figures beside it."
-            title="Cluster state"
-          >
-            <EvidenceLedger
-              observability={cluster.observability}
-              onOpen={onOpenPage}
-              overview={cluster.overview}
-              traefik={cluster.traefik}
-            />
-          </Panel>
+          <EvidenceLedger
+            observability={cluster.observability}
+            onOpen={onOpenPage}
+            overview={cluster.overview}
+            traefik={cluster.traefik}
+          />
         ) : null}
 
       </Columns>
