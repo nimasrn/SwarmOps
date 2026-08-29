@@ -204,3 +204,24 @@ test('the evidence ledger survives on the screen that is actually reachable', as
   assert.match(home, /onOpen=\{onOpenPage\}/)
   assert.match(home, /onOpenPage: \(page: string\) => void/)
 })
+
+test('every field read behind an object guard is guarded itself', async () => {
+  const [gateway, logs] = await Promise.all([source('traefik-page.tsx'), source('logs-page.tsx')])
+
+  // `a?.b.c` reads as defensive and is not: the chain short-circuits only when
+  // `a` is nullish, so a response that arrives present but INCOMPLETE walks
+  // into the unguarded access and white-screens the area — and with no error
+  // boundary, the navigation rail goes with it.
+  //
+  // Six of these shipped. They are invisible to review and invisible to the
+  // type checker, because the types promise the field is there and only the
+  // runtime disagrees.
+  for (const source_ of [gateway, logs]) {
+    assert.doesNotMatch(source_, /\w\?\.\w+\.(filter|map|join|toUpperCase|length)\b/,
+      'an optional chain that stops before the field it reads')
+  }
+
+  // An empty array is truthy, so `!cutover` passes for a cutover with no
+  // blockers and the read below it must still be guarded.
+  assert.match(gateway, /cutover\.blockers\?\.length/)
+})
