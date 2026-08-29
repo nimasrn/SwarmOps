@@ -1,4 +1,4 @@
-import { Body, Button, Caveat, EvidenceLedger as Ledger, Panel } from '@nim.zone/ui'
+import { Body, Button, Caveat, Columns, EvidenceLedger as Ledger, Label, Panel, Stack } from '@nim.zone/ui'
 import type { Node, ObservabilityStatus, Overview, TraefikStatus } from './types'
 
 /** One row of either column.
@@ -131,15 +131,21 @@ export function EvidenceLedger({
 
       {closers.length ? (
         <Panel description="Each of these turns a right-hand row into a left-hand one." title="Close the gap">
-          <div className="swarmops-ledger__closers">
+          {/* Kit composition rather than a local grid: Columns for the row,
+              Stack for each entry's rhythm. The bespoke CSS this replaces was
+              deleted when the ledger moved into the kit and never restored, so
+              title, detail and action sat flush against each other. */}
+          <Columns align="start">
             {closers.map((closer) => (
-              <div key={closer.title}>
-                <p className="swarmops-ledger__closer-title">{closer.title}</p>
+              <Stack gap="tight" key={closer.title}>
+                <Label as="p">{closer.title}</Label>
                 <Body size="sm">{closer.detail}</Body>
-                <Button onClick={() => onOpen?.(closer.page)} size="sm" variant="secondary">{closer.cta}</Button>
-              </div>
+                <div>
+                  <Button onClick={() => onOpen?.(closer.page)} size="sm" variant="secondary">{closer.cta}</Button>
+                </div>
+              </Stack>
             ))}
-          </div>
+          </Columns>
         </Panel>
       ) : (
         <Caveat title="Nothing is unmeasured">
