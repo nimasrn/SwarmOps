@@ -47,7 +47,6 @@ import {
 import type { BadgeVariant, TableColumn } from '@nim.zone/ui'
 import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 import { APIError, api } from './api'
-import { OverviewDashboard } from './dashboard'
 import { Brand, SwarmOpsMark } from './brand'
 import { ChangePreviewPanel } from './change-preview'
 import { KubernetesImportPage } from './kubernetes-import'
@@ -577,6 +576,12 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		<KubernetesImportPage />
 	  ) : workspace === 'source-deploy' || workspace === 'registry' ? (
 		<SourceDeployPage managerID={activeServer?.id ?? ''} managerName={activeServer?.name} toast={toast} view={workspace === 'registry' ? 'registry' : 'source'} />
+	  ) : workspace === 'overview' && !core ? (
+		// The command center is the only screen for `overview` now that the
+		// second one is gone, so the brief window where the controller has not
+		// answered needs its own state — otherwise the router falls through to
+		// a switch with no case for it and renders nothing at all.
+		<LoadingScreen label="Reading controller authority" />
 	  ) : workspace === 'overview' && core ? (
 		<HomePage
 		  cluster={activeServer && data ? data : undefined}
@@ -584,6 +589,7 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
 		  core={core}
 		  onAddNode={() => setWorkspace('servers')}
 		  onDiagnose={() => setWorkspace('agent-diagnostics')}
+		  onOpenPage={(next) => setWorkspace(next as WorkspacePage)}
 		  onDeploy={() => setWorkspace('source-deploy')}
 		  onOpenApplications={() => setWorkspace('applications')}
 		  onOpenInfrastructure={() => setWorkspace('nodes')}
@@ -670,7 +676,6 @@ function PageRouter({
     case 'applications': return <ApplicationsPage toast={toast} />
     case 'resources': return <ResourcesPage toast={toast} />
     case 'insights': return <InsightsPage toast={toast} />
-    case 'overview': return <OverviewDashboard observability={data.observability} onOpen={onOpenPage} overview={data.overview} stacks={data.stacks} traefik={data.traefik} />
   }
 }
 

@@ -19,6 +19,7 @@ import {
 } from '@nim.zone/ui'
 import type { StatusTone, TableColumn } from '@nim.zone/ui'
 import { api } from './api'
+import { EvidenceLedger } from './evidence-ledger'
 import type {
   Command,
   CoreTopology,
@@ -46,6 +47,10 @@ interface HomePageProps {
   onDeploy: () => void
   onOpenApplications: () => void
   onOpenInfrastructure: () => void
+  /** Routes to a named screen. The ledger's closers each name the page that
+   *  owns the gap they describe, so a callback that ignored the name would
+   *  send "Open Collectors" to the wrong place. */
+  onOpenPage: (page: string) => void
   onOpenOperations: () => void
   onOpenTraffic: () => void
   servers: Server[]
@@ -76,6 +81,7 @@ export function HomePage({
   onDeploy,
   onOpenApplications,
   onOpenInfrastructure,
+  onOpenPage,
   onOpenOperations,
   onOpenTraffic,
   servers,
@@ -225,6 +231,25 @@ export function HomePage({
             />
           </List>
         </Panel>
+
+        {/* "Where the signal comes from" names the LAYER that produced a
+            signal. This names which signals are measurements at all, and which
+            are absences the console refuses to average into a figure. Same
+            argument, one level deeper. */}
+        {cluster ? (
+          <Panel
+            description="Everything on the left is measured, with the thing that produced it named. Everything on the right is not yet evidence — shown so the gap is visible, never averaged into the figures beside it."
+            title="Cluster state"
+          >
+            <EvidenceLedger
+              observability={cluster.observability}
+              onOpen={onOpenPage}
+              overview={cluster.overview}
+              traefik={cluster.traefik}
+            />
+          </Panel>
+        ) : null}
+
       </Columns>
 
       <Panel

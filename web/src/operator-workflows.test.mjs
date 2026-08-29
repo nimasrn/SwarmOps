@@ -171,3 +171,33 @@ test('one stalled action is one decision, however many times it was attempted', 
   assert.match(home, /Date\.parse\(command\.createdAt\) > Date\.parse\(seen\.command\.createdAt\)/)
   assert.match(home, /attempts have stopped this way/)
 })
+
+test('the command center is the only overview screen, and covers its own loading state', async () => {
+  const app = await source('app.tsx')
+
+  // Two command centers existed and only one was reachable: HomePage always
+  // won the `workspace === 'overview' && core` branch, so OverviewDashboard
+  // was dead code carrying the old five-metric dashboard.
+  assert.doesNotMatch(app, /OverviewDashboard/)
+  assert.doesNotMatch(app, /from '\.\/dashboard'/)
+
+  // With the fallback gone, the window before the controller answers needs its
+  // own branch — the router's switch has no case for 'overview' and would
+  // render nothing.
+  assert.match(app, /workspace === 'overview' && !core \?/)
+  assert.match(app, /Reading controller authority/)
+})
+
+test('the evidence ledger survives on the screen that is actually reachable', async () => {
+  const home = await source('home.tsx')
+
+  // The measured / not-evidence split was only ever on the unreachable screen.
+  assert.match(home, /import \{ EvidenceLedger \} from '\.\/evidence-ledger'/)
+  assert.match(home, /<EvidenceLedger/)
+
+  // Its closers each name the page owning the gap they describe, so the
+  // callback has to carry the name — onOpenInfrastructure would have sent
+  // "Open Collectors" to infrastructure.
+  assert.match(home, /onOpen=\{onOpenPage\}/)
+  assert.match(home, /onOpenPage: \(page: string\) => void/)
+})
