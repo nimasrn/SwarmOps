@@ -313,11 +313,14 @@ When no usable provider credential exists, SwarmOps renders HTTP-01 on the
 public `web` entrypoint. A wildcard certificate cannot use that fallback and
 remains blocked until its DNS-01 credential is configured.
 
-Set non-secret deployment settings such as `TRAEFIK_ACME_EMAIL`,
-`SWARMOPS_HOST`, `TRAEFIK_DASHBOARD_HOST`, and
-`TRAEFIK_DASHBOARD_URL` in the ignored `deploy/hosts/manager-01.env`. Build and
-push the immutable SwarmOps API and agent images, then validate and deploy
-Traefik before SwarmOps:
+Set non-secret deployment settings such as `TRAEFIK_ACME_EMAIL` and
+`SWARMOPS_HOST` in the ignored `deploy/hosts/manager-01.env`. A direct
+Makefile deployment of the Traefik stack also requires
+`TRAEFIK_DASHBOARD_HOST` for Compose interpolation. When SwarmOps installs the
+gateway, enter that hostname in **Traffic → Gateway & ports** instead; it is
+stored with the selected cluster and the dashboard URL is derived from it.
+Build and push the immutable SwarmOps API and agent images, then validate and
+deploy Traefik before SwarmOps:
 
 ```bash
 make push TARGET=api TAG=<git-sha>

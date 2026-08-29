@@ -457,10 +457,10 @@ export class SwarmOpsAPI {
     })
   }
 
-  reconcileTraefik(confirmation: string) {
+  reconcileTraefik(confirmation: string, dashboardHost: string) {
     return this.commandRequest<Command>('/api/v1/traefik/reconcile', {
       method: 'POST',
-      body: JSON.stringify({ confirmation }),
+      body: JSON.stringify({ confirmation, dashboardHost }),
     })
   }
 

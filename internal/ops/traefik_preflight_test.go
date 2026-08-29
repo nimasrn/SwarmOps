@@ -50,6 +50,7 @@ func TestTraefikFallsBackToHTTPChallengeWithoutDNSSecrets(t *testing.T) {
 	t.Parallel()
 	settings := testTraefikSettings()
 	settings.Control = DefaultTraefikSettings(settings.ACMEEmail)
+	settings.Control.DashboardHost = "traefik.example.com"
 	if err := applyTraefikChallengeFallback(&settings, nil, map[string]bool{}); err != nil {
 		t.Fatal(err)
 	}

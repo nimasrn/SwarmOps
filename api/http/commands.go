@@ -106,7 +106,8 @@ type sourceDeployCommand struct {
 }
 
 type traefikCommand struct {
-	Confirmation string `json:"confirmation"`
+	Confirmation  string `json:"confirmation"`
+	DashboardHost string `json:"dashboardHost"`
 }
 
 type traefikPrerequisiteResponse struct {
@@ -255,12 +256,12 @@ func (s *Server) submitBuild(response http.ResponseWriter, request *http.Request
 	writeJSON(response, http.StatusAccepted, submission.Command)
 }
 
-func (s *Server) submitTraefik(response http.ResponseWriter, request *http.Request, claims auth.Claims, confirmation string) {
+func (s *Server) submitTraefik(response http.ResponseWriter, request *http.Request, claims auth.Claims, confirmation, dashboardHost string) {
 	if confirmation != "DEPLOY_TRAEFIK" {
 		writeError(response, http.StatusUnprocessableEntity, "deployment requires confirmation DEPLOY_TRAEFIK")
 		return
 	}
-	s.submitCommand(response, request, claims, commandTraefikReconcile, "stack/traefik", traefikCommand{Confirmation: confirmation}, true)
+	s.submitCommand(response, request, claims, commandTraefikReconcile, "stack/traefik", traefikCommand{Confirmation: confirmation, DashboardHost: dashboardHost}, true)
 }
 
 func (s *Server) submitTraefikPrerequisites(response http.ResponseWriter, request *http.Request, claims auth.Claims, repair ops.TraefikPrerequisiteRepair, username, password string) {
@@ -688,7 +689,7 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
 			return queue.PermanentError(err)
 		}
-		return classifyCommandError(target.Control.ReconcileTraefik(ctx, record.Command.Actor, record.Command.RequestID, input.Confirmation))
+		return classifyCommandError(target.Control.InstallTraefik(ctx, record.Command.Actor, record.Command.RequestID, input.DashboardHost, input.Confirmation))
 	case commandTraefikPrerequisites:
 		var input ops.TraefikPrerequisiteRepair
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {

@@ -175,7 +175,7 @@ func (s *Server) traefikSettingsApply(response http.ResponseWriter, request *htt
 		return
 	}
 	input.Settings = input.Settings.Normalize()
-	if err := input.Settings.Validate(); err != nil {
+	if err := input.Settings.ValidateForApply(); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}

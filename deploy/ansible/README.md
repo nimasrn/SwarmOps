@@ -137,7 +137,8 @@ Git-and-Make deployment path:
 ~~~bash
 cp deploy/hosts/example.env deploy/hosts/manager-01.env
 # Fill SSH_TARGET, DOCKER_CONTEXT, TRAEFIK_ACME_EMAIL, SWARMOPS_HOST,
-# TRAEFIK_DASHBOARD_HOST, and TRAEFIK_DASHBOARD_URL.
+# and TRAEFIK_DASHBOARD_HOST when Traefik will be deployed directly by Make.
+# A panel-managed gateway collects and stores its dashboard hostname in SwarmOps.
 
 make context HOST=manager-01
 make secret-create HOST=manager-01 \

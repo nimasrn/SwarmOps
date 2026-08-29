@@ -151,16 +151,20 @@ func TestTraefikSettingsValidate(t *testing.T) {
 	t.Parallel()
 
 	settings := DefaultTraefikSettings("Ops-Admin@example.com")
+	settings.DashboardHost = "traefik.example.com"
 	if err := settings.Validate(); err != nil {
 		t.Fatalf("default settings should validate: %v", err)
 	}
 
 	t.Run("normalize defaults", func(t *testing.T) {
 		t.Parallel()
-		cfg := TraefikSettings{ACMEEmail: " Ops@Admin@Example.com ", Version: 0}
+		cfg := TraefikSettings{ACMEEmail: " Ops@Admin@Example.com ", DashboardHost: " Traefik.Example.com. ", Version: 0}
 		cfg = cfg.Normalize()
 		if cfg.ACMEEmail != "Ops@Admin@Example.com" {
 			t.Fatalf("acme email = %q, want trimmed value", cfg.ACMEEmail)
+		}
+		if cfg.DashboardHost != "traefik.example.com" {
+			t.Fatalf("dashboard host = %q, want normalized hostname", cfg.DashboardHost)
 		}
 		if cfg.Version != RoutingSchemaVersion {
 			t.Fatalf("version = %d, want %d", cfg.Version, RoutingSchemaVersion)
@@ -189,6 +193,11 @@ func TestTraefikSettingsValidate(t *testing.T) {
 			return copy
 		}(), err: "DNS-01 resolver requires"},
 		{name: "invalid email", cfg: func() TraefikSettings { copy := settings; copy.ACMEEmail = "not-an-email"; return copy }(), err: "Traefik ACME email is invalid"},
+		{name: "invalid dashboard hostname", cfg: func() TraefikSettings {
+			copy := settings
+			copy.DashboardHost = "https://traefik.example.com/dashboard/"
+			return copy
+		}(), err: "Traefik dashboard hostname is invalid"},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -198,6 +207,14 @@ func TestTraefikSettingsValidate(t *testing.T) {
 				t.Fatalf("validate() = %v, want substring %q", err, tc.err)
 			}
 		})
+	}
+	withoutDashboard := settings
+	withoutDashboard.DashboardHost = ""
+	if err := withoutDashboard.Validate(); err != nil {
+		t.Fatalf("legacy settings without dashboard host should remain loadable: %v", err)
+	}
+	if err := withoutDashboard.ValidateForApply(); err == nil || !contains(err.Error(), "dashboard hostname is not configured") {
+		t.Fatalf("apply validation error = %v", err)
 	}
 }
 

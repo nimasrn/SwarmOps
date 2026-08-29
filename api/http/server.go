@@ -695,19 +695,22 @@ func (s *Server) traefikStatus(response http.ResponseWriter, request *http.Reque
 		s.operationError(response, request, err)
 		return
 	}
+	dashboardURL, err := target.Control.TraefikDashboardURL()
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
 	for _, service := range services {
 		if service.Name == "traefik_traefik" {
-			writeJSON(response, http.StatusOK, map[string]any{"dashboardURL": s.config.TraefikDashboardURL, "service": service})
+			writeJSON(response, http.StatusOK, map[string]any{"dashboardURL": dashboardURL, "service": service})
 			return
 		}
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"dashboardURL": s.config.TraefikDashboardURL, "service": nil})
+	writeJSON(response, http.StatusOK, map[string]any{"dashboardURL": dashboardURL, "service": nil})
 }
 
 func (s *Server) traefikReconcile(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	var input struct {
-		Confirmation string `json:"confirmation"`
-	}
+	var input traefikCommand
 	if !decodeJSON(response, request, &input) {
 		return
 	}
@@ -722,7 +725,7 @@ func (s *Server) traefikReconcile(response http.ResponseWriter, request *http.Re
 	// Installation prerequisites are controller-owned, non-secret settings.
 	// Reject them before enqueueing so the initiating panel can explain the
 	// exact corrective action; the worker validates again before mutation.
-	if err := target.Control.ValidateTraefikReconcile(input.Confirmation); err != nil {
+	if err := target.Control.ValidateTraefikInstall(input.Confirmation, input.DashboardHost); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -739,7 +742,7 @@ func (s *Server) traefikReconcile(response http.ResponseWriter, request *http.Re
 			}
 		}
 	}
-	s.submitTraefik(response, request, claims, input.Confirmation)
+	s.submitTraefik(response, request, claims, input.Confirmation, input.DashboardHost)
 }
 
 func (s *Server) traefikPreflight(response http.ResponseWriter, request *http.Request, _ auth.Claims) {

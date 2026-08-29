@@ -52,7 +52,6 @@ services:
       SWARMOPS_SOURCE_ALLOWED_HOSTS: ${SWARMOPS_SOURCE_ALLOWED_HOSTS:-}
       SWARMOPS_SOURCE_ENABLED: ${SWARMOPS_SOURCE_ENABLED:-false}
       SWARMOPS_SOURCE_IMAGE_PREFIX: ${SWARMOPS_SOURCE_IMAGE_PREFIX:-}
-      SWARMOPS_TRAEFIK_DASHBOARD_URL: ${TRAEFIK_DASHBOARD_URL:-https://traefik.nim.zone/dashboard/}
       SWARMOPS_TRAEFIK_DYNAMIC_CONFIG_FILE: /opt/swarmops/traefik-dynamic.yml
       TAG: ${TAG:?set TAG}
       # The checked-in Traefik asset itself requires this at reconcile time.
@@ -61,7 +60,6 @@ services:
       TRAEFIK_ARVAN_API_KEY_SECRET: ${TRAEFIK_ARVAN_API_KEY_SECRET:-traefik_arvan_api_key_v1}
       TRAEFIK_CF_DNS_TOKEN_SECRET: ${TRAEFIK_CF_DNS_TOKEN_SECRET:-traefik_cf_dns_token_v1}
       TRAEFIK_DASHBOARD_AUTH_SECRET: ${TRAEFIK_DASHBOARD_AUTH_SECRET:-traefik_dashboard_auth_v1}
-      TRAEFIK_DASHBOARD_HOST: ${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}
       TRAEFIK_DYNAMIC_CONFIG_NAME: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}
       TRAEFIK_IMAGE: ${TRAEFIK_IMAGE:-traefik:v3.6.13}
     volumes:

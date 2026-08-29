@@ -131,9 +131,98 @@ func (c *ControlPlane) ValidateTraefikReconcile(confirmation string) error {
 		}
 		settings := c.TraefikSettings
 		settings.ACMEEmail = state.Settings.ACMEEmail
+		settings.Control = state.Settings
+		return validatePlannedTraefikStackSettings(settings)
+	}
+	return validatePlannedTraefikStackSettings(c.TraefikSettings)
+}
+
+// ValidateTraefikInstall validates the browser-supplied, non-secret dashboard
+// hostname against a copy of the selected cluster's reviewed settings. The
+// durable command persists it only when the worker begins the installation.
+func (c *ControlPlane) ValidateTraefikInstall(confirmation, dashboardHost string) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if err := c.requireAudit(); err != nil {
+		return err
+	}
+	if confirmation != "DEPLOY_TRAEFIK" {
+		return fmt.Errorf("Traefik deployment requires confirmation DEPLOY_TRAEFIK")
+	}
+	if strings.TrimSpace(c.TraefikStackFile) == "" {
+		return fmt.Errorf("Traefik stack file is not configured")
+	}
+	if c.Routing == nil || !validClusterID(c.ServerID) {
+		return fmt.Errorf("sealed Traefik settings are not configured for the selected server")
+	}
+	state, err := c.Routing.Snapshot(c.ServerID)
+	if err != nil {
+		return err
+	}
+	state.Settings.DashboardHost = dashboardHost
+	state.Settings = state.Settings.Normalize()
+	if state.Settings.DashboardHost == "" {
+		return fmt.Errorf("Traefik dashboard hostname is not configured")
+	}
+	if !safeHostname(state.Settings.DashboardHost) {
+		return fmt.Errorf("Traefik dashboard hostname is invalid")
+	}
+	if err := state.Settings.ValidateForApply(); err != nil {
+		return err
+	}
+	settings := c.TraefikSettings
+	settings.ACMEEmail = state.Settings.ACMEEmail
+	settings.Control = state.Settings
+	return validatePlannedTraefikStackSettings(settings)
+}
+
+func validatePlannedTraefikStackSettings(settings TraefikStackSettings) error {
+	if settings.Control.Version == 0 {
 		return settings.Validate()
 	}
-	return c.TraefikSettings.Validate()
+	static, err := RenderTraefikStaticConfig(settings.Control)
+	if err != nil {
+		return err
+	}
+	settings.StaticConfigName = TraefikStaticConfigName(static)
+	return settings.Validate()
+}
+
+// InstallTraefik makes the panel-owned dashboard hostname part of the sealed
+// selected-cluster settings before reconciling the reviewed singleton stack.
+// Retrying the same durable command is idempotent.
+func (c *ControlPlane) InstallTraefik(ctx context.Context, actor, requestID, dashboardHost, confirmation string) error {
+	if err := c.ValidateTraefikInstall(confirmation, dashboardHost); err != nil {
+		return err
+	}
+	state, err := c.Routing.Snapshot(c.ServerID)
+	if err != nil {
+		return err
+	}
+	state.Settings.DashboardHost = dashboardHost
+	if err := c.Routing.PutSettings(c.ServerID, state.Settings); err != nil {
+		return fmt.Errorf("save Traefik dashboard hostname: %w", err)
+	}
+	return c.ReconcileTraefik(ctx, actor, requestID, confirmation)
+}
+
+func (c *ControlPlane) TraefikDashboardURL() (string, error) {
+	if c.Routing == nil || !validClusterID(c.ServerID) {
+		return "", nil
+	}
+	state, err := c.Routing.Snapshot(c.ServerID)
+	if err != nil {
+		return "", err
+	}
+	host := state.Settings.Normalize().DashboardHost
+	if host == "" {
+		return "", nil
+	}
+	if !safeHostname(host) {
+		return "", fmt.Errorf("stored Traefik dashboard hostname is invalid")
+	}
+	return "https://" + host + "/dashboard/", nil
 }
 
 // ReconcileTraefik deploys only the checked-in Traefik stack asset. It does

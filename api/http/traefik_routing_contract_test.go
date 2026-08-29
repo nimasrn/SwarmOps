@@ -27,9 +27,11 @@ func TestTraefikSettingsEndpointRequiresAuthAndCSRF(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
 	handler := server.Handler()
+	settings := ops.DefaultTraefikSettings("ops@example.com")
+	settings.DashboardHost = "traefik.example.com"
 	payload, err := json.Marshal(map[string]any{
 		"confirmation": "RESTART_SINGLETON_TRAEFIK",
-		"settings":     ops.DefaultTraefikSettings("ops@example.com"),
+		"settings":     settings,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -64,9 +66,11 @@ func TestTraefikSettingsCommandHeadersMustBePresent(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
 	handler := server.Handler()
+	settings := ops.DefaultTraefikSettings("ops@example.com")
+	settings.DashboardHost = "traefik.example.com"
 	payload, err := json.Marshal(map[string]any{
 		"confirmation": "RESTART_SINGLETON_TRAEFIK",
-		"settings":     ops.DefaultTraefikSettings("ops@example.com"),
+		"settings":     settings,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,6 +132,8 @@ func TestTraefikSettingsSubmissionReturnsCommandWithoutMutationPayload(t *testin
 	handler := server.Handler()
 	settingsOne := ops.DefaultTraefikSettings("alpha@example.com")
 	settingsTwo := ops.DefaultTraefikSettings("beta@example.com")
+	settingsOne.DashboardHost = "traefik.example.com"
+	settingsTwo.DashboardHost = "traefik.example.com"
 	bodyOne, err := json.Marshal(map[string]any{
 		"confirmation": "RESTART_SINGLETON_TRAEFIK",
 		"settings":     settingsOne,
@@ -188,8 +194,14 @@ func TestTraefikSettingsSubmissionReturnsCommandWithoutMutationPayload(t *testin
 func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
+	routing, err := ops.NewRoutingStore(t.TempDir(), make([]byte, 32), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	control := ops.NewControlPlane(nil, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
 		Mutations:        true,
+		Routing:          routing,
+		ServerID:         "manager-1",
 		TraefikSettings:  ops.TraefikStackSettings{},
 		TraefikStackFile: filepath.Join(t.TempDir(), "traefik.yml"),
 	})
@@ -200,7 +212,7 @@ func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
 		return Target{Control: control}, nil
 	})
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/traefik/reconcile", strings.NewReader(`{"confirmation":"DEPLOY_TRAEFIK"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/traefik/reconcile", strings.NewReader(`{"confirmation":"DEPLOY_TRAEFIK","dashboardHost":"traefik.example.com"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "install-missing-acme")
 	request.Header.Set("X-SwarmOps-Cluster-ID", "default")
@@ -211,6 +223,57 @@ func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
 	server.Handler().ServeHTTP(response, request)
 
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Traefik ACME email is not configured") {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	commands, err := server.commands.List(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 0 {
+		t.Fatalf("invalid install was queued: %#v", commands)
+	}
+}
+
+func TestTraefikInstallRejectsMissingPanelDashboardHostnameBeforeQueueing(t *testing.T) {
+	t.Parallel()
+	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
+	routing, err := ops.NewRoutingStore(t.TempDir(), make([]byte, 32), "ops@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := ops.DefaultTraefikSettings("ops@example.com")
+	control := ops.NewControlPlane(nil, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
+		Mutations: true,
+		Routing:   routing,
+		ServerID:  "manager-1",
+		TraefikSettings: ops.TraefikStackSettings{
+			ACMEEmail:           settings.ACMEEmail,
+			ArvanAPIKeySecret:   "traefik_arvan_api_key_v1",
+			CFDNSTokenSecret:    "traefik_cf_dns_token_v1",
+			DashboardAuthSecret: "traefik_dashboard_auth_v1",
+			DynamicConfigName:   "nim_traefik_dynamic_v1",
+			Image:               "traefik:v3.6.13",
+		},
+		TraefikStackFile: filepath.Join(t.TempDir(), "traefik.yml"),
+	})
+	server.targets = TargetResolverFunc(func(id string) (Target, error) {
+		if id != "manager-1" {
+			return Target{}, fmt.Errorf("select a connected server")
+		}
+		return Target{Control: control}, nil
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/traefik/reconcile", strings.NewReader(`{"confirmation":"DEPLOY_TRAEFIK","dashboardHost":""}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "install-missing-dashboard-host")
+	request.Header.Set("X-SwarmOps-Cluster-ID", "default")
+	request.Header.Set("X-CSRF-Token", csrf)
+	request.Header.Set("X-SwarmOps-Server-ID", "manager-1")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Traefik dashboard hostname is not configured") {
 		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
 	commands, err := server.commands.List(100)
@@ -248,7 +311,7 @@ func TestTraefikPreflightUsesExplicitTargetAndReturnsSafeChecklist(t *testing.T)
 	control := ops.NewControlPlane(docker, ops.DockerCLI{}, server.audit, ops.ControlPlaneOptions{
 		TraefikSettings: ops.TraefikStackSettings{
 			ACMEEmail: "ops@example.com", ArvanAPIKeySecret: "traefik_arvan_api_key_v1", CFDNSTokenSecret: "traefik_cf_dns_token_v1",
-			DashboardAuthSecret: "traefik_dashboard_auth_v1", DashboardHost: "traefik.example.com", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
+			DashboardAuthSecret: "traefik_dashboard_auth_v1", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
 		},
 	})
 	server.targets = TargetResolverFunc(func(id string) (Target, error) {
@@ -326,7 +389,7 @@ func TestTraefikPrerequisiteRepairQueuesOneCommandAndReturnsPasswordOnce(t *test
 		Mutations: true, TraefikDynamicConfigFile: dynamicPath,
 		TraefikSettings: ops.TraefikStackSettings{
 			ACMEEmail: "ops@example.com", ArvanAPIKeySecret: "traefik_arvan_api_key_v1", CFDNSTokenSecret: "traefik_cf_dns_token_v1",
-			DashboardAuthSecret: "traefik_dashboard_auth_v1", DashboardHost: "traefik.example.com", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
+			DashboardAuthSecret: "traefik_dashboard_auth_v1", DynamicConfigName: "nim_traefik_dynamic_v1", Image: "traefik:v3.6.13",
 		},
 	})
 	server.targets = TargetResolverFunc(func(id string) (Target, error) {

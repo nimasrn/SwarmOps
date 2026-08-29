@@ -185,7 +185,6 @@ write_host_file() {
       printf 'TRAEFIK_ACME_EMAIL=%s\n' "$traefik_email"
       printf 'SWARMOPS_HOST=%s\n' "$swarmops_host"
       printf 'TRAEFIK_DASHBOARD_HOST=%s\n' "$traefik_dashboard_host"
-      printf 'TRAEFIK_DASHBOARD_URL=https://%s/dashboard/\n' "$traefik_dashboard_host"
       printf '%s\n' 'SWARMOPS_MUTATIONS_ENABLED=false'
       printf '%s\n' 'SWARMOPS_BUILD_ENABLED=false'
     fi

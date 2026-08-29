@@ -11,6 +11,27 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.10.4 — 2026-08-30
+
+Traefik installation now owns its dashboard hostname in the console and the
+command center has one evidence-backed owner instead of overlapping overview
+surfaces.
+
+- **Dashboard hostname lives in SwarmOps** — Gateway & ports collects and
+  validates the public hostname during installation. The durable command stores
+  it with the selected cluster's sealed Traefik settings, renders the protected
+  router from that state, and derives the HTTPS dashboard URL without a Core
+  `TRAEFIK_DASHBOARD_HOST` or `SWARMOPS_TRAEFIK_DASHBOARD_URL` environment
+  variable.
+- **Missing configuration fails before the run** — an empty or malformed
+  hostname blocks admission with a specific recovery message. Legacy sealed
+  records remain readable, while every new install or static-settings update
+  must include a valid hostname.
+- **One command center owns the verdict and evidence** — the obsolete duplicate
+  overview surface is removed, the evidence ledger is available from the real
+  command center, and its recommended next action is calculated from the same
+  blockers shown beneath it without repeating the cluster-state heading.
+
 ## 0.10.3 — 2026-08-29
 
 An in-place native Agent migration now restarts already-active systemd units,

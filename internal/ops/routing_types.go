@@ -146,6 +146,7 @@ type PortRange struct {
 type TraefikSettings struct {
 	ACMEEmail      string             `json:"acmeEmail"`
 	AccessLogs     bool               `json:"accessLogs"`
+	DashboardHost  string             `json:"dashboardHost"`
 	EntryPoints    []StaticEntryPoint `json:"entryPoints"`
 	MetricsEnabled bool               `json:"metricsEnabled"`
 	OperationalLog string             `json:"operationalLog"`
@@ -577,6 +578,7 @@ func (b DependencyBinding) Validate() error {
 
 func (s TraefikSettings) Normalize() TraefikSettings {
 	s.ACMEEmail = strings.TrimSpace(s.ACMEEmail)
+	s.DashboardHost = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(s.DashboardHost), "."))
 	s.OperationalLog = strings.ToUpper(strings.TrimSpace(s.OperationalLog))
 	if s.Version == 0 {
 		s.Version = RoutingSchemaVersion
@@ -607,8 +609,14 @@ func (s TraefikSettings) Validate() error {
 	if s.Version != RoutingSchemaVersion {
 		return fmt.Errorf("unsupported Traefik settings version")
 	}
-	if s.ACMEEmail == "" || !strings.Contains(s.ACMEEmail, "@") || strings.ContainsAny(s.ACMEEmail, "\r\n\x00") {
+	if s.ACMEEmail == "" {
+		return fmt.Errorf("Traefik ACME email is not configured")
+	}
+	if !strings.Contains(s.ACMEEmail, "@") || strings.ContainsAny(s.ACMEEmail, "\r\n\x00") {
 		return fmt.Errorf("Traefik ACME email is invalid")
+	}
+	if s.DashboardHost != "" && !safeHostname(s.DashboardHost) {
+		return fmt.Errorf("Traefik dashboard hostname is invalid")
 	}
 	if !s.MetricsEnabled {
 		return fmt.Errorf("Traefik metrics are mandatory")
@@ -653,6 +661,20 @@ func (s TraefikSettings) Validate() error {
 			return fmt.Errorf("HTTP-01 and TLS-ALPN-01 resolvers cannot use DNS credentials")
 		}
 		resolvers[resolver.Name] = true
+	}
+	return nil
+}
+
+// ValidateForApply keeps legacy sealed records loadable while requiring every
+// newly reviewed panel update to include the dashboard hostname used by the
+// protected router.
+func (s TraefikSettings) ValidateForApply() error {
+	s = s.Normalize()
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	if s.DashboardHost == "" {
+		return fmt.Errorf("Traefik dashboard hostname is not configured")
 	}
 	return nil
 }

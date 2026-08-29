@@ -78,6 +78,76 @@ configs:
 	}
 }
 
+func TestInstallTraefikPersistsPanelDashboardHostname(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := bytes.Repeat([]byte{17}, 32)
+	auditStore, err := audit.Open(dataDir, key, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routing, err := NewRoutingStore(dataDir, key, "ops@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingRunner{}
+	control := NewControlPlane(nil, DockerCLI{Runner: runner}, auditStore, ControlPlaneOptions{
+		DataDir:          dataDir,
+		Mutations:        true,
+		Routing:          routing,
+		ServerID:         "manager-1",
+		TraefikSettings:  testTraefikSettings(),
+		TraefikStackFile: filepath.Join("..", "..", "deploy", "stacks", "traefik.yml"),
+	})
+
+	if err := control.InstallTraefik(context.Background(), "operator", "request", " Traefik.Example.com. ", "DEPLOY_TRAEFIK"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	state, err := routing.Snapshot("manager-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Settings.DashboardHost != "traefik.example.com" {
+		t.Fatalf("dashboard host = %q", state.Settings.DashboardHost)
+	}
+	dashboardURL, err := control.TraefikDashboardURL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dashboardURL != "https://traefik.example.com/dashboard/" {
+		t.Fatalf("dashboard URL = %q", dashboardURL)
+	}
+	if len(runner.calls) == 0 || !strings.Contains(fmt.Sprint(runner.calls), "stack deploy --detach=false --compose-file - traefik") {
+		t.Fatalf("install calls = %#v", runner.calls)
+	}
+}
+
+func TestInstallTraefikRejectsInvalidPanelDashboardHostname(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := bytes.Repeat([]byte{18}, 32)
+	auditStore, err := audit.Open(dataDir, key, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routing, err := NewRoutingStore(dataDir, key, "ops@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := NewControlPlane(nil, DockerCLI{}, auditStore, ControlPlaneOptions{
+		Mutations:        true,
+		Routing:          routing,
+		ServerID:         "manager-1",
+		TraefikSettings:  testTraefikSettings(),
+		TraefikStackFile: "traefik.yml",
+	})
+
+	err = control.ValidateTraefikInstall("DEPLOY_TRAEFIK", "https://traefik.example.com/dashboard/")
+	if err == nil || !strings.Contains(err.Error(), "dashboard hostname is invalid") {
+		t.Fatalf("validation error = %v", err)
+	}
+}
+
 func TestValidateTraefikReconcileRejectsMissingACMEEmailBeforeExecution(t *testing.T) {
 	t.Parallel()
 	runner := &recordingRunner{}
@@ -131,8 +201,8 @@ func testTraefikSettings() TraefikStackSettings {
 		ACMEEmail:           "ops@example.com",
 		ArvanAPIKeySecret:   "traefik_arvan_api_key_v1",
 		CFDNSTokenSecret:    "traefik_cf_dns_token_v1",
+		Control:             TraefikSettings{DashboardHost: "traefik.example.com"},
 		DashboardAuthSecret: "traefik_dashboard_auth_v1",
-		DashboardHost:       "traefik.example.com",
 		DynamicConfigName:   "nim_traefik_dynamic_v1",
 		Image:               "traefik:v3.6.13",
 	}

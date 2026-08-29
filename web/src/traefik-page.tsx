@@ -75,6 +75,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
   const [refreshing, setRefreshing] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
   const [installConfirmation, setInstallConfirmation] = useState('')
+  const [dashboardHost, setDashboardHost] = useState('')
   const [installing, setInstalling] = useState(false)
   const [installCommand, setInstallCommand] = useState<Command | null>(null)
   const [installError, setInstallError] = useState('')
@@ -116,6 +117,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
   }
 
   useEffect(() => { void load(false) }, [])
+  useEffect(() => { setDashboardHost(state?.settings.dashboardHost ?? '') }, [state?.settings.dashboardHost])
 
   const installed = Boolean(status.service)
   const running = status.service?.health === 'healthy'
@@ -124,7 +126,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
     setInstallError('')
     setInstallCommand(null)
     try {
-      const command = await api.reconcileTraefik(installConfirmation)
+      const command = await api.reconcileTraefik(installConfirmation, normalizeDashboardHostname(dashboardHost))
       queuedToast(toast, command, 'Gateway installation')
       setInstallCommand(command)
       setInstallOpen(false)
@@ -200,7 +202,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
         <Banner title="Gateway installation is running" tone="info"><Inline><Body size="sm">Run {installCommand.id.slice(0, 12)} remains {installCommand.state.replaceAll('_', ' ')}.</Body><Button onClick={() => window.location.hash = 'commands'} size="sm" variant="secondary">Open run details</Button></Inline></Banner>
       ) : null}
       {loading || !state ? <Panel><Rows><Body>Loading the selected manager’s sealed routing state…</Body></Rows></Panel> : null}
-      {!loading && state && tab === 'overview' ? <Rows>{!installed && preflight ? <TraefikPreflightPanel command={repairCommand} credentials={dashboardCredentials} error={repairError} onRepair={() => void repairPrerequisites()} preflight={preflight} repairing={repairing} /> : null}<TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /><DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /></Rows> : null}
+      {!loading && state && tab === 'overview' ? <Rows>{!installed && preflight ? <TraefikPreflightPanel command={repairCommand} credentials={dashboardCredentials} dashboardHost={state.settings.dashboardHost} error={repairError} onRepair={() => void repairPrerequisites()} preflight={preflight} repairing={repairing} /> : null}<TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} /><DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /></Rows> : null}
       {!loading && state && tab === 'routes' ? <RoutesTab cutover={cutover} onQueued={() => void load(false)} routes={routes} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
       {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} scope="dns" state={state} toast={toast} /> : null}
@@ -208,31 +210,35 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
         <Rows>
           <Body size="sm">SwarmOps will deploy its reviewed singleton Traefik stack on the selected manager. Routes, certificates, access logs, and metrics become available after the run succeeds.</Body>
           {installError ? <Banner title="Gateway installation blocked" tone="danger">{installError}</Banner> : null}
-          {preflight ? <TraefikPreflightPanel command={repairCommand} credentials={dashboardCredentials} error={repairError} onRepair={() => void repairPrerequisites()} preflight={preflight} repairing={repairing} /> : <Banner title="Prerequisites not loaded" tone="warning">Refresh Gateway & ports before installing so SwarmOps can verify the selected manager.</Banner>}
+          <Input autoCapitalize="none" hint="Use the public hostname that will open the protected dashboard, without https:// or a path." label="Dashboard hostname" onChange={(event) => setDashboardHost(event.target.value)} placeholder="traefik.example.com" spellCheck={false} value={dashboardHost} />
+          {preflight ? <TraefikPreflightPanel command={repairCommand} credentials={dashboardCredentials} dashboardHost={dashboardHost} error={repairError} onRepair={() => void repairPrerequisites()} preflight={preflight} repairing={repairing} /> : <Banner title="Prerequisites not loaded" tone="warning">Refresh Gateway & ports before installing so SwarmOps can verify the selected manager.</Banner>}
           <Banner title="Check for an existing gateway first" tone="warning">SwarmOps detects its own Swarm service, but not host-native or Docker Compose proxies. Do not continue if another process already binds the configured HTTP or HTTPS ports.</Banner>
           <Facts columns={1} items={[{ label: 'Target', value: 'Selected Swarm manager' }, { label: 'Result', value: 'One Traefik gateway service managed by SwarmOps' }, { label: 'Impact', value: 'Publishes configured gateway ports. A port conflict prevents the new gateway from starting; existing services are not replaced.' }]} />
           <Input hint="Type DEPLOY_TRAEFIK exactly." label="Confirmation" onChange={(event) => setInstallConfirmation(event.target.value)} placeholder="DEPLOY_TRAEFIK" value={installConfirmation} />
-          <Inline><Button disabled={installing || !preflight?.ready || installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
+          <Inline><Button disabled={installing || !preflight?.ready || !validDashboardHostname(dashboardHost) || installConfirmation !== 'DEPLOY_TRAEFIK'} loading={installing} onClick={() => void install()} variant="accent">Install gateway</Button><Button onClick={() => { setInstallOpen(false); setInstallConfirmation('') }} variant="secondary">Cancel</Button></Inline>
         </Rows>
       </Sheet>
     </Page>
   )
 }
 
-function TraefikPreflightPanel({ command, credentials, error, onRepair, preflight, repairing }: { command: Command | null; credentials: { password: string; username: string } | null; error: string; onRepair: () => void; preflight: TraefikInstallPreflight; repairing: boolean }) {
-  const blockers = preflight.checks.filter((check) => check.required && check.state === 'blocked').length
+function TraefikPreflightPanel({ command, credentials, dashboardHost, error, onRepair, preflight, repairing }: { command: Command | null; credentials: { password: string; username: string } | null; dashboardHost: string; error: string; onRepair: () => void; preflight: TraefikInstallPreflight; repairing: boolean }) {
+  const repairBlockers = preflight.checks.filter((check) => check.required && check.state === 'blocked').length
+  const dashboardHostReady = validDashboardHostname(dashboardHost)
+  const blockers = repairBlockers + (dashboardHostReady ? 0 : 1)
+  const ready = preflight.ready && dashboardHostReady
   return (
     <Panel caption={`Certificate challenge: ${preflight.challenge.toUpperCase()}`} title="Installation prerequisites">
       <Rows gap="tight">
-        <Banner title={preflight.ready ? 'Ready to install' : `${blockers} required item${blockers === 1 ? '' : 's'} incomplete`} tone={preflight.ready ? 'success' : 'warning'}>
+        <Banner title={ready ? 'Ready to install' : `${blockers} required item${blockers === 1 ? '' : 's'} incomplete`} tone={ready ? 'success' : 'warning'}>
           DNS provider credentials are optional. When no usable Cloudflare or ArvanCloud credential exists, SwarmOps renders HTTP-01 automatically. Wildcard certificates still require DNS-01.
         </Banner>
-        <List plain>{preflight.checks.map((check) => <ListRow key={check.id} subtitle={`${check.detail}${check.recovery ? ` ${check.recovery}` : ''}`} title={check.label} trailing={<StatusDot tone={check.state === 'ready' ? 'success' : check.state === 'blocked' ? 'danger' : check.state === 'automatic' ? 'accent' : 'neutral'}>{check.state === 'automatic' ? 'Created during install' : check.state}</StatusDot>} />)}</List>
+        <List plain><ListRow subtitle={dashboardHostReady ? `${normalizeDashboardHostname(dashboardHost)} will route the protected dashboard.` : 'Enter a valid public hostname in the installation panel.'} title="Dashboard hostname" trailing={<StatusDot tone={dashboardHostReady ? 'success' : 'danger'}>{dashboardHostReady ? 'ready' : 'blocked'}</StatusDot>} />{preflight.checks.map((check) => <ListRow key={check.id} subtitle={`${check.detail}${check.recovery ? ` ${check.recovery}` : ''}`} title={check.label} trailing={<StatusDot tone={check.state === 'ready' ? 'success' : check.state === 'blocked' ? 'danger' : check.state === 'automatic' ? 'accent' : 'neutral'}>{check.state === 'automatic' ? 'Created during install' : check.state}</StatusDot>} />)}</List>
 		{error ? <Banner title="Automatic repair could not start" tone="danger">{error}</Banner> : null}
 		{command && command.state !== 'succeeded' && !commandFailed(command) ? <Banner title="Fixing prerequisites" tone="info">Run {command.id.slice(0, 12)} is {command.state.replaceAll('_', ' ')}. SwarmOps is applying only the reviewed missing resources.</Banner> : null}
 		{command && commandFailed(command) ? <Banner title="Prerequisite repair needs attention" tone="danger">{command.failureSummary ?? command.lastError ?? 'SwarmOps could not confirm every repair.'}</Banner> : null}
 		{credentials ? <Banner title="Save the generated dashboard login" tone={command?.state === 'succeeded' ? 'success' : 'warning'}><Rows gap="tight"><Body size="sm">This password is shown only for this repair response. It is stored in Swarm as a write-only htpasswd secret.</Body><CodeBlock label="Traefik dashboard login" wrap>{`Username: ${credentials.username}\nPassword: ${credentials.password}`}</CodeBlock></Rows></Banner> : null}
-		{!preflight.ready && preflight.repairable ? <Button disabled={repairing} loading={repairing} onClick={onRepair} variant="accent">Fix all {blockers} prerequisites</Button> : null}
+		{!preflight.ready && preflight.repairable ? <Button disabled={repairing} loading={repairing} onClick={onRepair} variant="accent">Fix all {repairBlockers} prerequisites</Button> : null}
         {!preflight.ready && !preflight.repairable ? <Inline><Button onClick={() => window.location.hash = 'nodes'} size="sm" variant="secondary">Swarm placement</Button><Button onClick={() => window.location.hash = 'resources'} size="sm" variant="secondary">Docker resources</Button></Inline> : null}
       </Rows>
     </Panel>
@@ -245,7 +251,7 @@ function TrafficOverview({ certificates, prometheus, routes, state }: { certific
   const filtered = protocol === 'all' ? routes : routes.filter((row) => row.route.protocol === protocol)
   const selected = routes.find((row) => row.route.key === selectedKey) ?? filtered[0] ?? routes[0]
   const expiring = certificates.filter((certificate) => certificate.notAfter && new Date(certificate.notAfter).getTime() < Date.now() + 30 * 86400000)
-  const failingTargets = prometheus?.targets.filter((target) => target.health !== 'up').length ?? 0
+  const failingTargets = prometheus?.targets?.filter((target) => target.health !== 'up').length ?? 0
   const routeColumns: TableColumn<RouteInventoryRow>[] = [
     { header: 'Application / service', key: 'service', render: (row) => <Button onClick={() => setSelectedKey(row.route.key)} size="sm" variant="ghost">{row.route.serviceKey}</Button> },
     { header: 'Proto', key: 'protocol', render: (row) => row.route.protocol.toUpperCase() },
@@ -274,7 +280,7 @@ function TrafficOverview({ certificates, prometheus, routes, state }: { certific
               { label: 'Declaration', value: selected.declaration.role },
               { label: 'Protocol', value: selected.route.protocol.toUpperCase() },
               { label: 'Scope', value: selected.route.scope },
-              { label: 'Entrypoints', value: selected.runtime?.entryPoints.join(', ') || 'Not observed' },
+              { label: 'Entrypoints', value: selected.runtime?.entryPoints?.join(', ') || 'Not observed' },
               { label: 'Router', mono: true, value: selected.runtime?.router || 'Not observed' },
               { label: 'Backend', mono: true, value: `${selected.route.serviceKey}:${selected.route.targetPort}` },
               { label: 'Runtime', value: selected.runtime?.state || selected.status },
@@ -483,7 +489,7 @@ function CertificatesTab({ certificates, onQueued, routes, toast }: { certificat
       <Columns>
         {eligible.map((row) => {
           const certificate = byRoute.get(row.route.key)
-          return <Panel eyebrow={row.route.key} key={row.route.key} title={(row.route.match.hosts ?? row.route.match.sni ?? []).join(', ')}><Facts items={[{ label: 'Issuer', value: certificate?.issuer ?? 'Not observed' }, { label: 'SANs', mono: true, value: certificate?.domains.join(', ') || 'None issued' }, { label: 'Fingerprint', mono: true, value: certificate?.fingerprint || 'None issued' }, { label: 'Valid from', value: dateTime(certificate?.notBefore) }, { label: 'Valid until', value: dateTime(certificate?.notAfter) }, { label: 'Handshake', value: certificate?.handshakeValid ? 'Validated' : 'Not validated' }]} />{certificate?.failureSummary ? <Banner title="Last failure" tone="danger">{certificate.failureSummary}</Banner> : null}</Panel>
+          return <Panel eyebrow={row.route.key} key={row.route.key} title={(row.route.match.hosts ?? row.route.match.sni ?? []).join(', ')}><Facts items={[{ label: 'Issuer', value: certificate?.issuer ?? 'Not observed' }, { label: 'SANs', mono: true, value: certificate?.domains?.join(', ') || 'None issued' }, { label: 'Fingerprint', mono: true, value: certificate?.fingerprint || 'None issued' }, { label: 'Valid from', value: dateTime(certificate?.notBefore) }, { label: 'Valid until', value: dateTime(certificate?.notAfter) }, { label: 'Handshake', value: certificate?.handshakeValid ? 'Validated' : 'Not validated' }]} />{certificate?.failureSummary ? <Banner title="Last failure" tone="danger">{certificate.failureSummary}</Banner> : null}</Panel>
         })}
       </Columns>
     </Rows>
@@ -581,6 +587,7 @@ function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: () => voi
         {scope === 'gateway' ? <Panel eyebrow="Gateway listening and certificate policy" title="Ports & certificate resolvers">
           <Rows>
             <Input label="ACME account email" onChange={(event) => setSettings({ ...settings, acmeEmail: event.target.value })} type="email" value={settings.acmeEmail} />
+            <Input autoCapitalize="none" hint="Public hostname only; SwarmOps derives the HTTPS dashboard URL." label="Dashboard hostname" onChange={(event) => setSettings({ ...settings, dashboardHost: event.target.value })} placeholder="traefik.example.com" spellCheck={false} value={settings.dashboardHost} />
             <Columns><Input label="Stream port range start" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, start: Number(event.target.value) } })} type="number" value={settings.portRange.start} /><Input label="Stream port range end" min="10000" max="19999" onChange={(event) => setSettings({ ...settings, portRange: { ...settings.portRange, end: Number(event.target.value) } })} type="number" value={settings.portRange.end} /></Columns>
             <Rows gap="tight">{settings.entryPoints.map((entry) => <Inline key={entry.name}><Mono>{entry.name}</Mono><Badge>{entry.protocol.toUpperCase()} {entry.port}</Badge><Badge variant={entry.public ? 'warning' : 'info'}>{entry.public ? 'published' : 'internal'}</Badge></Inline>)}</Rows>
             <Body size="sm">HTTP/HTTPS share 80 and 443. Internal HTTP and metrics are not published. New TCP/UDP entrypoints are added by a validated route plan and reserve only ports 10000–19999.</Body>
@@ -654,6 +661,17 @@ function cloneRoute(route: RouteSpec): RouteSpec {
 
 function cloneSettings(settings: TraefikSettings): TraefikSettings {
   return { ...settings, entryPoints: settings.entryPoints.map((entry) => ({ ...entry })), portRange: { ...settings.portRange }, resolvers: settings.resolvers.map((resolver) => ({ ...resolver })) }
+}
+
+function normalizeDashboardHostname(value: string) {
+  return value.trim().toLowerCase().replace(/\.$/, '')
+}
+
+function validDashboardHostname(value: string) {
+  const hostname = normalizeDashboardHostname(value)
+  if (!hostname || hostname.length > 253 || hostname.includes('/') || hostname.includes(':') || hostname.includes('@') || hostname.includes('?') || hostname.includes('#')) return false
+  const parts = hostname.split('.')
+  return parts.length >= 2 && parts.every((part) => part.length > 0 && part.length <= 63 && !part.startsWith('-') && !part.endsWith('-') && /^[a-z0-9-]+$/.test(part))
 }
 
 function latestCredentialVersions(credentials: DNSCredentialMetadata[]) {

@@ -87,12 +87,10 @@ type Config struct {
 	SourceImagePrefix             string
 	TLSCertFile                   string
 	TLSKeyFile                    string
-	TraefikDashboardURL           string
 	TraefikACMEEmail              string
 	TraefikArvanAPIKeySecret      string
 	TraefikCFDNSTokenSecret       string
 	TraefikDashboardAuthSecret    string
-	TraefikDashboardHost          string
 	TraefikDynamicConfigName      string
 	TraefikDynamicConfigFile      string
 	TraefikImage                  string
@@ -174,12 +172,10 @@ func Load() (Config, error) {
 		SourceImagePrefix:             strings.TrimSuffix(env("SWARMOPS_SOURCE_IMAGE_PREFIX", ""), "/"),
 		TLSCertFile:                   env("SWARMOPS_TLS_CERT_FILE", ""),
 		TLSKeyFile:                    env("SWARMOPS_TLS_KEY_FILE", ""),
-		TraefikDashboardURL:           env("SWARMOPS_TRAEFIK_DASHBOARD_URL", ""),
 		TraefikACMEEmail:              env("TRAEFIK_ACME_EMAIL", ""),
 		TraefikArvanAPIKeySecret:      env("TRAEFIK_ARVAN_API_KEY_SECRET", "traefik_arvan_api_key_v1"),
 		TraefikCFDNSTokenSecret:       env("TRAEFIK_CF_DNS_TOKEN_SECRET", "traefik_cf_dns_token_v1"),
 		TraefikDashboardAuthSecret:    env("TRAEFIK_DASHBOARD_AUTH_SECRET", "traefik_dashboard_auth_v1"),
-		TraefikDashboardHost:          env("TRAEFIK_DASHBOARD_HOST", ""),
 		TraefikDynamicConfigName:      env("TRAEFIK_DYNAMIC_CONFIG_NAME", "nim_traefik_dynamic_v1"),
 		TraefikDynamicConfigFile:      env("SWARMOPS_TRAEFIK_DYNAMIC_CONFIG_FILE", filepath.Join(assetDir, "traefik-dynamic.yml")),
 		TraefikImage:                  env("TRAEFIK_IMAGE", "traefik:v3.6.13"),
@@ -236,9 +232,6 @@ func Load() (Config, error) {
 		if !httpLoopback && !c.HTTPAllowRemote {
 			return Config{}, fmt.Errorf("non-loopback SWARMOPS_HTTP_LISTEN_ADDR requires SWARMOPS_HTTP_ALLOW_REMOTE=true")
 		}
-	}
-	if dashboardURL := strings.TrimSpace(c.TraefikDashboardURL); dashboardURL != "" && !strings.HasPrefix(dashboardURL, "https://") {
-		return Config{}, fmt.Errorf("SWARMOPS_TRAEFIK_DASHBOARD_URL must use https")
 	}
 	if err := os.MkdirAll(c.DataDir, 0o700); err != nil {
 		return Config{}, fmt.Errorf("create data directory: %w", err)

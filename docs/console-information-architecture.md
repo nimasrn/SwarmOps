@@ -98,7 +98,10 @@ named for what the operator is doing rather than for the subsystem underneath.
     run and optional DNS credentials. An absent DNS provider credential selects
     HTTP-01; it does not masquerade as a failed prerequisite. Agent compatibility
     is based on the machine protocol, while the reported release remains visible
-    as evidence.
+    as evidence. The installation sheet owns the non-secret dashboard hostname;
+    the durable install command stores it with the selected cluster's sealed
+    Traefik settings and derives the dashboard URL without editing Core's
+    environment.
 
 ## Responsive and accessibility contract
 

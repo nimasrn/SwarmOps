@@ -386,6 +386,7 @@ export interface ACMEPolicy {
 export interface TraefikSettings {
   acmeEmail: string
   accessLogs: boolean
+  dashboardHost: string
   entryPoints: StaticEntryPoint[]
   metricsEnabled: true
   operationalLog: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'

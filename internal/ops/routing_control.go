@@ -445,6 +445,9 @@ func (c *ControlPlane) ApplyTraefikSettings(ctx context.Context, actor, requestI
 		return fmt.Errorf("static Traefik settings require confirmation RESTART_SINGLETON_TRAEFIK")
 	}
 	settings = settings.Normalize()
+	if err := settings.ValidateForApply(); err != nil {
+		return err
+	}
 	err := c.Routing.PutSettings(c.ServerID, settings)
 	if err == nil {
 		err = c.ReconcileTraefik(ctx, actor, requestID, "DEPLOY_TRAEFIK")

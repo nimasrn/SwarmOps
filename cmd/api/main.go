@@ -26,7 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.10.3"
+const version = "0.10.4"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -125,7 +125,6 @@ func main() {
 		ArvanAPIKeySecret:   cfg.TraefikArvanAPIKeySecret,
 		CFDNSTokenSecret:    cfg.TraefikCFDNSTokenSecret,
 		DashboardAuthSecret: cfg.TraefikDashboardAuthSecret,
-		DashboardHost:       cfg.TraefikDashboardHost,
 		DynamicConfigName:   cfg.TraefikDynamicConfigName,
 		Image:               cfg.TraefikImage,
 	}

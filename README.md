@@ -209,7 +209,7 @@ are in [console information architecture](docs/console-information-architecture.
 | Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention | The API writes the command ledger before returning `202`; it exposes no raw payload, source archive, remote output, or secret. Safe controller-owned failure codes, summaries, and recovery guidance remain visible in Runs and on the initiating screen. The newest queued or retry-scheduled command for the same server/action/target atomically replaces the older one; running and needs-attention commands remain visible. |
 | Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmops build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
 | Source deploy | Verify and seal GitHub, GitLab, GitHub Enterprise, self-managed GitLab, or Gitea/Forgejo-compatible tokens; list accessible repositories; resolve a ref to a commit; find every Compose file and Dockerfile at any depth; build and deploy one classified application | Private hosts require an exact `SWARMOPS_SOURCE_ALLOWED_HOSTS` entry. Provider content is evidence only: browser responses and audit records contain paths, digests, classifications, and findings—not tokens, Compose/Dockerfile bodies, environment values, build contexts, or logs. Only regular files from the pinned build context enter the encrypted artifact queue. |
-| Edge / TLS | Typed HTTP/TCP/UDP routes, service-role inventory, isolated dependency bindings, static entrypoints, Cloudflare/Arvan DNS records, ACME state/retry, bounded logs, internal Prometheus status, and one-action cutover | Raw labels/rules/provider URLs/queries are never accepted. Every mutation is durably queued for the selected manager; public exposure is denied by default and static changes warn that they restart the singleton. |
+| Edge / TLS | Typed HTTP/TCP/UDP routes, service-role inventory, isolated dependency bindings, static entrypoints, Cloudflare/Arvan DNS records, ACME state/retry, bounded logs, internal Prometheus status, and one-action cutover | Raw labels/rules/provider URLs/queries are never accepted. The dashboard hostname is entered in the installation panel and stored with the selected cluster's sealed Traefik settings; Core does not read it from its process environment. Every mutation is durably queued for the selected manager; public exposure is denied by default and static changes warn that they restart the singleton. |
 | Applications | Render and deploy an application from a small spec: approved slot, immutable image, container port, health path, attached databases, metrics/tracing, optional backend, and an optional policy-bounded domain | SwarmOps generates the Compose and puts its own output through `ValidateCompose` and platform admission. Manual applications use an already-pushed image; Source deploy may first build a pinned repository context through the same capped build service. Exact domains and optional suffix policies come from the reviewed manifest, runtime assignments are unique, and removal needs the application-specific confirmation. |
 | Databases | Deploy or remove one managed PostgreSQL, MongoDB, or Redis instance from the console | Each is a reviewed, checked-in Compose asset rendered on the controller; the browser never authors it. The password and routed connection URI are generated as Swarm secrets and never returned to a browser. Each engine is pinned to a `nim.stateful=true` node and attached only to its encrypted service-and-Traefik overlay; removal needs the exact `REMOVE_DATABASE_<ENGINE>` confirmation and leaves the named volume in place. |
 | Observability | Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection. Applications that publish metrics are discovered automatically, and SwarmOps renders its own operator graphs and metrics. | Every scrape/dependency path uses a typed internal Traefik alias. The console exposes bounded, product-owned views rather than arbitrary PromQL or a separate dashboard service. |
@@ -356,7 +356,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current source version is `0.10.3`. Release history is in
+The current source version is `0.10.4`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -1029,19 +1029,24 @@ the GUI machine.
    That JSON is sent over the encrypted Docker API stream for the build and
    never reaches the browser. Remote Swarm nodes use their own reviewed image
    pull credentials for private-stack deployments.
-5. Use **Fix all prerequisites** to copy the mounted reviewed dynamic config
+5. Enter the public dashboard hostname in **Install gateway**, then use **Fix
+   all prerequisites** to copy the mounted reviewed dynamic config
    and generate the required `htpasswd` dashboard-auth secret; save the
-   one-time dashboard login shown by the panel. Add a Cloudflare DNS-token or
-   ArvanCloud API-key secret only when DNS-01 is wanted; without one, SwarmOps
-   uses HTTP-01. The dashboard is routed to `api@internal`; port `8080` is
-   never published.
+   one-time dashboard login shown by the panel. The install command validates
+   and stores that non-secret hostname in the selected cluster's sealed routing
+   state and derives its HTTPS dashboard URL; no Core environment variable is
+   required. Add a Cloudflare DNS-token or ArvanCloud API-key secret only when
+   DNS-01 is wanted; without one, SwarmOps uses HTTP-01. The dashboard is routed
+   to `api@internal`; port `8080` is never published.
 6. Configure a reviewed Alertmanager receiver before
    relying on notifications; the committed baseline uses a blackhole receiver.
    Jaeger uses the checked-in v2.20 Badger config on the labelled stateful
    node, so its volume needs a backup/recovery procedure.
-7. Set non-secret host values such as `SWARMOPS_HOST`,
-   `TRAEFIK_DASHBOARD_HOST`, `TRAEFIK_DASHBOARD_URL`, and
-   `TRAEFIK_ACME_EMAIL` in the ignored `deploy/hosts/<host>.env` file.
+7. Set bootstrap-only non-secret host values such as `SWARMOPS_HOST` and
+   `TRAEFIK_ACME_EMAIL` in the ignored `deploy/hosts/<host>.env` file. A direct
+   Makefile deployment of the Traefik stack still needs
+   `TRAEFIK_DASHBOARD_HOST` for Compose interpolation; a gateway installed from
+   SwarmOps takes the hostname from the panel instead.
 
 Example secret creation (the referenced files are intentionally outside Git):
 

@@ -82,7 +82,7 @@ test('readiness presents one reviewed fix at a time instead of a switch plan', a
 })
 
 test('gateway and source dead ends have explicit setup actions', async () => {
-  const [gateway, sourceDeploy] = await Promise.all([source('traefik-page.tsx'), source('source-deploy.tsx')])
+  const [api, gateway, sourceDeploy] = await Promise.all([source('api.ts'), source('traefik-page.tsx'), source('source-deploy.tsx')])
   assert.match(gateway, />Install gateway<\/Button>/)
   assert.match(gateway, /Cloudflare and ArvanCloud/)
   assert.match(gateway, /Not managed by SwarmOps/)
@@ -92,10 +92,13 @@ test('gateway and source dead ends have explicit setup actions', async () => {
   assert.match(gateway, /title="Gateway installation blocked"/)
   assert.match(gateway, /title="Gateway installation needs attention"/)
   assert.match(gateway, /title="Installation prerequisites"/)
+  assert.match(gateway, /label="Dashboard hostname"/)
+  assert.match(gateway, /normalizeDashboardHostname\(dashboardHost\)/)
   assert.match(gateway, /DNS provider credentials are optional/)
   assert.match(gateway, /SwarmOps renders HTTP-01 automatically/)
   assert.match(gateway, /!preflight\?\.ready/)
   assert.match(gateway, />Open run details<\/Button>/)
+  assert.match(api, /JSON\.stringify\(\{ confirmation, dashboardHost \}\)/)
   assert.match(sourceDeploy, />Configure source deployment<\/Button>/)
   assert.match(sourceDeploy, />Configure registry<\/Button>/)
   assert.match(sourceDeploy, /Hosted GitHub \/ GitLab/)

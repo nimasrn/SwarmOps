@@ -23,7 +23,6 @@ type TraefikStackSettings struct {
 	CloudflareDNSAvailable bool
 	CFDNSTokenSecret       string
 	DashboardAuthSecret    string
-	DashboardHost          string
 	DynamicConfigName      string
 	Image                  string
 	Control                TraefikSettings
@@ -46,7 +45,7 @@ func RenderTraefikStack(source []byte, settings TraefikStackSettings) ([]byte, e
 	text = strings.NewReplacer(
 		"${TRAEFIK_IMAGE:-traefik:v3.6.13}", settings.Image,
 		"${TRAEFIK_ACME_EMAIL:?set TRAEFIK_ACME_EMAIL}", settings.ACMEEmail,
-		"${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}", settings.DashboardHost,
+		"${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}", settings.Control.DashboardHost,
 		"${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}", settings.DynamicConfigName,
 		"${TRAEFIK_CF_DNS_TOKEN_SECRET:-traefik_cf_dns_token_v1}", settings.CFDNSTokenSecret,
 		"${TRAEFIK_ARVAN_API_KEY_SECRET:-traefik_arvan_api_key_v1}", settings.ArvanAPIKeySecret,
@@ -87,7 +86,7 @@ func (s TraefikStackSettings) Validate() error {
 	if strings.TrimSpace(s.ACMEEmail) == "" || !strings.Contains(s.ACMEEmail, "@") || strings.ContainsAny(s.ACMEEmail, "\r\n\x00") {
 		return fmt.Errorf("Traefik ACME email is not configured")
 	}
-	if !safeHostname(s.DashboardHost) {
+	if !safeHostname(s.Control.DashboardHost) {
 		return fmt.Errorf("Traefik dashboard hostname is not configured")
 	}
 	if err := validateImage(s.Image); err != nil {
