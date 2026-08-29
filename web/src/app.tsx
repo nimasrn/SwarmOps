@@ -429,15 +429,29 @@ function Console({ onLogout, session }: { onLogout: () => void; session: Session
   // product decision, and a component that bound a global key would collide
   // with every other consumer on the page.
   useEffect(() => {
+    const typing = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null
+      return Boolean(el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName)))
+    }
     const hotkey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setPaletteOpen(true)
+        return
+      }
+      // D goes to connection diagnostics. Unmodified, so it must not fire while
+      // someone is typing a hostname or a confirmation phrase — a bare-letter
+      // shortcut that steals keystrokes from a text field is worse than no
+      // shortcut, and confirmation phrases are exactly where a lost keystroke
+      // costs the most.
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'd' && !typing(event.target)) {
+        event.preventDefault()
+        setWorkspace('agent-diagnostics')
       }
     }
     window.addEventListener('keydown', hotkey)
     return () => window.removeEventListener('keydown', hotkey)
-  }, [])
+  }, [setWorkspace])
 
   const commands_ = useMemo(() => paletteCommands({
     managers,

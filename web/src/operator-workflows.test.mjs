@@ -245,3 +245,18 @@ test('a screen that fails does not take the navigation with it', async () => {
   const boundaryAt = app.indexOf('<ErrorBoundary')
   assert.ok(shellAt > -1 && boundaryAt > shellAt, 'the boundary must sit inside the shell')
 })
+
+test('D reaches diagnostics without stealing keystrokes from a text field', async () => {
+  const app = await source('app.tsx')
+
+  // The artboard carried this shortcut and it was never built.
+  assert.match(app, /event\.key\.toLowerCase\(\) === 'd'/)
+  assert.match(app, /setWorkspace\('agent-diagnostics'\)/)
+
+  // Unmodified, so it must not fire while someone is typing. A bare-letter
+  // shortcut that eats keystrokes is worse than no shortcut, and this console
+  // asks operators to type confirmation phrases where a swallowed character is
+  // expensive.
+  assert.match(app, /isContentEditable/)
+  assert.match(app, /!typing\(event\.target\)/)
+})

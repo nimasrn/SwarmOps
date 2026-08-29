@@ -92,3 +92,20 @@ body {
 
 @media (max-width: 1080px) {
 }
+
+/* The keyboard hint on the diagnosis rail. Quiet: it teaches a shortcut, it is
+   not a control, and it must not compete with the evidence beside it. */
+.swarmops-diagnosis__hint {
+  display: flex;
+  align-items: center;
+  gap: var(--nim-space-2);
+  margin: 0;
+  font-size: var(--nim-text-11);
+  color: var(--nim-ink-tertiary);
+}
+
+.swarmops-diagnosis__hint .nim-mono {
+  border: var(--nim-border-width) solid var(--nim-line);
+  border-radius: var(--nim-radius-sm);
+  padding: 1px var(--nim-space-2);
+}

@@ -130,6 +130,12 @@ export function ServiceDiagnosis({
                 </section>
               ) : null}
 
+              {/* The artboard carried this hint, and a shortcut nobody is told
+                  about is a shortcut nobody uses. */}
+              <p className="swarmops-diagnosis__hint">
+                <Mono>D</Mono> opens connection diagnostics from anywhere.
+              </p>
+
               {chain.evidence?.length ? (
                 <section>
                   <p className="swarmops-diagnosis__rail-head">Evidence trail</p>
