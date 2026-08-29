@@ -31,13 +31,14 @@ type DiagnosticEvent struct {
 
 // UpdateStatus is written by the fixed local updater installed with the
 // native agent. It reports only the updater lifecycle; it does not configure
-// a remote Git source or accept a command from the control plane.
+// a release source or accept a command from the control plane.
 type UpdateStatus struct {
 	Automatic     bool      `json:"automatic"`
 	CheckedAt     time.Time `json:"checkedAt,omitempty"`
 	LastUpdatedAt time.Time `json:"lastUpdatedAt,omitempty"`
 	Revision      string    `json:"revision,omitempty"`
 	State         string    `json:"state,omitempty"`
+	Version       string    `json:"version,omitempty"`
 }
 
 // Diagnostics joins a current authenticated status with bounded safe events
@@ -96,7 +97,8 @@ func (s *Server) diagnostics(response http.ResponseWriter, request *http.Request
 
 // requestAgentUpdate only creates a fixed local request marker. It cannot
 // carry a source URL, branch, binary, shell command, or other browser-supplied
-// input. The local update service owns the trusted Git check and restart.
+// input. The local Warden owns release discovery, checksum verification,
+// activation, health validation, rollback, and restart.
 func (s *Server) requestAgentUpdate(response http.ResponseWriter, request *http.Request) {
 	if !s.authorized(request) {
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
@@ -162,7 +164,7 @@ func readUpdateStatus(filename string, automatic bool) UpdateStatus {
 		return UpdateStatus{Automatic: automatic}
 	}
 	status.Automatic = automatic
-	if !validUpdateState(status.State) || !validRevision(status.Revision) {
+	if !validUpdateState(status.State) || !validRevision(status.Revision) || !validUpdateVersion(status.Version) {
 		return UpdateStatus{Automatic: automatic}
 	}
 	return status
@@ -274,6 +276,21 @@ func validRevision(value string) bool {
 	}
 	for _, character := range value {
 		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func validUpdateVersion(value string) bool {
+	if value == "" || len(value) > 64 {
+		return value == ""
+	}
+	for _, character := range value {
+		if !((character >= '0' && character <= '9') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= 'a' && character <= 'z') ||
+			character == '.' || character == '_' || character == '-') {
 			return false
 		}
 	}

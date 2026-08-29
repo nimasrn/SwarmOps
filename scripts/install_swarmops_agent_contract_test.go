@@ -19,10 +19,11 @@ func readAgentInstaller(t *testing.T) string {
 func TestAgentInstallerOutboundEnrollmentContract(t *testing.T) {
 	script := readAgentInstaller(t)
 	for _, required := range []string{
-		`repo_url="https://github.com/nimasrn/SwarmOps.git"`,
-		`trusted_update_repo="https://github.com/nimasrn/SwarmOps.git"`,
-		`[[ -f "$source_dir/go.mod" ]]`,
-		`CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent`,
+		`github_repository="nimasrn/SwarmOps"`,
+		`asset_name="swarmops-agent_${release_version}_${release_os}_${release_arch}.tar.gz"`,
+		`Agent release bundle checksum does not match checksums.txt`,
+		`verify_agent_bundle_layout`,
+		`ExecStart=$release_dir/current/swarmops-agent`,
 		`"SWARMOPS_CORE_URL=$core_url"`,
 		`"SWARMOPS_AGENT_STATE_DIR=$update_status_dir"`,
 		`enroll_args=(enroll --core "$core_url"`,
@@ -49,7 +50,8 @@ func TestAgentInstallerHelpDocumentsOutboundInstall(t *testing.T) {
 		"--enrollment-code <code>",
 		"--defer-docker",
 		"--no-auto-update",
-		"default: nimasrn/SwarmOps",
+		"--release <tag|latest>",
+		"--github-repository <owner/name>",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("Agent installer help is missing %q", required)
@@ -57,16 +59,32 @@ func TestAgentInstallerHelpDocumentsOutboundInstall(t *testing.T) {
 	}
 }
 
-func TestAgentInstallerKeepsUpdaterSourceFixed(t *testing.T) {
+func TestAgentInstallerUsesChecksumVerifiedWardenUpdates(t *testing.T) {
 	script := readAgentInstaller(t)
 	for _, required := range []string{
-		`printf 'repo_url=%q\n' "$trusted_update_repo"`,
-		`printf 'branch=%q\n' 'main'`,
-		`if [[ "$automatic_updates" == true && ( "$repo_url" != "$trusted_update_repo" || "$branch" != main ) ]]; then`,
-		`automatic_updates=false`,
+		`SWARMOPS_WARDEN_COMPONENT=agent`,
+		`SWARMOPS_WARDEN_RELEASE_DIR=$release_dir`,
+		`SWARMOPS_WARDEN_BUSY_FILE=$update_busy_file`,
+		`SWARMOPS_WARDEN_REQUEST_FILE=$update_request_file`,
+		`SWARMOPS_WARDEN_STATUS_FILE=$update_status_file`,
+		`ExecStart=$release_dir/current/swarmops-warden update`,
+		`wait_for_agent_health`,
+		`set_current_release "$previous_release"`,
 	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("Agent installer is missing trusted-updater contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`go build`,
+		`git clone`,
+		`git -C`,
+		`GOPROXY`,
+		`GOCACHE`,
+		`GOMODCACHE`,
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("Agent installer still contains source-build dependency %q", forbidden)
 		}
 	}
 }
@@ -85,10 +103,10 @@ func TestAgentInstallerAcceptsDefaultLinuxPaths(t *testing.T) {
 	command.Stdin = strings.NewReader(script[functionStart:functionStart+functionEnd+3] + `
 set -e
 for path in \
-  /opt/swarmops-agent/source \
   /etc/swarmops-agent \
   /etc/swarmops-agent/tls \
   /usr/local/lib/swarmops-agent \
+  /usr/local/lib/swarmops-agent/releases \
   /etc/systemd/system/swarmops-agent.service \
   /var/lib/swarmops-agent; do
   value_is_safe "$path"

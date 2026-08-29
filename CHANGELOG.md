@@ -11,6 +11,29 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.10.1 — 2026-08-29
+
+Native Agent installation and automatic updates now consume the release
+binaries SwarmOps already publishes instead of compiling source on the server.
+
+- **No production Go or Git dependency** — the installer resolves an immutable
+  GitHub release, downloads the platform-specific Agent/Warden bundle and
+  `checksums.txt`, requires one exact SHA-256 entry, rejects unexpected archive
+  members, and activates only the two expected executables.
+- **Atomic activation with rollback** — Agent and its provisioning helper run
+  through `releases/current`. Initial installation and each Warden update start
+  the candidate, require the loopback health endpoint, and restore the previous
+  known-good release when validation fails.
+- **Existing machines upgrade in place** — re-running the installer migrates a
+  legacy standalone binary into the release layout and preserves an existing
+  outbound identity when the pinned Core URL is unchanged. A one-time
+  enrollment code is consumed only for a genuinely new identity.
+- **Automatic updates are installed, observable, and bounded** — the six-hour
+  timer and Core-request path invoke the same fixed Warden. Updates defer during
+  protected Agent mutations, publish the installed release and lifecycle state
+  to diagnostics, retain three known-good releases, and accept no repository,
+  tag, executable, or command from Core or the browser.
+
 ## 0.10.0 — 2026-08-29
 
 SwarmOps can now answer why a service is not running, what a change will do

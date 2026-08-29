@@ -218,7 +218,8 @@ func (m *Manager) AgentDiagnostics(ctx context.Context, id string) (domain.Agent
 }
 
 // RequestAgentUpdate invokes the agent's fixed update-request marker. The
-// local updater owns the Git source, check, binary replacement, and restart;
+// local Warden owns release discovery, checksum verification, activation,
+// health validation, rollback, and restart;
 // the controller cannot inject any of those values.
 func (m *Manager) RequestAgentUpdate(ctx context.Context, id string) (domain.AgentHealth, error) {
 	if _, err := m.Probe(ctx, id); err != nil {
@@ -509,6 +510,7 @@ func profileFromAgentDiagnostics(profile domain.Server, diagnostics agent.Diagno
 		RequestedAt:   requestedAt,
 		Revision:      diagnostics.Update.Revision,
 		State:         diagnostics.Update.State,
+		Version:       diagnostics.Update.Version,
 	}
 	controllerEvents := make([]domain.AgentEvent, 0, len(profile.AgentHealth.Events))
 	for _, event := range profile.AgentHealth.Events {

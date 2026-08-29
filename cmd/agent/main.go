@@ -28,10 +28,12 @@ import (
 
 const (
 	apiKeyLength     = 32
-	version          = "0.7.6"
 	buildTimeout     = 30 * time.Minute
 	provisionTimeout = 50 * time.Minute
 )
+
+// version is set to the immutable release tag by build-release-bundles.sh.
+var version = "dev"
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {

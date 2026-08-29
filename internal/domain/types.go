@@ -60,9 +60,9 @@ type AgentEvent struct {
 	Source     string    `json:"source"`
 }
 
-// AgentUpdateStatus reports the fixed native-agent updater. The updater only
-// follows its trusted local Git configuration; these fields are status facts,
-// never a remote source, command, or executable supplied by the controller.
+// AgentUpdateStatus reports the fixed native-agent release updater. These
+// fields are status facts, never a remote source, command, or executable
+// supplied by the controller.
 type AgentUpdateStatus struct {
 	Automatic     bool      `json:"automatic"`
 	CheckedAt     time.Time `json:"checkedAt,omitempty"`
@@ -70,6 +70,7 @@ type AgentUpdateStatus struct {
 	RequestedAt   time.Time `json:"requestedAt,omitempty"`
 	Revision      string    `json:"revision,omitempty"`
 	State         string    `json:"state,omitempty"`
+	Version       string    `json:"version,omitempty"`
 }
 
 // AgentHealth is the controller's last safe observation of a native machine

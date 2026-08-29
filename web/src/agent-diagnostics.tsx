@@ -132,7 +132,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
           <Metric hint={current?.detail || 'No authenticated probe has completed yet.'} icon="activity" label="Agent health" tone={metricTone(state)} value={statusLabel(state, current?.summary)} />
           <Metric hint={current?.protocolVersion ? `Machine API protocol ${current.protocolVersion}` : 'The server has not reported its fixed agent protocol yet.'} icon="server" label="Agent version" tone={current?.agentVersion ? 'success' : 'neutral'} value={current?.agentVersion || 'Unknown'} />
           <Metric hint={current?.lastReachableAt ? `Last reachable ${formatDateTime(current.lastReachableAt)}` : 'No successful authenticated probe has been retained.'} icon="clock" label="Last probe" tone={current?.lastReachableAt ? 'success' : 'warning'} value={current?.lastReachableAt ? formatDateTime(current.lastReachableAt) : 'No response'} />
-          <Metric hint={update?.automatic ? 'A trusted local Git check runs every six hours even if the controller is unavailable.' : 'Automatic updates are not configured on this agent.'} icon="refresh" label="Automatic updates" tone={update?.automatic ? 'success' : 'neutral'} value={update?.state ? update.state.replace('_', ' ') : update?.automatic ? 'Scheduled' : 'Not configured'} />
+          <Metric hint={update?.automatic ? 'Warden checks checksum-verified release bundles every six hours even if the controller is unavailable.' : 'Automatic updates are not configured on this agent.'} icon="refresh" label="Automatic updates" tone={update?.automatic ? 'success' : 'neutral'} value={update?.state ? update.state.replace('_', ' ') : update?.automatic ? 'Scheduled' : 'Not configured'} />
         </MetricGrid>
         <Panel title="Safe connection evidence">
           <Facts items={[
@@ -140,7 +140,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
             { label: 'Last reachable', value: formatDateTime(current?.lastReachableAt) },
             { label: 'Last failed probe', value: formatDateTime(current?.lastFailureAt) },
             { label: 'Agent uptime', value: formatDuration(current?.uptimeSeconds) },
-            { label: 'Git revision', value: update?.revision ? <Mono>{update.revision}</Mono> : 'Not reported' },
+            { label: 'Installed release', value: update?.version ? <Mono>{update.version}</Mono> : update?.revision ? <Mono>{update.revision}</Mono> : 'Not reported' },
             { label: 'Last local update', value: formatDateTime(update?.lastUpdatedAt) },
           ]} />
         </Panel>
@@ -156,7 +156,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
         ) : null}
         <Panel title="Update policy">
           <Rows gap="tight">
-            <Body size="sm">When the controller can reach a current agent, it asks the server to run its own trusted Git check. When it cannot, the server’s local timer performs the same check. No browser or controller request can supply a repository, branch, command, or binary.</Body>
+            <Body size="sm">When the controller can reach a current agent, it asks the server to run its fixed Warden release check. When it cannot, the server’s local timer performs the same check. Warden accepts no browser-supplied repository, release, command, or binary; it verifies the published checksum before activation and rolls back a candidate that fails localhost health.</Body>
             <Inline>
               <Button disabled={!update?.automatic || compatibilityIssue || state === 'unhealthy' || updating} iconStart="refresh" loading={updating} onClick={() => void requestUpdate()} variant="accent">Check and update agent</Button>
               <Body size="sm">{compatibilityIssue ? 'Manual one-time upgrade required' : update?.automatic ? `Last requested ${formatDateTime(update.requestedAt)}` : 'Automatic updates are disabled on this server'}</Body>

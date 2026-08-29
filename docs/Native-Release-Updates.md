@@ -9,10 +9,8 @@ SwarmOps native installations keep Core and Agent as separate host processes:
 - `swarmops-agent` is the constrained host-side machine API. It remains
   separate from Core so the controller never receives a Docker socket, and it
   stays healthy when Docker is not yet running.
-- `swarmops-warden` supervises checksum-verified native release bundles. The
-  Core installer activates it. Outbound Agent installations instead use a
-  fixed local Git updater restricted to the standalone repository's `main`
-  branch. Neither updater has a network control endpoint.
+- `swarmops-warden` supervises checksum-verified native release bundles for
+  both Core and Agent. Neither updater has a network control endpoint.
 
 The GitHub release workflow builds the following assets for every immutable
 `v*` tag:
@@ -29,15 +27,13 @@ install-swarmops-agent.sh
 install-swarmops-core.sh
 ```
 
-The Core installer resolves `latest` by default, downloads only HTTPS GitHub
-release assets, validates the matching SHA-256 entry in `checksums.txt`, and
-rejects archive contents other than the expected files. The outbound Agent
-installer uses a shallow checkout of the standalone repository and builds the
-agent locally so its enrollment identity is created on the host; its automatic
-updater is restricted to that repository's `main` branch. The GitHub repository
-and immutable release tag remain the trust root. Release checksums detect
-transfer corruption or an incomplete download but are not an independently
-signed provenance statement.
+Both installers resolve `latest` by default, download only HTTPS GitHub release
+assets, validate the matching SHA-256 entry in `checksums.txt`, and reject
+archive contents other than the expected files. The Agent still creates its
+enrollment identity on the host at runtime; installing a prebuilt binary does
+not move the private key off-host. The GitHub repository and immutable release
+tag remain the trust root. Release checksums detect transfer corruption or an
+incomplete download but are not an independently signed provenance statement.
 
 ## Install Core on the controller and data host
 
@@ -74,7 +70,7 @@ only in AES-256-GCM-sealed Core state so agents reconnect after a restart; set
 ## Install Agent on a host
 
 For the supported production flow, generate an enrollment command in
-**Cluster → Servers** and run it with `sudo` on Ubuntu. An install-first
+**Fleet → Servers** and run it with `sudo` on Ubuntu. An install-first
 host can omit the one-time code and print a short-lived approval code instead:
 
 ```bash
@@ -84,14 +80,16 @@ curl --fail --silent --show-error --location \
   | sudo bash -s -- --core https://core.example.com --core-fingerprint 'SHA256:<64-hex>' --enrollment-code '<one-time-code>' --defer-docker
 ```
 
-The console supplies Core's exact TLS leaf fingerprint in the generated command.
-The installer clones or fast-forwards the standalone SwarmOps repository,
-builds the agent locally, creates an owner-only private identity, verifies that Core pin,
-and starts outbound mutual-TLS polling. It never prints the private key or
-requires an inbound agent port. The agent burns a one-time enrollment grant
-after successful certificate issuance. Legacy macOS and direct-listener
-installations remain available with paired TLS file arguments, but are not the
-production outbound path.
+The console supplies Core's exact TLS leaf fingerprint in the generated
+command. The installer downloads the architecture-specific immutable release,
+verifies its published SHA-256 checksum, stages exactly the Agent and Warden
+binaries, creates an owner-only private identity, verifies the Core pin, and
+starts outbound mutual-TLS polling. It never prints the private key, requires
+an inbound agent port, downloads a Go toolchain, or compiles source. A complete
+existing identity is preserved when reinstalling against the same Core URL.
+The agent burns a one-time enrollment grant after successful certificate
+issuance. Legacy macOS and direct-listener installations remain available with
+paired TLS file arguments, but are not the production outbound path.
 
 The default installation does not change Docker or Swarm. After the agent has
 been enrolled, **Cluster → Setup & readiness** can approve the fixed
@@ -133,12 +131,16 @@ keeps the current release plus the two most recent prior known-good release
 directories. It never deletes `/var/lib/swarmops`, `/etc/swarmops`, the agent
 API key, or TLS material.
 
-The outbound Agent's six-hour timer fast-forwards only the trusted standalone
-checkout, rebuilds the agent with protected caches, and atomically replaces
-the binary before restarting the service. Core can request that fixed local
-check, but cannot supply a repository, branch, executable, or shell command.
-When automatic updates were disabled at installation, that Core request
-returns an explicit conflict and leaves the healthy connection state intact.
+The outbound Agent's six-hour Warden timer resolves only the configured GitHub
+release repository. It checksum-verifies and strictly stages the candidate,
+stops the Agent plus provisioning helper, atomically switches `current`, starts
+both services, and waits for the loopback `/healthz` endpoint. Failure restores
+and validates the previous release and removes the candidate; success retains
+the current release plus two prior known-good releases. Core can request that
+fixed local check but cannot supply a repository, release tag, executable, or
+shell command. When automatic updates were disabled at installation, that Core
+request returns an explicit conflict and leaves the healthy connection state
+intact.
 
 ## Publishing a release
 

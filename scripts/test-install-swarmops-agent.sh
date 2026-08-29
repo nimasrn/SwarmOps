@@ -39,7 +39,7 @@ expect_failure() {
 }
 
 help="$(run_installer Darwin 1000 --help)"
-for required in '--core <https-url>' '--core-fingerprint <SHA256:' '--enrollment-code <code>' '--defer-docker' '--no-auto-update'; do
+for required in '--core <https-url>' '--core-fingerprint <SHA256:' '--enrollment-code <code>' '--defer-docker' '--no-auto-update' '--release <tag|latest>' '--github-repository <owner/name>'; do
   [[ "$help" == *"$required"* ]] || { printf 'installer help is missing %s\n' "$required" >&2; exit 1; }
 done
 
@@ -52,5 +52,7 @@ expect_failure Darwin 1000 '--listen-addr may contain only letters, numbers, _, 
 expect_failure Linux 1000 'run this command with sudo on Linux' --core https://core.example.com
 expect_failure Darwin 0 'run this command as the logged-in Docker Desktop user on macOS, without sudo' --core https://core.example.com
 expect_failure Linux 0 '--defer-docker cannot be combined with --install-docker or --init-swarm' --core https://core.example.com --defer-docker --install-docker
+expect_failure Darwin 1000 '--release must be latest or a safe release tag' --release '../latest'
+expect_failure Darwin 1000 '--github-repository must be owner/name' --github-repository 'nimasrn/SwarmOps/extra'
 
 printf 'SwarmOps machine-agent installer validation tests passed.\n'

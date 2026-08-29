@@ -356,7 +356,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current source version is `0.10.0`. Release history is in
+The current source version is `0.10.1`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -648,9 +648,8 @@ the global read-only `swarmops-agent` Swarm service. The following inbound mode
 is retained only to migrate existing installations; new production agents use
 outbound Ubuntu enrollment. On Linux, run the installer
 with `sudo`. On macOS, run it as the logged-in Docker Desktop user, without
-`sudo`. The command below is for a full Nim source checkout; for the published
-operator package, use the dedicated `nimasrn/SwarmOps` checkout in
-[First server onboarding](#first-server-onboarding):
+`sudo`. The same published installer is used for outbound and legacy direct
+mode; it selects the platform bundle automatically:
 
 ```bash
 bash scripts/install-swarmops-agent.sh \
@@ -659,19 +658,19 @@ bash scripts/install-swarmops-agent.sh \
   --tls-key-file /secure/swarmops-agent.key
 ```
 
-The installer clones or fast-forwards `https://github.com/nimasrn/nim.git`
-(`main` by default), builds `cmd/agent`, and installs a systemd service on
-Linux or a per-user LaunchAgent on macOS. It also installs a fixed trusted-Git
-update check: the host runs it every six hours, and a current connected Core
-can only ask the host to run that same local check. The updater verifies its
-configured upstream before it fast-forwards and rebuilds the native service.
-This legacy updater is not the signed Current/Candidate/Previous supervisor
-specified for the completed product and must not be represented as one. It
-never accepts an update URL, branch, executable, or shell command from Core or
-a browser. Use `--no-auto-update` to remove the timer and request path
-explicitly; custom Git sources and branches disable unattended updates. Pass
+The installer resolves an immutable `nimasrn/SwarmOps` release, downloads the
+matching Agent/Warden bundle plus `checksums.txt`, requires exactly one SHA-256
+entry for that platform asset, rejects unexpected archive members, and
+activates it through an atomic `releases/current` symlink. No Git checkout, Go
+toolchain, module proxy, or server-side compilation is required. Warden runs
+the same checksum-verified release check every six hours; a current connected
+Core can only create its fixed local request marker. It stops the Agent and its
+provisioning helper, activates the candidate, checks localhost health, and
+restores the previous known-good release when health fails. It never accepts a
+release URL, tag, executable, or shell command from Core or a browser. Use
+`--no-auto-update` to remove the timer and request path explicitly. Pass
 `--install-dependencies` only when its documented Debian/Ubuntu or Homebrew
-package installation is appropriate. With `--install-docker` and
+runtime-package installation is appropriate. With `--install-docker` and
 `--init-swarm`, it can prepare a fresh Debian/Ubuntu host before the agent
 starts; the normal outbound flow instead leaves Docker and Swarm to
 Infrastructure readiness. On Linux it also installs a private Unix-socket provisioning helper;
@@ -680,8 +679,10 @@ Docker, single-node Swarm, and CIDR-scoped UFW operations. It never prints the
 generated API key.
 
 It writes the Core URL and root-owned identity directory into its protected
-service environment. The outbound private key and renewable certificate remain
-owner-readable only; the agent refuses unsafe state permissions.
+service environment. Reinstalling preserves a complete existing outbound
+identity when the Core URL is unchanged; it does not silently rotate the Agent
+ID, private key, or renewable certificate. Those files remain owner-readable
+only, and the agent refuses unsafe state permissions.
 
 To rotate the machine API key on an existing host, run the installed binary
 directly and restart the service:

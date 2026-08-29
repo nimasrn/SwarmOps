@@ -2,12 +2,12 @@
 set -euo pipefail
 umask 077
 
-# Install a native SwarmOps machine agent from Git. The agent gives an
-# authenticated controller a small fixed Docker-operation API; it never opens
-# the Docker socket or an arbitrary shell over the network.
+# Install a checksum-verified native SwarmOps machine-agent release. The agent
+# gives an authenticated controller a small fixed Docker-operation API; it
+# never opens the Docker socket or an arbitrary shell over the network.
 
-repo_url="https://github.com/nimasrn/SwarmOps.git"
-branch="main"
+github_repository="nimasrn/SwarmOps"
+release_version="latest"
 listen_addr="0.0.0.0:9180"
 tls_cert_file=""
 tls_key_file=""
@@ -21,10 +21,21 @@ defer_docker=false
 automatic_updates=true
 os_name="$(uname -s)"
 generated_tls=false
-trusted_update_repo="https://github.com/nimasrn/SwarmOps.git"
 core_url=""
 core_fingerprint=""
 enrollment_code=""
+download_dir=""
+temporary_release=""
+
+cleanup() {
+  if [[ -n "$download_dir" && -d "$download_dir" ]]; then
+    rm -rf -- "$download_dir"
+  fi
+  if [[ -n "$temporary_release" && -d "$temporary_release" ]]; then
+    rm -rf -- "$temporary_release"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   printf '%s\n' \
@@ -35,28 +46,29 @@ usage() {
     '    bash install-swarmops-agent.sh --listen-addr <host:port> \' \
     '      --tls-cert-file <absolute-path> --tls-key-file <absolute-path> [options]' \
     '' \
-    'Clones or fast-forwards the selected Git branch, builds the native machine' \
-    'agent, writes a protected API-key file, and installs systemd (Linux) or a' \
-    'per-user LaunchAgent (macOS). --install-docker and --init-swarm prepare a' \
+	'Downloads the platform release bundle and checksums from GitHub, verifies' \
+	'SHA-256 before extraction, writes a protected API-key file, and installs' \
+	'systemd plus Warden (Linux) or per-user LaunchAgents (macOS).' \
+	'--install-docker and --init-swarm prepare a' \
     'fresh Debian/Ubuntu host; --defer-docker leaves that plan to the console.' \
     'It never exposes the Docker socket. Linux installs also add a' \
     'private local helper for the console’s fixed server-readiness operations.' \
     '' \
 	'--core <https-url>             Core origin for outbound-only HTTPS polling.' \
 	'--core-fingerprint <SHA256:…>  Exact Core leaf pin; required for self-signed Core TLS.' \
-	'--enrollment-code <code>      Dashboard-generated grant; omit to print a standalone claim code.' \
+	'--enrollment-code <code>       Dashboard-generated grant; omit to print a standalone claim code.' \
 	'--listen-addr <host:port>      Legacy direct-listener mode only.' \
     '--tls-cert-file <path>         Required non-symlink PEM certificate.' \
     '--tls-key-file <path>          Required owner-only non-symlink PEM key.' \
-    '--api-key-file <path>          Copy this protected key file; otherwise generate one.' \
-    '--docker-socket <path>         Docker Unix socket; defaults by platform.' \
-    '--repo <Git URL>               Standalone repository to clone (default: nimasrn/SwarmOps).' \
-    '--branch <name>                Git branch to install (default: main).' \
-    '--install-dependencies         Install Git, Go, and OpenSSL where supported.' \
+	'--api-key-file <path>          Copy this protected key file; otherwise generate one.' \
+	'--docker-socket <path>         Docker Unix socket; defaults by platform.' \
+	'--release <tag|latest>         Immutable GitHub release tag (default: latest).' \
+	'--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
+	'--install-dependencies         Install curl, tar, and OpenSSL where supported.' \
     '--install-docker              Install Docker before enrolling (Debian/Ubuntu only).' \
     '--init-swarm                  Initialize a one-node Docker Swarm after Docker is ready.' \
     '--defer-docker                 Install the agent before Docker; finish Docker/Swarm in Server readiness.' \
-    '--no-auto-update               Disable the default trusted-Git agent update timer.' \
+	'--no-auto-update               Disable the checksum-verified release update timer.' \
     '-h, --help                     Show this help.'
 }
 
@@ -146,15 +158,15 @@ default_docker_socket() {
   esac
 }
 
-# install_host_dependencies installs only the build prerequisites that are
+# install_host_dependencies installs only the runtime prerequisites that are
 # actually missing. It runs by default so a first install is one command, and
 # it stays best-effort: on a platform it does not manage it says so and lets
 # the explicit require_command checks report what the operator must install.
 install_host_dependencies() {
   local missing=()
-  command -v git >/dev/null 2>&1 || missing+=('git')
-  command -v go >/dev/null 2>&1 || missing+=('go')
-  command -v openssl >/dev/null 2>&1 || missing+=('openssl')
+	command -v curl >/dev/null 2>&1 || missing+=('curl')
+	command -v tar >/dev/null 2>&1 || missing+=('tar')
+	command -v openssl >/dev/null 2>&1 || missing+=('openssl')
   if [[ "${#missing[@]}" -eq 0 ]]; then
     return
   fi
@@ -166,7 +178,7 @@ install_host_dependencies() {
       fi
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install --yes --no-install-recommends ca-certificates git golang-go openssl
+	  apt-get install --yes --no-install-recommends ca-certificates curl openssl tar
       ;;
     Darwin)
       if ! command -v brew >/dev/null 2>&1; then
@@ -183,25 +195,25 @@ install_host_dependencies() {
 
 set_paths() {
   case "$os_name" in
-    Linux)
-      source_dir='/opt/swarmops-agent/source'
-      config_dir='/etc/swarmops-agent'
-      runtime_dir='/usr/local/lib/swarmops-agent'
-      service_file='/etc/systemd/system/swarmops-agent.service'
-      provision_service_file='/etc/systemd/system/swarmops-agent-provisioner.service'
-      provision_socket='/run/swarmops-agent/provisioner.sock'
-      update_service_file='/etc/systemd/system/swarmops-agent-update.service'
-      update_timer_file='/etc/systemd/system/swarmops-agent-update.timer'
-      update_path_file='/etc/systemd/system/swarmops-agent-update.path'
+	Linux)
+	  config_dir='/etc/swarmops-agent'
+	  runtime_dir='/usr/local/lib/swarmops-agent'
+	  legacy_binary='/usr/local/lib/swarmops-agent/bin/swarmops-agent'
+	  service_file='/etc/systemd/system/swarmops-agent.service'
+	  provision_service_file='/etc/systemd/system/swarmops-agent-provisioner.service'
+	  provision_socket='/run/swarmops-agent/provisioner.sock'
+	  update_service_file='/etc/systemd/system/swarmops-agent-update.service'
+	  update_timer_file='/etc/systemd/system/swarmops-agent-update.timer'
+	  update_path_file='/etc/systemd/system/swarmops-agent-update.path'
       update_busy_file='/run/swarmops-agent/update.busy'
       update_request_file='/run/swarmops-agent/update.request'
       update_status_dir='/var/lib/swarmops-agent'
       ;;
-    Darwin)
-      source_dir="$HOME/.local/share/swarmops-agent/source"
-      config_dir="$HOME/.config/swarmops-agent"
-      runtime_dir="$HOME/.local/lib/swarmops-agent"
-      service_file="$HOME/Library/LaunchAgents/com.nimasrn.swarmops-agent.plist"
+	Darwin)
+	  config_dir="$HOME/.config/swarmops-agent"
+	  runtime_dir="$HOME/.local/lib/swarmops-agent"
+	  legacy_binary="$HOME/.local/lib/swarmops-agent/bin/swarmops-agent"
+	  service_file="$HOME/Library/LaunchAgents/com.nimasrn.swarmops-agent.plist"
       provision_service_file=''
       provision_socket=''
       update_service_file="$HOME/Library/LaunchAgents/com.nimasrn.swarmops-agent-update.plist"
@@ -213,51 +225,157 @@ set_paths() {
       ;;
     *)
       fail "unsupported operating system: $os_name"
-      ;;
-  esac
-  binary_dir="$runtime_dir/bin"
-  api_key_destination="$config_dir/api-key"
-  enrollment_destination="$config_dir/enrollment-secret"
-  environment_file="$config_dir/agent.env"
-  launcher_file="$runtime_dir/run-agent.sh"
-  update_config_file="$config_dir/update.env"
-  update_status_file="$update_status_dir/update-status.json"
-  update_script="$runtime_dir/update-agent.sh"
-  update_launcher_file="$runtime_dir/run-update.sh"
+	  ;;
+	esac
+	release_dir="$runtime_dir/releases"
+	api_key_destination="$config_dir/api-key"
+	enrollment_destination="$config_dir/enrollment-secret"
+	environment_file="$config_dir/agent.env"
+	launcher_file="$runtime_dir/run-agent.sh"
+	warden_environment_file="$config_dir/warden.env"
+	update_status_file="$update_status_dir/update-status.json"
+	update_launcher_file="$runtime_dir/run-update.sh"
 }
 
-ensure_checkout() {
-  if [[ -e "$source_dir" && ! -d "$source_dir/.git" ]]; then
-    fail "source path exists but is not this installer's Git checkout: $source_dir"
+validate_repository() {
+  [[ "$github_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail '--github-repository must be owner/name'
+}
+
+validate_release() {
+  [[ "$release_version" == latest || "$release_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail '--release must be latest or a safe release tag'
+}
+
+release_platform() {
+  case "$os_name" in
+    Linux) release_os='linux' ;;
+    Darwin) release_os='darwin' ;;
+    *) fail "unsupported operating system: $os_name" ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) release_arch='amd64' ;;
+    aarch64|arm64) release_arch='arm64' ;;
+    *) fail "unsupported CPU architecture: $(uname -m)" ;;
+  esac
+}
+
+resolve_release_version() {
+  [[ "$release_version" == latest ]] || return
+  local resolved_url
+  resolved_url="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output /dev/null --write-out '%{url_effective}' "https://github.com/$github_repository/releases/latest")" || fail 'resolve latest GitHub release'
+  case "$resolved_url" in
+    "https://github.com/$github_repository/releases/tag/"*) release_version="${resolved_url##*/}" ;;
+    *) fail 'latest GitHub release did not resolve to the requested repository' ;;
+  esac
+  validate_release
+  [[ "$release_version" != latest ]] || fail 'latest GitHub release did not include a tag'
+}
+
+checksum_for_file() {
+  local target_path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$target_path" | awk '{print $1}'
+  else
+    shasum -a 256 "$target_path" | awk '{print $1}'
   fi
-  if [[ -d "$source_dir/.git" ]]; then
-    [[ -z "$(git -C "$source_dir" status --porcelain)" ]] || fail "source checkout has local changes: $source_dir"
-    local existing_remote
-    existing_remote="$(git -C "$source_dir" remote get-url origin)" || fail "read Git remote for $source_dir"
-    [[ "$existing_remote" == "$repo_url" ]] || fail "source checkout remote does not match --repo: $source_dir"
-    git -C "$source_dir" fetch --depth 1 origin "$branch"
-    git -C "$source_dir" checkout "$branch"
-    git -C "$source_dir" pull --ff-only origin "$branch"
+}
+
+verify_agent_bundle_layout() {
+  local archive_path="$1" entry agent_count=0 warden_count=0
+  tar -tvzf "$archive_path" | awk 'substr($1, 1, 1) != "-" {exit 1}' || fail 'release archive must contain regular files only'
+  while IFS= read -r entry; do
+    entry="${entry#./}"
+    case "$entry" in
+      swarmops-agent) agent_count=$((agent_count + 1)) ;;
+      swarmops-warden) warden_count=$((warden_count + 1)) ;;
+      *) fail "release archive contains unsupported entry: $entry" ;;
+    esac
+  done < <(tar -tzf "$archive_path")
+  ((agent_count == 1 && warden_count == 1)) || fail 'release archive must contain exactly one Agent and one Warden binary'
+}
+
+validate_agent_release() {
+  local release_path="$1" target
+  for target in "$release_path/swarmops-agent" "$release_path/swarmops-warden"; do
+    [[ -f "$target" && ! -L "$target" && -x "$target" ]] || fail "release is missing an executable regular file: $target"
+  done
+}
+
+download_agent_release() {
+  local asset_name checksums_url bundle_url expected_checksum actual_checksum checksum_count
+  asset_name="swarmops-agent_${release_version}_${release_os}_${release_arch}.tar.gz"
+  checksums_url="https://github.com/$github_repository/releases/download/$release_version/checksums.txt"
+  bundle_url="https://github.com/$github_repository/releases/download/$release_version/$asset_name"
+  download_dir="$(mktemp -d "$release_dir/.download.XXXXXX")"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/checksums.txt" "$checksums_url" || fail 'download release checksums'
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/$asset_name" "$bundle_url" || fail 'download Agent release bundle'
+  checksum_count="$(awk -v asset="$asset_name" '$2 == asset || $2 == "*" asset {count++} END {print count+0}' "$download_dir/checksums.txt")"
+  [[ "$checksum_count" == 1 ]] || fail 'release checksums must contain exactly one entry for the Agent bundle'
+  expected_checksum="$(awk -v asset="$asset_name" '$2 == asset || $2 == "*" asset {print $1; exit}' "$download_dir/checksums.txt")"
+  [[ "$expected_checksum" =~ ^[A-Fa-f0-9]{64}$ ]] || fail 'release checksum is not a SHA-256 digest'
+  actual_checksum="$(checksum_for_file "$download_dir/$asset_name")" || fail 'calculate Agent release checksum'
+  actual_checksum="$(printf '%s' "$actual_checksum" | tr '[:upper:]' '[:lower:]')"
+  expected_checksum="$(printf '%s' "$expected_checksum" | tr '[:upper:]' '[:lower:]')"
+  [[ "$actual_checksum" == "$expected_checksum" ]] || fail 'Agent release bundle checksum does not match checksums.txt'
+  verify_agent_bundle_layout "$download_dir/$asset_name"
+  temporary_release="$(mktemp -d "$release_dir/.stage-${release_version}.XXXXXX")"
+  tar -xzf "$download_dir/$asset_name" -C "$temporary_release" || fail 'extract Agent release bundle'
+  chmod 0755 "$temporary_release" "$temporary_release/swarmops-agent" "$temporary_release/swarmops-warden"
+  validate_agent_release "$temporary_release"
+  rm -rf "$download_dir"
+  download_dir=''
+}
+
+install_agent_release() {
+  local destination="$release_dir/$release_version"
+  download_agent_release
+  if [[ -e "$destination" ]]; then
+    validate_agent_release "$destination"
+    local executable
+    for executable in swarmops-agent swarmops-warden; do
+      [[ "$(checksum_for_file "$destination/$executable")" == "$(checksum_for_file "$temporary_release/$executable")" ]] ||
+        fail "installed $release_version $executable does not match the checksum-verified release"
+    done
+    rm -rf -- "$temporary_release"
+    temporary_release=''
     return
   fi
-  install -d -m 0755 "$(dirname "$source_dir")"
-  git clone --depth 1 --branch "$branch" --single-branch "$repo_url" "$source_dir"
+  mv "$temporary_release" "$destination" || fail 'place downloaded Agent release'
+  temporary_release=''
 }
 
-build_agent() {
-  local temporary_binary
-  [[ -f "$source_dir/go.mod" ]] || fail 'the cloned repository is not the standalone SwarmOps source'
-  install -d -m 0755 "$binary_dir"
-  temporary_binary="$(mktemp "$binary_dir/.swarmops-agent.XXXXXX")"
-  if ! (
-    cd "$source_dir"
-    CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent
-  ); then
-    rm -f "$temporary_binary"
-    fail 'build SwarmOps machine agent'
+set_current_release() {
+  local version="$1" temporary_link="$release_dir/.current-next"
+  [[ "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail 'refuse unsafe current-release target'
+  [[ -d "$release_dir/$version" ]] || fail 'current-release target does not exist'
+  rm -f "$temporary_link"
+  ln -s "$version" "$temporary_link"
+  case "$os_name" in
+    Linux) mv -Tf "$temporary_link" "$release_dir/current" ;;
+    Darwin) mv -fh "$temporary_link" "$release_dir/current" ;;
+  esac
+}
+
+prepare_previous_release() {
+  previous_release=''
+  if [[ -L "$release_dir/current" ]]; then
+    previous_release="$(readlink "$release_dir/current")"
+    [[ "$previous_release" == "$(basename "$previous_release")" && "$previous_release" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail 'existing current release link is unsafe'
+    validate_agent_release "$release_dir/$previous_release"
+    return
   fi
-  chmod 0755 "$temporary_binary"
-  mv -f "$temporary_binary" "$binary_dir/swarmops-agent"
+  if [[ -x "$legacy_binary" && ! -L "$legacy_binary" ]]; then
+    local digest legacy_dir
+    digest="$(checksum_for_file "$legacy_binary")" || fail 'checksum legacy Agent binary'
+    previous_release="legacy-${digest:0:12}"
+    legacy_dir="$release_dir/$previous_release"
+    if [[ ! -e "$legacy_dir" ]]; then
+      install -d -m 0755 "$legacy_dir"
+      install -m 0755 "$legacy_binary" "$legacy_dir/swarmops-agent"
+      install -m 0755 "$release_dir/$release_version/swarmops-warden" "$legacy_dir/swarmops-warden"
+    fi
+    validate_agent_release "$legacy_dir"
+    set_current_release "$previous_release"
+  fi
 }
 
 install_api_key() {
@@ -279,6 +397,38 @@ install_api_key() {
   fi
   install -m 0600 "$temporary_key" "$api_key_destination"
   rm -f "$temporary_key"
+}
+
+existing_environment_value() {
+  local key="$1"
+  [[ -f "$environment_file" && ! -L "$environment_file" ]] || return 0
+  awk -F= -v key="$key" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$environment_file"
+}
+
+has_existing_outbound_identity() {
+  local filename
+  for filename in identity.json client-key.pem client-cert.pem agent-ca.pem; do
+    [[ -f "$update_status_dir/$filename" && ! -L "$update_status_dir/$filename" ]] || return 1
+  done
+}
+
+enroll_outbound_if_needed() {
+  local candidate="$release_dir/$release_version/swarmops-agent" existing_core_url
+  if has_existing_outbound_identity; then
+    existing_core_url="$(existing_environment_value SWARMOPS_CORE_URL)"
+    [[ -n "$existing_core_url" ]] || fail 'existing outbound identity has no configured Core URL'
+    [[ "${existing_core_url%/}" == "$core_url" ]] || fail 'existing outbound identity belongs to a different Core URL; explicit identity rotation is required'
+    printf '%s\n' 'SwarmOps machine-agent install: preserving the existing outbound Agent identity.' >&2
+    return
+  fi
+  enroll_args=(enroll --core "$core_url" --name "$(hostname)" --state-dir "$update_status_dir")
+  if [[ -n "$core_fingerprint" ]]; then
+    enroll_args+=(--core-fingerprint "$core_fingerprint")
+  fi
+  if [[ -n "$enrollment_code" ]]; then
+    enroll_args+=(--code "$enrollment_code")
+  fi
+  "$candidate" "${enroll_args[@]}"
 }
 
 write_environment_file() {
@@ -313,106 +463,42 @@ write_environment_file() {
   rm -f "$temporary_environment"
 }
 
-# The updater is intentionally local and fixed: Core can only create an
-# update-request marker through the authenticated agent. This script owns the
-# trusted upstream, branch, build, replacement, and service restart, so no
-# controller or browser value can become an executable update instruction.
-write_update_script() {
-  local temporary_update
-  install -d -m 0700 "$update_status_dir"
-  temporary_update="$(mktemp "$runtime_dir/.update-agent.XXXXXX")"
+write_warden_environment() {
+  local temporary health_url
+  health_url="$(local_health_url)"
+  temporary="$(mktemp "$config_dir/.warden.env.XXXXXX")"
   {
-    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'umask 077'
-    printf 'source_dir=%q\n' "$source_dir"
-    printf 'binary_dir=%q\n' "$binary_dir"
-    printf 'status_dir=%q\n' "$update_status_dir"
-    printf 'status_file=%q\n' "$update_status_file"
-    printf 'busy_file=%q\n' "$update_busy_file"
-    printf 'request_file=%q\n' "$update_request_file"
-    printf 'repo_url=%q\n' "$trusted_update_repo"
-    printf 'branch=%q\n' 'main'
-    if [[ "$os_name" == Linux ]]; then
-      printf 'agent_service=%q\n' "$(basename "$service_file")"
-      printf 'provision_service=%q\n' "$(basename "$provision_service_file")"
-    fi
     printf '%s\n' \
-      '' \
-      'write_status() {' \
-      '  local state="$1" revision="$2" updated_at="${3:-}" checked_at temporary_status' \
-      '  checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"' \
-      '  temporary_status="$(mktemp "$status_dir/.update-status.XXXXXX")"' \
-      '  if [[ -n "$updated_at" ]]; then' \
-      '    printf "{\\"automatic\\":true,\\"state\\":\\"%s\\",\\"checkedAt\\":\\"%s\\",\\"lastUpdatedAt\\":\\"%s\\",\\"revision\\":\\"%s\\"}\\n" "$state" "$checked_at" "$updated_at" "$revision" >"$temporary_status"' \
-      '  else' \
-      '    printf "{\\"automatic\\":true,\\"state\\":\\"%s\\",\\"checkedAt\\":\\"%s\\",\\"revision\\":\\"%s\\"}\\n" "$state" "$checked_at" "$revision" >"$temporary_status"' \
-      '  fi' \
-      '  install -m 0600 "$temporary_status" "$status_file"' \
-      '  rm -f "$temporary_status"' \
-      '}' \
-      '' \
-      'install -d -m 0700 "$status_dir"' \
-      'export GOCACHE="$status_dir/go-build"' \
-      'export GOMODCACHE="$status_dir/go-mod"' \
-      'install -d -m 0700 "$GOCACHE" "$GOMODCACHE"' \
-      'if ! mkdir "$status_dir/update.lock" 2>/dev/null; then' \
-      '  exit 0' \
-      'fi' \
-      'trap "rmdir \"$status_dir/update.lock\"" EXIT' \
-      'rm -f "$request_file"' \
-      'current="$(git -C "$source_dir" rev-parse --short=12 HEAD 2>/dev/null || true)"' \
-      'if [[ -e "$busy_file" ]]; then' \
-      '  write_status deferred "$current"' \
-      '  exit 0' \
-      'fi' \
-      'remote="$(git -C "$source_dir" remote get-url origin 2>/dev/null || true)"' \
-      'if [[ "$remote" != "$repo_url" ]]; then' \
-      '  write_status failed "$current"' \
-      '  exit 0' \
-      'fi' \
-      'if [[ "$(git -C "$source_dir" rev-parse --is-shallow-repository 2>/dev/null || true)" == "true" ]]; then' \
-      '  fetch_args=(--unshallow)' \
-      'else' \
-      '  fetch_args=()' \
-      'fi' \
-      'if ! git -C "$source_dir" fetch "${fetch_args[@]}" origin "$branch"; then' \
-      '  write_status failed "$current"' \
-      '  exit 0' \
-      'fi' \
-      'target="$(git -C "$source_dir" rev-parse --short=12 FETCH_HEAD 2>/dev/null || true)"' \
-      'if [[ -z "$target" ]]; then' \
-      '  write_status failed "$current"' \
-      '  exit 0' \
-      'fi' \
-      'if [[ "$current" == "$target" ]]; then' \
-      '  write_status up_to_date "$current"' \
-      '  exit 0' \
-      'fi' \
-      'if ! git -C "$source_dir" merge --ff-only FETCH_HEAD; then' \
-      '  write_status failed "$current"' \
-      '  exit 0' \
-      'fi' \
-      'temporary_binary="$(mktemp "$binary_dir/.swarmops-agent.XXXXXX")"' \
-      'if ! (cd "$source_dir" && CGO_ENABLED=0 go build -trimpath -o "$temporary_binary" ./cmd/agent); then' \
-      '  rm -f "$temporary_binary"' \
-      '  write_status failed "$target"' \
-      '  exit 0' \
-      'fi' \
-      'chmod 0755 "$temporary_binary"' \
-      'mv -f "$temporary_binary" "$binary_dir/swarmops-agent"' \
-      'updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"' \
-      'write_status updated "$target" "$updated_at"'
+      "SWARMOPS_WARDEN_REPOSITORY=$github_repository" \
+      'SWARMOPS_WARDEN_COMPONENT=agent' \
+      "SWARMOPS_WARDEN_RELEASE_DIR=$release_dir" \
+      "SWARMOPS_WARDEN_HEALTH_URL=$health_url" \
+      "SWARMOPS_WARDEN_BUSY_FILE=$update_busy_file" \
+      "SWARMOPS_WARDEN_REQUEST_FILE=$update_request_file" \
+      "SWARMOPS_WARDEN_STATUS_FILE=$update_status_file" \
+      'SWARMOPS_WARDEN_HEALTH_TIMEOUT=45s' \
+      'SWARMOPS_WARDEN_HEALTH_INTERVAL=1s'
     if [[ "$os_name" == Linux ]]; then
-      printf '%s\n' \
-        'systemctl try-restart "$provision_service"' \
-        'systemctl try-restart "$agent_service"'
+      printf '%s\n' "SWARMOPS_WARDEN_SERVICE=$(basename "$service_file")"
     else
       printf '%s\n' \
-        'uid="$(id -u)"' \
-        'launchctl kickstart -k "gui/$uid/com.nimasrn.swarmops-agent"'
+        'SWARMOPS_WARDEN_SERVICE=com.nimasrn.swarmops-agent' \
+        "SWARMOPS_WARDEN_SERVICE_PLIST=$service_file"
     fi
-  } >"$temporary_update"
-  install -m 0700 "$temporary_update" "$update_script"
-  rm -f "$temporary_update"
+  } >"$temporary"
+  install -m 0600 "$temporary" "$warden_environment_file"
+  rm -f "$temporary"
+}
+
+write_initial_update_status() {
+  local checked_at temporary
+  [[ "$automatic_updates" == true ]] || return
+  checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  install -d -m 0700 "$update_status_dir"
+  temporary="$(mktemp "$update_status_dir/.update-status.XXXXXX")"
+  printf '{"automatic":true,"state":"up_to_date","checkedAt":"%s","version":"%s"}\n' "$checked_at" "$release_version" >"$temporary"
+  install -m 0600 "$temporary" "$update_status_file"
+  rm -f "$temporary"
 }
 
 write_linux_update_services() {
@@ -425,9 +511,10 @@ write_linux_update_services() {
       'Wants=network-online.target' \
       'After=network-online.target' \
       '' \
-      '[Service]' \
-      'Type=oneshot' \
-      "ExecStart=$update_script" \
+	  '[Service]' \
+	  'Type=oneshot' \
+	  "EnvironmentFile=$warden_environment_file" \
+	  "ExecStart=$release_dir/current/swarmops-warden update" \
       'NoNewPrivileges=yes' \
       'PrivateTmp=yes' \
       'ProtectSystem=full' \
@@ -443,7 +530,8 @@ write_linux_update_services() {
       'RestrictRealtime=yes' \
       'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
       'SystemCallArchitectures=native' \
-      "ReadWritePaths=$source_dir $runtime_dir $update_status_dir /run/swarmops-agent"
+	  "ReadWritePaths=$release_dir $update_status_dir /run/swarmops-agent" \
+	  'UMask=0077'
   } >"$temporary_service"
   install -m 0644 "$temporary_service" "$update_service_file"
   rm -f "$temporary_service"
@@ -481,7 +569,6 @@ write_linux_update_services() {
   install -m 0644 "$temporary_path" "$update_path_file"
   rm -f "$temporary_path"
   systemctl daemon-reload
-  systemctl enable --now "$(basename "$update_timer_file")" "$(basename "$update_path_file")"
 }
 
 unit_has_namespace_error() {
@@ -522,13 +609,67 @@ start_systemd_service_with_fallback() {
   fi
 
   systemctl status --no-pager "$unit" >&2 || true
-  fail "$fail_message"
+  printf 'SwarmOps machine-agent install: %s\n' "$fail_message" >&2
+  return 1
 }
 
 disable_linux_update_services() {
   systemctl disable --now "$(basename "$update_timer_file")" "$(basename "$update_path_file")" >/dev/null 2>&1 || true
   rm -f -- "$update_service_file" "$update_timer_file" "$update_path_file"
   systemctl daemon-reload
+}
+
+local_health_url() {
+  if [[ -n "$core_url" ]]; then
+    printf 'http://127.0.0.1:%s/healthz\n' "$port"
+  else
+    printf 'https://127.0.0.1:%s/healthz\n' "$port"
+  fi
+}
+
+wait_for_agent_health() {
+  local health_url attempt curl_args
+  health_url="$(local_health_url)"
+  curl_args=(--fail --silent --show-error --connect-timeout 2 --max-time 4)
+  [[ "$health_url" == https://* ]] && curl_args+=(--insecure)
+  for attempt in $(seq 1 45); do
+    if curl "${curl_args[@]}" "$health_url" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+activate_linux_release() {
+  set_current_release "$release_version"
+  if start_systemd_service_with_fallback "$(basename "$provision_service_file")" 'machine provisioning helper did not become active' &&
+    start_systemd_service_with_fallback "$(basename "$service_file")" 'machine agent service did not become active' &&
+    wait_for_agent_health; then
+    if [[ "$automatic_updates" == true ]]; then
+      systemctl enable --now "$(basename "$update_timer_file")" "$(basename "$update_path_file")"
+    fi
+    return
+  fi
+  if [[ -n "$previous_release" ]]; then
+    set_current_release "$previous_release"
+    systemctl restart "$(basename "$provision_service_file")" "$(basename "$service_file")" >/dev/null 2>&1 || true
+    wait_for_agent_health || true
+  fi
+  fail "Agent release $release_version failed local health validation; restored ${previous_release:-no previous release}"
+}
+
+activate_macos_release() {
+  set_current_release "$release_version"
+  if write_macos_service && wait_for_agent_health; then
+    return
+  fi
+  if [[ -n "$previous_release" ]]; then
+    set_current_release "$previous_release"
+    write_macos_service >/dev/null 2>&1 || true
+    wait_for_agent_health || true
+  fi
+  fail "Agent release $release_version failed local health validation; restored ${previous_release:-no previous release}"
 }
 
 write_linux_service() {
@@ -545,7 +686,7 @@ write_linux_service() {
       '[Service]' \
       'Type=simple' \
       "EnvironmentFile=$environment_file" \
-      "ExecStart=$binary_dir/swarmops-agent" \
+	  "ExecStart=$release_dir/current/swarmops-agent" \
       'Restart=on-failure' \
       'RestartSec=5s' \
       'NoNewPrivileges=yes' \
@@ -576,9 +717,7 @@ write_linux_service() {
   } >"$temporary_service"
   install -m 0644 "$temporary_service" "$service_file"
   rm -f "$temporary_service"
-  systemctl enable --now "$(basename "$provision_service_file")"
-  start_systemd_service_with_fallback "$(basename "$provision_service_file")" 'machine provisioning helper did not become active'
-  start_systemd_service_with_fallback "$(basename "$service_file")" 'machine agent service did not become active'
+  systemctl daemon-reload
 }
 
 # The normal agent remains heavily sandboxed. This private Unix-socket helper
@@ -596,7 +735,7 @@ write_linux_provision_service() {
       '' \
       '[Service]' \
       'Type=simple' \
-      "ExecStart=$binary_dir/swarmops-agent provisioner --socket $provision_socket --agent-port $port" \
+	  "ExecStart=$release_dir/current/swarmops-agent provisioner --socket $provision_socket --agent-port $port" \
       'Restart=on-failure' \
       'RestartSec=5s' \
       'PrivateTmp=yes' \
@@ -639,7 +778,7 @@ write_macos_service() {
     printf '%s\n' '#!/bin/sh' 'set -eu' 'set -a'
     printf '. %s\n' "'$(printf '%s' "$environment_file" | sed "s/'/'\\''/g")'"
     printf '%s\n' 'set +a'
-    printf 'exec %s\n' "'$(printf '%s' "$binary_dir/swarmops-agent" | sed "s/'/'\\''/g")'"
+    printf 'exec %s\n' "'$(printf '%s' "$release_dir/current/swarmops-agent" | sed "s/'/'\\''/g")'"
   } >"$temporary_launcher"
   install -m 0700 "$temporary_launcher" "$launcher_file"
   rm -f "$temporary_launcher"
@@ -679,8 +818,10 @@ write_macos_update_service() {
   install -d -m 0700 "$HOME/Library/LaunchAgents"
   temporary_launcher="$(mktemp "$runtime_dir/.run-update.XXXXXX")"
   {
-    printf '%s\n' '#!/bin/sh' 'set -eu'
-    printf 'exec %s\n' "'$(printf '%s' "$update_script" | sed "s/'/'\\''/g")'"
+    printf '%s\n' '#!/bin/sh' 'set -eu' 'set -a'
+    printf '. %s\n' "'$(printf '%s' "$warden_environment_file" | sed "s/'/'\\''/g")'"
+    printf '%s\n' 'set +a'
+    printf 'exec %s update\n' "'$(printf '%s' "$release_dir/current/swarmops-warden" | sed "s/'/'\\''/g")'"
   } >"$temporary_launcher"
   install -m 0700 "$temporary_launcher" "$update_launcher_file"
   rm -f "$temporary_launcher"
@@ -725,7 +866,7 @@ disable_macos_update_service() {
   local uid
   uid="$(id -u)"
   launchctl bootout "gui/$uid/com.nimasrn.swarmops-agent-update" >/dev/null 2>&1 || true
-  rm -f -- "$update_service_file" "$update_launcher_file" "$update_script"
+  rm -f -- "$update_service_file" "$update_launcher_file"
 }
 
 # detect_advertise_host picks the address an off-host controller can dial. It
@@ -892,14 +1033,14 @@ while [[ "$#" -gt 0 ]]; do
       docker_socket="$2"
       shift 2
       ;;
-    --repo)
-      [[ "$#" -ge 2 ]] || fail '--repo requires a value'
-      repo_url="$2"
-      shift 2
-      ;;
-    --branch)
-      [[ "$#" -ge 2 ]] || fail '--branch requires a value'
-      branch="$2"
+	--release)
+	  [[ "$#" -ge 2 ]] || fail '--release requires a value'
+	  release_version="$2"
+	  shift 2
+	  ;;
+	--github-repository)
+	  [[ "$#" -ge 2 ]] || fail '--github-repository requires a value'
+	  github_repository="$2"
       shift 2
       ;;
     --advertise-host)
@@ -971,13 +1112,8 @@ if [[ "$defer_docker" == true && ( "$install_docker" == true || "$init_swarm" ==
   fail '--defer-docker cannot be combined with --install-docker or --init-swarm'
 fi
 
-# A custom repository or branch is a deliberate local-development choice, not
-# a source the installed updater may execute unattended. The standard trusted
-# upstream/main install keeps automatic checks on by default.
-if [[ "$automatic_updates" == true && ( "$repo_url" != "$trusted_update_repo" || "$branch" != main ) ]]; then
-  printf '%s\n' 'SwarmOps machine-agent install: automatic updates are disabled for a custom Git source or branch.' >&2
-  automatic_updates=false
-fi
+validate_repository
+validate_release
 
 if [[ -z "$core_url" && -z "$advertise_host" ]]; then
   advertise_host="$(detect_advertise_host)"
@@ -993,8 +1129,8 @@ fi
 if [[ "$install_dependencies" == true ]]; then
   install_host_dependencies
 fi
-require_command git
-require_command go
+require_command curl
+require_command tar
 require_command openssl
 if [[ "$defer_docker" != true ]]; then
   require_command docker
@@ -1008,9 +1144,6 @@ require_safe_value '--docker-socket' "$docker_socket"
 if [[ "$defer_docker" != true ]]; then
   [[ -S "$docker_socket" ]] || fail "Docker socket is not available: $docker_socket"
 fi
-[[ "$repo_url" != *$'\n'* && "$repo_url" != *$'\r'* && "$repo_url" != *[[:space:]]* ]] || fail '--repo must be one Git URL without whitespace'
-[[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || fail '--branch contains unsupported characters'
-
 if [[ "$init_swarm" == true ]]; then
   initialize_swarm
 fi
@@ -1028,7 +1161,7 @@ else
 fi
 
 set_paths
-for install_path in "$source_dir" "$config_dir" "$runtime_dir" "$service_file"; do
+for install_path in "$config_dir" "$runtime_dir" "$release_dir" "$service_file"; do
   require_safe_value 'installation path' "$install_path"
 done
 if [[ "$os_name" == Linux ]]; then
@@ -1041,12 +1174,13 @@ if [[ "$os_name" == Linux ]]; then
   fi
 fi
 if [[ "$automatic_updates" == true ]]; then
-  for update_path in "$update_busy_file" "$update_request_file" "$update_status_dir" "$update_status_file" "$update_script"; do
+  for update_path in "$update_busy_file" "$update_request_file" "$update_status_dir" "$update_status_file" "$warden_environment_file"; do
     require_safe_value 'agent update path' "$update_path"
     [[ "$update_path" == /* && "$update_path" != / ]] || fail 'agent update paths must be absolute, non-root paths'
   done
 fi
-install -d -m 0700 "$config_dir"
+install -d -m 0700 "$config_dir" "$update_status_dir"
+install -d -m 0755 "$runtime_dir" "$release_dir"
 
 # A caller may supply reviewed TLS material; otherwise the installer generates
 # a pinned self-signed leaf so a first install needs no preparation at all.
@@ -1073,37 +1207,33 @@ if [[ -n "$api_key_file" ]]; then
   require_safe_value '--api-key-file' "$api_key_file"
 fi
 
-ensure_checkout
-build_agent
+release_platform
+resolve_release_version
+install_agent_release
+prepare_previous_release
 install_api_key
 if [[ -n "$core_url" ]]; then
-	enroll_args=(enroll --core "$core_url" --name "$(hostname)" --state-dir "$update_status_dir")
-	if [[ -n "$core_fingerprint" ]]; then
-		enroll_args+=(--core-fingerprint "$core_fingerprint")
-	fi
-	if [[ -n "$enrollment_code" ]]; then
-		enroll_args+=(--code "$enrollment_code")
-	fi
-	"$binary_dir/swarmops-agent" "${enroll_args[@]}"
+	enroll_outbound_if_needed
 else
 	install_enrollment_secret
 fi
 write_environment_file
 if [[ "$automatic_updates" == true ]]; then
-  write_update_script
+  write_warden_environment
 fi
 case "$os_name" in
   Linux)
     write_linux_provision_service
+    write_linux_service
     if [[ "$automatic_updates" == true ]]; then
       write_linux_update_services
     else
       disable_linux_update_services
     fi
-    write_linux_service
+    activate_linux_release
     ;;
   Darwin)
-    write_macos_service
+    activate_macos_release
     if [[ "$automatic_updates" == true ]]; then
       write_macos_update_service
     else
@@ -1111,6 +1241,7 @@ case "$os_name" in
     fi
     ;;
 esac
+write_initial_update_status
 
 if [[ -n "$core_url" ]]; then
 	printf '%s\n' '' 'SwarmOps machine agent installed and enrolled.' 'The agent opens only outbound HTTPS long polls to Core; no inbound agent port is required.'
@@ -1134,7 +1265,7 @@ if [[ "$generated_tls" == true ]]; then
   printf '%s\n' "Generated a self-signed agent certificate for $advertise_host at $tls_cert_file."
 fi
 if [[ "$automatic_updates" == true ]]; then
-  printf '%s\n' 'Automatic agent updates are enabled: Core requests a local check while connected, and this host checks the trusted Git source every six hours when Core is unavailable.'
+  printf '%s\n' "Automatic agent updates are enabled: Warden verifies immutable $github_repository release bundles every six hours and rolls back an unhealthy candidate."
 else
   printf '%s\n' 'Automatic agent updates are disabled for this installation.'
 fi

@@ -26,7 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.10.0"
+const version = "0.10.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -222,7 +222,7 @@ func main() {
 	}
 	// The monitor is the source of truth for the Servers surface. It probes the
 	// authenticated agent and its fixed Docker facade on a bounded cadence, and
-	// asks configured native agents to run their own trusted Git update check.
+	// asks configured native agents to run their own checksum-verified release check.
 	// A standby stays read-only until promotion because the callback is evaluated
 	// on every pass rather than only at process startup.
 	go servers.StartAgentMonitor(ctx, 30*time.Second, api.CanExecuteCommands)

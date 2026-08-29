@@ -37,11 +37,13 @@ func TestUpdateRollsBackAnUnhealthyCandidate(t *testing.T) {
 	release := releaseServer(t, "v2.0.0", "agent", "linux", "amd64", bundle)
 	defer release.Close()
 	manager := &fakeService{}
+	statusFile := filepath.Join(t.TempDir(), "update-status.json")
 	result, err := Update(context.Background(), Config{
 		Repository:     "nimasrn/SwarmOps",
 		Component:      "agent",
 		ReleaseDir:     releaseDir,
 		HealthURL:      health.URL,
+		StatusFile:     statusFile,
 		APIBaseURL:     release.URL,
 		HealthTimeout:  80 * time.Millisecond,
 		HealthInterval: 5 * time.Millisecond,
@@ -67,6 +69,13 @@ func TestUpdateRollsBackAnUnhealthyCandidate(t *testing.T) {
 	}
 	if manager.stops != 2 || manager.starts != 2 {
 		t.Fatalf("service calls = stop %d/start %d, want stop 2/start 2", manager.stops, manager.starts)
+	}
+	status, statusErr := readAgentUpdateStatus(statusFile)
+	if statusErr != nil {
+		t.Fatal(statusErr)
+	}
+	if status.State != "failed" || status.Version != "v1.0.0" || status.CheckedAt.IsZero() {
+		t.Fatalf("status = %#v, want failed with restored v1.0.0", status)
 	}
 }
 
@@ -125,10 +134,107 @@ func TestUpdateKeepsCurrentAndTwoPriorKnownGoodReleases(t *testing.T) {
 	}
 }
 
+func TestAgentUpdateDefersWhileMutationIsBusyAndConsumesRequest(t *testing.T) {
+	releaseDir := t.TempDir()
+	installRelease(t, releaseDir, "v1.0.0")
+	linkCurrent(t, releaseDir, "v1.0.0")
+	stateDir := t.TempDir()
+	busyFile := filepath.Join(stateDir, "update.busy")
+	requestFile := filepath.Join(stateDir, "update.request")
+	statusFile := filepath.Join(stateDir, "update-status.json")
+	if err := os.WriteFile(busyFile, []byte("busy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(requestFile, []byte("check\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeService{}
+	result, err := Update(context.Background(), Config{
+		Repository:  "nimasrn/SwarmOps",
+		Component:   "agent",
+		ReleaseDir:  releaseDir,
+		HealthURL:   "http://127.0.0.1:9180/healthz",
+		BusyFile:    busyFile,
+		RequestFile: requestFile,
+		StatusFile:  statusFile,
+		Service:     manager,
+		OS:          "linux",
+		Arch:        "amd64",
+	}, "")
+	if err != nil {
+		t.Fatalf("Update(): %v", err)
+	}
+	if !result.Deferred || result.Version != "v1.0.0" {
+		t.Fatalf("Update() result = %#v, want deferred v1.0.0", result)
+	}
+	if manager.stops != 0 || manager.starts != 0 {
+		t.Fatalf("service calls = stop %d/start %d, want none", manager.stops, manager.starts)
+	}
+	if _, err := os.Stat(requestFile); !os.IsNotExist(err) {
+		t.Fatalf("request marker should be consumed, stat err = %v", err)
+	}
+	status, err := readAgentUpdateStatus(statusFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Automatic || status.State != "deferred" || status.Version != "v1.0.0" || status.CheckedAt.IsZero() {
+		t.Fatalf("status = %#v, want deferred v1.0.0", status)
+	}
+}
+
+func TestAgentUpdateRecordsActivatedRelease(t *testing.T) {
+	releaseDir := t.TempDir()
+	installRelease(t, releaseDir, "v1.0.0")
+	linkCurrent(t, releaseDir, "v1.0.0")
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer health.Close()
+	bundle := testBundle(t, "agent")
+	release := releaseServer(t, "v1.1.0", "agent", "linux", "amd64", bundle)
+	defer release.Close()
+	statusFile := filepath.Join(t.TempDir(), "update-status.json")
+	result, err := Update(context.Background(), Config{
+		Repository:     "nimasrn/SwarmOps",
+		Component:      "agent",
+		ReleaseDir:     releaseDir,
+		HealthURL:      health.URL,
+		StatusFile:     statusFile,
+		APIBaseURL:     release.URL,
+		HealthTimeout:  time.Second,
+		HealthInterval: 5 * time.Millisecond,
+		Service:        &fakeService{},
+		OS:             "linux",
+		Arch:           "amd64",
+	}, "")
+	if err != nil {
+		t.Fatalf("Update(): %v", err)
+	}
+	if !result.Updated {
+		t.Fatalf("Update() result = %#v, want updated", result)
+	}
+	status, err := readAgentUpdateStatus(statusFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "updated" || status.Version != "v1.1.0" || status.LastUpdatedAt.IsZero() {
+		t.Fatalf("status = %#v, want updated v1.1.0", status)
+	}
+}
+
 func TestExtractBundleRejectsPathTraversal(t *testing.T) {
 	archive := archiveWithFiles(t, map[string][]byte{"../outside": []byte("no")})
 	if err := extractBundle(archive, t.TempDir(), "agent"); err == nil {
 		t.Fatal("extractBundle() accepted a path traversal entry")
+	}
+}
+
+func TestVerifyChecksumRejectsDuplicateEntries(t *testing.T) {
+	content := []byte("agent bundle")
+	digest := fmt.Sprintf("%x", sha256.Sum256(content))
+	checksums := []byte(fmt.Sprintf("%s  agent.tar.gz\n%s  agent.tar.gz\n", digest, digest))
+	if err := verifyChecksum(checksums, "agent.tar.gz", content); err == nil {
+		t.Fatal("verifyChecksum() accepted duplicate checksum entries")
 	}
 }
 

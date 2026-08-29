@@ -59,6 +59,9 @@ type Config struct {
 	Component      string
 	ReleaseDir     string
 	HealthURL      string
+	BusyFile       string
+	RequestFile    string
+	StatusFile     string
 	APIBaseURL     string
 	HealthTimeout  time.Duration
 	HealthInterval time.Duration
@@ -74,6 +77,15 @@ type Result struct {
 	Version    string
 	Updated    bool
 	RolledBack bool
+	Deferred   bool
+}
+
+type agentUpdateStatus struct {
+	Automatic     bool      `json:"automatic"`
+	CheckedAt     time.Time `json:"checkedAt"`
+	LastUpdatedAt time.Time `json:"lastUpdatedAt,omitempty"`
+	State         string    `json:"state"`
+	Version       string    `json:"version,omitempty"`
 }
 
 type releasePayload struct {
@@ -90,10 +102,35 @@ type releaseAsset struct {
 // or an exact published release otherwise. It only switches current after the
 // candidate has been checksum-verified and unpacked into a private staging
 // directory.
-func Update(ctx context.Context, config Config, requestedVersion string) (Result, error) {
+func Update(ctx context.Context, config Config, requestedVersion string) (result Result, returnErr error) {
 	config, err := normalize(config)
 	if err != nil {
 		return Result{}, err
+	}
+	if config.Component == "agent" {
+		defer func() {
+			if err := recordAgentUpdateStatus(config, result, returnErr); err != nil {
+				if returnErr != nil {
+					returnErr = fmt.Errorf("%w; record agent update status: %v", returnErr, err)
+					return
+				}
+				returnErr = fmt.Errorf("record agent update status: %w", err)
+			}
+		}()
+		if err := consumeRequestMarker(config.RequestFile); err != nil {
+			return Result{}, err
+		}
+		busy, err := markerExists(config.BusyFile)
+		if err != nil {
+			return Result{}, err
+		}
+		if busy {
+			version, versionErr := currentVersion(config.ReleaseDir)
+			if versionErr != nil {
+				return Result{}, fmt.Errorf("read installed release while deferring update: %w", versionErr)
+			}
+			return Result{Version: version, Deferred: true}, nil
+		}
 	}
 	if requestedVersion != "" && !validVersion(requestedVersion) {
 		return Result{}, fmt.Errorf("release version has unsupported characters")
@@ -223,7 +260,142 @@ func normalize(config Config) (Config, error) {
 	if !validVersion(config.OS) || !validVersion(config.Arch) {
 		return Config{}, fmt.Errorf("platform has unsupported characters")
 	}
+	for label, filename := range map[string]string{
+		"busy marker":    config.BusyFile,
+		"request marker": config.RequestFile,
+		"status file":    config.StatusFile,
+	} {
+		if filename == "" {
+			continue
+		}
+		if !filepath.IsAbs(filename) || filepath.Clean(filename) == string(filepath.Separator) {
+			return Config{}, fmt.Errorf("%s must be an absolute non-root path", label)
+		}
+	}
 	return config, nil
+}
+
+func markerExists(filename string) (bool, error) {
+	if filename == "" {
+		return false, nil
+	}
+	info, err := os.Lstat(filepath.Clean(filename))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect agent update busy marker: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return false, fmt.Errorf("agent update busy marker must not be a symlink")
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("agent update busy marker must be a regular file")
+	}
+	return true, nil
+}
+
+func consumeRequestMarker(filename string) error {
+	if filename == "" {
+		return nil
+	}
+	info, err := os.Lstat(filepath.Clean(filename))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect agent update request marker: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return fmt.Errorf("agent update request marker must be a regular file")
+	}
+	if err := os.Remove(filepath.Clean(filename)); err != nil {
+		return fmt.Errorf("consume agent update request marker: %w", err)
+	}
+	return nil
+}
+
+func recordAgentUpdateStatus(config Config, result Result, updateErr error) error {
+	if config.StatusFile == "" {
+		return nil
+	}
+	status := agentUpdateStatus{Automatic: true, CheckedAt: time.Now().UTC(), Version: result.Version}
+	if previous, err := readAgentUpdateStatus(config.StatusFile); err == nil {
+		status.LastUpdatedAt = previous.LastUpdatedAt
+	}
+	switch {
+	case updateErr != nil:
+		status.State = "failed"
+		if current, err := currentVersion(config.ReleaseDir); err == nil {
+			status.Version = current
+		}
+	case result.Deferred:
+		status.State = "deferred"
+	case result.Updated:
+		status.State = "updated"
+		status.LastUpdatedAt = status.CheckedAt
+	default:
+		status.State = "up_to_date"
+	}
+	if status.Version == "" {
+		if current, err := currentVersion(config.ReleaseDir); err == nil {
+			status.Version = current
+		}
+	}
+	return writeAgentUpdateStatus(config.StatusFile, status)
+}
+
+func readAgentUpdateStatus(filename string) (agentUpdateStatus, error) {
+	info, err := os.Lstat(filepath.Clean(filename))
+	if err != nil {
+		return agentUpdateStatus{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxChecksumBytes {
+		return agentUpdateStatus{}, fmt.Errorf("agent update status must be a bounded regular file")
+	}
+	data, err := os.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return agentUpdateStatus{}, err
+	}
+	var status agentUpdateStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return agentUpdateStatus{}, err
+	}
+	return status, nil
+}
+
+func writeAgentUpdateStatus(filename string, status agentUpdateStatus) error {
+	directory := filepath.Dir(filepath.Clean(filename))
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(filepath.Clean(filename)); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("agent update status must not be a symlink")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	data, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(directory, ".update-status-*")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(append(data, '\n')); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryName, filepath.Clean(filename))
 }
 
 func fetchRelease(ctx context.Context, config Config, requestedVersion string) (releasePayload, error) {
@@ -325,11 +497,13 @@ func allowedReleaseURL(parsed *url.URL) bool {
 
 func verifyChecksum(checksums []byte, assetName string, content []byte) error {
 	expected := ""
+	matches := 0
 	for _, line := range strings.Split(string(checksums), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != assetName {
 			continue
 		}
+		matches++
 		if len(fields[0]) != sha256.Size*2 {
 			return fmt.Errorf("checksum for %s has invalid length", assetName)
 		}
@@ -337,10 +511,12 @@ func verifyChecksum(checksums []byte, assetName string, content []byte) error {
 			return fmt.Errorf("checksum for %s is not hexadecimal", assetName)
 		}
 		expected = strings.ToLower(fields[0])
-		break
 	}
-	if expected == "" {
+	if matches == 0 {
 		return fmt.Errorf("checksums.txt has no checksum for %s", assetName)
+	}
+	if matches != 1 {
+		return fmt.Errorf("checksums.txt must contain exactly one checksum for %s", assetName)
 	}
 	actual := fmt.Sprintf("%x", sha256.Sum256(content))
 	if actual != expected {

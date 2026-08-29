@@ -40,6 +40,10 @@ func main() {
 		logger.Error("update SwarmOps component", "component", config.Component, "release", result.Version, "rolled_back", result.RolledBack, "error", err)
 		os.Exit(1)
 	}
+	if result.Deferred {
+		logger.Info("SwarmOps component update deferred while a protected mutation is active", "component", config.Component, "release", result.Version, "warden_version", version)
+		return
+	}
 	logger.Info("SwarmOps component is current", "component", config.Component, "release", result.Version, "updated", result.Updated, "warden_version", version)
 }
 
@@ -62,6 +66,9 @@ func configFromEnvironment() (warden.Config, error) {
 		Component:      component,
 		ReleaseDir:     environment("SWARMOPS_WARDEN_RELEASE_DIR", ""),
 		HealthURL:      environment("SWARMOPS_WARDEN_HEALTH_URL", ""),
+		BusyFile:       environment("SWARMOPS_WARDEN_BUSY_FILE", ""),
+		RequestFile:    environment("SWARMOPS_WARDEN_REQUEST_FILE", ""),
+		StatusFile:     environment("SWARMOPS_WARDEN_STATUS_FILE", ""),
 		APIBaseURL:     environment("SWARMOPS_WARDEN_API_URL", "https://api.github.com"),
 		HealthTimeout:  healthTimeout,
 		HealthInterval: healthInterval,

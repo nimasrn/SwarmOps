@@ -30,6 +30,7 @@ export interface AgentUpdateStatus {
   requestedAt?: string
   revision?: string
   state?: 'deferred' | 'failed' | 'scheduled' | 'updated' | 'up_to_date'
+  version?: string
 }
 
 export interface AgentHealth {

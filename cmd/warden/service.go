@@ -24,7 +24,11 @@ func localServiceManager(component string) (serviceManager, error) {
 		if configured := environment("SWARMOPS_WARDEN_SERVICE", expected); configured != expected {
 			return serviceManager{}, fmt.Errorf("SWARMOPS_WARDEN_SERVICE must be %s for %s", expected, component)
 		}
-		return serviceManager{kind: "systemd", name: expected, run: runCommand}, nil
+		manager := serviceManager{kind: "systemd", name: expected, run: runCommand}
+		if component == "agent" {
+			manager.companions = []string{"swarmops-agent-provisioner.service"}
+		}
+		return manager, nil
 	case "darwin":
 		if component != "agent" {
 			return serviceManager{}, fmt.Errorf("the native core component is supported on Linux only")
@@ -44,16 +48,25 @@ func localServiceManager(component string) (serviceManager, error) {
 }
 
 type serviceManager struct {
-	kind  string
-	name  string
-	plist string
-	run   commandRunner
+	kind       string
+	name       string
+	plist      string
+	companions []string
+	run        commandRunner
 }
 
 func (manager serviceManager) Stop(ctx context.Context) error {
 	switch manager.kind {
 	case "systemd":
-		return manager.run(ctx, systemctlPath(), "stop", manager.name)
+		if err := manager.run(ctx, systemctlPath(), "stop", manager.name); err != nil {
+			return err
+		}
+		for _, companion := range manager.companions {
+			if err := manager.run(ctx, systemctlPath(), "stop", companion); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "launchd":
 		return manager.run(ctx, launchctlPath(), "bootout", launchdDomain()+"/"+manager.name)
 	default:
@@ -64,6 +77,11 @@ func (manager serviceManager) Stop(ctx context.Context) error {
 func (manager serviceManager) Start(ctx context.Context) error {
 	switch manager.kind {
 	case "systemd":
+		for _, companion := range manager.companions {
+			if err := manager.run(ctx, systemctlPath(), "start", companion); err != nil {
+				return err
+			}
+		}
 		return manager.run(ctx, systemctlPath(), "start", manager.name)
 	case "launchd":
 		if err := manager.run(ctx, launchctlPath(), "bootstrap", launchdDomain(), manager.plist); err != nil {

@@ -72,6 +72,10 @@ func TestDiagnosticsAndFixedUpdateRequestAreAuthenticated(t *testing.T) {
 	t.Parallel()
 	temporary := t.TempDir()
 	requestFile := filepath.Join(temporary, "update.request")
+	statusFile := filepath.Join(temporary, "update-status.json")
+	if err := os.WriteFile(statusFile, []byte(`{"automatic":true,"state":"up_to_date","version":"v0.10.1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	server, err := NewServer(Config{
 		AutomaticUpdates:     true,
 		Docker:               newTestDockerClient(t),
@@ -79,7 +83,7 @@ func TestDiagnosticsAndFixedUpdateRequestAreAuthenticated(t *testing.T) {
 		RemoteControlEnabled: true,
 		UpdateBusyFile:       filepath.Join(temporary, "update.busy"),
 		UpdateRequestFile:    requestFile,
-		UpdateStatusFile:     filepath.Join(temporary, "update-status.json"),
+		UpdateStatusFile:     statusFile,
 		Version:              "test",
 	}, []byte("test-machine-api-key"))
 	if err != nil {
@@ -102,7 +106,7 @@ func TestDiagnosticsAndFixedUpdateRequestAreAuthenticated(t *testing.T) {
 	if err := json.NewDecoder(diagnostics.Body).Decode(&value); err != nil {
 		t.Fatal(err)
 	}
-	if !value.Update.Automatic || value.Status.ProtocolVersion != agentProtocolVersion || len(value.Events) == 0 || value.Events[0].Code != "agent_started" {
+	if !value.Update.Automatic || value.Update.Version != "v0.10.1" || value.Status.ProtocolVersion != agentProtocolVersion || len(value.Events) == 0 || value.Events[0].Code != "agent_started" {
 		t.Fatalf("diagnostics = %#v", value)
 	}
 

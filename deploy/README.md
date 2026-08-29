@@ -148,7 +148,7 @@ SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 
 The local server proxies browser API requests to the manager; it has no
 SwarmOps data directory, Docker dependency, or local API process. Generate an
-outbound enrollment command in **Cluster → Servers** for each Ubuntu
+outbound enrollment command in **Fleet → Servers** for each Ubuntu
 host, or use the install-first form and approve its printed code:
 
 ```bash
@@ -158,14 +158,19 @@ curl --fail --silent --show-error --location \
   | sudo bash -s -- --core https://core.example.com --defer-docker
 ```
 
-The installer clones the standalone repository, builds the agent locally,
-generates its protected private identity, pins Core, and starts outbound
-mutual-TLS polling. It never prints the private key and requires no inbound
-agent listener. The host's fixed updater checks only the trusted standalone
-repository and cannot accept a source, branch, command, or executable from
-Core or the browser. Core stores the renewable connection credential only as
-AES-256-GCM-sealed state; explicit disconnect removes it, and
-`SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual, memory-only posture.
+The installer resolves an immutable GitHub release, downloads the matching
+Agent/Warden bundle and `checksums.txt`, verifies SHA-256 before extraction,
+then activates the release through an atomic `releases/current` symlink. It
+does not clone source, install Go, contact a module proxy, or compile on the
+server. Warden repeats the same checksum-verified update every six hours,
+health-checks the candidate, and restores the previous known-good release on
+failure. Core can request that fixed local check but cannot select a source,
+release, command, or executable. Re-running the installer preserves an
+existing outbound identity for the same Core URL; it never prints the private
+key and requires no inbound agent listener. Core stores the renewable
+connection credential only as AES-256-GCM-sealed state; explicit disconnect
+removes it, and `SWARMOPS_RETAIN_MACHINE_KEYS=false` restores the manual,
+memory-only posture.
 
 The normal installer command does not install Docker or form/join a Swarm.
 Once the agent is enrolled, **Cluster → Setup & readiness** offers only fixed
