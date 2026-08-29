@@ -205,7 +205,7 @@ release_platform() {
 }
 
 resolve_release_version() {
-  [[ "$release_version" == latest ]] || return
+  [[ "$release_version" == latest ]] || return 0
   local resolved_url
   resolved_url="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output /dev/null --write-out '%{url_effective}' "https://github.com/$github_repository/releases/latest")" || fail 'resolve latest GitHub release'
   case "$resolved_url" in

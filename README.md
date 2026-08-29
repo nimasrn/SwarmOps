@@ -356,7 +356,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current source version is `0.10.1`. Release history is in
+The current source version is `0.10.2`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).

@@ -259,7 +259,7 @@ release_platform() {
 }
 
 resolve_release_version() {
-  [[ "$release_version" == latest ]] || return
+  [[ "$release_version" == latest ]] || return 0
   local resolved_url
   resolved_url="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output /dev/null --write-out '%{url_effective}' "https://github.com/$github_repository/releases/latest")" || fail 'resolve latest GitHub release'
   case "$resolved_url" in
@@ -492,7 +492,7 @@ write_warden_environment() {
 
 write_initial_update_status() {
   local checked_at temporary
-  [[ "$automatic_updates" == true ]] || return
+  [[ "$automatic_updates" == true ]] || return 0
   checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   install -d -m 0700 "$update_status_dir"
   temporary="$(mktemp "$update_status_dir/.update-status.XXXXXX")"

@@ -11,6 +11,21 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.10.2 — 2026-08-29
+
+Pinned native installs now continue past release selection under Bash
+`errexit` instead of downloading the installer and then exiting silently.
+
+- **Pinned Agent and Core installs execute** — the shared release resolver now
+  returns success when `--release <tag>` already names the immutable version,
+  so both native installers proceed to checksum and activate their bundle.
+- **Explicitly disabled updates finish cleanly** — the Agent installer's final
+  status writer returns success when `--no-auto-update` intentionally omits an
+  update-status record.
+- **Executable regression coverage** — installer tests run the release-resolver
+  functions under `set -e` with an exact tag and require execution to reach the
+  next command, protecting both Agent and Core release paths.
+
 ## 0.10.1 — 2026-08-29
 
 Native Agent installation and automatic updates now consume the release

@@ -16,6 +16,58 @@ func readAgentInstaller(t *testing.T) string {
 	return string(data)
 }
 
+func readInstaller(t *testing.T, filename string) string {
+	t.Helper()
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func shellFunction(t *testing.T, script, name string) string {
+	t.Helper()
+	start := strings.Index(script, name+"() {")
+	if start < 0 {
+		t.Fatalf("installer is missing %s", name)
+	}
+	end := strings.Index(script[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("installer has an incomplete %s", name)
+	}
+	return script[start : start+end+3]
+}
+
+func TestPinnedReleaseResolversReturnSuccessUnderErrexit(t *testing.T) {
+	for _, filename := range []string{"install-swarmops-agent.sh", "bootstrap-swarmops-control-plane.sh"} {
+		t.Run(filename, func(t *testing.T) {
+			script := readInstaller(t, filename)
+			command := exec.Command("bash", "-s")
+			command.Stdin = strings.NewReader("set -e\nrelease_version=v0.10.2\n" + shellFunction(t, script, "resolve_release_version") + "\nresolve_release_version\nprintf 'reached\\n'\n")
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("pinned release resolver exited under errexit: %v\n%s", err, output)
+			}
+			if string(output) != "reached\n" {
+				t.Fatalf("pinned release resolver output = %q, want reached", output)
+			}
+		})
+	}
+}
+
+func TestDisabledAgentUpdatesFinishStatusStepUnderErrexit(t *testing.T) {
+	script := readAgentInstaller(t)
+	command := exec.Command("bash", "-s")
+	command.Stdin = strings.NewReader("set -e\nautomatic_updates=false\n" + shellFunction(t, script, "write_initial_update_status") + "\nwrite_initial_update_status\nprintf 'reached\\n'\n")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("disabled update status step exited under errexit: %v\n%s", err, output)
+	}
+	if string(output) != "reached\n" {
+		t.Fatalf("disabled update status output = %q, want reached", output)
+	}
+}
+
 func TestAgentInstallerOutboundEnrollmentContract(t *testing.T) {
 	script := readAgentInstaller(t)
 	for _, required := range []string{
