@@ -5,6 +5,7 @@ import {
   Button,
   Caveat,
   CodeBlock,
+  Columns,
   DecideBar,
   DataTable,
   EmptyState,
@@ -87,6 +88,7 @@ export function KubernetesImportPage() {
             </Banner>
           ) : null}
 
+          <Columns align="start">
           <Panel
             description={`${report.mappings.length} object(s) have a Swarm equivalent. Read the "what changes" column — a translation that alters behaviour is listed there rather than hidden.`}
             flush
@@ -121,6 +123,7 @@ export function KubernetesImportPage() {
               </Rows>
             </Panel>
           ) : null}
+          </Columns>
 
           {report.skipped?.length ? (
             <Panel description="Read and carried no workload meaning on Swarm. Listed so the counts add up." title="Skipped">
