@@ -5,11 +5,14 @@
   "version": "0.9.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run check:vendor",
     "dev": "vite",
+    "prebuild": "npm run check:vendor",
     "build": "tsc -b && vite build",
     "lint": "oxlint src",
     "test": "node --experimental-strip-types --test src/*.test.mjs",
-    "typecheck": "tsc -b --pretty"
+    "typecheck": "tsc -b --pretty",
+    "check:vendor": "node scripts/check-vendored-kit.mjs"
   },
   "dependencies": {
     "@nim.zone/ui": "file:./vendor/nim-ui",
