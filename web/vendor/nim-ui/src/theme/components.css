@@ -8221,6 +8221,17 @@
     min-inline-size: 0;
   }
 
+  /* The columns themselves have to be allowed to shrink, not just the boxes
+     around them. A grid track defaults to auto, which is max-content, so one
+     wide child — a command list, a code block, a table — sizes the track past
+     its own container and spills out of the panel while the container still
+     measures correctly. Fixing only the parent looks right in the inspector
+     and wrong on the screen. */
+  .nim-detail__main > *,
+  .nim-detail__aside > * {
+    min-inline-size: 0;
+  }
+
   /* ─── Code / log ────────────────────────────────────────────────────── */
   .nim-code {
     display: grid;
