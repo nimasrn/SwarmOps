@@ -50,15 +50,6 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     })
   }
 
-  // Any other mutation is accepted and echoed as a queued command rather than
-  // refused: the point is to walk the console, and a dead button teaches
-  // nothing about the design.
-  if (init?.method && init.method !== 'GET') {
-    return json({ action: 'review.noop', attempt: 1, createdAt: new Date().toISOString(), id: `rev-${Date.now()}`, maxAttempts: 1, nodeId: 'n1', state: 'succeeded', target: 'review' })
-  }
-
-  if (path in FIXTURES) return json(FIXTURES[path])
-
   // Per-service routes carry an id, so they are matched by shape rather than
   // listed. Diagnosis answers with a chain whose last link is the failing
   // measurement, because a refusal — while honest — shows none of the design.
@@ -127,6 +118,15 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       ],
     })
   }
+
+  // Any other mutation is accepted and echoed as a queued command rather than
+  // refused: the point is to walk the console, and a dead button teaches
+  // nothing about the design.
+  if (init?.method && init.method !== 'GET') {
+    return json({ action: 'review.noop', attempt: 1, createdAt: new Date().toISOString(), id: `rev-${Date.now()}`, maxAttempts: 1, nodeId: 'n1', state: 'succeeded', target: 'review' })
+  }
+
+  if (path in FIXTURES) return json(FIXTURES[path])
 
   // Unmodelled reads answer empty so a screen shows its own empty state rather
   // than an error banner. The shape matters more than it looks: an empty ARRAY
