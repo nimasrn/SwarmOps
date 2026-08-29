@@ -11,6 +11,23 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.10.3 — 2026-08-29
+
+An in-place native Agent migration now restarts already-active systemd units,
+so health validation observes the new release process rather than the legacy
+process that happened to be running before the installer changed its symlink.
+
+- **Running Agent activation is explicit** — the installer enables and then
+  restarts the provisioning helper and Agent in dependency order. A fresh
+  service still starts normally; an existing service cannot remain on its old
+  mapped executable.
+- **Health proves the candidate** — the loopback check now runs only after both
+  units have received the restart, preserving the existing rollback path when
+  the candidate cannot become healthy.
+- **Migration regression coverage** — an executable shell test records the
+  systemd calls and requires `enable`, `restart`, then `is-active` for an
+  already-installed unit.
+
 ## 0.10.2 — 2026-08-29
 
 Pinned native installs now continue past release selection under Bash

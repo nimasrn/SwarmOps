@@ -68,6 +68,32 @@ func TestDisabledAgentUpdatesFinishStatusStepUnderErrexit(t *testing.T) {
 	}
 }
 
+func TestLinuxActivationRestartsAnAlreadyActiveService(t *testing.T) {
+	script := readAgentInstaller(t)
+	command := exec.Command("bash", "-s")
+	command.Stdin = strings.NewReader(`set -e
+exec 3>&1
+systemctl() {
+  printf 'systemctl %s\n' "$*" >&3
+  return 0
+}
+unit_has_namespace_error() { return 1; }
+write_namespace_compatibility_override() { return 0; }
+` + shellFunction(t, script, "start_systemd_service_with_fallback") + `
+start_systemd_service_with_fallback swarmops-agent.service failed
+`)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("activate existing systemd service: %v\n%s", err, output)
+	}
+	want := "systemctl enable swarmops-agent.service\n" +
+		"systemctl restart swarmops-agent.service\n" +
+		"systemctl is-active --quiet swarmops-agent.service\n"
+	if string(output) != want {
+		t.Fatalf("systemd activation calls = %q, want %q", output, want)
+	}
+}
+
 func TestAgentInstallerOutboundEnrollmentContract(t *testing.T) {
 	script := readAgentInstaller(t)
 	for _, required := range []string{

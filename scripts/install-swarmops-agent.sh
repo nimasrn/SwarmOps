@@ -593,7 +593,15 @@ start_systemd_service_with_fallback() {
   local unit="$1"
   local fail_message="$2"
 
-  systemctl enable --now "$unit" >/dev/null
+  if ! systemctl enable "$unit" >/dev/null; then
+    systemctl status --no-pager "$unit" >&2 || true
+    printf 'SwarmOps machine-agent install: %s\n' "$fail_message" >&2
+    return 1
+  fi
+  # A migrated service may already be active with the legacy executable.
+  # Restart explicitly so health validation observes the candidate behind the
+  # new releases/current link rather than accepting the old in-memory process.
+  systemctl restart "$unit" >/dev/null 2>&1 || true
   if systemctl is-active --quiet "$unit"; then
     return 0
   fi
