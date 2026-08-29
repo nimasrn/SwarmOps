@@ -1492,6 +1492,15 @@
     display: grid;
     gap: var(--nim-space-4);
   }
+
+  /* A stack is a single-column grid, and a grid track defaults to max-content.
+     One wide child — a banner with a long sentence, a facts list, a code block
+     — therefore sizes the column past the stack's own box, and the overflow
+     lands outside whatever contains it. The stack measures correctly the whole
+     time, which is what makes this hard to see in the inspector. */
+  .nim-stack > * {
+    min-inline-size: 0;
+  }
   .nim-stack--tight {
     gap: var(--nim-space-2);
   }
