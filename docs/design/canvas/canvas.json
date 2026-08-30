@@ -1,0 +1,180 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "The shape"
+    },
+    {
+      "id": "page-2",
+      "name": "The screens"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1520,
+      "h": 1240,
+      "page": "page-1"
+    },
+    {
+      "file": "Model.dc.html",
+      "x": 1640,
+      "y": 0,
+      "w": 1440,
+      "h": 1100,
+      "page": "page-1"
+    },
+    {
+      "file": "FirstRun.dc.html",
+      "x": 3200,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "page": "page-1"
+    },
+    {
+      "file": "Home.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1120,
+      "page": "page-2"
+    },
+    {
+      "file": "Machines.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1040,
+      "page": "page-2"
+    },
+    {
+      "file": "MachineDetail.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 1100,
+      "page": "page-2"
+    },
+    {
+      "file": "ContainerDetail.dc.html",
+      "x": 0,
+      "y": 1260,
+      "w": 1440,
+      "h": 1080,
+      "page": "page-2"
+    },
+    {
+      "file": "Apps.dc.html",
+      "x": 1560,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "page": "page-2"
+    },
+    {
+      "file": "AppDetail.dc.html",
+      "x": 3120,
+      "y": 1260,
+      "w": 1440,
+      "h": 1150,
+      "page": "page-2"
+    },
+    {
+      "file": "Deploy.dc.html",
+      "x": 0,
+      "y": 2550,
+      "w": 1440,
+      "h": 1140,
+      "page": "page-2"
+    },
+    {
+      "file": "DeployRelease.dc.html",
+      "x": 1560,
+      "y": 2550,
+      "w": 1440,
+      "h": 1060,
+      "page": "page-2"
+    },
+    {
+      "file": "Platform.dc.html",
+      "x": 3120,
+      "y": 2550,
+      "w": 1440,
+      "h": 1090,
+      "page": "page-2"
+    },
+    {
+      "file": "Gateway.dc.html",
+      "x": 0,
+      "y": 3830,
+      "w": 1440,
+      "h": 1160,
+      "page": "page-2"
+    },
+    {
+      "file": "Routes.dc.html",
+      "x": 1560,
+      "y": 3830,
+      "w": 1440,
+      "h": 1000,
+      "page": "page-2"
+    },
+    {
+      "file": "Runs.dc.html",
+      "x": 3120,
+      "y": 3830,
+      "w": 1440,
+      "h": 1320,
+      "page": "page-2"
+    },
+    {
+      "file": "Core.dc.html",
+      "x": 0,
+      "y": 5290,
+      "w": 1440,
+      "h": 1260,
+      "page": "page-2"
+    },
+    {
+      "file": "Agents.dc.html",
+      "x": 1560,
+      "y": 5290,
+      "w": 1440,
+      "h": 1000,
+      "page": "page-2"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "note-shape",
+      "x": 0,
+      "y": -130,
+      "w": 900,
+      "page": "page-1",
+      "text": "Start here. The map is the argument for six areas instead of eight; the model is what actually talks to what; first run is the whole install."
+    },
+    {
+      "id": "note-screens",
+      "x": 0,
+      "y": -130,
+      "w": 900,
+      "page": "page-2",
+      "text": "Fourteen screens at 1440 wide, drawn in the real console vocabulary — nim-ui console style, malachite colourway, measured off the running app."
+    },
+    {
+      "id": "note-metrics",
+      "x": 3120,
+      "y": -80,
+      "w": 420,
+      "page": "page-2",
+      "text": "A machine, a container, an application and the gateway each carry their own charts. That is what replaces the Observe area."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

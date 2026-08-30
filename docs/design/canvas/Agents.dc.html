@@ -1,0 +1,253 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; display: flex; flex-direction: column; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111820; letter-spacing: -0.006em">
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff">
+  <div style="display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+    <span style="font-size: 11px; letter-spacing: 0.44px; color: #68757f">Cluster</span>
+    <span style="font-size: 13px; font-weight: 500; color: #111820">production</span>
+    <span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">3 of 3 agents answering</span></span>
+  <div style="flex: 1"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 10px; border-radius: 2px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 12px; font-weight: 500"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.6 17.4 16H2.6z"/><path d="M10 8.4v3.4M10 14h.01"/></svg>2 to decide</span>
+  <div style="display: flex; align-items: center; gap: 8px; width: 260px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px; flex: 1">Search or run…</span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px">⌘K</span>
+  </div>
+  <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg></span>
+  <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+</header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav style="width: 68px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; display: flex; flex-direction: column">
+  <div style="height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(17, 27, 34, 0.13)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg></div>
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 8px"><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Home</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Apps</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Machines</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Traffic</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Activity</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Control</span>
+    </div></div>
+</nav>
+    <aside style="width: 248px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; padding: 16px 12px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; padding: 0 10px">CONTROL</div>
+  <div style="font-size: 12px; color: #68757f; padding: 6px 10px 14px; line-height: 1.45">The controller itself and the software on every host.</div>
+  <div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Core
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 13px; font-weight: 500">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: #0f8a63; flex: none"></span>Agents & updates
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Settings & access
+    </div></div>
+</aside>
+    <main style="flex: 1; min-width: 0; padding: 24px">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #68757f; margin-bottom: 8px">
+    <span>Control</span><span style="opacity: 0.5"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg></span><span style="color: #3f4a55">Agents & updates</span>
+
+  </div>
+      <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px">
+        <div style="flex: 1; min-width: 0">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.43px; color: #111820">Agents & updates</h1>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #68757f; max-width: 62ch; line-height: 1.45">The software on every host: which version each machine runs, how it gets the next one, and how to put it back.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.8v9.4M6.2 9.6 10 13.4l3.8-3.8M4 16.2h12"/></svg>Update the fleet</span></div>
+      </div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px"><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">On the current version</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">2 of 3</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">web-01 is two releases behind and will not accept new commands.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Update policy</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">Manual</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Nothing installs itself. You choose when, and it rolls one host at a time.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Available</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #0f8a63; margin-top: 4px">v0.11.0</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Verified against the release checksum.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Rollbacks kept</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">3</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Every host keeps its last three releases on disk.</div>
+</div></div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start">
+  <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Every machine</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">An agent updates itself the way the controller does: start, prove it answers, then retire the old one.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Machine</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Running</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Kept on disk</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Connection</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Last updated</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; "></th></tr></thead><tbody><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">node-1</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">v0.11.0</span> <span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(28, 127, 82, 0.12); color: #1c7f52; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Current</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #3f4a55">0.11.0 · 0.10.4 · 0.10.3</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 2 s</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">12 days ago</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Roll back</span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">node-2</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">v0.11.0</span> <span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(28, 127, 82, 0.12); color: #1c7f52; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Current</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #3f4a55">0.11.0 · 0.10.4 · 0.10.3</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 4 s</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">12 days ago</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Roll back</span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">web-01</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">v0.10.4</span> <span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">2 behind</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #3f4a55">0.10.4 · 0.10.3</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 9 s</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">3 weeks ago</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63">Update</span></td></tr></tbody></table></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">What a stale agent costs you</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">Derived from the action catalog, not written by hand.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <p style="margin: 0 0 10px; font-size: 13px; color: #3f4a55; line-height: 1.55">
+        An older agent is not merely old — it does not know the commands added since it shipped. web-01 cannot accept the per-container metrics command, so it appears in Machines with host readings and no container readings, and nothing else on the screen explains why.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #c1332c; flex: none"></span></span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">container.metrics</span><span style="flex: 1"></span>
+          <span style="font-size: 11px; color: #68757f">Added in v0.11.0 — web-01 will reject it</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #c1332c; flex: none"></span></span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">logs.query</span><span style="flex: 1"></span>
+          <span style="font-size: 11px; color: #68757f">Added in v0.11.0 — web-01 will reject it</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">docker.install</span><span style="flex: 1"></span>
+          <span style="font-size: 11px; color: #68757f">Available since v0.9.0</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">swarm.join</span><span style="flex: 1"></span>
+          <span style="font-size: 11px; color: #68757f">Available since v0.9.0</span>
+        </div>
+      </div></div>
+
+</section>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">How updates happen</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+
+        <div style="display: flex; gap: 10px; padding: 10px; border: 1px solid rgba(15, 138, 99, 0.26); border-radius: 2px; background: rgba(15, 138, 99, 0.11)">
+          <span style="width: 14px; height: 14px; border-radius: 999px; border: 1px solid #0f8a63; flex: none; margin-top: 2px; display: inline-flex; align-items: center; justify-content: center"><span style="width: 7px; height: 7px; border-radius: 999px; background: #0f8a63"></span></span>
+          <div><div style="font-size: 12px; font-weight: 500; color: #111820">Manual</div><div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">You press update. One machine at a time, and it stops on the first failure.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; background: transparent">
+          <span style="width: 14px; height: 14px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.22); flex: none; margin-top: 2px; display: inline-flex; align-items: center; justify-content: center"></span>
+          <div><div style="font-size: 12px; font-weight: 500; color: #111820">Automatic, in a window</div><div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">Same rollout, started for you inside the hours you name.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px; padding: 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; background: transparent">
+          <span style="width: 14px; height: 14px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.22); flex: none; margin-top: 2px; display: inline-flex; align-items: center; justify-content: center"></span>
+          <div><div style="font-size: 12px; font-weight: 500; color: #111820">Never</div><div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">Agents stay where they are until you say otherwise.</div></div>
+        </div>
+      </div>
+      <div style="margin-top: 12px; font-size: 11px; color: #68757f; line-height: 1.5">
+        The same three choices apply to the controller, on its own screen.
+      </div></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">A rollout, step by step</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; flex-direction: column">
+
+        <div style="display: flex; gap: 10px">
+          <div style="display: flex; flex-direction: column; align-items: center; width: 12px; flex: none">
+            <span style="width: 7px; height: 7px; border-radius: 999px; margin-top: 5px; background: #0f8a63"></span>
+            <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+          </div>
+          <div style="flex: 1; padding-bottom: 12px">
+            <div style="font-size: 12px; color: #111820">Download and verify on the host</div>
+            <div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">The agent fetches its own bundle; the controller sends no binary</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <div style="display: flex; flex-direction: column; align-items: center; width: 12px; flex: none">
+            <span style="width: 7px; height: 7px; border-radius: 999px; margin-top: 5px; background: #0f8a63"></span>
+            <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+          </div>
+          <div style="flex: 1; padding-bottom: 12px">
+            <div style="font-size: 12px; color: #111820">Start the new agent on a second socket</div>
+            <div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">The running one keeps answering polls</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <div style="display: flex; flex-direction: column; align-items: center; width: 12px; flex: none">
+            <span style="width: 7px; height: 7px; border-radius: 999px; margin-top: 5px; background: #0f8a63"></span>
+            <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+          </div>
+          <div style="flex: 1; padding-bottom: 12px">
+            <div style="font-size: 12px; color: #111820">Health check for up to 45 seconds</div>
+            <div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">If it never answers, it is deleted and nothing changed</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <div style="display: flex; flex-direction: column; align-items: center; width: 12px; flex: none">
+            <span style="width: 7px; height: 7px; border-radius: 999px; margin-top: 5px; background: #0f8a63"></span>
+            <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+          </div>
+          <div style="flex: 1; padding-bottom: 12px">
+            <div style="font-size: 12px; color: #111820">Hand over the poll loop</div>
+            <div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">In-flight work finishes on the old process</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <div style="display: flex; flex-direction: column; align-items: center; width: 12px; flex: none">
+            <span style="width: 7px; height: 7px; border-radius: 999px; margin-top: 5px; background: #0f8a63"></span>
+
+          </div>
+          <div style="flex: 1; padding-bottom: 0px">
+            <div style="font-size: 12px; color: #111820">Retire the old release</div>
+            <div style="font-size: 11px; color: #68757f; margin-top: 2px; line-height: 1.45">Kept on disk — this is what roll back restores</div>
+          </div>
+        </div>
+      </div></div>
+  <div style="padding: 8px 12px; border-top: 1px solid rgba(17, 27, 34, 0.08); font-size: 12px; color: #68757f">A machine that goes offline mid-rollout is skipped, not abandoned: it resumes when it comes back.</div>
+</section>
+  </div>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

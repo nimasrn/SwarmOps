@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111820; padding: 40px 48px; letter-spacing: -0.006em">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg><span style="font-size: 15px; font-weight: 600">SwarmOps</span></div>
+  <h1 style="margin: 0 0 6px; font-size: 28px; font-weight: 600; letter-spacing: -0.6px">From nothing to a console in one command</h1>
+  <p style="margin: 0 0 28px; font-size: 14px; color: #68757f; max-width: 78ch; line-height: 1.55">
+    The controller installs on any machine — a server, a laptop, something that has never run Docker. It prints where to reach it and the password it generated, and then it waits for you to add a machine.
+  </p>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start">
+    <div>
+      <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; margin-bottom: 8px">ON THE MACHINE THAT WILL HOLD THE CONTROLLER</div>
+      <div style="background: #0d1117; border: 1px solid rgba(17, 27, 34, 0.22); border-radius: 3px; padding: 16px 18px; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.85; color: #e6edf3">
+<div><span style="color: #56c98e">$</span> curl -fsSL https://get.swarmops.dev | sh</div>
+<div style="color: rgba(230,237,243,0.55)">&nbsp;</div>
+<div style="color: rgba(230,237,243,0.76)">  Verifying checksum for swarmops-core v0.11.1  <span style="color: #56c98e">ok</span></div>
+<div style="color: rgba(230,237,243,0.76)">  Installing to /usr/local/bin/swarmops           <span style="color: #56c98e">ok</span></div>
+<div style="color: rgba(230,237,243,0.76)">  Creating state at /var/lib/swarmops             <span style="color: #56c98e">ok</span></div>
+<div style="color: rgba(230,237,243,0.76)">  Starting swarmops-core                          <span style="color: #56c98e">ok</span></div>
+<div style="color: rgba(230,237,243,0.55)">&nbsp;</div>
+<div style="color: #2fbf8f">  SwarmOps is serving.</div>
+<div style="color: rgba(230,237,243,0.55)">&nbsp;</div>
+<div>  Console      <span style="color: #7aa2ef">https://10.0.0.4:8084</span></div>
+<div>  Username     admin</div>
+<div>  Password     <span style="color: #d6a13a">jaunty-harbour-42-vellum</span></div>
+<div>  Fingerprint  SHA256:4f1a…9c2e</div>
+<div style="color: rgba(230,237,243,0.55)">&nbsp;</div>
+<div style="color: rgba(230,237,243,0.55)">  This password is shown once. It is not stored in plain text.</div>
+      </div>
+      <div style="margin-top: 12px; font-size: 12px; color: #68757f; line-height: 1.55; max-width: 60ch">
+        No Docker, no compose file, no reverse proxy to configure first. The controller is a single process with a single state directory, and <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; color: #3f4a55">swarmops</span> is now on the path — everything this console can do, that command can do too.
+      </div>
+    </div>
+
+    <div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; overflow: hidden">
+      <div style="height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg><span style="font-size: 14px; font-weight: 600">SwarmOps</span>
+        <span style="flex: 1"></span>
+        <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+      </div>
+      <div style="padding: 32px">
+        <div style="max-width: 52ch">
+          <h2 style="margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: -0.4px">Nothing is being managed yet</h2>
+          <p style="margin: 0 0 20px; font-size: 13px; color: #68757f; line-height: 1.55">
+            The controller is running and holds no cluster. Add a machine and it becomes one — SwarmOps will read what is already on that host before it changes anything.
+          </p>
+        </div>
+
+        <div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 16px; margin-bottom: 16px">
+          <div style="font-size: 13px; font-weight: 500; margin-bottom: 4px">Run this on the machine you want to manage</div>
+          <div style="font-size: 12px; color: #68757f; margin-bottom: 10px">Ubuntu 22.04 or 24.04. Docker is not required first.</div>
+          <div style="position: relative; background: #eef2f1; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; padding: 12px 14px; overflow-x: auto">
+  <pre style="margin: 0; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7; color: #111820; white-space: pre">curl -fsSL https://get.swarmops.dev/agent | sudo bash -s -- \
+  --core https://10.0.0.4:8084 \
+  --fingerprint SHA256:4f1a…9c2e \
+  --code 7K2M-9QX4-P3RV-8ZTN</pre>
+  <span style="position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px; height: 25px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; background: #ffffff; font-size: 11px; font-weight: 500; color: #3f4a55"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="9.2" height="9.2" rx="1.2"/><path d="M13 7V4.8a1 1 0 0 0-1-1H4.8a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></svg>Copy</span>
+</div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: #68757f">
+            <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #0f8a63; flex: none"></span></span> Waiting for the first poll…
+            <span style="flex: 1"></span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Regenerate the code</span>
+          </div>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; margin-bottom: 10px">THEN, IN ORDER</div>
+        <div style="display: flex; flex-direction: column">
+
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 20px; flex: none">
+              <span style="width: 20px; height: 20px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.13); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #68757f">1</span>
+              <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+            </div>
+            <div style="flex: 1; padding-bottom: 14px">
+              <div style="font-size: 13px; color: #68757f">Install Docker on it</div>
+              <div style="font-size: 12px; color: #68757f; opacity: 0.8; margin-top: 2px; line-height: 1.45">One button. From Docker’s signed repository.</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 20px; flex: none">
+              <span style="width: 20px; height: 20px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.13); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #68757f">2</span>
+              <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+            </div>
+            <div style="flex: 1; padding-bottom: 14px">
+              <div style="font-size: 13px; color: #68757f">Make it a Swarm manager</div>
+              <div style="font-size: 12px; color: #68757f; opacity: 0.8; margin-top: 2px; line-height: 1.45">A single node is a valid cluster. Add two more when you want it to survive a reboot.</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 20px; flex: none">
+              <span style="width: 20px; height: 20px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.13); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #68757f">3</span>
+              <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+            </div>
+            <div style="flex: 1; padding-bottom: 14px">
+              <div style="font-size: 13px; color: #68757f">Install the gateway</div>
+              <div style="font-size: 12px; color: #68757f; opacity: 0.8; margin-top: 2px; line-height: 1.45">Traefik on every node, so a hostname can reach a workload.</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 20px; flex: none">
+              <span style="width: 20px; height: 20px; border-radius: 999px; border: 1px solid rgba(17, 27, 34, 0.13); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #68757f">4</span>
+
+            </div>
+            <div style="flex: 1; padding-bottom: 0px">
+              <div style="font-size: 13px; color: #68757f">Deploy something</div>
+              <div style="font-size: 12px; color: #68757f; opacity: 0.8; margin-top: 2px; line-height: 1.45">Point at a repository and watch it start.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

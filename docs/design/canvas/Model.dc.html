@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111820; padding: 36px 40px; letter-spacing: -0.006em">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg><span style="font-size: 14px; font-weight: 600">SwarmOps</span><span style="font-size: 13px; color: #68757f">how the pieces actually talk</span></div>
+  <h1 style="margin: 0 0 6px; font-size: 26px; font-weight: 600; letter-spacing: -0.55px">One controller, an agent on every host, and nothing that dials in</h1>
+  <p style="margin: 0 0 22px; font-size: 13.5px; color: #3f4a55; max-width: 106ch; line-height: 1.6">
+    Two paths, drawn separately because they fail separately. The control path is how a decision becomes a change on a host; the observation path is how a reading gets back. Ansible is not in either of them — an agent that is already installed, already authenticated and already resumable is a better transport than an SSH session that has to be re-established for every task.
+  </p>
+
+  <div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 18px 20px; margin-bottom: 18px">
+    <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px">Control · a decision becomes a change</div>
+    <div style="font-size: 12px; color: #68757f; margin-bottom: 12px">Every mutation is written down before it is sent, and no host ever opens a port for the controller.</div>
+    <svg viewBox="0 0 1340 250" width="100%" height="250" style="display: block">
+      <defs>
+  <marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0 0 L8 4 L0 8 z" fill="#68757f"/>
+  </marker>
+</defs>
+      <g>
+  <rect x="0" y="78" width="150" height="70" rx="3" fill="#ffffff" stroke="rgba(17, 27, 34, 0.13)" stroke-width="1"/>
+  <text x="12" y="98" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Browser</text>
+  <text x="12" y="116" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">You, pressing a button</text>
+</g>
+      <g>
+  <rect x="215" y="30" width="300" height="190" rx="3" fill="rgba(15, 138, 99, 0.11)" stroke="rgba(15, 138, 99, 0.26)" stroke-width="1"/>
+  <text x="227" y="50" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">SwarmOps Core</text>
+  <text x="227" y="68" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">One host process. No Docker socket.</text><text x="227" y="83" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Runs anywhere — inside or outside the cluster.</text><text x="227" y="98" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f"></text><text x="227" y="113" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· API and this console</text><text x="227" y="128" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Sealed state: machines, specs, audit</text><text x="227" y="143" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· The run ledger — written before sending</text>
+</g>
+      <g>
+  <rect x="600" y="30" width="280" height="190" rx="3" fill="rgba(15, 138, 99, 0.11)" stroke="rgba(15, 138, 99, 0.26)" stroke-width="1"/>
+  <text x="612" y="50" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Agent on each host</text>
+  <text x="612" y="68" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">A host process, not a container.</text><text x="612" y="83" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Answers while Docker is stopped.</text><text x="612" y="98" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f"></text><text x="612" y="113" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Dials out; nothing dials in</text><text x="612" y="128" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Leases one run at a time</text><text x="612" y="143" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Resumes after hours offline</text>
+</g>
+      <g>
+  <rect x="960" y="30" width="240" height="88" rx="3" fill="#ffffff" stroke="rgba(17, 27, 34, 0.13)" stroke-width="1"/>
+  <text x="972" y="50" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Docker Engine</text>
+  <text x="972" y="68" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Local socket, never proxied</text><text x="972" y="83" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Only catalogued command shapes</text>
+</g>
+      <g>
+  <rect x="960" y="148" width="240" height="72" rx="3" fill="#ffffff" stroke="rgba(17, 27, 34, 0.13)" stroke-width="1"/>
+  <text x="972" y="168" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">The host itself</text>
+  <text x="972" y="186" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Packages, firewall, disks</text><text x="972" y="201" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Same closed catalogue</text>
+</g>
+      <g>
+  <path d="M150 113 L213 113" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+  <text x="181.5" y="107" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">HTTPS</text>
+</g>
+      <g>
+  <path d="M598 82 L517 82" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+  <text x="557.5" y="74" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">outbound mutual TLS</text>
+</g>
+      <g>
+  <path d="M517 130 L598 130" stroke="#68757f" stroke-width="1.25" fill="none" stroke-dasharray="4 3" marker-end="url(#head)"/>
+  <text x="557.5" y="146" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">the run, on that same connection</text>
+</g>
+      <g>
+  <path d="M880 74 L958 74" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+
+</g>
+      <g>
+  <path d="M880 184 L958 184" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+
+</g>
+      <text x="557" y="176" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">the agent asks;</text>
+      <text x="557" y="190" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">core answers</text>
+      <g>
+  <rect x="215" y="236" width="985" height="0" rx="3" fill="#ffffff" stroke="rgba(17, 27, 34, 0.13)" stroke-width="1"/>
+  <text x="227" y="256" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820"></text>
+
+</g>
+    </svg>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 4px; padding-top: 14px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+      <div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Written before it is sent</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">A run exists in the sealed ledger before any agent hears about it, so an interrupted controller loses nothing.</div></div><div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Queued, never streamed</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">A network that dies for six hours delays a run; it does not lose one. The agent picks up where it stopped.</div></div><div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Duplicates collapse</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">A newer identical request for the same machine, action and target replaces the older queued one instead of running twice.</div></div><div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Failures stop, they do not guess</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">A deterministic failure is not retried into a cluster nobody has looked at. It waits, with the reason and the command to run.</div></div>
+    </div>
+  </div>
+
+  <div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 18px 20px">
+    <div style="font-size: 13px; font-weight: 600; margin-bottom: 2px">Observation · a reading gets back</div>
+    <div style="font-size: 12px; color: #68757f; margin-bottom: 12px">The agent is the only collector. It measures the host it lives on and every container on it, and exposes both on one endpoint.</div>
+    <svg viewBox="0 0 1340 220" width="100%" height="220" style="display: block">
+      <defs>
+  <marker id="head" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0 0 L8 4 L0 8 z" fill="#68757f"/>
+  </marker>
+</defs>
+      <g>
+  <rect x="0" y="24" width="260" height="172" rx="3" fill="rgba(15, 138, 99, 0.11)" stroke="rgba(15, 138, 99, 0.26)" stroke-width="1"/>
+  <text x="12" y="44" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Agent /metrics</text>
+  <text x="12" y="62" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">One endpoint per host, 15 s tick.</text><text x="12" y="77" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f"></text><text x="12" y="92" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· CPU, load, memory, swap</text><text x="12" y="107" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Every disk and every filesystem</text><text x="12" y="122" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Network in and out per interface</text><text x="12" y="137" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Per container: CPU, memory, net, I/O</text><text x="12" y="152" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Its own queue depth and lease age</text>
+</g>
+      <g>
+  <rect x="360" y="44" width="250" height="96" rx="3" fill="rgba(47, 106, 208, 0.1)" stroke="rgba(47,106,208,0.32)" stroke-width="1"/>
+  <text x="372" y="64" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Prometheus</text>
+  <text x="372" y="82" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">One per cluster. Targets come</text><text x="372" y="97" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">from the enrolled machines —</text><text x="372" y="112" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">nobody edits a scrape file.</text>
+</g>
+      <g>
+  <rect x="360" y="160" width="250" height="40" rx="3" fill="rgba(47, 106, 208, 0.1)" stroke="rgba(47,106,208,0.32)" stroke-width="1"/>
+  <text x="372" y="180" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Jaeger</text>
+  <text x="372" y="198" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">One per cluster, for traces</text>
+</g>
+      <g>
+  <rect x="710" y="44" width="250" height="96" rx="3" fill="rgba(15, 138, 99, 0.11)" stroke="rgba(15, 138, 99, 0.26)" stroke-width="1"/>
+  <text x="722" y="64" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Core</text>
+  <text x="722" y="82" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">Reads Prometheus and renders</text><text x="722" y="97" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">the console’s own panels.</text><text x="722" y="112" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">No second dashboard to run.</text>
+</g>
+      <g>
+  <rect x="1060" y="24" width="260" height="172" rx="3" fill="#ffffff" stroke="rgba(17, 27, 34, 0.13)" stroke-width="1"/>
+  <text x="1072" y="44" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#111820">Where you see it</text>
+  <text x="1072" y="62" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f"></text><text x="1072" y="77" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· A machine’s page — its host charts</text><text x="1072" y="92" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· A container’s page — its own charts</text><text x="1072" y="107" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· An application — request rate, latency</text><text x="1072" y="122" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· The gateway — traffic and errors</text><text x="1072" y="137" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#68757f">· Home — the fleet, at a glance</text>
+</g>
+      <g>
+  <path d="M262 92 L358 92" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+  <text x="310" y="86" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">scraped</text>
+</g>
+      <g>
+  <path d="M612 92 L708 92" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+  <text x="660" y="86" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">queried</text>
+</g>
+      <g>
+  <path d="M962 92 L1058 92" stroke="#68757f" stroke-width="1.25" fill="none" marker-end="url(#head)"/>
+  <text x="1010" y="86" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">drawn</text>
+</g>
+      <g>
+  <path d="M612 178 L708 140" stroke="#68757f" stroke-width="1.25" fill="none" stroke-dasharray="4 3" marker-end="url(#head)"/>
+
+</g>
+      <text x="130" y="212" text-anchor="middle" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="10.5" fill="#68757f">no cAdvisor, no node-exporter, no privileged extra container</text>
+    </svg>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 4px; padding-top: 14px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+      <div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Container logs, seven days</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">Collected on the host that produced them and searchable across the fleet. Turn it off per machine and the collection stops rather than silently failing.</div></div><div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Traefik measures the traffic</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">Requests, latency percentiles and error rates come from the gateway’s own metrics, so an application’s numbers do not depend on the application.</div></div><div><div style="font-size: 12px; font-weight: 500; color: #111820; margin-bottom: 3px">Everything published goes through Traefik</div><div style="font-size: 11.5px; color: #68757f; line-height: 1.5">Applications, TCP and UDP, and this console if you publish it. Agents deliberately do not — the gateway is a thing you install with agents, so it cannot be what they need to reach you.</div></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

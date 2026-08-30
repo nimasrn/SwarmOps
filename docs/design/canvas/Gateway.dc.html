@@ -1,0 +1,280 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; display: flex; flex-direction: column; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111820; letter-spacing: -0.006em">
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff">
+  <div style="display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+    <span style="font-size: 11px; letter-spacing: 0.44px; color: #68757f">Cluster</span>
+    <span style="font-size: 13px; font-weight: 500; color: #111820">production</span>
+    <span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">3 of 3 agents answering</span></span>
+  <div style="flex: 1"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 10px; border-radius: 2px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 12px; font-weight: 500"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.6 17.4 16H2.6z"/><path d="M10 8.4v3.4M10 14h.01"/></svg>2 to decide</span>
+  <div style="display: flex; align-items: center; gap: 8px; width: 260px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px; flex: 1">Search or run…</span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px">⌘K</span>
+  </div>
+  <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg></span>
+  <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+</header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav style="width: 68px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; display: flex; flex-direction: column">
+  <div style="height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(17, 27, 34, 0.13)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg></div>
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 8px"><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Home</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Apps</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Machines</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Traffic</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Activity</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Control</span>
+    </div></div>
+</nav>
+    <aside style="width: 248px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; padding: 16px 12px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; padding: 0 10px">TRAFFIC</div>
+  <div style="font-size: 12px; color: #68757f; padding: 6px 10px 14px; line-height: 1.45">How a request from the internet reaches a workload.</div>
+  <div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 13px; font-weight: 500">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: #0f8a63; flex: none"></span>Gateway
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Routes
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Domains & DNS
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Certificates
+    </div></div>
+</aside>
+    <main style="flex: 1; min-width: 0; padding: 24px">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #68757f; margin-bottom: 8px">
+    <span>Traffic</span><span style="opacity: 0.5"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg></span><span style="color: #3f4a55">Gateway</span>
+
+  </div>
+      <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px">
+        <div style="flex: 1; min-width: 0">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.43px; color: #111820">Gateway</h1>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #68757f; max-width: 62ch; line-height: 1.45">One Traefik owns the edge of this cluster. This is what it is carrying, and where it is failing.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4.2v11.6M4.2 10h11.6"/></svg>Add a route</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg>Reconcile</span></div>
+      </div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px"><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Requests</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">1.2k/min</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Across 14 routers on three nodes.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Failing</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">0.4%</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Almost all of it is checkout-api returning 502. <span style="color: #0f8a63">checkout-api →</span></div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Latency p95</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">184 ms</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">p50 is 41 ms. The tail is one slow route.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Certificates</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #1c7f52; margin-top: 4px">4</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">One renews in nine days, automatically. <span style="color: #0f8a63">Certificates →</span></div>
+</div></div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px">
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 12px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px">
+    <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Requests and errors · 6 hours</span>
+    <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; color: #111820">1.2k/min</span>
+  </div>
+  <svg width="100%" height="68" viewBox="0 0 320 68" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="gw1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0f8a63" stop-opacity="0.2"/><stop offset="100%" stop-color="#0f8a63" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 55.3 L5.4 48.9 L10.8 47.1 L16.3 38.5 L21.7 47.9 L27.1 53.3 L32.5 50.5 L38.0 50.0 L43.4 49.2 L48.8 57.6 L54.2 58.2 L59.7 57.9 L65.1 64.0 L70.5 54.9 L75.9 46.1 L81.4 37.0 L86.8 46.1 L92.2 51.4 L97.6 49.5 L103.1 44.6 L108.5 40.9 L113.9 33.3 L119.3 37.7 L124.7 35.2 L130.2 41.8 L135.6 47.6 L141.0 46.8 L146.4 48.7 L151.9 41.5 L157.3 35.6 L162.7 42.0 L168.1 42.3 L173.6 49.8 L179.0 52.5 L184.4 58.0 L189.8 49.6 L195.3 42.2 L200.7 46.0 L206.1 40.3 L211.5 40.2 L216.9 31.9 L222.4 34.9 L227.8 30.2 L233.2 24.8 L238.6 16.2 L244.1 24.1 L249.5 28.0 L254.9 24.1 L260.3 24.8 L265.8 32.6 L271.2 25.1 L276.6 22.9 L282.0 13.1 L287.5 20.7 L292.9 22.8 L298.3 18.9 L303.7 23.0 L309.2 14.5 L314.6 10.9 L320.0 4.0 L320 68 L0 68 Z" fill="url(#gw1)"/>
+  <path d="M0.0 55.3 L5.4 48.9 L10.8 47.1 L16.3 38.5 L21.7 47.9 L27.1 53.3 L32.5 50.5 L38.0 50.0 L43.4 49.2 L48.8 57.6 L54.2 58.2 L59.7 57.9 L65.1 64.0 L70.5 54.9 L75.9 46.1 L81.4 37.0 L86.8 46.1 L92.2 51.4 L97.6 49.5 L103.1 44.6 L108.5 40.9 L113.9 33.3 L119.3 37.7 L124.7 35.2 L130.2 41.8 L135.6 47.6 L141.0 46.8 L146.4 48.7 L151.9 41.5 L157.3 35.6 L162.7 42.0 L168.1 42.3 L173.6 49.8 L179.0 52.5 L184.4 58.0 L189.8 49.6 L195.3 42.2 L200.7 46.0 L206.1 40.3 L211.5 40.2 L216.9 31.9 L222.4 34.9 L227.8 30.2 L233.2 24.8 L238.6 16.2 L244.1 24.1 L249.5 28.0 L254.9 24.1 L260.3 24.8 L265.8 32.6 L271.2 25.1 L276.6 22.9 L282.0 13.1 L287.5 20.7 L292.9 22.8 L298.3 18.9 L303.7 23.0 L309.2 14.5 L314.6 10.9 L320.0 4.0" fill="none" stroke="#0f8a63" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+  <path d="M0.0 59.5 L5.4 48.4 L10.8 53.4 L16.3 40.7 L21.7 34.6 L27.1 21.5 L32.5 31.7 L38.0 32.3 L43.4 43.0 L48.8 51.2 L54.2 39.5 L59.7 46.4 L65.1 53.7 L70.5 42.7 L75.9 50.5 L81.4 51.8 L86.8 58.6 L92.2 64.0 L97.6 53.0 L103.1 49.0 L108.5 51.4 L113.9 52.1 L119.3 39.7 L124.7 33.9 L130.2 38.4 L135.6 33.5 L141.0 41.8 L146.4 49.4 L151.9 44.3 L157.3 45.8 L162.7 38.0 L168.1 33.6 L173.6 43.0 L179.0 30.1 L184.4 26.0 L189.8 16.5 L195.3 10.1 L200.7 18.5 L206.1 13.1 L211.5 8.4 L216.9 4.0 L222.4 9.7 L227.8 14.3 L233.2 17.9 L238.6 16.4 L244.1 25.5 L249.5 19.4 L254.9 20.2 L260.3 12.7 L265.8 12.6 L271.2 22.9 L276.6 22.9 L282.0 34.1 L287.5 22.7 L292.9 29.8 L298.3 39.0 L303.7 44.3 L309.2 43.9 L314.6 30.8 L320.0 30.3" fill="none" stroke="#c1332c" stroke-width="1.25" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"/>
+</svg>
+  <div style="font-size: 11px; color: #68757f; margin-top: 6px">Solid line is all requests, dashed is 5xx</div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 12px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px">
+    <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Latency · 6 hours</span>
+    <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; color: #111820">184 ms</span>
+  </div>
+  <svg width="100%" height="68" viewBox="0 0 320 68" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="gw2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2f6ad0" stop-opacity="0.22"/><stop offset="100%" stop-color="#2f6ad0" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 46.8 L5.4 35.6 L10.8 25.3 L16.3 14.0 L21.7 16.9 L27.1 11.8 L32.5 11.8 L38.0 15.0 L43.4 13.7 L48.8 20.5 L54.2 23.2 L59.7 14.6 L65.1 22.3 L70.5 14.4 L75.9 16.9 L81.4 8.3 L86.8 11.6 L92.2 16.8 L97.6 23.7 L103.1 23.4 L108.5 33.3 L113.9 22.0 L119.3 19.2 L124.7 13.2 L130.2 15.2 L135.6 24.3 L141.0 18.8 L146.4 8.9 L151.9 9.5 L157.3 20.3 L162.7 23.4 L168.1 16.7 L173.6 26.7 L179.0 24.9 L184.4 35.6 L189.8 29.8 L195.3 28.1 L200.7 17.7 L206.1 16.0 L211.5 9.3 L216.9 12.1 L222.4 20.5 L227.8 12.6 L233.2 4.0 L238.6 12.4 L244.1 21.2 L249.5 30.2 L254.9 37.5 L260.3 47.5 L265.8 40.1 L271.2 45.7 L276.6 49.6 L282.0 59.1 L287.5 54.7 L292.9 43.8 L298.3 43.5 L303.7 49.7 L309.2 59.9 L314.6 64.0 L320.0 64.0 L320 68 L0 68 Z" fill="url(#gw2)"/>
+  <path d="M0.0 46.8 L5.4 35.6 L10.8 25.3 L16.3 14.0 L21.7 16.9 L27.1 11.8 L32.5 11.8 L38.0 15.0 L43.4 13.7 L48.8 20.5 L54.2 23.2 L59.7 14.6 L65.1 22.3 L70.5 14.4 L75.9 16.9 L81.4 8.3 L86.8 11.6 L92.2 16.8 L97.6 23.7 L103.1 23.4 L108.5 33.3 L113.9 22.0 L119.3 19.2 L124.7 13.2 L130.2 15.2 L135.6 24.3 L141.0 18.8 L146.4 8.9 L151.9 9.5 L157.3 20.3 L162.7 23.4 L168.1 16.7 L173.6 26.7 L179.0 24.9 L184.4 35.6 L189.8 29.8 L195.3 28.1 L200.7 17.7 L206.1 16.0 L211.5 9.3 L216.9 12.1 L222.4 20.5 L227.8 12.6 L233.2 4.0 L238.6 12.4 L244.1 21.2 L249.5 30.2 L254.9 37.5 L260.3 47.5 L265.8 40.1 L271.2 45.7 L276.6 49.6 L282.0 59.1 L287.5 54.7 L292.9 43.8 L298.3 43.5 L303.7 49.7 L309.2 59.9 L314.6 64.0 L320.0 64.0" fill="none" stroke="#2f6ad0" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+  <div style="font-size: 11px; color: #68757f; margin-top: 6px">p95. The step at 14:20 is the checkout release.</div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 12px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px">
+    <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Bytes · 6 hours</span>
+    <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; color: #111820">312 Mb/s</span>
+  </div>
+  <svg width="100%" height="68" viewBox="0 0 320 68" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="gw3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#6a4ea6" stop-opacity="0.22"/><stop offset="100%" stop-color="#6a4ea6" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 4.0 L5.4 18.8 L10.8 13.8 L16.3 30.3 L21.7 46.8 L27.1 47.7 L32.5 32.3 L38.0 40.4 L43.4 55.9 L48.8 64.0 L54.2 52.1 L59.7 49.7 L65.1 62.8 L70.5 52.1 L75.9 47.8 L81.4 53.3 L86.8 53.0 L92.2 60.7 L97.6 60.9 L103.1 64.0 L108.5 54.9 L113.9 52.7 L119.3 60.0 L124.7 48.0 L130.2 47.1 L135.6 45.6 L141.0 51.3 L146.4 44.0 L151.9 51.7 L157.3 46.6 L162.7 30.6 L168.1 14.6 L173.6 31.6 L179.0 42.8 L184.4 45.5 L189.8 39.1 L195.3 41.6 L200.7 31.5 L206.1 32.4 L211.5 16.6 L216.9 30.7 L222.4 47.7 L227.8 51.0 L233.2 53.3 L238.6 44.9 L244.1 58.9 L249.5 58.8 L254.9 44.0 L260.3 49.0 L265.8 60.5 L271.2 62.4 L276.6 64.0 L282.0 64.0 L287.5 64.0 L292.9 54.2 L298.3 39.0 L303.7 50.0 L309.2 46.0 L314.6 42.7 L320.0 32.9 L320 68 L0 68 Z" fill="url(#gw3)"/>
+  <path d="M0.0 4.0 L5.4 18.8 L10.8 13.8 L16.3 30.3 L21.7 46.8 L27.1 47.7 L32.5 32.3 L38.0 40.4 L43.4 55.9 L48.8 64.0 L54.2 52.1 L59.7 49.7 L65.1 62.8 L70.5 52.1 L75.9 47.8 L81.4 53.3 L86.8 53.0 L92.2 60.7 L97.6 60.9 L103.1 64.0 L108.5 54.9 L113.9 52.7 L119.3 60.0 L124.7 48.0 L130.2 47.1 L135.6 45.6 L141.0 51.3 L146.4 44.0 L151.9 51.7 L157.3 46.6 L162.7 30.6 L168.1 14.6 L173.6 31.6 L179.0 42.8 L184.4 45.5 L189.8 39.1 L195.3 41.6 L200.7 31.5 L206.1 32.4 L211.5 16.6 L216.9 30.7 L222.4 47.7 L227.8 51.0 L233.2 53.3 L238.6 44.9 L244.1 58.9 L249.5 58.8 L254.9 44.0 L260.3 49.0 L265.8 60.5 L271.2 62.4 L276.6 64.0 L282.0 64.0 L287.5 64.0 L292.9 54.2 L298.3 39.0 L303.7 50.0 L309.2 46.0 L314.6 42.7 L320.0 32.9" fill="none" stroke="#6a4ea6" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+  <div style="font-size: 11px; color: #68757f; margin-top: 6px">Out. Inbound is 46 Mb/s.</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: 16px; align-items: start">
+  <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Busiest routes</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">From Traefik’s own metrics, scraped by the cluster Prometheus every 15 seconds.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Route</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Serves</th><th style="text-align: right; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Req/min</th><th style="text-align: right; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">p95</th><th style="text-align: right; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">4xx</th><th style="text-align: right; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">5xx</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Last hour</th></tr></thead><tbody><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">api.nim.zone</a></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">api-gateway</td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">612</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">38 ms</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.2%</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.0%</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="84" height="18" viewBox="0 0 84 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 15.6 L2.9 14.2 L5.8 14.6 L8.7 16.0 L11.6 14.6 L14.5 13.2 L17.4 10.1 L20.3 8.9 L23.2 8.0 L26.1 6.9 L29.0 10.2 L31.9 11.2 L34.8 8.0 L37.7 8.2 L40.6 10.2 L43.4 9.4 L46.3 8.9 L49.2 9.6 L52.1 9.0 L55.0 8.3 L57.9 7.7 L60.8 7.7 L63.7 4.4 L66.6 5.5 L69.5 6.5 L72.4 5.6 L75.3 5.3 L78.2 8.2 L81.1 5.2 L84.0 2.0" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">checkout.nim.zone</a></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">checkout-api</td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">412</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">890 ms</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">1.1%</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #c1332c; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace">1.4%</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="84" height="18" viewBox="0 0 84 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 4.1 L2.9 2.0 L5.8 4.6 L8.7 5.8 L11.6 6.7 L14.5 7.0 L17.4 7.8 L20.3 7.1 L23.2 9.6 L26.1 8.1 L29.0 8.3 L31.9 11.5 L34.8 8.4 L37.7 9.0 L40.6 9.3 L43.4 12.3 L46.3 10.7 L49.2 11.3 L52.1 8.7 L55.0 8.7 L57.9 10.2 L60.8 13.2 L63.7 12.1 L66.6 12.7 L69.5 13.0 L72.4 15.9 L75.3 16.0 L78.2 13.7 L81.1 11.8 L84.0 11.3" fill="none" stroke="#c1332c" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">nim.zone</a></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">shop-web</td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">148</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">24 ms</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.0%</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.0%</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="84" height="18" viewBox="0 0 84 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 15.0 L2.9 13.0 L5.8 11.4 L8.7 12.1 L11.6 14.5 L14.5 16.0 L17.4 14.4 L20.3 14.3 L23.2 13.5 L26.1 12.1 L29.0 9.9 L31.9 8.8 L34.8 6.6 L37.7 7.2 L40.6 6.3 L43.4 6.1 L46.3 4.1 L49.2 4.5 L52.1 6.2 L55.0 6.8 L57.9 4.3 L60.8 3.7 L63.7 4.6 L66.6 4.7 L69.5 4.2 L72.4 4.2 L75.3 2.9 L78.2 2.4 L81.1 2.0 L84.0 3.6" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">docs.nim.zone</a></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">docs</td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">31</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">12 ms</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.0%</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">0.0%</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="84" height="18" viewBox="0 0 84 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 13.0 L2.9 8.1 L5.8 8.3 L8.7 9.2 L11.6 7.2 L14.5 2.7 L17.4 5.3 L20.3 5.9 L23.2 9.4 L26.1 6.1 L29.0 7.3 L31.9 8.2 L34.8 4.2 L37.7 6.0 L40.6 2.0 L43.4 6.9 L46.3 11.4 L49.2 12.1 L52.1 12.3 L55.0 14.6 L57.9 12.9 L60.8 16.0 L63.7 11.1 L66.6 10.5 L69.5 8.6 L72.4 4.0 L75.3 5.7 L78.2 6.9 L81.1 8.1 L84.0 4.9" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">:30001 (TCP)</a></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">swarmops-postgres</td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-size: 11px; color: #68757f">18 connections</span></td></tr></tbody></table></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Entry points</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">A TCP or UDP route gets a port from the 30000–32767 range unless you name one.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Add an entry point</span></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Port</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Protocol</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Purpose</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Routes</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">State</th></tr></thead><tbody><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">:80</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">HTTP</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Redirects everything to 443</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening on 3 nodes</span></span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">:443</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">HTTPS</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Every published application</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">12</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening on 3 nodes</span></span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">:30001</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">TCP</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">PostgreSQL, reachable from the office CIDR only</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">1</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening on 3 nodes</span></span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">:30002</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">UDP</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Game server, allocated automatically</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">1</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening on 3 nodes</span></span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">:8082</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">HTTP</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Traefik’s own metrics, internal only</td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">—</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #2f6ad0; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Cluster-internal</span></span></td></tr></tbody></table></div>
+
+</section>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Installation</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <dl style="display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; margin: 0; font-size: 12px">
+        <dt style="color: #68757f">Version</dt><dd style="margin: 0"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">traefik:v3.6</span></dd>
+        <dt style="color: #68757f">Mode</dt><dd style="margin: 0; color: #111820">Global — one task per node</dd>
+        <dt style="color: #68757f">Dashboard</dt><dd style="margin: 0"><a href="#">traefik.nim.zone</a></dd>
+        <dt style="color: #68757f">Certificates</dt><dd style="margin: 0; color: #111820">DNS-01 via Cloudflare</dd>
+      </dl>
+      <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 6px">
+
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-size: 12px; width: 60px">node-1</span>
+          <span style="font-size: 11px; color: #68757f; flex: 1">Serving · 6 d</span>
+
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #c1332c; flex: none"></span></span><span style="font-size: 12px; width: 60px">node-2</span>
+          <span style="font-size: 11px; color: #68757f; flex: 1">Not started — port 443 is taken</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)">Fix</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-size: 12px; width: 60px">web-01</span>
+          <span style="font-size: 11px; color: #68757f; flex: 1">Serving · 6 d</span>
+
+        </div>
+      </div></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Certificates</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; flex-direction: column; gap: 0">
+
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-size: 12px; flex: 1">checkout.nim.zone</span>
+          <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">68 days</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-size: 12px; flex: 1">api.nim.zone</span>
+          <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">68 days</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #8a6206; flex: none"></span></span><span style="font-size: 12px; flex: 1">nim.zone</span>
+          <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">9 days</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span><span style="font-size: 12px; flex: 1">docs.nim.zone</span>
+          <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">54 days</span>
+        </div>
+      </div></div>
+  <div style="padding: 8px 12px; border-top: 1px solid rgba(17, 27, 34, 0.08); font-size: 12px; color: #68757f">Renewal starts 30 days out and retries on its own. A failure appears as a decision on the overview.</div>
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Where SwarmOps uses the gateway</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <p style="margin: 0; font-size: 12px; color: #3f4a55; line-height: 1.55">
+        Everything the cluster publishes goes through Traefik: applications, TCP and UDP services, the shared databases when you expose them, and this console itself if you publish it.
+      </p>
+      <p style="margin: 10px 0 0; font-size: 12px; color: #68757f; line-height: 1.55">
+        Agents do not. They reach the controller directly over pinned mutual TLS, because a cluster you cannot reach is exactly when you need them — including before a gateway exists at all.
+      </p></div>
+
+</section>
+  </div>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

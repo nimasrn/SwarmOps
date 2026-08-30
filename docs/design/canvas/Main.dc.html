@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1520px; min-height: 100%; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111820; padding: 36px 40px; letter-spacing: -0.006em">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg><span style="font-size: 14px; font-weight: 600">SwarmOps</span><span style="font-size: 13px; color: #68757f">console information architecture</span></div>
+  <h1 style="margin: 0 0 6px; font-size: 26px; font-weight: 600; letter-spacing: -0.55px">Six places, named after what you came to do</h1>
+  <p style="margin: 0 0 24px; font-size: 13.5px; color: #3f4a55; max-width: 104ch; line-height: 1.6">
+    The console had eight areas and twenty-four flat screens, and its two largest — <em>Deliver</em> and <em>Workloads</em> — were the same object at two points in its life, which is why an application and the service running it lived in different halves of the navigation. There are now six areas and, more importantly, the depth has moved: you open a <strong>thing</strong> — a machine, a container, an application, a run — and everything about that thing is on its page, including its metrics. <em>Observe</em> is gone as a destination for exactly that reason. A chart with no object beside it can never answer “for which node?”.
+  </p>
+
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 28px">
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Home</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">What production is doing, and the one thing worth doing about it.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Overview</div>
+    </div>
+  </div>
+
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Apps</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">What you ship, and the shared services it runs against. Shipping and running are one lifecycle, not two areas.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Applications</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Deploy</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Platform services</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Images &amp; registries</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Stacks &amp; services</div>
+    </div>
+  </div>
+  <div style="padding-top: 10px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">AND THE THINGS THEY OPEN</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px">
+      <span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">An application</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A release</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A build</span>
+    </div>
+  </div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Machines</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">The hosts, their agents, and the cluster they form. Setup and diagnostics belong to a host, so they live on its page.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Machines</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Swarm</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Containers</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Storage &amp; networks</div>
+    </div>
+  </div>
+  <div style="padding-top: 10px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">AND THE THINGS THEY OPEN</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px">
+      <span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A machine</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A container</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A volume</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A network</span>
+    </div>
+  </div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Traffic</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">How a request from the internet reaches a workload — and what that traffic actually looks like.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Gateway</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Routes</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Domains &amp; DNS</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Certificates</div>
+    </div>
+  </div>
+  <div style="padding-top: 10px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">AND THE THINGS THEY OPEN</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px">
+      <span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A route</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A certificate</span>
+    </div>
+  </div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Activity</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">Everything this console did, and everything it may do.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Runs</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Logs</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Audit</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Action catalog</div>
+    </div>
+  </div>
+  <div style="padding-top: 10px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">AND THE THINGS THEY OPEN</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px">
+      <span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A run</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">An audit record</span>
+    </div>
+  </div>
+</div>
+
+<div style="border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; background: #ffffff; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <span style="width: 28px; height: 28px; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; display: inline-flex; align-items: center; justify-content: center; flex: none"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg></span>
+    <span style="font-size: 14px; font-weight: 600; color: #111820">Control</span>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #68757f; line-height: 1.5; min-height: 54px">The controller itself and the software on every host. The core is a destination now, not a footnote.</p>
+  <div>
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">SCREENS</div>
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <div style="font-size: 12px; color: #111820; padding: 3px 0">Core</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Agents &amp; updates</div><div style="font-size: 12px; color: #111820; padding: 3px 0">Settings &amp; access</div>
+    </div>
+  </div>
+  <div style="padding-top: 10px; border-top: 1px solid rgba(17, 27, 34, 0.08)">
+    <div style="font-size: 10.5px; font-weight: 500; letter-spacing: 0.5px; color: #68757f; margin-bottom: 6px">AND THE THINGS THEY OPEN</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px">
+      <span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A release</span><span style="display: inline-flex; padding: 3px 7px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 11px; color: #3f4a55">A backup</span>
+    </div>
+  </div>
+</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 24px; align-items: start">
+    <div>
+      <h2 style="margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.3px">What moved, and why</h2>
+      <p style="margin: 0 0 8px; font-size: 12.5px; color: #68757f; line-height: 1.5">Nothing is removed. Every screen that exists today has a home, and most of them stopped being screens.</p>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Observe → Health</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">The object’s own page</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">A fleet-wide chart cannot say which node it means. CPU for node-2 lives on node-2.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Observe → Collectors</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">Apps → Platform services</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">Prometheus and Jaeger are shared services an application uses, not a separate discipline.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Fleet → Host setup</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">A machine’s Setup tab</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">Readiness is a property of one host. It was never a fleet-wide screen.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Fleet → Connection diagnostics</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">A machine’s Agent tab</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">You diagnose a connection to a machine, while looking at that machine.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Deliver + Workloads</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">Apps</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">An application, its services and its releases are one lifecycle. Splitting them filed shipping under setup.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Deliver → Import from Kubernetes</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">A source kind inside Deploy</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">It is a way to start a deployment, not a place you visit.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Control → Controller &amp; recovery</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">Control → Core</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">Ten pending timeline rows described a procedure nobody had started. Three steps describe the one they will.</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 210px 24px 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+  <span style="font-size: 12px; color: #68757f">Traffic → Gateway &amp; ports</span>
+  <span style="color: #68757f; margin-top: 1px"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h11.4M11.2 5.8 15.4 10l-4.2 4.2"/></svg></span>
+  <span style="font-size: 12px; color: #111820; font-weight: 500">Traffic → Gateway</span>
+  <span style="font-size: 12px; color: #3f4a55; line-height: 1.5">Same screen, now with the gateway’s own request, latency and error metrics on it.</span>
+</div>
+    </div>
+
+    <div>
+      <h2 style="margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.3px">Rules the screens are held to</h2>
+      <p style="margin: 0 0 12px; font-size: 12.5px; color: #68757f; line-height: 1.5">Carried forward from the current console, because they were right; two are new.</p>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">A screen answers, it does not report</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">Two to four readings under the title: a figure, what it means, and where to act on it. A fifth is a table.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">Nothing is drawn that does nothing</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">A button with no handler teaches an operator that the console is a mock-up of itself.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">A number states its scope</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">New. Every figure says whether it is this container, this machine, or the cluster — the confusion this redesign started from.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">Metrics live on their object</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">New. There is no metrics area. A machine has charts; a container has charts; the gateway has charts.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">Status is words as well as colour</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">The accent is green on this colourway, so a green dot alone can never carry “healthy”.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">A prerequisite is a row with a button</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">Never a switch that quietly means “install Docker”.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">Every action shows what it will do first</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">Target, expected result, impact, blockers — then the button.</div></div>
+        </div>
+        <div style="display: flex; gap: 10px">
+          <span style="color: #0f8a63; flex: none; margin-top: 1px"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 10.5 3.6 3.6L15.5 6"/></svg></span>
+          <div><div style="font-size: 12.5px; font-weight: 500; color: #111820">A failure says what to run</div><div style="font-size: 12px; color: #68757f; margin-top: 2px; line-height: 1.5">One production command, for this exact host, not a documentation link with placeholders in it.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

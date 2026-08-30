@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; display: flex; flex-direction: column; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111820; letter-spacing: -0.006em">
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff">
+  <div style="display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+    <span style="font-size: 11px; letter-spacing: 0.44px; color: #68757f">Cluster</span>
+    <span style="font-size: 13px; font-weight: 500; color: #111820">production</span>
+    <span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">3 of 3 agents answering</span></span>
+  <div style="flex: 1"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 10px; border-radius: 2px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 12px; font-weight: 500"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.6 17.4 16H2.6z"/><path d="M10 8.4v3.4M10 14h.01"/></svg>2 to decide</span>
+  <div style="display: flex; align-items: center; gap: 8px; width: 260px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px; flex: 1">Search or run…</span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px">⌘K</span>
+  </div>
+  <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg></span>
+  <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+</header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav style="width: 68px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; display: flex; flex-direction: column">
+  <div style="height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(17, 27, 34, 0.13)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg></div>
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 8px"><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Home</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Apps</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Machines</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Traffic</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Activity</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Control</span>
+    </div></div>
+</nav>
+    <aside style="width: 248px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; padding: 16px 12px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; padding: 0 10px">MACHINES</div>
+  <div style="font-size: 12px; color: #68757f; padding: 6px 10px 14px; line-height: 1.45">The hosts, their agents, and the cluster they form.</div>
+  <div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 13px; font-weight: 500">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: #0f8a63; flex: none"></span>Machines
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Swarm
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Containers
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Storage & networks
+    </div></div>
+</aside>
+    <main style="flex: 1; min-width: 0; padding: 24px">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #68757f; margin-bottom: 8px">
+    <span>Machines</span><span style="opacity: 0.5"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg></span><span style="color: #3f4a55">Machines</span>
+
+  </div>
+      <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px">
+        <div style="flex: 1; min-width: 0">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.43px; color: #111820">Machines</h1>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #68757f; max-width: 62ch; line-height: 1.45">Every host under management, what it is running, and how hard it is working.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4.2v11.6M4.2 10h11.6"/></svg>Add a machine</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.4 6.2 3.4 3.8-3.4 3.8M10.2 14h5.4"/></svg>Run a command</span></div>
+      </div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px"><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Under management</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #1c7f52; margin-top: 4px">3</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">All three answered a poll in the last ten seconds.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Swarm managers</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">1</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">One manager cannot survive its own reboot. Promote two more. <span style="color: #0f8a63">Swarm →</span></div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Capacity in use</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">41%</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">77 GB of 188 GB reserved across the fleet.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Containers</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">34</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Across three hosts, 34 reporting metrics and logs. <span style="color: #0f8a63">Containers →</span></div>
+</div></div>
+
+<section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Fleet</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">Numbers come from the agent on each host, not from Docker. They answer before Docker exists.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Compare</span></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Machine</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Swarm role</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Agent</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">CPU</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Memory</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Disk</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Containers</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Connection</th></tr></thead><tbody><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px">
+    <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg></span>
+    <div><div style="font-size: 13px; font-weight: 500; color: #111820">node-1</div><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">10.0.0.11</span></div>
+  </div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Manager · leader</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 8px"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">v0.11.0</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px"><svg width="64" height="18" viewBox="0 0 64 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 16.0 L2.8 15.6 L5.6 12.3 L8.3 9.9 L11.1 10.9 L13.9 7.7 L16.7 6.5 L19.5 7.5 L22.3 11.5 L25.0 9.3 L27.8 12.3 L30.6 9.8 L33.4 9.4 L36.2 7.3 L39.0 5.6 L41.7 2.0 L44.5 4.9 L47.3 6.1 L50.1 8.1 L52.9 9.8 L55.7 8.9 L58.4 11.3 L61.2 12.0 L64.0 12.4" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">38%</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 52%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">52%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 44%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">44%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">14</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 2 s</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px">
+    <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg></span>
+    <div><div style="font-size: 13px; font-weight: 500; color: #111820">node-2</div><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">10.0.0.12</span></div>
+  </div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(17, 27, 34, 0.06); color: #68757f; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Worker</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 8px"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">v0.11.0</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px"><svg width="64" height="18" viewBox="0 0 64 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 2.5 L2.8 5.4 L5.6 2.0 L8.3 5.6 L11.1 6.4 L13.9 7.5 L16.7 9.5 L19.5 6.7 L22.3 9.7 L25.0 12.5 L27.8 9.8 L30.6 6.9 L33.4 7.6 L36.2 8.0 L39.0 11.1 L41.7 9.6 L44.5 12.6 L47.3 12.9 L50.1 16.0 L52.9 15.1 L55.7 13.3 L58.4 12.6 L61.2 13.1 L64.0 10.3" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">61%</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 71%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">71%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 39%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">39%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">12</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 4 s</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px">
+    <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg></span>
+    <div><div style="font-size: 13px; font-weight: 500; color: #111820">web-01</div><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">10.0.0.21</span></div>
+  </div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(17, 27, 34, 0.06); color: #68757f; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Worker</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 8px"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">v0.10.4</span><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">2 behind</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><div style="display: flex; align-items: center; gap: 10px"><svg width="64" height="18" viewBox="0 0 64 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 7.0 L2.8 2.0 L5.6 2.6 L8.3 5.8 L11.1 2.5 L13.9 5.1 L16.7 2.4 L19.5 6.9 L22.3 12.2 L25.0 11.3 L27.8 11.1 L30.6 13.0 L33.4 16.0 L36.2 16.0 L39.0 9.9 L41.7 10.9 L44.5 13.8 L47.3 12.7 L50.1 13.4 L52.9 9.9 L55.7 13.5 L58.4 16.0 L61.2 11.4 L64.0 11.9" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">12%</span></div></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 28%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">28%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 8px">
+  <span style="width: 56px; height: 4px; border-radius: 999px; background: #eff3f2; overflow: hidden; flex: none">
+    <span style="display: block; width: 63%; height: 100%; background: #0f8a63"></span>
+  </span>
+  <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55; min-width: 34px; text-align: right">63%</span>
+</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">8</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Answering · 9 s</span></span></td></tr></tbody></table></div>
+
+</section>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: 16px; margin-top: 16px; align-items: start">
+  <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Add a machine</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">Docker is not required first. Install it from the machine’s own page once the agent answers.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+    <p style="margin: 0 0 12px; font-size: 13px; color: #3f4a55; line-height: 1.5; max-width: 66ch">
+      One command on the host. It installs the agent as a system service, generates its private key locally, pins this controller's certificate, and connects outward — so the machine never opens a port for us and needs no SSH key from us.
+    </p>
+    <div style="position: relative; background: #eef2f1; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; padding: 12px 14px; overflow-x: auto">
+  <pre style="margin: 0; font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7; color: #111820; white-space: pre">curl -fsSL https://get.swarmops.dev/agent | sudo bash -s -- \
+  --core https://core.nim.zone --code 7K2M-9QX4-P3RV-8ZTN</pre>
+  <span style="position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px; height: 25px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; background: #ffffff; font-size: 11px; font-weight: 500; color: #3f4a55"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="9.2" height="9.2" rx="1.2"/><path d="M13 7V4.8a1 1 0 0 0-1-1H4.8a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></svg>Copy</span>
+</div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; color: #68757f">
+      <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #2f6ad0; flex: none"></span></span> The code expires in 15 minutes and can be redeemed once.
+      <span style="flex: 1"></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">Regenerate</span>
+    </div></div>
+
+</section>
+
+  <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Waiting for a machine</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">Live while you paste. A step that fails says which one and what to run.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+    <div style="display: flex; flex-direction: column; gap: 0">
+
+      <div style="display: flex; gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex: none">
+          <span style="width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; background: #1c7f52; "></span>
+          <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+        </div>
+        <div style="padding-bottom: 12px">
+          <div style="font-size: 13px; color: #111820">Command copied</div>
+          <div style="font-size: 12px; color: #68757f; margin-top: 1px">Ready to paste on the host</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex: none">
+          <span style="width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; background: #1c7f52; "></span>
+          <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+        </div>
+        <div style="padding-bottom: 12px">
+          <div style="font-size: 13px; color: #111820">Agent installed</div>
+          <div style="font-size: 12px; color: #68757f; margin-top: 1px">systemd unit swarmops-agent, enabled</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex: none">
+          <span style="width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; background: #1c7f52; "></span>
+          <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+        </div>
+        <div style="padding-bottom: 12px">
+          <div style="font-size: 13px; color: #111820">Identity approved</div>
+          <div style="font-size: 12px; color: #68757f; margin-top: 1px">Certificate issued, code burned</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex: none">
+          <span style="width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; background: #0f8a63; "></span>
+          <span style="flex: 1; width: 1px; background: rgba(17, 27, 34, 0.13)"></span>
+        </div>
+        <div style="padding-bottom: 12px">
+          <div style="font-size: 13px; color: #111820">First poll received</div>
+          <div style="font-size: 12px; color: #68757f; margin-top: 1px">Waiting… normally under 10 seconds</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 14px; flex: none">
+          <span style="width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; background: #eff3f2; border: 1px solid rgba(17, 27, 34, 0.13)"></span>
+
+        </div>
+        <div style="padding-bottom: 0px">
+          <div style="font-size: 13px; color: #68757f">Host inspected</div>
+          <div style="font-size: 12px; color: #68757f; margin-top: 1px">OS, CPU, memory, disk, Docker state</div>
+        </div>
+      </div>
+    </div></div>
+
+</section>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; display: flex; flex-direction: column; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111820; letter-spacing: -0.006em">
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff">
+  <div style="display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+    <span style="font-size: 11px; letter-spacing: 0.44px; color: #68757f">Cluster</span>
+    <span style="font-size: 13px; font-weight: 500; color: #111820">production</span>
+    <span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">3 of 3 agents answering</span></span>
+  <div style="flex: 1"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 10px; border-radius: 2px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 12px; font-weight: 500"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.6 17.4 16H2.6z"/><path d="M10 8.4v3.4M10 14h.01"/></svg>2 to decide</span>
+  <div style="display: flex; align-items: center; gap: 8px; width: 260px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px; flex: 1">Search or run…</span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px">⌘K</span>
+  </div>
+  <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg></span>
+  <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+</header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav style="width: 68px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; display: flex; flex-direction: column">
+  <div style="height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(17, 27, 34, 0.13)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg></div>
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 8px"><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Home</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Apps</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Machines</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Traffic</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Activity</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Control</span>
+    </div></div>
+</nav>
+    <aside style="width: 248px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; padding: 16px 12px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; padding: 0 10px">HOME</div>
+  <div style="font-size: 12px; color: #68757f; padding: 6px 10px 14px; line-height: 1.45">What production is doing, and the one thing worth doing about it.</div>
+  <div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 13px; font-weight: 500">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: #0f8a63; flex: none"></span>Overview
+    </div></div>
+</aside>
+    <main style="flex: 1; min-width: 0; padding: 24px">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #68757f; margin-bottom: 8px">
+    <span>Home</span><span style="opacity: 0.5"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg></span><span style="color: #3f4a55">Overview</span>
+
+  </div>
+      <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px">
+        <div style="flex: 1; min-width: 0">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.43px; color: #111820">Overview</h1>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #68757f; max-width: 62ch; line-height: 1.45">What production is doing, and the one thing worth doing about it.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 4.4 15.5 10l-9 5.6z"/></svg>Deploy</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4.2v11.6M4.2 10h11.6"/></svg>Add a machine</span></div>
+      </div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px"><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Applications</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">7</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">One is degraded — checkout-api has 2 of 3 tasks. <span style="color: #0f8a63">Apps →</span></div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Machines</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">3 / 3</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">48 cores and 188 GB answering right now. <span style="color: #0f8a63">Machines →</span></div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Open decisions</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">2</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">A stopped run and an agent two releases behind. <span style="color: #0f8a63">Runs →</span></div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Public traffic</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">1.2k/min</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">0.4% of responses were 5xx in the last hour. <span style="color: #0f8a63">Gateway →</span></div>
+</div></div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: 16px; align-items: start">
+  <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Needs a decision</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">One row is one action, not one record. A failed run and its failed retry are one decision.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+
+<div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid rgba(193, 51, 44, 0.11); border-left: 2px solid #c1332c; border-radius: 2px; background: #ffffff">
+  <div style="flex: 1; min-width: 0">
+    <div style="font-size: 13px; font-weight: 500; color: #111820">The gateway could not start on node-2</div>
+    <div style="font-size: 12px; color: #3f4a55; margin-top: 3px; line-height: 1.5">Port 443 on 10.0.0.12 is already bound by a process SwarmOps does not own. Nothing else in the run failed, and the other two nodes are serving.</div>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)">Open the run</span>
+</div>
+
+<div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid rgba(138, 98, 6, 0.13); border-left: 2px solid #8a6206; border-radius: 2px; background: #ffffff">
+  <div style="flex: 1; min-width: 0">
+    <div style="font-size: 13px; font-weight: 500; color: #111820">web-01 is running an agent two releases behind</div>
+    <div style="font-size: 12px; color: #3f4a55; margin-top: 3px; line-height: 1.5">v0.10.4 against a fleet on v0.11.0. It still answers, but it cannot accept the container-metrics command the other two accept.</div>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #ffffff; color: #111820; border-color: rgba(17, 27, 34, 0.13)">Update the agent</span>
+</div>
+      </div></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Fleet load</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">Every machine, last six hours. Collected by the agent on each host.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">6h</span></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+            <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">CPU</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: #111820">34%</span>
+          </div>
+          <svg width="100%" height="54" viewBox="0 0 320 54" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="home0" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#0f8a63" stop-opacity="0.22"/><stop offset="100%" stop-color="#0f8a63" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 4.0 L8.2 9.3 L16.4 12.8 L24.6 22.9 L32.8 17.8 L41.0 9.6 L49.2 19.4 L57.4 14.2 L65.6 23.7 L73.8 30.4 L82.1 23.6 L90.3 29.1 L98.5 32.4 L106.7 35.8 L114.9 35.4 L123.1 32.0 L131.3 34.6 L139.5 35.1 L147.7 31.1 L155.9 33.5 L164.1 42.3 L172.3 36.8 L180.5 30.3 L188.7 41.3 L196.9 46.0 L205.1 50.0 L213.3 48.2 L221.5 50.0 L229.7 50.0 L237.9 39.9 L246.2 32.7 L254.4 27.3 L262.6 16.2 L270.8 26.9 L279.0 30.2 L287.2 23.6 L295.4 34.8 L303.6 41.5 L311.8 33.0 L320.0 40.7 L320 54 L0 54 Z" fill="url(#home0)"/>
+  <path d="M0.0 4.0 L8.2 9.3 L16.4 12.8 L24.6 22.9 L32.8 17.8 L41.0 9.6 L49.2 19.4 L57.4 14.2 L65.6 23.7 L73.8 30.4 L82.1 23.6 L90.3 29.1 L98.5 32.4 L106.7 35.8 L114.9 35.4 L123.1 32.0 L131.3 34.6 L139.5 35.1 L147.7 31.1 L155.9 33.5 L164.1 42.3 L172.3 36.8 L180.5 30.3 L188.7 41.3 L196.9 46.0 L205.1 50.0 L213.3 48.2 L221.5 50.0 L229.7 50.0 L237.9 39.9 L246.2 32.7 L254.4 27.3 L262.6 16.2 L270.8 26.9 L279.0 30.2 L287.2 23.6 L295.4 34.8 L303.6 41.5 L311.8 33.0 L320.0 40.7" fill="none" stroke="#0f8a63" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+          <div style="font-size: 11px; color: #68757f; margin-top: 4px">16.3 of 48 cores</div>
+        </div>
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+            <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Memory</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: #111820">41%</span>
+          </div>
+          <svg width="100%" height="54" viewBox="0 0 320 54" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="home1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2f6ad0" stop-opacity="0.22"/><stop offset="100%" stop-color="#2f6ad0" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 17.8 L8.2 21.1 L16.4 19.4 L24.6 19.0 L32.8 13.8 L41.0 6.0 L49.2 11.9 L57.4 6.7 L65.6 13.8 L73.8 4.0 L82.1 10.5 L90.3 10.8 L98.5 21.0 L106.7 14.3 L114.9 20.2 L123.1 26.7 L131.3 33.2 L139.5 29.3 L147.7 35.4 L155.9 46.6 L164.1 48.5 L172.3 48.9 L180.5 41.1 L188.7 31.5 L196.9 26.3 L205.1 28.1 L213.3 21.5 L221.5 27.5 L229.7 37.8 L237.9 41.9 L246.2 33.1 L254.4 30.9 L262.6 30.3 L270.8 34.6 L279.0 43.6 L287.2 35.1 L295.4 39.7 L303.6 50.0 L311.8 46.5 L320.0 35.9 L320 54 L0 54 Z" fill="url(#home1)"/>
+  <path d="M0.0 17.8 L8.2 21.1 L16.4 19.4 L24.6 19.0 L32.8 13.8 L41.0 6.0 L49.2 11.9 L57.4 6.7 L65.6 13.8 L73.8 4.0 L82.1 10.5 L90.3 10.8 L98.5 21.0 L106.7 14.3 L114.9 20.2 L123.1 26.7 L131.3 33.2 L139.5 29.3 L147.7 35.4 L155.9 46.6 L164.1 48.5 L172.3 48.9 L180.5 41.1 L188.7 31.5 L196.9 26.3 L205.1 28.1 L213.3 21.5 L221.5 27.5 L229.7 37.8 L237.9 41.9 L246.2 33.1 L254.4 30.9 L262.6 30.3 L270.8 34.6 L279.0 43.6 L287.2 35.1 L295.4 39.7 L303.6 50.0 L311.8 46.5 L320.0 35.9" fill="none" stroke="#2f6ad0" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+          <div style="font-size: 11px; color: #68757f; margin-top: 4px">77 of 188 GB</div>
+        </div>
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+            <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Disk</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: #111820">46%</span>
+          </div>
+          <svg width="100%" height="54" viewBox="0 0 320 54" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="home2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#2f7f79" stop-opacity="0.22"/><stop offset="100%" stop-color="#2f7f79" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 19.7 L8.2 14.3 L16.4 28.2 L24.6 47.0 L32.8 50.0 L41.0 50.0 L49.2 50.0 L57.4 48.4 L65.6 50.0 L73.8 41.7 L82.1 38.3 L90.3 50.0 L98.5 39.5 L106.7 50.0 L114.9 50.0 L123.1 39.5 L131.3 44.6 L139.5 29.4 L147.7 32.2 L155.9 34.1 L164.1 50.0 L172.3 50.0 L180.5 50.0 L188.7 33.9 L196.9 39.7 L205.1 35.1 L213.3 48.8 L221.5 29.0 L229.7 32.2 L237.9 13.1 L246.2 29.8 L254.4 19.3 L262.6 38.9 L270.8 26.4 L279.0 18.5 L287.2 7.8 L295.4 15.7 L303.6 12.3 L311.8 23.6 L320.0 4.0 L320 54 L0 54 Z" fill="url(#home2)"/>
+  <path d="M0.0 19.7 L8.2 14.3 L16.4 28.2 L24.6 47.0 L32.8 50.0 L41.0 50.0 L49.2 50.0 L57.4 48.4 L65.6 50.0 L73.8 41.7 L82.1 38.3 L90.3 50.0 L98.5 39.5 L106.7 50.0 L114.9 50.0 L123.1 39.5 L131.3 44.6 L139.5 29.4 L147.7 32.2 L155.9 34.1 L164.1 50.0 L172.3 50.0 L180.5 50.0 L188.7 33.9 L196.9 39.7 L205.1 35.1 L213.3 48.8 L221.5 29.0 L229.7 32.2 L237.9 13.1 L246.2 29.8 L254.4 19.3 L262.6 38.9 L270.8 26.4 L279.0 18.5 L287.2 7.8 L295.4 15.7 L303.6 12.3 L311.8 23.6 L320.0 4.0" fill="none" stroke="#2f7f79" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+          <div style="font-size: 11px; color: #68757f; margin-top: 4px">1.24 of 2.7 TB</div>
+        </div>
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px">
+            <span style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f">Network</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; color: #111820">84 Mb/s</span>
+          </div>
+          <svg width="100%" height="54" viewBox="0 0 320 54" preserveAspectRatio="none" style="display: block">
+  <defs><linearGradient id="home3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#6a4ea6" stop-opacity="0.22"/><stop offset="100%" stop-color="#6a4ea6" stop-opacity="0"/>
+  </linearGradient></defs>
+  <path d="M0.0 50.0 L8.2 37.8 L16.4 30.6 L24.6 29.0 L32.8 32.7 L41.0 25.1 L49.2 30.3 L57.4 34.4 L65.6 35.8 L73.8 35.5 L82.1 22.3 L90.3 17.4 L98.5 19.4 L106.7 21.6 L114.9 17.0 L123.1 23.5 L131.3 22.9 L139.5 35.4 L147.7 32.0 L155.9 20.9 L164.1 12.7 L172.3 20.4 L180.5 17.9 L188.7 5.7 L196.9 4.0 L205.1 4.0 L213.3 4.0 L221.5 4.0 L229.7 4.0 L237.9 4.0 L246.2 9.7 L254.4 4.0 L262.6 4.0 L270.8 9.9 L279.0 17.2 L287.2 11.7 L295.4 17.8 L303.6 30.0 L311.8 21.1 L320.0 35.0 L320 54 L0 54 Z" fill="url(#home3)"/>
+  <path d="M0.0 50.0 L8.2 37.8 L16.4 30.6 L24.6 29.0 L32.8 32.7 L41.0 25.1 L49.2 30.3 L57.4 34.4 L65.6 35.8 L73.8 35.5 L82.1 22.3 L90.3 17.4 L98.5 19.4 L106.7 21.6 L114.9 17.0 L123.1 23.5 L131.3 22.9 L139.5 35.4 L147.7 32.0 L155.9 20.9 L164.1 12.7 L172.3 20.4 L180.5 17.9 L188.7 5.7 L196.9 4.0 L205.1 4.0 L213.3 4.0 L221.5 4.0 L229.7 4.0 L237.9 4.0 L246.2 9.7 L254.4 4.0 L262.6 4.0 L270.8 9.9 L279.0 17.2 L287.2 11.7 L295.4 17.8 L303.6 30.0 L311.8 21.1 L320.0 35.0" fill="none" stroke="#6a4ea6" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+</svg>
+          <div style="font-size: 11px; color: #68757f; margin-top: 4px">in, across three hosts</div>
+        </div>
+      </div></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Recent activity</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: transparent; color: #3f4a55; border-color: transparent">All runs</span></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Action</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Target</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">State</th><th style="text-align: right; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">When</th></tr></thead><tbody><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">traefik.reconcile</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #3f4a55">node-2</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #c1332c; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Needs attention</span></span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">4 min ago</span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">application.deploy</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #3f4a55">checkout-api → node-1</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Succeeded</span></span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">38 min ago</span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">image.build</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #3f4a55">checkout-api 41ab77c</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Succeeded</span></span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">41 min ago</span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">node.availability</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #3f4a55">web-01 → drain</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Succeeded</span></span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">2 h ago</span></td></tr><tr><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px">docker.install</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #3f4a55">db-01</span></td><td style="text-align: left; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Succeeded</span></span></td><td style="text-align: right; padding: 6px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">yesterday</span></td></tr></tbody></table></div>
+
+</section>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px">
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Control plane</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">The controller is not a node. It holds state; it never touches Docker.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px">
+        <span style="color: #0f8a63"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg></span>
+        <div style="flex: 1; min-width: 0">
+          <div style="font-size: 14px; font-weight: 600; color: #111820">core-1</div>
+          <div style="font-size: 12px; color: #68757f">Active · authority term 4</div>
+        </div>
+        <span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(28, 127, 82, 0.12); color: #1c7f52; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">Serving</span>
+      </div>
+      <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 12px">
+        <dt style="color: #68757f">Runs on</dt><dd style="margin: 0; color: #111820">nima-mbp · outside the cluster</dd>
+        <dt style="color: #68757f">Version</dt><dd style="margin: 0"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #111820">v0.11.0</span></dd>
+        <dt style="color: #68757f">Uptime</dt><dd style="margin: 0; color: #111820">12 days</dd>
+        <dt style="color: #68757f">State</dt><dd style="margin: 0; color: #111820">412 MB sealed · backed up 6 h ago</dd>
+      </dl>
+      <div style="margin-top: 12px; padding: 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); display: flex; align-items: center; gap: 10px">
+        <div style="flex: 1; font-size: 12px; color: #3f4a55">v0.11.1 is available. The update starts beside this one and only retires it once the new process answers.</div>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63">Review</span>
+      </div></div>
+
+</section>
+
+    <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Shared services</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">One of each, for the whole cluster. A deployment that brings its own is rewired to these.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">PostgreSQL</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">16.4 · db-01 · 4 apps attached</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">Redis</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">7.4 · db-01 · 3 apps attached</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #68757f; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">MongoDB</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">Not deployed</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">Prometheus</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">3 nodes · 34 containers · 15 d retained</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">Jaeger</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">2 apps reporting traces</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+          <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span></span>
+          <span style="font-size: 13px; color: #111820; width: 108px; flex: none">Log collection</span>
+          <span style="font-size: 12px; color: #68757f; flex: 1; min-width: 0">34 containers · 7 d retained</span>
+        </div>
+      </div></div>
+
+</section>
+  </div>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

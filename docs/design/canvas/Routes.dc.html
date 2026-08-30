@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"/>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+    a { color: #0f8a63; text-decoration: none; }
+    a:hover { color: #0c7a58; }
+    table { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 100%; display: flex; flex-direction: column; background: #f7f9f8; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #111820; letter-spacing: -0.006em">
+  <header style="height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff">
+  <div style="display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+    <span style="font-size: 11px; letter-spacing: 0.44px; color: #68757f">Cluster</span>
+    <span style="font-size: 13px; font-weight: 500; color: #111820">production</span>
+    <span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span>
+  </div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">3 of 3 agents answering</span></span>
+  <div style="flex: 1"></div>
+  <span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 10px; border-radius: 2px; background: rgba(138, 98, 6, 0.13); color: #8a6206; font-size: 12px; font-weight: 500"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.6 17.4 16H2.6z"/><path d="M10 8.4v3.4M10 14h.01"/></svg>2 to decide</span>
+  <div style="display: flex; align-items: center; gap: 8px; width: 260px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px; flex: 1">Search or run…</span><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px">⌘K</span>
+  </div>
+  <span style="color: #68757f"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.2 8.4A6.4 6.4 0 0 0 4.6 7.2"/><path d="M3.8 11.6a6.4 6.4 0 0 0 11.6 1.2"/><path d="M16.6 4.6v3.8h-3.8M3.4 15.4v-3.8h3.8"/></svg></span>
+  <span style="width: 26px; height: 26px; border-radius: 999px; background: #eff3f2; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #3f4a55">NS</span>
+</header>
+  <div style="flex: 1; display: flex; min-height: 0">
+    <nav style="width: 68px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; display: flex; flex-direction: column">
+  <div style="height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(17, 27, 34, 0.13)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f8a63" stroke-width="1.6" stroke-linejoin="round"><polygon points="15.98,4.10 15.98,8.70 12.00,11.00 8.02,8.70 8.02,4.10 12.00,1.80"/><polygon points="11.38,12.30 11.38,16.90 7.40,19.20 3.42,16.90 3.42,12.30 7.40,10.00"/><polygon points="20.58,12.30 20.58,16.90 16.60,19.20 12.62,16.90 12.62,12.30 16.60,10.00"/></svg></div>
+  <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 8px"><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Home</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3 3 6.5 10 10l7-3.5z"/><path d="M3 10.5 10 14l7-3.5"/><path d="M3 14 10 17.5 17 14"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Apps</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Machines</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: rgba(15, 138, 99, 0.11); color: #0f8a63">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c1.8 2 2.7 4.4 2.7 7S11.8 15 10 17C8.2 15 7.3 12.6 7.3 10S8.2 5 10 3z"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Traffic</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5h3l2.2-5.5 3.4 10 2.2-4.5h3.2"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Activity</span>
+    </div><div style="display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border-radius: 3px; background: transparent; color: #68757f">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.2 16 6v4.4c0 3.4-2.4 5.6-6 6.6-3.6-1-6-3.2-6-6.6V6z"/><path d="M7.7 10.2 9.4 12l3.1-3.4"/></svg>
+      <span style="font-size: 10px; font-weight: 500; letter-spacing: 0.1px">Control</span>
+    </div></div>
+</nav>
+    <aside style="width: 248px; flex: none; border-right: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; padding: 16px 12px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f; padding: 0 10px">TRAFFIC</div>
+  <div style="font-size: 12px; color: #68757f; padding: 6px 10px 14px; line-height: 1.45">How a request from the internet reaches a workload.</div>
+  <div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Gateway
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 13px; font-weight: 500">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: #0f8a63; flex: none"></span>Routes
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Domains & DNS
+    </div><div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 2px; background: transparent; color: #111820; font-size: 13px; font-weight: 400">
+      <span style="width: 3px; height: 14px; border-radius: 999px; background: transparent; flex: none"></span>Certificates
+    </div></div>
+</aside>
+    <main style="flex: 1; min-width: 0; padding: 24px">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #68757f; margin-bottom: 8px">
+    <span>Traffic</span><span style="opacity: 0.5"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 5 5 5-5 5"/></svg></span><span style="color: #3f4a55">Routes</span>
+
+  </div>
+      <div style="display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px">
+        <div style="flex: 1; min-width: 0">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.43px; color: #111820">Routes</h1>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #68757f; max-width: 62ch; line-height: 1.45">Which hostname or port reaches which workload, and whether it is actually serving.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px"><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4.2v11.6M4.2 10h11.6"/></svg>Add a route</span></div>
+      </div>
+
+<div style="display: flex; gap: 12px; margin-bottom: 16px"><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Published</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">14</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Twelve over HTTPS, one TCP, one UDP.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Not serving</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #8a6206; margin-top: 4px">1</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">staging.nim.zone points at a service with no tasks.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Ports allocated</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">2</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">From the 30000–32767 range reserved for TCP and UDP.</div>
+</div><div style="flex: 1 1 0; min-width: 0; background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 3px; padding: 12px 16px">
+  <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.52px; color: #68757f">Private</div>
+  <div style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 24px; font-weight: 500; letter-spacing: -0.43px; color: #111820; margin-top: 4px">3</div>
+  <div style="font-size: 12px; color: #68757f; margin-top: 4px; line-height: 1.4">Reachable only from the office CIDR.</div>
+</div></div>
+
+<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px">
+  <div style="display: flex"><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(15, 138, 99, 0.26); background: rgba(15, 138, 99, 0.11); color: #0f8a63">All · 14</span><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; color: #3f4a55">HTTP · 12</span><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; color: #3f4a55">TCP · 1</span><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; color: #3f4a55">UDP · 1</span></div>
+  <div style="display: flex; align-items: center; gap: 8px; flex: 1; max-width: 320px; height: 27px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; color: #68757f; background: #ffffff"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="5.2"/><path d="m13 13 3.6 3.6"/></svg><span style="font-size: 12px">Filter routes…</span></div>
+</div>
+
+<section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px"></div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">A route is created with the application by default. Nothing is public until you say so.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px"><table style="width: 100%; border-collapse: collapse; table-layout: auto"><thead><tr><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Rule</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Kind</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Reaches</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Port</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">TLS</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Exposure</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">Traffic</th><th style="text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; border-bottom: 1px solid rgba(17, 27, 34, 0.13); white-space: nowrap; ">State</th></tr></thead><tbody><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">checkout.nim.zone</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">HTTPS</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">checkout-api</a></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">8080</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Valid</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Public</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="72" height="18" viewBox="0 0 72 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 4.0 L3.1 2.4 L6.3 5.1 L9.4 3.1 L12.5 4.7 L15.7 8.5 L18.8 11.4 L21.9 7.2 L25.0 4.6 L28.2 7.8 L31.3 7.2 L34.4 10.8 L37.6 7.9 L40.7 2.0 L43.8 2.0 L47.0 4.8 L50.1 9.5 L53.2 9.0 L56.3 8.1 L59.5 8.5 L62.6 8.4 L65.7 12.9 L68.9 10.6 L72.0 16.0" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #8a6206; flex: none"></span><span style="font-size: 12px; color: #3f4a55">1.4% failing</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">api.nim.zone</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">HTTPS</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">api-gateway</a></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">8080</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Valid</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Public</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="72" height="18" viewBox="0 0 72 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 16.0 L3.1 14.5 L6.3 11.3 L9.4 9.9 L12.5 13.1 L15.7 10.1 L18.8 8.8 L21.9 7.0 L25.0 8.9 L28.2 10.3 L31.3 13.8 L34.4 11.0 L37.6 9.5 L40.7 6.5 L43.8 5.0 L47.0 3.3 L50.1 4.9 L53.2 4.5 L56.3 2.0 L59.5 3.0 L62.6 5.1 L65.7 3.7 L68.9 4.7 L72.0 7.3" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Serving</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">nim.zone</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">HTTPS</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">shop-web</a></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">3000</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #8a6206; flex: none"></span><span style="font-size: 12px; color: #3f4a55">9 days</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Public</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><svg width="72" height="18" viewBox="0 0 72 18" preserveAspectRatio="none" style="display: block">
+  <path d="M0.0 16.0 L3.1 13.9 L6.3 12.8 L9.4 11.2 L12.5 9.8 L15.7 8.6 L18.8 11.2 L21.9 9.9 L25.0 8.3 L28.2 9.4 L31.3 9.7 L34.4 9.1 L37.6 7.8 L40.7 5.2 L43.8 2.0 L47.0 4.1 L50.1 4.6 L53.2 4.1 L56.3 6.4 L59.5 8.1 L62.6 5.5 L65.7 7.2 L68.9 10.4 L72.0 12.5" fill="none" stroke="#0f8a63" stroke-width="1.25" vector-effect="non-scaling-stroke"/>
+</svg></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Serving</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">staging.nim.zone</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(15, 138, 99, 0.11); color: #0f8a63; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">HTTPS</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">staging-web</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">3000</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Valid</span></span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Office CIDR</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-size: 11px; color: #68757f">No traffic</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #c1332c; flex: none"></span><span style="font-size: 12px; color: #3f4a55">No tasks behind it</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">:30001</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(47, 106, 208, 0.1); color: #2f6ad0; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">TCP</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">swarmops-postgres</a></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">5432</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">—</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Office CIDR</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-size: 11px; color: #68757f">18 open</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening</span></span></td></tr><tr><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-weight: 500">:30002</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(47, 106, 208, 0.1); color: #2f6ad0; font-size: 11px; font-weight: 500; letter-spacing: 0.44px; white-space: nowrap">UDP</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><a href="#">game-server</a></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #3f4a55">7777</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="color: #68757f">—</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle">Public</td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="font-size: 11px; color: #68757f">2.1 Mb/s</span></td><td style="text-align: left; padding: 8px 12px; font-size: 12px; color: #111820; border-bottom: 1px solid rgba(17, 27, 34, 0.08); vertical-align: middle"><span style="display: inline-flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 6px; height: 6px; border-radius: 999px; background: #1c7f52; flex: none"></span><span style="font-size: 12px; color: #3f4a55">Listening</span></span></td></tr></tbody></table></div>
+
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px">
+  <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Add a route</div>
+        <div style="font-size: 12px; color: #68757f; margin-top: 2px">No label, rule or provider URL is ever typed by hand.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div>
+        <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; margin-bottom: 4px">Kind</div>
+        <div style="display: flex"><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(15, 138, 99, 0.26); background: rgba(15, 138, 99, 0.11); color: #0f8a63">HTTPS</span><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; color: #3f4a55">TCP</span><span style="display: inline-flex; align-items: center; height: 27px; padding: 0 12px; font-size: 12px; font-weight: 500; border: 1px solid rgba(17, 27, 34, 0.13); background: #ffffff; color: #3f4a55">UDP</span></div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+        <div>
+          <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; margin-bottom: 4px">Hostname</div>
+          <div style="display: flex; align-items: center; height: 33px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 13px; color: #111820">shop.<span style="color: #68757f">nim.zone</span></div>
+        </div>
+        <div>
+          <div style="font-size: 11px; font-weight: 500; letter-spacing: 0.44px; color: #68757f; margin-bottom: 4px">Reaches</div>
+          <div style="display: flex; align-items: center; height: 33px; padding: 0 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px; font-size: 13px; color: #111820">shop-web<span style="flex: 1"></span><span style="color: #68757f"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></span></div>
+        </div>
+      </div>
+      <div style="padding: 10px; border-radius: 2px; background: #eff3f2; font-size: 12px; color: #3f4a55; line-height: 1.5">
+        The certificate is requested through Cloudflare DNS-01 the moment this is applied. The DNS record is created for you; nothing has to exist first.
+      </div>
+      <div><span style="display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border: 1px solid; border-radius: 2px; font-size: 12px; font-weight: 500; white-space: nowrap; background: #0f8a63; color: #ffffff; border-color: #0f8a63">Review and apply</span></div>
+    </div></div>
+
+</section>
+
+  <section style="background: #ffffff; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid rgba(17, 27, 34, 0.08)">
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 14px; font-weight: 600; color: #111820; letter-spacing: -0.25px">Exposure</div>
+
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px"></div>
+    </div>
+  <div style="padding: 12px">
+    <p style="margin: 0 0 12px; font-size: 13px; color: #3f4a55; line-height: 1.55">
+      A new route is private until it is published. Private means the gateway answers only from the CIDRs you named, and the certificate is still issued so the hostname works the moment you open it up.
+    </p>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+        <div style="flex: 1"><div style="font-size: 12px; color: #111820">Public</div><div style="font-size: 11px; color: #68757f; margin-top: 2px">Anyone on the internet</div></div>
+        <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">11 routes</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+        <div style="flex: 1"><div style="font-size: 12px; color: #111820">Office CIDR</div><div style="font-size: 11px; color: #68757f; margin-top: 2px">203.0.113.0/24 and 10.0.0.0/8</div></div>
+        <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">3 routes</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid rgba(17, 27, 34, 0.13); border-radius: 2px">
+        <div style="flex: 1"><div style="font-size: 12px; color: #111820">Cluster only</div><div style="font-size: 11px; color: #68757f; margin-top: 2px">No entry point at all</div></div>
+        <span style="font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #68757f">6 services</span>
+      </div>
+    </div></div>
+
+</section>
+</div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
