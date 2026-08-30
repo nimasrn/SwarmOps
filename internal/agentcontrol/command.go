@@ -30,6 +30,49 @@ const (
 	OperationConfigList       = "config_list"
 )
 
+// CommandFailureCode is the allow-listed diagnostic vocabulary a machine
+// agent may return for a failed bounded Docker operation. Raw Docker output is
+// never returned to Core: it can contain registry, image, or host detail that
+// does not belong in controller state or a browser.
+const (
+	CommandFailureConfigMissing    = "docker_external_config_missing"
+	CommandFailureImageUnavailable = "docker_image_unavailable"
+	CommandFailureNetworkMissing   = "docker_external_network_missing"
+	CommandFailureOutputLimit      = "docker_command_output_limit"
+	CommandFailurePlacement        = "docker_placement_unsatisfied"
+	CommandFailurePortUnavailable  = "docker_port_unavailable"
+	CommandFailureSecretMissing    = "docker_external_secret_missing"
+	CommandFailureStackDeploy      = "docker_stack_deploy_failed"
+	CommandFailureTimedOut         = "docker_command_timed_out"
+	CommandFailureUnknown          = "docker_operation_failed"
+)
+
+// CommandResponse is the fixed machine-command response envelope. FailureCode
+// is accepted only when ValidCommandFailureCode recognizes it.
+type CommandResponse struct {
+	FailureCode string `json:"failureCode,omitempty"`
+	Output      string `json:"output,omitempty"`
+	Status      string `json:"status,omitempty"`
+}
+
+func ValidCommandFailureCode(code string) bool {
+	switch code {
+	case CommandFailureConfigMissing,
+		CommandFailureImageUnavailable,
+		CommandFailureNetworkMissing,
+		CommandFailureOutputLimit,
+		CommandFailurePlacement,
+		CommandFailurePortUnavailable,
+		CommandFailureSecretMissing,
+		CommandFailureStackDeploy,
+		CommandFailureTimedOut,
+		CommandFailureUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // MaxSecretBytes bounds the generated credential a managed stateful stack
 // needs. It is deliberately small: this operation exists to create SwarmOps'
 // own generated passwords, not to ship arbitrary operator material.

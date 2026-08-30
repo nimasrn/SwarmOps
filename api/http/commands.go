@@ -1036,6 +1036,18 @@ func classifyCommandError(err error) error {
 	if queue.IsPermanent(err) {
 		return err
 	}
+	var classified interface{ SafeFailureCode() string }
+	if errors.As(err, &classified) {
+		switch classified.SafeFailureCode() {
+		case agentcontrol.CommandFailureConfigMissing,
+			agentcontrol.CommandFailureNetworkMissing,
+			agentcontrol.CommandFailureOutputLimit,
+			agentcontrol.CommandFailurePlacement,
+			agentcontrol.CommandFailurePortUnavailable,
+			agentcontrol.CommandFailureSecretMissing:
+			return queue.PermanentError(err)
+		}
+	}
 	text := strings.ToLower(err.Error())
 	for _, marker := range []string{
 		"invalid", "unsupported", "must", "requires", "disabled", "not configured", "not allow-listed", "exceed", "confirmation", "platform admission", "not a remote swarm manager",

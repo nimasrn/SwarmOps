@@ -49,7 +49,7 @@ const overview = {
 }
 
 const commands = [
-  { action: 'observability.logs', attempt: 3, createdAt: ago(300), failureSummary: 'The managed Traefik gateway is required before this stack can create private routes.', id: 'cmd-1', maxAttempts: 5, nodeId: 'n1', state: 'needs_attention', target: 'production' },
+  { action: 'traefik.reconcile', actor: 'operator', attempt: 1, authorityEpoch: 1, createdAt: ago(300), failureCode: 'traefik_port_unavailable', failureSummary: 'Docker could not start Traefik because a configured gateway port is already in use.', id: 'cmd-1', lastAttemptAt: ago(280), maxAttempts: 8, nodeId: 'n1', recoveryHint: 'Inspect the selected manager for an existing gateway using ports 80 or 443, resolve the conflict, then retry.', serverId: 'srv-1', state: 'needs_attention', target: 'stack/traefik', updatedAt: ago(280) },
   { action: 'observability.logs', attempt: 2, createdAt: ago(1200), failureSummary: 'The managed Traefik gateway is required before this stack can create private routes.', id: 'cmd-2', maxAttempts: 5, nodeId: 'n1', state: 'failed', target: 'production' },
   { action: 'service.image', attempt: 1, createdAt: ago(60), id: 'cmd-3', maxAttempts: 3, nodeId: 'n1', state: 'running', target: 'api-gateway' },
   { action: 'prune', attempt: 1, createdAt: ago(7200), completedAt: ago(7180), id: 'cmd-4', maxAttempts: 3, nodeId: 'n1', state: 'succeeded', target: 'cluster/images' },
@@ -108,7 +108,19 @@ export const FIXTURES: Record<string, unknown> = {
   '/api/v1/traefik/cutover': null,
   '/api/v1/traefik/certificates': [],
   '/api/v1/traefik/prometheus': { installed: false },
-  '/api/v1/traefik/preflight': { challenge: 'http-01', checks: [], ready: false, repairable: true },
+  // `ready` is false only when a REQUIRED check is blocked — see
+  // FinalizeTraefikInstallPreflight. A fixture with no checks and ready:false
+  // cannot come from a real controller, and made the panel render a state the
+  // product does not have.
+  '/api/v1/traefik/preflight': {
+    challenge: 'http-01',
+    checks: [
+      { detail: 'The reviewed swarmops overlay network is absent on this manager.', fixable: true, id: 'network', label: 'Overlay network', recovery: 'SwarmOps creates it during the repair.', required: true, state: 'blocked' },
+      { detail: 'Created from the reviewed asset when the gateway is installed.', fixable: true, id: 'config', label: 'Static configuration', required: true, state: 'automatic' },
+    ],
+    ready: false,
+    repairable: true,
+  },
   '/api/v1/logs/status': { collectors: [], enabled: false },
   '/api/v1/insights': null,
   '/api/v1/commands/catalogue': [],

@@ -11,6 +11,62 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.11.0 — 2026-08-30
+
+The console is rebuilt as modules, every screen is drawn in one frame, and the
+keyboard is written down where an operator can find it.
+
+- **The console is modules, not one file** — `app.tsx` was two and a half
+  thousand lines holding the shell, the router, fourteen screens, five data
+  hooks, and every formatting helper in the product. What lives where is now
+  decided by directory: `data/` reads the controller, `lib/` computes,
+  `navigation/` names screens and binds keys, `components/` composes the kit,
+  `screens/<area>/` draws one destination each, and `shell/` holds them
+  together. `app.tsx` is now the entry point and nothing else.
+- **A screen is titled what its navigation item is called** — every top-level
+  screen is drawn in one frame that reads its title and its one-line purpose
+  from the information architecture. The nav item that read "Swarm & placement"
+  opened a screen titled "Infrastructure"; that is no longer expressible.
+- **Insights under every title** — two to four readings per screen: a figure,
+  what it means, and where to act on it. A reading the controller does not have
+  is stated as an absence rather than averaged into a number.
+- **One keyboard, documented by the thing that installs it** — `?` opens a
+  sheet generated from the same list that binds the chords. `⌘K` and `/` open
+  the palette, `G` then an area letter jumps, `R` re-reads the screen, and `D`
+  opens connection diagnostics. Bare letters never fire inside a text field.
+- **The palette finds things, not only screens** — it now lists the servers,
+  services, and stacks in the selected cluster alongside actions and
+  destinations, and offers the screens you opened most recently first.
+- **What needs a decision follows you** — the attention list is computed once
+  and carried in the masthead, so an operator who went straight to Traffic
+  still learns that a run has stopped. Every row opens the screen that can
+  resolve it.
+- **A first-run path that says what is missing** — the command centre shows the
+  five steps between an empty controller and a served request, marks off the
+  ones already done, and makes exactly one of them the next action. Operators
+  deployed applications with no gateway and concluded the product was broken.
+- **One confirmation control, one set of numbers** — eleven hand-rolled
+  confirmation forms became one component that states the consequence, shows
+  the phrase, and stays disabled until it matches; nine copies of `formatBytes`
+  and `formatDateTime` became one each.
+- **Screens can be pinned, and the theme can be switched** — pinned screens sit
+  above the area's own list in the sidebar, and light/dark is an explicit
+  choice in the operator menu.
+- **Redeploy an application without retyping its spec** — one action on the
+  applications list re-sends the spec the application is already running, which
+  is what rolling a service after a base-image change actually requires.
+- **Scale a service by one** — replica changes under load are "one more" or
+  "one fewer", so those are buttons; the exact-count field remains beside them.
+- **Fixes**: reclaiming disk and the Swarm task-history setting moved off the
+  health screen to the objects they act on, so the screen an operator opens
+  while worried carries no destructive control; the health screen's unreachable
+  second implementation and its non-functional "Create alert" and filter
+  buttons are gone; a failed source-capability read now explains itself instead
+  of spinning forever; the gateway prerequisite panel no longer offers to "fix
+  all 0 prerequisites"; the audit trail gained the actor, outcome, and text
+  filters it needed to be usable past a hundred records; and the setup track
+  marks exactly one step active instead of three.
+
 ## 0.10.4 — 2026-08-30
 
 Traefik installation now owns its dashboard hostname in the console and the

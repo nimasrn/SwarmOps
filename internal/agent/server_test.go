@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,45 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 )
+
+func TestDockerCommandFailureCodeReturnsOnlyAllowlistedDiagnostics(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		args   []string
+		output string
+		ctxErr error
+		outErr error
+		want   string
+	}{
+		{name: "external network", args: []string{"stack", "deploy"}, output: "network traefik is declared as external, but could not be found", want: agentcontrol.CommandFailureNetworkMissing},
+		{name: "external config", args: []string{"stack", "deploy"}, output: "config platform_static is declared as external, but could not be found", want: agentcontrol.CommandFailureConfigMissing},
+		{name: "external secret", args: []string{"stack", "deploy"}, output: "secret dashboard_auth is declared as external, but could not be found", want: agentcontrol.CommandFailureSecretMissing},
+		{name: "placement", args: []string{"stack", "deploy"}, output: "no suitable node (scheduling constraints not satisfied)", want: agentcontrol.CommandFailurePlacement},
+		{name: "port", args: []string{"stack", "deploy"}, output: "port '80' is already in use by service existing_gateway", want: agentcontrol.CommandFailurePortUnavailable},
+		{name: "image", args: []string{"stack", "deploy"}, output: "pull access denied for private/image", want: agentcontrol.CommandFailureImageUnavailable},
+		{name: "unclassified deploy", args: []string{"stack", "deploy"}, output: "sensitive manager-specific detail", want: agentcontrol.CommandFailureStackDeploy},
+		{name: "timeout", args: []string{"stack", "deploy"}, ctxErr: context.DeadlineExceeded, want: agentcontrol.CommandFailureTimedOut},
+		{name: "bounded output", args: []string{"stack", "deploy"}, outErr: errors.New("limit"), want: agentcontrol.CommandFailureOutputLimit},
+		{name: "other operation", args: []string{"service", "update"}, output: "sensitive detail", want: agentcontrol.CommandFailureUnknown},
+	}
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			got := dockerCommandFailureCode(testCase.args, testCase.output, testCase.ctxErr, testCase.outErr)
+			if got != testCase.want || !agentcontrol.ValidCommandFailureCode(got) {
+				t.Fatalf("failure code = %q, want allow-listed %q", got, testCase.want)
+			}
+			if strings.Contains(got, "sensitive") || strings.Contains(got, "private/image") {
+				t.Fatalf("failure code leaked Docker output: %q", got)
+			}
+		})
+	}
+}
 
 func TestRemoteControlEndpointsAreAuthenticatedAndFixed(t *testing.T) {
 	t.Parallel()

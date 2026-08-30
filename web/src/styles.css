@@ -1,12 +1,14 @@
 /* SwarmOps — app chrome only.
 
-   Everything an admin console is made of now comes from @nim.zone/ui's
-   console layer: Page, Panel, MetricGrid, Facts, Columns, CodeBlock,
-   DataTable, StatusDot, Mono. What is left here is the product's own
-   identity — the mark, the wordmark, and the two full-viewport screens that
-   exist before the shell does — and nothing a second console would need to
-   copy. Any rule that creeps back into this file describing a LAYOUT is a
-   missing kit component. */
+   Everything an admin console is made of comes from @nim.zone/ui's console
+   layer: Page, Panel, MetricGrid, Facts, Columns, CodeBlock, DataTable,
+   StatusDot, Mono. What is left here is the product's own identity — the mark,
+   the wordmark, and the two full-viewport screens that exist before the shell
+   does — and nothing a second console would need to copy.
+
+   Any rule that creeps back into this file describing a LAYOUT is a missing kit
+   component, not app styling. The workflow test counts the layout declarations
+   in this file for exactly that reason. */
 
 :root {
   background: var(--nim-canvas);
@@ -27,6 +29,9 @@ body {
   min-block-size: 100vh;
 }
 
+/* The two screens that exist before the console does: the loading state while
+   the session is checked, and the sign-in surface itself. Neither can use the
+   shell, because the shell is what they are deciding whether to render. */
 .swarmops-loading,
 .swarmops-auth-page {
   min-block-size: 100vh;
@@ -56,43 +61,6 @@ body {
   --nim-brand-accent: var(--nim-accent);
 }
 
-/* The diagnosis fix block and refusal evidence list. Both are product copy
-   arrangements rather than layouts — if either grows a grid or a breakpoint it
-   has become a missing kit component and belongs there instead. */
-
-/* Change preview. The grid and the step list are the only two arrangements the
-   kit has no component for yet; if either grows a variant it has become one. */
-
-/* Only a consequence that should reassure gets colour. If every cell were
-   toned, none of them would carry meaning. */
-
-/* The engine's vocabulary, shown beside a refusal. Deliberately plain: it is
-   context for "no rule fired", not a feature of its own. */
-.swarmops-diagnosis__rules { margin-block-start: var(--nim-space-4); }
-
-/* A row of chips; the chips themselves are the kit's. */
-.swarmops-diagnosis__rules-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nim-space-2);
-  margin-block-start: var(--nim-space-2);
-}
-
-/* Hatched, for the same reason Caveat is: the absence has to survive
-   greyscale, print, and a screenshot in an incident channel. */
-
-/* The decide row. Discard is not destructive — it clears a computed preview,
-   nothing more — so it takes the quiet variant and Apply carries the accent. */
-
-/* The diagnosis and its rail. The comparison and the trail sit beside the
-   chain rather than under it: both are read WHILE the chain is, not after. */
-
-/* The last step is the one that costs judgement rather than a query, so it is
-   the one that should catch the eye. */
-
-@media (max-width: 1080px) {
-}
-
 /* The keyboard hint on the diagnosis rail. Quiet: it teaches a shortcut, it is
    not a control, and it must not compete with the evidence beside it. */
 .swarmops-diagnosis__hint {
@@ -108,4 +76,18 @@ body {
   border: var(--nim-border-width) solid var(--nim-line);
   border-radius: var(--nim-radius-sm);
   padding: 1px var(--nim-space-2);
+}
+
+/* The engine's vocabulary, shown beside a refusal. Deliberately plain: it is
+   context for "no rule fired", not a feature of its own. */
+.swarmops-diagnosis__rules {
+  margin-block-start: var(--nim-space-4);
+}
+
+/* A row of chips; the chips themselves are the kit's. */
+.swarmops-diagnosis__rules-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nim-space-2);
+  margin-block-start: var(--nim-space-2);
 }

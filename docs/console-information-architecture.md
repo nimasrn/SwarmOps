@@ -7,14 +7,53 @@ labelled contextual sidebar exposes the screens inside the active area and
 states what the area is for. The command palette reaches every destination
 directly and every route preserves the explicitly selected server.
 
-The table below is not a description of the code: `web/src/navigation.ts` is
-the code, and it is the only place any of it is written down. Both navigation
-tiers, the breadcrumb, the palette, and the rule deciding which screens require
-a selected cluster are built from it, so they cannot fall out of step. A screen
-that is routable and belongs to no area fails
+The table below is not a description of the code: `web/src/navigation/navigation.ts`
+is the code, and it is the only place any of it is written down. Both navigation
+tiers, the breadcrumb, the palette, the keyboard chords, every screen's own
+heading, and the rule deciding which screens require a selected cluster are
+built from it, so they cannot fall out of step. A screen that is routable and
+belongs to no area — or to no branch of `web/src/shell/page-router.tsx` — fails
 [`operator-workflows.test.mjs`](../web/src/operator-workflows.test.mjs) — the
 condition that let **Connection diagnostics** exist with a title, a section,
 and no way to reach it.
+
+## The frame every screen is drawn in
+
+`web/src/components/screen.tsx` supplies the title, the one-line purpose, the
+insight strip, and the optional boundary note. A screen passes its `page` key
+and gets its own name back, which is why a nav item and the heading it opens
+can no longer disagree — the item once read "Swarm & placement" and opened a
+screen titled "Infrastructure".
+
+**Insights are the screen's answer, not its statistics.** Two to four readings
+sit under every title: a figure, one line saying what it means, and where a
+reading exists that the operator could act on, the screen that owns it. A
+reading the controller does not have is stated as an absence rather than
+averaged into a number, and a fifth reading is a table.
+
+**Nothing is drawn that does nothing.** A button with no handler, a tab with no
+content, and a filter that filters nothing all teach an operator that the
+console is a mock-up of itself, which is a lesson they then apply to the
+controls that DO work.
+
+## The keyboard
+
+One list — `web/src/navigation/shortcuts.ts` — both installs the bindings and
+draws the help sheet that `?` opens, so a chord cannot exist undocumented. `⌘K`
+and `/` open the palette, `G` then an area letter jumps, `R` re-reads the
+screen, `D` opens connection diagnostics, and Escape dismisses. Every bare
+letter checks that the operator is not typing first: this console asks for exact
+confirmation phrases, and that is precisely where a stolen keystroke costs the
+most.
+
+## What needs a decision
+
+`web/src/lib/attention.ts` computes it once, from the controller topology, the
+agent list, the cluster snapshot, and the durable command ledger. The command
+centre lists it and the masthead carries the count, so an operator who went
+straight to Traffic still learns that a run has stopped. One decision is one
+ACTION, not one record: a failed operation and its failed retry are two rows in
+the ledger and one thing to decide.
 
 ## Navigation
 

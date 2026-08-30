@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -342,15 +343,23 @@ func (s *Server) command(response http.ResponseWriter, request *http.Request) {
 	}
 	output, err := runDockerCommand(request.Context(), compose, args...)
 	if err != nil {
-		http.Error(response, "machine command failed", http.StatusBadGateway)
+		failureCode := agentcontrol.CommandFailureUnknown
+		var commandErr *boundedDockerCommandError
+		if errors.As(err, &commandErr) && agentcontrol.ValidCommandFailureCode(commandErr.code) {
+			failureCode = commandErr.code
+		}
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set("Cache-Control", "no-store")
+		response.WriteHeader(http.StatusBadGateway)
+		writeJSON(response, agentcontrol.CommandResponse{FailureCode: failureCode})
 		return
 	}
 	switch input.Operation {
 	case agentcontrol.OperationServiceLogs, agentcontrol.OperationSecretList, agentcontrol.OperationConfigList:
-		writeJSON(response, map[string]string{"output": output})
+		writeJSON(response, agentcontrol.CommandResponse{Output: output})
 		return
 	}
-	writeJSON(response, map[string]string{"status": "ok"})
+	writeJSON(response, agentcontrol.CommandResponse{Status: "ok"})
 }
 
 func engineTaskFilters(query url.Values) (map[string][]string, error) {
@@ -439,9 +448,44 @@ func runDockerCommand(ctx context.Context, compose []byte, args ...string) (stri
 	command.Stdout = buffer
 	command.Stderr = buffer
 	if err := command.Run(); err != nil || buffer.err != nil {
-		return "", fmt.Errorf("run bounded Docker operation")
+		return "", &boundedDockerCommandError{code: dockerCommandFailureCode(args, buffer.String(), ctx.Err(), buffer.err)}
 	}
 	return buffer.String(), nil
+}
+
+type boundedDockerCommandError struct{ code string }
+
+func (err *boundedDockerCommandError) Error() string { return "run bounded Docker operation" }
+
+// dockerCommandFailureCode reduces Docker output to a small, controller-owned
+// vocabulary. It never returns the output, resource name, image, or host text.
+func dockerCommandFailureCode(args []string, output string, contextErr, outputErr error) string {
+	if contextErr != nil {
+		return agentcontrol.CommandFailureTimedOut
+	}
+	if outputErr != nil {
+		return agentcontrol.CommandFailureOutputLimit
+	}
+	if len(args) < 2 || args[0] != "stack" || args[1] != "deploy" {
+		return agentcontrol.CommandFailureUnknown
+	}
+	message := strings.ToLower(output)
+	switch {
+	case strings.Contains(message, "network") && strings.Contains(message, "declared as external") && strings.Contains(message, "could not be found"):
+		return agentcontrol.CommandFailureNetworkMissing
+	case strings.Contains(message, "config") && strings.Contains(message, "declared as external") && strings.Contains(message, "could not be found"):
+		return agentcontrol.CommandFailureConfigMissing
+	case strings.Contains(message, "secret") && strings.Contains(message, "declared as external") && strings.Contains(message, "could not be found"):
+		return agentcontrol.CommandFailureSecretMissing
+	case strings.Contains(message, "no suitable node"):
+		return agentcontrol.CommandFailurePlacement
+	case strings.Contains(message, "port is already allocated") || (strings.Contains(message, "port") && strings.Contains(message, "is already in use")) || strings.Contains(message, "address already in use"):
+		return agentcontrol.CommandFailurePortUnavailable
+	case strings.Contains(message, "pull access denied") || strings.Contains(message, "manifest unknown") || strings.Contains(message, "no such image") || strings.Contains(message, "repository does not exist"):
+		return agentcontrol.CommandFailureImageUnavailable
+	default:
+		return agentcontrol.CommandFailureStackDeploy
+	}
 }
 
 type limitedBuffer struct {

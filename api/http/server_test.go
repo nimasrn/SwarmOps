@@ -721,7 +721,16 @@ func TestClassifyCommandErrorRespectsExplicitlyPermanentOutcomes(t *testing.T) {
 	if classified := classifyCommandError(policy); !queue.IsPermanent(classified) {
 		t.Fatalf("policy error stayed retriable: %v", classified)
 	}
+	typed := testCommandFailure{code: agentcontrol.CommandFailureNetworkMissing}
+	if classified := classifyCommandError(typed); !queue.IsPermanent(classified) {
+		t.Fatalf("deterministic machine failure stayed retriable: %v", classified)
+	}
 	if classified := classifyCommandError(nil); classified != nil {
 		t.Fatalf("nil error classified = %v", classified)
 	}
 }
+
+type testCommandFailure struct{ code string }
+
+func (err testCommandFailure) Error() string           { return "machine API returned HTTP 502" }
+func (err testCommandFailure) SafeFailureCode() string { return err.code }

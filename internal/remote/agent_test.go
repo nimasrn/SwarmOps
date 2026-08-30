@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,9 +17,35 @@ import (
 	"testing"
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 )
+
+func TestCommandHTTPErrorRetainsOnlyAllowlistedFailureCode(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		body string
+		want string
+	}{
+		{body: `{"failureCode":"docker_external_network_missing","error":"untrusted remote detail"}`, want: agentcontrol.CommandFailureNetworkMissing},
+		{body: `{"failureCode":"untrusted_remote_text"}`, want: ""},
+		{body: `not json`, want: ""},
+	} {
+		response := &http.Response{Body: io.NopCloser(strings.NewReader(testCase.body)), StatusCode: http.StatusBadGateway}
+		err := commandHTTPError(response)
+		var agentErr *AgentHTTPError
+		if !errors.As(err, &agentErr) {
+			t.Fatalf("error = %T, want AgentHTTPError", err)
+		}
+		if got := agentErr.SafeFailureCode(); got != testCase.want {
+			t.Fatalf("safe failure code = %q, want %q", got, testCase.want)
+		}
+		if strings.Contains(err.Error(), "untrusted") {
+			t.Fatalf("error leaked response body: %q", err)
+		}
+	}
+}
 
 func TestManagerConnectsThroughPinnedMachineAPIWithoutPersistingKey(t *testing.T) {
 	t.Parallel()

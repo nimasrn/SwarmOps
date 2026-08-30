@@ -63,6 +63,18 @@ func isPermanent(err error) bool {
 // classified outcome cannot be reinterpreted by later heuristics.
 func IsPermanent(err error) bool { return isPermanent(err) }
 
+type safeFailureCoder interface {
+	SafeFailureCode() string
+}
+
+func safeFailureCode(err error) string {
+	var value safeFailureCoder
+	if errors.As(err, &value) {
+		return value.SafeFailureCode()
+	}
+	return ""
+}
+
 // commandFailureDiagnostic converts locally generated execution errors into a
 // bounded operator explanation. Raw remote output never enters the command
 // ledger or browser, but the safe failure class and next action must survive.
@@ -71,6 +83,7 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 	if err != nil {
 		message = strings.ToLower(err.Error())
 	}
+	safeCode := safeFailureCode(err)
 	switch {
 	case strings.Contains(message, "command execution ended before completion") || strings.Contains(message, "core restarted while"):
 		return "execution_interrupted", "The controller stopped before it could confirm the remote result.", "Verify the target's current state, then retry only if the intended change is still missing."
@@ -86,6 +99,24 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "traefik_dynamic_config_required", "The reviewed Traefik dynamic config is missing.", "Create the configured dynamic Swarm config, then retry."
 	case action == "traefik.reconcile" && strings.Contains(message, "dashboard") && strings.Contains(message, "secret"):
 		return "traefik_dashboard_auth_required", "The Traefik dashboard-auth secret is missing.", "Create the configured htpasswd Swarm secret, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_external_network_missing":
+		return "traefik_network_required", "Docker rejected the Traefik deployment because its required external overlay network is missing.", "Open Gateway & ports, refresh Installation prerequisites, repair the missing resources, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_external_config_missing":
+		return "traefik_config_required", "Docker rejected the Traefik deployment because a required external configuration is missing.", "Open Gateway & ports, refresh Installation prerequisites, repair the missing resources, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_external_secret_missing":
+		return "traefik_secret_required", "Docker rejected the Traefik deployment because a required external secret is missing.", "Open Gateway & ports, refresh Installation prerequisites, repair the missing resources, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_placement_unsatisfied":
+		return "traefik_placement_unsatisfied", "Docker could not place the Traefik service on an eligible node.", "Open Swarm placement, verify a ready active manager has nim.edge=true and sufficient capacity, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_port_unavailable":
+		return "traefik_port_unavailable", "Docker could not start Traefik because a configured gateway port is already in use.", "Inspect the selected manager for an existing gateway using ports 80 or 443, resolve the conflict, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_image_unavailable":
+		return "traefik_image_unavailable", "The selected manager could not pull the reviewed Traefik image.", "Verify registry reachability and the configured immutable Traefik image, then retry."
+	case action == "traefik.reconcile" && safeCode == "docker_command_timed_out":
+		return "traefik_deploy_timed_out", "The Traefik deployment did not converge before the machine-agent deadline.", "Inspect the Traefik service tasks and manager capacity, confirm the intended stack state, then retry only if it is absent."
+	case action == "traefik.reconcile" && safeCode == "docker_command_output_limit":
+		return "traefik_deploy_output_limit", "The Traefik deployment produced more status output than the bounded machine-agent response allows.", "Inspect the Traefik service tasks for repeated failures, resolve them, then retry only if the stack is absent."
+	case action == "traefik.reconcile" && safeCode == "docker_stack_deploy_failed":
+		return "traefik_deploy_failed", "Docker rejected or failed to converge the reviewed Traefik stack.", "Inspect Traefik service tasks and the selected manager's current gateway state, resolve the reported Docker condition, then retry only if the stack is absent."
 	case strings.Contains(message, "traefik singleton service was not found"):
 		return "gateway_required", "The managed Traefik gateway is required before this stack can create private routes.", "Install and verify Traefik under Gateway, routes & DNS, then retry."
 	case strings.Contains(message, "nim.stateful"):

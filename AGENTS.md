@@ -13,15 +13,20 @@ Read [README.md](README.md) before changing this application. Root
 - Never put a password, private key/passphrase, session key, registry config,
   cloud token, Compose content, build context, or service-log content into an
   audit record or log. Persist only non-secret remote-server profile metadata.
-- `web/src/navigation.ts` is the console's information architecture and the
-  ONLY place it is written down: areas, screens, icons, the one line each
-  screen exists to answer, retired hashes, and the set that needs a selected
-  cluster. Both navigation tiers, the breadcrumb, the palette, and the gating
-  rule are derived from it. Adding a screen means adding it there — a routable
-  screen in no area is a test failure, and is exactly how
+- `web/src/navigation/navigation.ts` is the console's information architecture
+  and the ONLY place it is written down: areas, screens, icons, `G`-chord
+  letters, the one line each screen exists to answer, retired hashes, and the
+  set that needs a selected cluster. Both navigation tiers, the breadcrumb, the
+  palette, the keyboard chords, and every screen's own TITLE and subtitle are
+  derived from it. Adding a screen means adding it there and giving it a branch
+  in `web/src/shell/page-router.tsx` — a routable screen in no area, or in no
+  router branch, is a test failure, and the first of those is exactly how
   `agent-diagnostics` shipped for three releases with a title, a section, and
   no way to reach it. Never reintroduce a second list of pages.
-- The palette's CONTENTS are this product's (`web/src/palette.tsx`); its
+- The palette's CONTENTS are this product's (`web/src/navigation/palette.tsx`);
+  it lists actions, recently opened screens, the named things in the selected
+  cluster, and finally every destination — a palette that lists only screens
+  cannot answer "where is `checkout-api`", which is what an operator types. Its
   surface is the kit's `CommandPalette`. The ⌘K binding lives in the app for
   the same reason: a kit component binding a global chord collides with every
   other consumer on the page.
@@ -44,8 +49,8 @@ Read [README.md](README.md) before changing this application. Root
 - The brand LOCKUP is the kit's `Brand`; this app owns only the mark, the two
   words, and `--nim-brand-accent`. Never re-describe the row, the type, or the
   tagline in app CSS.
-- The mark is `web/src/brand.tsx` — "Quorum", three hive cells for the three
-  managers that have to agree — and `web/public/favicon.svg` is the same
+- The mark is `web/src/components/brand.tsx` — "Quorum", three hive cells for the
+  three managers that have to agree — and `web/public/favicon.svg` is the same
   geometry written out. They are ONE mark: change both in the same edit or they
   drift. The mark uses the same malachite accent as navigation and primary
   actions; health must therefore remain explicit in words beside colour. The
@@ -57,6 +62,29 @@ Read [README.md](README.md) before changing this application. Root
 - A saved deployment-plan draft is browser-local and holds the SELECTION only —
   ids, ref, slot, domain, port, health path. Never write a path, digest,
   finding, provider response, or any evidence into browser storage.
+- The console's directories decide what a file may contain, and nothing may
+  reach across them the wrong way. `data/` reads the controller and owns the
+  polling hooks; `lib/` computes and formats and imports no component;
+  `navigation/` names screens and binds keys; `components/` composes the kit
+  into the handful of app-level shapes every screen shares; `screens/<area>/`
+  draws one destination each; `shell/` holds the three together. `app.tsx` is
+  the entry point and nothing else — it was two and a half thousand lines once,
+  and every bug in it was a bug nobody could find.
+- One implementation of every number: `lib/format.ts` owns `formatBytes`,
+  `formatDateTime`, `shortID` and the rest. Nine screens each had their own and
+  they had already drifted. A local copy is a test failure.
+- One confirmation control: `components/confirm-phrase.tsx`. A destructive
+  action states its consequence, shows the phrase, and stays disabled until the
+  phrase matches — eleven hand-rolled copies is how three of them stopped
+  stating the consequence at all.
+- Every top-level screen composes `components/screen.tsx`, which reads its
+  title and its one-line purpose from `navigation.ts`. Only a detail view
+  INSIDE a screen reaches for `Page` and `DetailHeader` directly. This is why
+  the nav item and the heading it opens can no longer disagree.
+- A screen offers between two and four INSIGHTS under its title: a reading, what
+  it means, and where to act on it. A fifth is a table. A control that does
+  nothing is never rendered — a "Create alert" button with no handler teaches
+  an operator that the console is a mock-up.
 - Add a reusable kit component only when the
   need is general, then update `nim-ui` documentation and gallery per its own
   scoped policy.

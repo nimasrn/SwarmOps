@@ -157,6 +157,35 @@ func TestTraefikACMEFailureKeepsSafeRecoveryGuidance(t *testing.T) {
 	}
 }
 
+type testSafeFailure struct{ code string }
+
+func (err testSafeFailure) Error() string           { return "machine API returned HTTP 502" }
+func (err testSafeFailure) SafeFailureCode() string { return err.code }
+
+func TestTraefikMachineFailureKeepsSpecificSafeRecoveryGuidance(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	input := testInput()
+	input.Action = "traefik.reconcile"
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	failed, event, err := store.Fail(command.ID, PermanentError(testSafeFailure{code: "docker_port_unavailable"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event != "needs_attention" || failed.FailureCode != "traefik_port_unavailable" {
+		t.Fatalf("failure = %#v event=%q", failed, event)
+	}
+	if !strings.Contains(failed.FailureSummary, "gateway port") || !strings.Contains(failed.RecoveryHint, "ports 80 or 443") {
+		t.Fatalf("failure guidance = %#v", failed)
+	}
+}
+
 func TestPullLeaseLifecycleRequiresCapabilityAndPersistsAgentStates(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)

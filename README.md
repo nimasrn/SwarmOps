@@ -156,10 +156,18 @@ version is deployed.
 ## Console information architecture
 
 The console uses a two-level operator hierarchy, and both levels are built
-from one file — `web/src/navigation.ts`, which holds the areas, the screens,
-their icons, the one line each screen exists to answer, and every retired hash
-that must keep resolving. A screen that is routable and appears in no area is a
-test failure, not a discovery an operator makes.
+from one file — `web/src/navigation/navigation.ts`, which holds the areas, the
+screens, their icons, their keyboard chords, the one line each screen exists to
+answer, and every retired hash that must keep resolving. A screen that is
+routable and appears in no area — or in no branch of
+`web/src/shell/page-router.tsx` — is a test failure, not a discovery an
+operator makes.
+
+The same record supplies each screen's own heading. Every top-level screen is
+drawn in one frame (`web/src/components/screen.tsx`) that reads its title and
+its one-line purpose from navigation, so the words on the item you clicked are
+the words at the top of the screen that opens; before this the item read "Swarm
+& placement" and the screen it opened was titled "Infrastructure".
 
 The areas are named for the operator's job rather than the system's object
 model. A persistent icon rail owns **Overview**, **Deliver**, **Fleet**,
@@ -176,11 +184,30 @@ TLS their own destinations. Observe owns health, logs, and collectors. Activity
 owns runs, the fixed action catalog, and audit. Control owns controller
 authority and recovery.
 
-⌘K opens a command palette that both reaches any destination and runs the
+Under every screen title sit two to four **insights**: a reading, what it
+means, and — where one exists — the screen that would change it. A screen an
+operator opens and reads nothing else on has still told them the thing it
+exists to say. A control that does nothing is never drawn.
+
+⌘K (or `/`) opens a command palette that reaches any destination, runs the
 operations an operator reaches for under pressure — deploy from source, add a
-server, refresh, diagnose a connection, review runs, sign out, and point the
-console at another cluster. It ranks by where the match landed, so the thing
-whose name was started is the thing Enter is already on.
+server, refresh, diagnose a connection, review runs, sign out, point the console
+at another cluster — and finds the named things in the selected cluster, so
+typing `checkout-api` offers the service rather than the screen it might be on.
+It ranks by where the match landed, so the thing whose name was started is the
+thing Enter is already on, and the screens you opened most recently come first.
+
+The rest of the keyboard is written down in one place and shown by `?`: `G` then
+an area letter jumps (`G` `H` for the command centre, `G` `F` for fleet), `R`
+re-reads the current screen, `D` opens connection diagnostics, and Escape
+dismisses. Bare letters never fire inside a text field, because this console
+asks operators to type exact confirmation phrases and a swallowed keystroke
+there is expensive.
+
+What currently needs a decision is computed once and shown twice: as rows on the
+command centre, and as a labelled control in the masthead from every other
+screen. Each row opens the screen that can resolve it, rather than the screen
+that noticed it.
 
 A page may show a compact status owned elsewhere, but it must link to the
 owner for investigation or mutation. It must not recreate the owner's tables,
@@ -322,6 +349,12 @@ safe metadata: action, target, state, attempt count, next retry, and a bounded
 failure code, operator summary, and recovery hint. Raw remote output and error
 text remain excluded, but the failure class and next action are retained instead
 of collapsing every problem into the same generic sentence.
+For bounded Docker commands, the machine agent reduces failures to an
+allow-listed class such as missing external network/config/secret, unsatisfied
+placement, occupied gateway port, unavailable image, timeout, or output-limit
+failure. Core accepts only those fixed codes and maps them to the explanation
+shown in **Activity → Runs**; arbitrary agent or Docker response text is still
+discarded at the trust boundary.
 
 The active-core worker runs one command at a time. Its states are `queued`,
 `running`, `retry_scheduled`, `succeeded`, and `needs_attention`. Only
@@ -356,7 +389,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current source version is `0.10.4`. Release history is in
+The current source version is `0.11.0`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).

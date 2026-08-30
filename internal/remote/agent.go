@@ -34,16 +34,27 @@ var (
 	certificateFingerprintPattern = regexp.MustCompile(`^SHA256:[A-Fa-f0-9]{64}$`)
 )
 
-// AgentHTTPError retains only a response class. It deliberately does not
-// retain response bodies, which belong to an untrusted remote process and may
-// contain output that must never enter controller state or the browser.
-type AgentHTTPError struct{ StatusCode int }
+// AgentHTTPError retains only a response class and an optional allow-listed
+// failure code. It deliberately does not retain response bodies, which belong
+// to an untrusted remote process and may contain output that must never enter
+// controller state or the browser.
+type AgentHTTPError struct {
+	FailureCode string
+	StatusCode  int
+}
 
 func (err *AgentHTTPError) Error() string {
 	if err == nil || err.StatusCode == 0 {
 		return "machine API returned an unsuccessful response"
 	}
 	return fmt.Sprintf("machine API returned HTTP %d", err.StatusCode)
+}
+
+func (err *AgentHTTPError) SafeFailureCode() string {
+	if err == nil || !agentcontrol.ValidCommandFailureCode(err.FailureCode) {
+		return ""
+	}
+	return err.FailureCode
 }
 
 // AgentRunner is the controller-side adapter for the machine agent's fixed
@@ -427,15 +438,22 @@ func (c *agentClient) Command(ctx context.Context, input agentcontrol.Request) (
 		return "", ErrAgentAPIUnauthorized
 	}
 	if response.StatusCode != http.StatusOK {
-		return "", &AgentHTTPError{StatusCode: response.StatusCode}
+		return "", commandHTTPError(response)
 	}
-	var output struct {
-		Output string `json:"output"`
-	}
+	var output agentcontrol.CommandResponse
 	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&output); err != nil {
 		return "", fmt.Errorf("decode machine command response: %w", err)
 	}
 	return output.Output, nil
+}
+
+func commandHTTPError(response *http.Response) error {
+	result := &AgentHTTPError{StatusCode: response.StatusCode}
+	var payload agentcontrol.CommandResponse
+	if json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&payload) == nil && agentcontrol.ValidCommandFailureCode(payload.FailureCode) {
+		result.FailureCode = payload.FailureCode
+	}
+	return result
 }
 
 func (c *agentClient) postTyped(ctx context.Context, endpoint string, input, output any) error {

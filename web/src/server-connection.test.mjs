@@ -6,7 +6,7 @@ import {
   isNativeAgent,
   serverConnectionLabel,
   serverEndpointLabel,
-} from './server-connection.ts'
+} from './data/server-connection.ts'
 
 const base = {
   authentication: 'api_key',
