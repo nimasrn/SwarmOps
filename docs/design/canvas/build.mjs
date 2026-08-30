@@ -8,27 +8,27 @@ import { Map as IAMap, Model } from './screens-map.mjs'
 
 const ARTBOARDS = [
   ['Main', IAMap, 1520, 1240, 'page-1'],
-  ['Model', Model, 1440, 1100, 'page-1'],
-  ['FirstRun', FirstRun, 1440, 980, 'page-1'],
+  ['Model', Model, 1440, 1120, 'page-1'],
+  ['FirstRun', FirstRun, 1440, 950, 'page-1'],
 
-  ['Home', Home, 1440, 1120, 'page-2'],
-  ['Machines', Machines, 1440, 1040, 'page-2'],
-  ['MachineDetail', MachineDetail, 1440, 1100, 'page-2'],
+  ['Home', Home, 1440, 1110, 'page-2'],
+  ['Machines', Machines, 1440, 960, 'page-2'],
+  ['MachineDetail', MachineDetail, 1440, 1200, 'page-2'],
 
-  ['ContainerDetail', ContainerDetail, 1440, 1080, 'page-2'],
-  ['Apps', Apps, 1440, 900, 'page-2'],
-  ['AppDetail', AppDetail, 1440, 1150, 'page-2'],
+  ['ContainerDetail', ContainerDetail, 1440, 1030, 'page-2'],
+  ['Apps', Apps, 1440, 750, 'page-2'],
+  ['AppDetail', AppDetail, 1440, 1090, 'page-2'],
 
-  ['Deploy', Deploy, 1440, 1140, 'page-2'],
-  ['DeployRelease', DeployRelease, 1440, 1060, 'page-2'],
-  ['Platform', Platform, 1440, 1090, 'page-2'],
+  ['Deploy', Deploy, 1440, 1275, 'page-2'],
+  ['DeployRelease', DeployRelease, 1440, 1090, 'page-2'],
+  ['Platform', Platform, 1440, 970, 'page-2'],
 
-  ['Gateway', Gateway, 1440, 1160, 'page-2'],
-  ['Routes', Routes, 1440, 1000, 'page-2'],
-  ['Runs', Runs, 1440, 1320, 'page-2'],
+  ['Gateway', Gateway, 1440, 1330, 'page-2'],
+  ['Routes', Routes, 1440, 1075, 'page-2'],
+  ['Runs', Runs, 1440, 1225, 'page-2'],
 
-  ['Core', Core, 1440, 1260, 'page-2'],
-  ['Agents', Agents, 1440, 1000, 'page-2'],
+  ['Core', Core, 1440, 1335, 'page-2'],
+  ['Agents', Agents, 1440, 1045, 'page-2'],
 ]
 
 /* Page 1 is the argument; page 2 is the console. They are separable sets and
