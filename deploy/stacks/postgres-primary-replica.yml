@@ -1,0 +1,152 @@
+# PostgreSQL primary plus streaming replica using the official image. This is
+# a deliberate stateful profile: label one durable node nim.postgres=true,
+# nim.postgres.slot=primary and a distinct one nim.postgres=true,
+# nim.postgres.slot=replica; create the two versioned secrets; then run a
+# logical backup and restore drill before production use. This profile does
+# not implement automatic promotion, so an operator must use the documented
+# failover/recovery procedure rather than pretending two nodes are HA by
+# default. No service publishes a host port.
+version: "3.9"
+
+services:
+  postgres-primary:
+    image: ${POSTGRES_IMAGE:-postgres:17.11-bookworm}
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - wal_keep_size=512MB
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: ${POSTGRES_DATABASE:-app}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_primary_password
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      REPLICATION_PASSWORD_FILE: /run/secrets/postgres_replication_password
+    configs:
+      - source: postgres_primary_init
+        target: /docker-entrypoint-initdb.d/10-replication.sh
+        mode: 0555
+    secrets:
+      - source: postgres_primary_password
+        target: postgres_primary_password
+        uid: "999"
+        gid: "999"
+        mode: 0400
+      - source: postgres_replication_password
+        target: postgres_replication_password
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+    networks: [postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --port=5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.postgres == true
+          - node.labels.nim.postgres.slot == primary
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+
+  postgres-replica:
+    image: ${POSTGRES_IMAGE:-postgres:17.11-bookworm}
+    entrypoint: ["/bin/bash", "/opt/swarmops/postgres-replica-entrypoint.sh"]
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      REPLICATION_PASSWORD_FILE: /run/secrets/postgres_replication_password
+    configs:
+      - source: postgres_replica_entrypoint
+        target: /opt/swarmops/postgres-replica-entrypoint.sh
+        mode: 0555
+    # The replica needs only the replication credential to seed and follow the
+    # primary. Keep the primary database password off this secondary task.
+    secrets:
+      - source: postgres_replication_password
+        target: postgres_replication_password
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    networks: [postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --host=127.0.0.1 --port=5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.postgres == true
+          - node.labels.nim.postgres.slot == replica
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+
+networks:
+  postgres:
+    driver: overlay
+    attachable: false
+    driver_opts:
+      encrypted: "true"
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+
+configs:
+  postgres_primary_init:
+    file: ../stateful/postgres-primary-init.sh
+    name: ${POSTGRES_PRIMARY_INIT_CONFIG_NAME:-postgres_primary_init_v1}
+  postgres_replica_entrypoint:
+    file: ../stateful/postgres-replica-entrypoint.sh
+    name: ${POSTGRES_REPLICA_ENTRYPOINT_CONFIG_NAME:-postgres_replica_entrypoint_v1}
+
+secrets:
+  postgres_primary_password:
+    external: true
+    name: ${POSTGRES_PRIMARY_PASSWORD_SECRET:-postgres_primary_password_v1}
+  postgres_replication_password:
+    external: true
+    name: ${POSTGRES_REPLICATION_PASSWORD_SECRET:-postgres_replication_password_v1}

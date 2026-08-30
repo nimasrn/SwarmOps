@@ -26,9 +26,9 @@ const web = dirname(dirname(fileURLToPath(import.meta.url)))
 const kit = join(web, 'vendor', 'nim-ui')
 const fail = (message) => {
   console.error(`\nvendored kit is stale: ${message}\n`)
-  console.error('Rebuild the kit and copy its dist across:')
-  console.error('  npm --prefix ../../../nim-ui run build')
-  console.error('  cp -R ../../../nim-ui/dist/. vendor/nim-ui/dist/\n')
+  console.error('Rebuild the standalone nim-ui checkout and copy its dist across:')
+  console.error('  npm --prefix /path/to/nim-ui run build')
+  console.error('  cp -R /path/to/nim-ui/dist/. vendor/nim-ui/dist/\n')
   process.exit(1)
 }
 

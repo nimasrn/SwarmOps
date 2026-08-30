@@ -41,6 +41,11 @@ const (
 	ConnectionAgentPull      = "agent_pull"
 	ConnectionSSH            = "ssh"
 
+	// ConnectionConnected is the profile state a caller outside this package
+	// must be able to name: Prometheus service discovery lists the machines
+	// that can currently be measured, and "currently" is exactly this.
+	ConnectionConnected = connectedState
+
 	connectedState      = "connected"
 	disconnectedState   = "disconnected"
 	profileStateKey     = "server-profiles"

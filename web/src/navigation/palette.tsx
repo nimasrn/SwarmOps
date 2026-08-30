@@ -64,11 +64,11 @@ export function paletteCommands(context: PaletteContext): PaletteCommand[] {
   const { entities, managers, onRefresh, onSelectServer, onShortcuts, onSignOut, open, recents, refreshLabel, selectedServerID } = context
 
   const actions: PaletteCommand[] = [
-    { group: 'Run an action', hint: 'Build a repository or directory and roll it out', icon: 'play', id: 'act-deploy', keywords: 'ship release rollout new', label: 'Deploy from source', onRun: () => open('source-deploy') },
-    { group: 'Run an action', hint: 'Enroll a host with one outbound install command', icon: 'plus', id: 'act-add-server', keywords: 'enroll connect machine host agent new', label: 'Add a server', onRun: () => open('servers') },
+    { group: 'Run an action', hint: 'Build a repository or directory and roll it out', icon: 'play', id: 'act-deploy', keywords: 'ship release rollout new', label: 'Deploy from source', onRun: () => open('deploy') },
+    { group: 'Run an action', hint: 'Enroll a host with one outbound install command', icon: 'plus', id: 'act-add-server', keywords: 'enroll connect machine host agent new', label: 'Add a server', onRun: () => open('machines') },
     { group: 'Run an action', hint: refreshLabel, icon: 'refresh', id: 'act-refresh', keywords: 'reload update snapshot', label: 'Refresh this screen', onRun: onRefresh, shortcut: 'R' },
-    { group: 'Run an action', hint: 'Find out why an agent, Docker, or Swarm is not answering', icon: 'link', id: 'act-diagnose', keywords: 'troubleshoot debug offline broken', label: 'Diagnose a connection', onRun: () => open('agent-diagnostics'), shortcut: 'D' },
-    { group: 'Run an action', hint: 'Review queued, running, failed, and recovered operations', icon: 'activity', id: 'act-runs', keywords: 'queue jobs history operations', label: 'Review recent runs', onRun: () => open('commands') },
+    { group: 'Run an action', hint: 'Find out why an agent, Docker, or Swarm is not answering', icon: 'link', id: 'act-diagnose', keywords: 'troubleshoot debug offline broken', label: 'Diagnose a connection', onRun: () => open('machines'), shortcut: 'D' },
+    { group: 'Run an action', hint: 'Review queued, running, failed, and recovered operations', icon: 'activity', id: 'act-runs', keywords: 'queue jobs history operations', label: 'Review recent runs', onRun: () => open('runs') },
     { group: 'Run an action', hint: 'Every chord this console binds, in one sheet', icon: 'sparkle', id: 'act-shortcuts', keywords: 'keyboard keys help chord binding', label: 'Show keyboard shortcuts', onRun: onShortcuts, shortcut: '?' },
     { group: 'Run an action', hint: 'End this operator session in the browser', icon: 'sign-out', id: 'act-sign-out', keywords: 'logout leave exit', label: 'Sign out', onRun: onSignOut },
   ]
@@ -155,21 +155,21 @@ export function paletteEntities({ servers, services, stacks }: {
       id: server.id,
       kind: 'server' as const,
       name: server.name,
-      page: 'servers' as const,
+      page: 'machines' as const,
     })),
     ...services.map((service) => ({
       hint: `${service.runningTasks} / ${service.desiredTasks} running${service.stack ? ` · ${service.stack}` : ''}`,
       id: service.id,
       kind: 'service' as const,
       name: service.name,
-      page: 'services' as const,
+      page: 'workloads' as const,
     })),
     ...stacks.map((stack) => ({
       hint: `${stack.serviceCount} service${stack.serviceCount === 1 ? '' : 's'} · ${stack.runningTasks} running`,
       id: stack.name,
       kind: 'stack' as const,
       name: stack.name,
-      page: 'stacks' as const,
+      page: 'workloads' as const,
     })),
   ]
 }

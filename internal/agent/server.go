@@ -34,6 +34,7 @@ type Server struct {
 	config         Config
 	diagnosticsLog *diagnosticRecorder
 	enrollment     *enrollment
+	collector      *MetricsCollector
 	startedAt      time.Time
 	token          []byte
 }
@@ -58,7 +59,7 @@ func NewServer(config Config, token []byte) (*Server, error) {
 	startedAt := time.Now().UTC()
 	diagnosticsLog := newDiagnosticRecorder()
 	diagnosticsLog.record(startedAt, "agent_started", "info", "The SwarmOps machine agent started")
-	return &Server{config: config, diagnosticsLog: diagnosticsLog, enrollment: pending, startedAt: startedAt, token: append([]byte(nil), token...)}, nil
+	return &Server{config: config, diagnosticsLog: diagnosticsLog, enrollment: pending, collector: NewMetricsCollector(config), startedAt: startedAt, token: append([]byte(nil), token...)}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -69,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/diagnostics", s.diagnostics)
 	mux.HandleFunc("POST /v1/agent/update", s.requestAgentUpdate)
 	mux.HandleFunc("GET /v1/snapshot", s.snapshot)
+	mux.HandleFunc("GET /v1/metrics", s.machineMetrics)
 	if s.enrollment != nil {
 		// One-time, single-use exchange of the installer's enrollment secret
 		// for the machine API key. It closes permanently after first use.
@@ -99,6 +101,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /v1/engine/secrets", s.engineSecrets)
 		mux.HandleFunc("GET /v1/engine/configs", s.engineConfigs)
 		mux.HandleFunc("GET /v1/engine/swarm", s.engineSwarm)
+		mux.HandleFunc("GET /v1/swarm/join-token", s.swarmJoinToken)
 		mux.HandleFunc("GET /v1/engine/system/df", s.engineDiskUsage)
 		mux.HandleFunc("GET /v1/engine/events", s.engineEvents)
 		mux.HandleFunc("POST /v1/engine/build", s.engineBuild)
@@ -167,6 +170,21 @@ func (s *Server) snapshot(response http.ResponseWriter, request *http.Request) {
 	writeJSON(response, value)
 }
 
+// machineMetrics is one measurement sample of this host and every container on
+// it. It is typed, so Core renders the exposition rather than trusting text
+// from this process; see internal/agentcontrol/metrics.go.
+//
+// It is authenticated like every other machine-API route. The unauthenticated
+// /metrics endpoint below stays as it is: that one serves the private overlay
+// network and answers with node capacity only.
+func (s *Server) machineMetrics(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(response, s.collector.Collect(request.Context()))
+}
+
 // Status is the connection handshake for a direct machine agent. It contains
 // no credentials, command output, or filesystem data.
 func (s *Server) status(response http.ResponseWriter, request *http.Request) {
@@ -212,6 +230,46 @@ func (s *Server) metrics(response http.ResponseWriter, request *http.Request) {
 		"swarmops_agent_snapshot_timestamp_seconds " + strconv.FormatInt(value.CollectedAt.Unix(), 10),
 	}
 	_, _ = response.Write([]byte(strings.Join(lines, "\n") + "\n"))
+}
+
+// swarmJoinToken hands the pinned controller the credential a new node needs
+// to join this manager's cluster.
+//
+// It exists because forming a multi-manager cluster otherwise requires an
+// operator to copy a token between hosts by hand — which is how it was done
+// before, through a configuration-management tool that had to hold SSH keys
+// for every machine. The token is read from Docker on demand, returned once,
+// and stored nowhere: not here, not in Core's command ledger, not in the audit
+// trail, and never in a browser response.
+func (s *Server) swarmJoinToken(response http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		http.Error(response, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	role := request.URL.Query().Get("role")
+	if !agentcontrol.ValidJoinRole(role) {
+		http.Error(response, "invalid Swarm join role", http.StatusUnprocessableEntity)
+		return
+	}
+	info, err := s.config.Docker.Info(request.Context())
+	if err != nil {
+		http.Error(response, "Docker is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if info.Swarm.LocalNodeState != "active" || !info.Swarm.ControlAvailable {
+		http.Error(response, "this machine is not a Swarm manager", http.StatusConflict)
+		return
+	}
+	token, err := s.config.Docker.SwarmJoinToken(request.Context(), role)
+	if err != nil || strings.TrimSpace(token) == "" {
+		http.Error(response, "Swarm join token is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(response, agentcontrol.SwarmJoinToken{
+		Address: strings.TrimSpace(info.Swarm.NodeAddr),
+		Role:    role,
+		Token:   strings.TrimSpace(token),
+	})
 }
 
 func (s *Server) enginePing(response http.ResponseWriter, request *http.Request) {

@@ -157,6 +157,12 @@ func main() {
 		if provisioner, ok := connection.Runner.(apihttp.Provisioner); ok {
 			target.Provisioner = provisioner
 		}
+		if meter, ok := connection.Runner.(apihttp.MachineMeter); ok {
+			target.Meter = meter
+		}
+		if joiner, ok := connection.Runner.(apihttp.SwarmJoiner); ok {
+			target.Joiner = joiner
+		}
 		if !connection.Profile.DockerAvailable || connection.Docker == nil {
 			// A connected native agent remains a valid server-readiness target even
 			// before Docker exists. Cluster reads and operations still fail closed

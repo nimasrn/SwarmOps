@@ -1,0 +1,191 @@
+# Three-member MongoDB replica set. This is an explicit stateful workload,
+# not a generic browser Compose deployment. Before deployment, label exactly
+# three distinct ready nodes with nim.mongo=true and nim.mongo.slot=1|2|3,
+# create the three versioned secrets below, and complete a backup/restore
+# drill. No service publishes a host port.
+version: "3.9"
+
+services:
+  mongo-1:
+    image: ${MONGO_IMAGE:-mongo:8.0.29}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--auth", "--keyFile", "/run/secrets/mongo_keyfile"]
+    # Only the initial member creates the root account. Letting every empty
+    # member run Mongo's root-user bootstrap would create divergent standalone
+    # admin databases before the replica set can perform its first sync.
+    environment:
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongo_root_password
+      MONGO_INITDB_ROOT_USERNAME_FILE: /run/secrets/mongo_root_username
+    volumes:
+      - mongo_1_data:/data/db
+    secrets: &mongo_secrets
+      - source: mongo_root_username
+        target: mongo_root_username
+        uid: "999"
+        gid: "999"
+        mode: 0400
+      - source: mongo_root_password
+        target: mongo_root_password
+        uid: "999"
+        gid: "999"
+        mode: 0400
+      - source: mongo_keyfile
+        target: mongo_keyfile
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    networks: [mongo]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.mongo == true
+          - node.labels.nim.mongo.slot == 1
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+
+  mongo-2:
+    image: ${MONGO_IMAGE:-mongo:8.0.29}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--auth", "--keyFile", "/run/secrets/mongo_keyfile"]
+    volumes:
+      - mongo_2_data:/data/db
+    secrets: &mongo_member_secrets
+      - source: mongo_keyfile
+        target: mongo_keyfile
+        uid: "999"
+        gid: "999"
+        mode: 0400
+    networks: [mongo]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.mongo == true
+          - node.labels.nim.mongo.slot == 2
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+
+  mongo-3:
+    image: ${MONGO_IMAGE:-mongo:8.0.29}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--auth", "--keyFile", "/run/secrets/mongo_keyfile"]
+    volumes:
+      - mongo_3_data:/data/db
+    secrets: *mongo_member_secrets
+    networks: [mongo]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.mongo == true
+          - node.labels.nim.mongo.slot == 3
+      update_config:
+        order: stop-first
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+
+  mongo-init:
+    image: ${MONGO_IMAGE:-mongo:8.0.29}
+    command:
+      - bash
+      - -ec
+      - |
+        while true; do
+          mongosh --host mongo-1 --quiet /opt/swarmops/mongo-init-replicaset.js && sleep 300 || sleep 5
+        done
+    configs:
+      - source: mongo_replicaset_init
+        target: /opt/swarmops/mongo-init-replicaset.js
+        mode: 0444
+    secrets:
+      - source: mongo_root_username
+        target: mongo_root_username
+        mode: 0400
+      - source: mongo_root_password
+        target: mongo_root_password
+        mode: 0400
+    networks: [mongo]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nim.mongo == true
+          - node.labels.nim.mongo.slot == 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+networks:
+  mongo:
+    driver: overlay
+    attachable: false
+    driver_opts:
+      encrypted: "true"
+
+volumes:
+  mongo_1_data:
+  mongo_2_data:
+  mongo_3_data:
+
+configs:
+  mongo_replicaset_init:
+    file: ../stateful/mongo-init-replicaset.js
+    name: ${MONGO_REPLICASET_INIT_CONFIG_NAME:-mongo_replicaset_init_v1}
+
+secrets:
+  mongo_root_username:
+    external: true
+    name: ${MONGO_ROOT_USERNAME_SECRET:-mongo_root_username_v1}
+  mongo_root_password:
+    external: true
+    name: ${MONGO_ROOT_PASSWORD_SECRET:-mongo_root_password_v1}
+  mongo_keyfile:
+    external: true
+    name: ${MONGO_KEYFILE_SECRET:-mongo_keyfile_v1}

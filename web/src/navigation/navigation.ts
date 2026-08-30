@@ -9,48 +9,47 @@ import type { IconName } from '@nim.zone/ui'
  * are why `agent-diagnostics` had a title and a section but no way to reach
  * it from navigation at all.
  *
- * The order here is the order on screen, and it is ordered by the operator's
- * JOB rather than by the system's object model: what you deliver, what you
- * deliver it onto, what is running, how traffic reaches it, what it is doing,
- * and what you did to it.
+ * There are six areas. There were eight, and two of them — Deliver and
+ * Workloads — were the same object at two points in its life, which is why an
+ * application and the service running it lived in different halves of the
+ * navigation. More importantly the DEPTH moved: you open a machine, a
+ * container, an application or a run, and everything about that thing is on
+ * its page, its charts included.
+ *
+ * That is why there is no Observe area any more. A fleet-wide chart cannot
+ * answer "for which node?", and every reading in this console now sits beside
+ * the object it describes.
  */
 
 export type WorkspacePage =
-  | 'agent-diagnostics'
+  // Home — the state of production and the next decision it needs.
+  | 'overview'
+  // Apps — what you ship, and the shared services it runs against.
   | 'applications'
-  | 'audit'
-  | 'builds'
-  | 'catalogue'
-  | 'commands'
-  | 'core'
-  | 'databases'
-  | 'dns'
-  | 'gateway'
-  | 'insights'
-  | 'logs'
-  | 'nodes'
-  | 'observability'
-  | 'overview'
-  | 'provisioning'
-  | 'registry'
-  | 'resources'
-  | 'routes'
-  | 'servers'
-  | 'services'
-  | 'kubernetes-import'
-  | 'source-deploy'
-  | 'stacks'
-  | 'tls'
-
-export type AreaKey =
-  | 'activity'
-  | 'control'
-  | 'deliver'
-  | 'fleet'
-  | 'observe'
-  | 'overview'
-  | 'traffic'
+  | 'deploy'
+  | 'platform'
+  | 'images'
   | 'workloads'
+  // Machines — the hosts, their agents, and the cluster they form.
+  | 'machines'
+  | 'swarm'
+  | 'containers'
+  | 'storage'
+  // Traffic — how a request from the internet reaches a workload.
+  | 'gateway'
+  | 'routes'
+  | 'dns'
+  | 'tls'
+  // Activity — everything this console did, and everything it may do.
+  | 'runs'
+  | 'logs'
+  | 'audit'
+  | 'catalog'
+  // Control — the controller itself and the software on every host.
+  | 'core'
+  | 'agents'
+
+export type AreaKey = 'home' | 'apps' | 'machines' | 'traffic' | 'activity' | 'control'
 
 export interface PageEntry {
   icon: IconName
@@ -73,7 +72,7 @@ export interface AreaEntry {
   label: string
   pages: PageEntry[]
   /** The letter that follows `G` to jump here. Chosen to be the word an
-      operator would say out loud — G then H for home, G then D for deliver —
+      operator would say out loud — G then H for home, G then M for machines —
       because a shortcut that has to be looked up is a shortcut nobody uses.
       Listed in the shortcuts sheet (`?`) so it is discoverable rather than
       folklore. */
@@ -85,52 +84,39 @@ export interface AreaEntry {
 export const AREAS: AreaEntry[] = [
   {
     icon: 'home',
-    key: 'overview',
+    key: 'home',
     shortcut: 'h',
-    label: 'Overview',
-    summary: 'The state of production and the next decision it needs.',
+    label: 'Home',
+    summary: 'What production is doing, and the one thing worth doing about it.',
     pages: [
-      { icon: 'home', key: 'overview', label: 'Command center', summary: 'Health, risk, and what to do next.', keywords: 'home dashboard start' },
+      { icon: 'home', key: 'overview', label: 'Overview', summary: 'Health, risk, and what to do next.', keywords: 'home dashboard start command center' },
     ],
   },
   {
-    icon: 'play',
-    key: 'deliver',
-    shortcut: 'd',
-    label: 'Deliver',
-    summary: 'Getting a change from source to running production.',
+    icon: 'layers',
+    key: 'apps',
+    shortcut: 'a',
+    label: 'Apps',
+    summary: 'What you ship, and the shared services it runs against.',
     pages: [
-      { icon: 'play', key: 'source-deploy', label: 'Deploy from source', summary: 'Build a repository or directory and roll it out.', keywords: 'ship release rollout git build deploy' },
-      { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product' },
-      { icon: 'package', key: 'builds', label: 'Images & builds', summary: 'Image history, digests, and build results.', keywords: 'docker image tag digest' },
-      { icon: 'download', key: 'kubernetes-import', label: 'Import from Kubernetes', summary: 'Read manifests and see what Swarm can run, and what it cannot.', keywords: 'kubernetes k8s migrate import yaml manifest deployment helm' },
-      { icon: 'cloud', key: 'registry', label: 'Container registry', summary: 'Where built images are pushed and pulled from.', keywords: 'ghcr docker hub credentials push' },
+      { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product service' },
+      { icon: 'play', key: 'deploy', label: 'Deploy', summary: 'Build a repository, archive, or image and roll it out.', keywords: 'ship release rollout git build source kubernetes import' },
+      { icon: 'database', key: 'platform', label: 'Platform services', summary: 'One database, one Prometheus, one Jaeger — shared by every app.', keywords: 'postgres mongo redis prometheus jaeger observability collectors databases' },
+      { icon: 'package', key: 'images', label: 'Images & registries', summary: 'What was built, and where it is pushed and pulled from.', keywords: 'docker image tag digest builds ghcr registry credentials' },
+      { icon: 'terminal', key: 'workloads', label: 'Stacks & services', summary: 'The Swarm objects underneath an application.', keywords: 'compose namespace stack replicas tasks scale advanced' },
     ],
   },
   {
     icon: 'server',
-    key: 'fleet',
-    shortcut: 'f',
-    label: 'Fleet',
-    summary: 'The machines under management and their connection evidence.',
+    key: 'machines',
+    shortcut: 'm',
+    label: 'Machines',
+    summary: 'The hosts, their agents, and the cluster they form.',
     pages: [
-      { icon: 'server', key: 'servers', label: 'Servers', summary: 'Enrolled hosts, their agents, and how to add one.', keywords: 'hosts machines agent enroll connect add' },
-      { icon: 'check-circle', key: 'provisioning', label: 'Host setup', summary: 'Readiness plans that make a host safe to operate.', keywords: 'provisioning readiness bootstrap prepare' },
-      { icon: 'layers', key: 'nodes', label: 'Swarm & placement', summary: 'Cluster membership, roles, labels, and drain.', keywords: 'nodes cluster manager worker placement' },
-      { icon: 'link', key: 'agent-diagnostics', label: 'Connection diagnostics', summary: 'Why an agent, Docker, or Swarm layer is not answering.', keywords: 'agent debug troubleshoot offline unreachable' },
-      { icon: 'package', key: 'resources', label: 'Docker resources', summary: 'Containers, volumes, networks, and images on a host.', keywords: 'containers volumes networks prune disk' },
-    ],
-  },
-  {
-    icon: 'database',
-    key: 'workloads',
-    shortcut: 'w',
-    label: 'Workloads',
-    summary: 'What is scheduled and running right now.',
-    pages: [
-      { icon: 'terminal', key: 'services', label: 'Swarm services', summary: 'Long-running replicated processes and their tasks.', keywords: 'replicas tasks scale service' },
-      { icon: 'layers', key: 'stacks', label: 'Stacks', summary: 'Namespaced groups of services, networks, and configs.', keywords: 'compose namespace stack' },
-      { icon: 'database', key: 'databases', label: 'Managed databases', summary: 'Stateful dependencies with owned placement and backups.', keywords: 'postgres mongo redis backup stateful' },
+      { icon: 'server', key: 'machines', label: 'Machines', summary: 'Every host under management, and how hard it is working.', keywords: 'hosts servers agent enroll connect add setup provisioning diagnostics' },
+      { icon: 'users', key: 'swarm', label: 'Swarm', summary: 'Cluster membership, roles, labels, and placement.', keywords: 'nodes cluster manager worker quorum drain infrastructure' },
+      { icon: 'layers', key: 'containers', label: 'Containers', summary: 'Everything running, on every host, with what it is using.', keywords: 'docker ps container task metrics' },
+      { icon: 'package', key: 'storage', label: 'Storage & networks', summary: 'Volumes, networks, images on disk, and what can be reclaimed.', keywords: 'volumes networks prune disk secrets configs resources' },
     ],
   },
   {
@@ -138,36 +124,25 @@ export const AREAS: AreaEntry[] = [
     key: 'traffic',
     shortcut: 't',
     label: 'Traffic',
-    summary: 'How requests from the internet reach a workload.',
+    summary: 'How a request from the internet reaches a workload.',
     pages: [
-      { icon: 'external', key: 'gateway', label: 'Gateway & ports', summary: 'Which gateway owns the edge, and what it publishes.', keywords: 'traefik ingress edge proxy ports' },
-      { icon: 'arrow-forward', key: 'routes', label: 'Routes', summary: 'Hostname and path rules mapped onto services.', keywords: 'router host rule path traefik' },
-      { icon: 'cloud', key: 'dns', label: 'DNS providers', summary: 'Where records are published from, and their credentials.', keywords: 'domain record cloudflare provider' },
-      { icon: 'shield', key: 'tls', label: 'TLS certificates', summary: 'Certificate issuance, renewal, and expiry.', keywords: 'ssl https acme letsencrypt certificate' },
-    ],
-  },
-  {
-    icon: 'trend-up',
-    key: 'observe',
-    shortcut: 'o',
-    label: 'Observe',
-    summary: 'The evidence a claim about production is made from.',
-    pages: [
-      { icon: 'trend-up', key: 'insights', label: 'Health', summary: 'Resource pressure and the checks behind a verdict.', keywords: 'metrics cpu memory insights monitoring' },
-      { icon: 'document', key: 'logs', label: 'Logs', summary: 'Service and container output, live and searchable.', keywords: 'output stdout stderr tail fluentd' },
-      { icon: 'chart', key: 'observability', label: 'Collectors', summary: 'The metric and log pipeline that produces the evidence.', keywords: 'prometheus grafana loki telemetry stack' },
+      { icon: 'external', key: 'gateway', label: 'Gateway', summary: 'What the edge is carrying, and where it is failing.', keywords: 'traefik ingress proxy ports entrypoints metrics' },
+      { icon: 'arrow-forward', key: 'routes', label: 'Routes', summary: 'Hostname, TCP and UDP rules mapped onto workloads.', keywords: 'router host rule path port publish' },
+      { icon: 'cloud', key: 'dns', label: 'Domains & DNS', summary: 'Where records are published from, and their credentials.', keywords: 'domain record cloudflare arvan provider' },
+      { icon: 'shield', key: 'tls', label: 'Certificates', summary: 'Issuance, renewal, and expiry.', keywords: 'ssl https acme letsencrypt certificate' },
     ],
   },
   {
     icon: 'activity',
     key: 'activity',
-    shortcut: 'a',
+    shortcut: 'r',
     label: 'Activity',
-    summary: 'Every operation this console has run, and what it may run.',
+    summary: 'Everything this console did, and everything it may do.',
     pages: [
-      { icon: 'activity', key: 'commands', label: 'Runs', summary: 'Durable operations: queued, running, failed, recovered.', keywords: 'queue commands jobs operations history' },
-      { icon: 'terminal', key: 'catalogue', label: 'Action catalog', summary: 'The fixed set of operations that may be queued.', keywords: 'actions catalogue run command available' },
-      { icon: 'shield', key: 'audit', label: 'Audit trail', summary: 'Who did what, when, and against which host.', keywords: 'log security compliance events who' },
+      { icon: 'activity', key: 'runs', label: 'Runs', summary: 'Durable operations: queued, running, failed, recovered.', keywords: 'queue commands jobs operations history retry' },
+      { icon: 'document', key: 'logs', label: 'Logs', summary: 'Container and service output, live and searchable.', keywords: 'output stdout stderr tail fluentd' },
+      { icon: 'shield', key: 'audit', label: 'Audit', summary: 'Who did what, when, and against which host.', keywords: 'log security compliance events who' },
+      { icon: 'terminal', key: 'catalog', label: 'Action catalog', summary: 'The fixed set of operations that may be queued.', keywords: 'actions catalogue run command available vocabulary' },
     ],
   },
   {
@@ -175,9 +150,10 @@ export const AREAS: AreaEntry[] = [
     key: 'control',
     shortcut: 'c',
     label: 'Control',
-    summary: 'The controller itself: authority, recovery, and policy.',
+    summary: 'The controller itself and the software on every host.',
     pages: [
-      { icon: 'settings', key: 'core', label: 'Controller & recovery', summary: 'Authority epoch, members, failover, and restore.', keywords: 'core settings quorum failover backup topology' },
+      { icon: 'settings', key: 'core', label: 'Core', summary: 'Where the controller runs, what version it is, and how to move it.', keywords: 'controller authority quorum failover backup restore topology recovery update' },
+      { icon: 'download', key: 'agents', label: 'Agents & updates', summary: 'Which version each machine runs, and how it gets the next one.', keywords: 'agent version rollout rollback upgrade policy' },
     ],
   },
 ]
@@ -210,16 +186,36 @@ export function isWorkspacePage(value: string): value is WorkspacePage {
  * Hashes that used to address a screen. Names change when a console learns
  * what its screens are actually for; a bookmark should not become a 404
  * because of it, so every retired hash keeps resolving.
+ *
+ * The six-area rebuild retired more of these at once than every previous
+ * release together, and each one still lands on the screen that took over its
+ * job — not on the home page, which is what a redirect that has given up
+ * looks like.
  */
 export const LEGACY_ROUTES: Record<string, WorkspacePage> = {
-  agents: 'servers',
-  applications: 'applications',
-  deploy: 'source-deploy',
-  diagnostics: 'agent-diagnostics',
+  // Retired with the six-area rebuild.
+  'agent-diagnostics': 'machines',
+  builds: 'images',
+  catalogue: 'catalog',
+  commands: 'runs',
+  databases: 'platform',
+  diagnostics: 'machines',
+  insights: 'overview',
+  'kubernetes-import': 'deploy',
+  nodes: 'swarm',
+  observability: 'platform',
+  observe: 'overview',
+  provisioning: 'machines',
+  registry: 'images',
+  resources: 'containers',
+  servers: 'machines',
+  services: 'workloads',
+  'source-deploy': 'deploy',
+  stacks: 'workloads',
+  // Retired earlier, and still resolving.
   home: 'overview',
-  infrastructure: 'nodes',
-  observe: 'insights',
-  operations: 'commands',
+  infrastructure: 'swarm',
+  operations: 'runs',
   settings: 'core',
   traefik: 'gateway',
   traffic: 'gateway',
@@ -227,13 +223,13 @@ export const LEGACY_ROUTES: Record<string, WorkspacePage> = {
 
 /**
  * Screens that read the SELECTED cluster and therefore cannot render without
- * a connected Swarm manager. Everything else — the fleet screens, the
- * controller, the audit trail — is exactly what an operator needs when no
- * manager is connected, and must never be gated behind one.
+ * a connected Swarm manager. Everything else — machines, the controller, the
+ * audit trail — is exactly what an operator needs when no manager is
+ * connected, and must never be gated behind one.
  */
 export const CLUSTER_PAGES: ReadonlySet<WorkspacePage> = new Set<WorkspacePage>([
-  'applications', 'builds', 'databases', 'dns', 'gateway', 'insights', 'logs',
-  'nodes', 'observability', 'resources', 'routes', 'services', 'stacks', 'tls',
+  'applications', 'containers', 'dns', 'gateway', 'images', 'logs', 'platform',
+  'routes', 'storage', 'swarm', 'tls', 'workloads',
 ])
 
 const AREA_BY_SHORTCUT = new Map(AREAS.map((area) => [area.shortcut, area]))

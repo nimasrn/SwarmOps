@@ -5,28 +5,24 @@ import type { DashboardData } from '../data/dashboard'
 import { CLUSTER_PAGES, type WorkspacePage } from '../navigation/navigation'
 import { WorkspaceLoading } from '../components/loading-screen'
 
-import { CommandCenter } from '../screens/overview/command-center'
-import { SourceDeployPage } from '../screens/deliver/source-deploy'
-import { ApplicationsPage } from '../screens/deliver/applications'
-import { BuildsPage } from '../screens/deliver/builds'
-import { KubernetesImportPage } from '../screens/deliver/kubernetes-import'
-import { ServersPage } from '../screens/fleet/servers'
-import { ServerReadinessPage } from '../screens/fleet/server-readiness'
-import { NodesPage } from '../screens/fleet/nodes'
-import { AgentDiagnosticsPage } from '../screens/fleet/agent-diagnostics'
-import { ResourcesPage } from '../screens/fleet/resources/index'
-import { ClusterRequiredPage } from '../screens/fleet/cluster-required'
-import { ServicesPage } from '../screens/workloads/services'
-import { StacksPage } from '../screens/workloads/stacks'
-import { DatabasesPage } from '../screens/workloads/databases'
+import { CommandCenter } from '../screens/home/command-center'
+import { DeployPage } from '../screens/apps/deploy'
+import { ApplicationsPage } from '../screens/apps/applications'
+import { ImagesPage } from '../screens/apps/images'
+import { PlatformServicesPage } from '../screens/apps/platform'
+import { WorkloadsPage } from '../screens/apps/workloads'
+import { MachinesPage } from '../screens/machines/machines'
+import { SwarmPage } from '../screens/machines/swarm'
+import { ContainersPage } from '../screens/machines/containers'
+import { StoragePage } from '../screens/machines/storage'
+import { ClusterRequiredPage } from '../screens/machines/cluster-required'
 import { TraefikControlPage } from '../screens/traffic/gateway'
-import { InsightsPage } from '../screens/observe/insights'
-import { LogsPage } from '../screens/observe/logs'
-import { ObservabilityPage } from '../screens/observe/observability'
+import { LogsPage } from '../screens/activity/logs'
 import { RunsPage } from '../screens/activity/runs'
-import { CommandCataloguePage } from '../screens/activity/catalogue'
+import { CommandCataloguePage } from '../screens/activity/catalog'
 import { AuditPage } from '../screens/activity/audit'
-import { CoreTopologyPage } from '../screens/control/core-topology'
+import { CoreTopologyPage } from '../screens/control/core'
+import { AgentsPage } from '../screens/control/agents'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -76,23 +72,19 @@ export function PageRouter(props: PageRouterProps) {
   // Screens that never need a cluster. These are exactly what an operator needs
   // when nothing is connected, so none of them may be gated behind a selection.
   switch (workspace) {
-    case 'servers':
+    case 'machines':
       return (
-        <ServersPage
+        <MachinesPage
           activeServerID={activeServer?.id ?? ''}
           onConnected={onConnected}
-          onDiagnostics={(id) => { if (id) onSelectServer(id); onOpen('agent-diagnostics') }}
-          onProvision={() => onOpen('provisioning')}
+          onDiagnostics={(id) => { if (id) onSelectServer(id) }}
+          onProvision={() => undefined}
           onRefresh={onRefreshServers}
           onSelect={onSelectServer}
           servers={servers}
           toast={toast}
         />
       )
-    case 'agent-diagnostics':
-      return <AgentDiagnosticsPage onRefreshServers={onRefreshServers} servers={servers} toast={toast} />
-    case 'provisioning':
-      return <ServerReadinessPage servers={servers} toast={toast} />
     case 'core':
       return (
         <>
@@ -100,6 +92,8 @@ export function PageRouter(props: PageRouterProps) {
           <CoreTopologyPage servers={servers} toast={toast} />
         </>
       )
+    case 'agents':
+      return <AgentsPage onOpen={onOpen} onRefresh={onRefreshServers} servers={servers} toast={toast} />
     case 'audit':
       return (
         <>
@@ -107,7 +101,7 @@ export function PageRouter(props: PageRouterProps) {
           {auditInitialLoading ? <WorkspaceLoading label="Reading the audit trail" /> : <AuditPage events={auditEvents} />}
         </>
       )
-    case 'commands':
+    case 'runs':
       return (
         <>
           {commandsError ? <Banner title="Runs unavailable" tone="danger">{commandsError}</Banner> : null}
@@ -118,9 +112,9 @@ export function PageRouter(props: PageRouterProps) {
                 commands={commands}
                 dashboard={data}
                 highlightedID={highlightedCommandID}
-                onOpenDiagnostics={() => onOpen('agent-diagnostics')}
+                onOpenDiagnostics={() => onOpen('machines')}
                 onOpenGateway={() => onOpen('gateway')}
-                onOpenSwarm={() => onOpen('nodes')}
+                onOpenSwarm={() => onOpen('swarm')}
                 onRefresh={onRefreshCommands}
                 servers={servers}
                 toast={toast}
@@ -128,25 +122,26 @@ export function PageRouter(props: PageRouterProps) {
             )}
         </>
       )
-    case 'catalogue':
+    case 'catalog':
       return (
         <CommandCataloguePage
           activeServerID={activeServer?.id ?? ''}
-          onQueued={(commandID) => { onHighlightCommand(commandID); onOpen('commands') }}
+          onQueued={(commandID) => { onHighlightCommand(commandID); onOpen('runs') }}
           servers={servers}
           toast={toast}
         />
       )
-    case 'kubernetes-import':
-      return <KubernetesImportPage onOpenStacks={() => onOpen('stacks')} />
-    case 'source-deploy':
-    case 'registry':
+    case 'deploy':
+      // Every way of starting a deployment is one screen with one plan: a
+      // repository, an archive, an image already pushed, or a set of
+      // Kubernetes manifests. Importing from Kubernetes used to be its own
+      // destination, which made it look like a different product rather than a
+      // different way in.
       return (
-        <SourceDeployPage
+        <DeployPage
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
           toast={toast}
-          view={workspace === 'registry' ? 'registry' : 'source'}
         />
       )
     case 'overview':
@@ -163,8 +158,8 @@ export function PageRouter(props: PageRouterProps) {
   if (CLUSTER_PAGES.has(workspace) && !activeServer) {
     return (
       <ClusterRequiredPage
-        onOpenProvisioning={() => onOpen('provisioning')}
-        onOpenServers={() => onOpen('servers')}
+        onOpenProvisioning={() => onOpen('machines')}
+        onOpenServers={() => onOpen('machines')}
         page={workspace}
         servers={servers}
       />
@@ -196,52 +191,35 @@ function ClusterScreen({ commands, data, onOpen, toast, workspace }: {
   workspace: WorkspacePage
 }) {
   switch (workspace) {
-    case 'nodes':
+    case 'swarm':
       return (
-        <NodesPage
+        <SwarmPage
           commands={commands}
           nodes={data.nodes}
-          onAddNode={() => onOpen('servers')}
-          onDiagnostics={() => onOpen('agent-diagnostics')}
+          onAddNode={() => onOpen('machines')}
+          onDiagnostics={() => onOpen('machines')}
           onOpenLogs={() => onOpen('logs')}
-          onReadiness={() => onOpen('provisioning')}
+          onReadiness={() => onOpen('machines')}
           overview={data.overview}
           toast={toast}
         />
       )
-    case 'stacks':
-      return <StacksPage nodes={data.nodes} onDeployFromSource={() => onOpen('source-deploy')} stacks={data.stacks} toast={toast} />
-    case 'services':
+    case 'workloads':
+      return <WorkloadsPage data={data} onOpen={onOpen} toast={toast} />
+    case 'platform':
       return (
-        <ServicesPage
-          onDiagnosisAction={(kind) => {
-            // A diagnosis hands off to the screen that owns the action; it does
-            // not perform it. Prune in particular is gated behind an explicit
-            // confirmation, and a destructive command run from a panel that
-            // just told you what was wrong would bypass exactly the
-            // deliberation that gate exists to force.
-            const destination: Partial<Record<string, WorkspacePage>> = {
-              'edit-constraint': 'services',
-              'label-node': 'nodes',
-              logs: 'logs',
-              prune: 'resources',
-              reschedule: 'nodes',
-            }
-            const next = destination[kind]
-            if (next) onOpen(next)
-            else toast({ message: `No screen owns "${kind}" yet.`, tone: 'neutral' })
-          }}
-          onOpenLogs={() => onOpen('logs')}
-          services={data.services}
+        <PlatformServicesPage
+          nodes={data.nodes}
+          onOpen={onOpen}
+          status={data.observability}
           toast={toast}
+          traefik={data.traefik}
         />
       )
-    case 'databases':
-      return <DatabasesPage toast={toast} />
     case 'applications':
-      return <ApplicationsPage onDeployFromSource={() => onOpen('source-deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
-    case 'builds':
-      return <BuildsPage onDeployFromSource={() => onOpen('source-deploy')} toast={toast} />
+      return <ApplicationsPage onDeployFromSource={() => onOpen('deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
+    case 'images':
+      return <ImagesPage onDeployFromSource={() => onOpen('deploy')} toast={toast} />
     case 'gateway':
       return <TraefikControlPage initialTab="overview" status={data.traefik} toast={toast} />
     case 'routes':
@@ -250,29 +228,12 @@ function ClusterScreen({ commands, data, onOpen, toast, workspace }: {
       return <TraefikControlPage initialTab="dns" status={data.traefik} toast={toast} />
     case 'tls':
       return <TraefikControlPage initialTab="certificates" status={data.traefik} toast={toast} />
-    case 'observability':
-      return (
-        <ObservabilityPage
-          nodes={data.nodes}
-          onOpenGateway={() => onOpen('gateway')}
-          onOpenSwarm={() => onOpen('nodes')}
-          status={data.observability}
-          toast={toast}
-          traefik={data.traefik}
-        />
-      )
     case 'logs':
       return <LogsPage />
-    case 'resources':
-      return <ResourcesPage toast={toast} />
-    case 'insights':
-      return (
-        <InsightsPage
-          onOpenNodes={() => onOpen('nodes')}
-          onOpenResources={() => onOpen('resources')}
-          onOpenServices={() => onOpen('services')}
-        />
-      )
+    case 'containers':
+      return <ContainersPage onOpen={onOpen} toast={toast} />
+    case 'storage':
+      return <StoragePage toast={toast} />
     default:
       // Every routable screen appears above. This branch is reachable only if a
       // page is added to navigation and not to the router, which the workflow

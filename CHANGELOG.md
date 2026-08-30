@@ -622,7 +622,7 @@ Core/Agent recovery line are published together for the first time.
   then puts its own output through the same `ValidateCompose` and platform
   admission as hand-written Compose. Name, domain, certificate resolver, and
   resource ceiling still come from the reviewed platform manifest. See
-  [ADR-0005](../../docs/adr/ADR-0005-swarmops-rendered-applications.md).
+  [ADR-0005](docs/adr/ADR-0005-swarmops-rendered-applications.md).
 - **Isolated routed data plane** — each application and managed database uses
   one encrypted overlay containing only that service and Traefik. Typed
   dependency bindings install derived aliases on the caller overlay, and

@@ -121,7 +121,7 @@ resource ceiling — comes from the reviewed platform manifest, so an operator
 picks from approved domains rather than claiming an arbitrary one. Everything
 else is generated: no Compose, no Traefik label, and no connection string is
 written by hand. See
-[applications.example.json](../../deploy/swarmops/applications.example.json)
+[applications.example.json](deploy/swarmops/applications.example.json)
 for two worked specs.
 
 It does **not** make Docker’s root-equivalent socket harmless. The product
@@ -415,9 +415,9 @@ cases, changelog, and roadmap — is published at
 - [Source-to-deploy system design](docs/SwarmOps-Source-to-Deploy-System-Design.docx)
   records provider adapters, sealed credentials, evidence classification,
   managed/shared substitutions, dynamic-domain policy, and rollout gates.
-- [Source-to-deploy ADR](../../docs/adr/ADR-0006-swarmops-source-to-deploy.md)
+- [Source-to-deploy ADR](docs/adr/ADR-0006-swarmops-source-to-deploy.md)
   records why repository Compose remains evidence rather than executable input.
-- [Docker-free controller ADR](../../docs/adr/ADR-0003-docker-free-swarmops-controller.md)
+- [Docker-free controller ADR](docs/adr/ADR-0003-docker-free-swarmops-controller.md)
   records the security trade-offs and production evidence gates.
 - [Business review](docs/SwarmOps-Business-Review.pptx) frames the adoption
   decision and its explicit production-evidence gates.
@@ -430,7 +430,6 @@ The standard local workflow runs the UI only. Point Vite at the HTTPS origin of
 the deployed SwarmOps API on the designated manager:
 
 ```bash
-cd apps/swarmops
 SWARMOPS_API_URL=https://swarmops.example.com make web-dev
 ```
 
@@ -852,21 +851,16 @@ need live verification.
 ## Local checks
 
 ```bash
-cd apps/swarmops
 go test ./...
-cd web && npm run typecheck && npm run build
+make web-build
 
 # Opt-in: runs Core -> encrypted queue -> pinned local machine agent ->
 # disposable one-node Docker Swarm. It refuses to touch an already-active
 # Swarm and removes only the uniquely named resources it creates.
-cd ..
-SWARMOPS_INTEGRATION_DOCKER=1 make integration
-
-cd ../..
-bash -n scripts/install-swarmops-agent.sh
-make build APP=swarmops TARGET=api TAG=<immutable-tag>
-make build APP=swarmops TARGET=agent TAG=<immutable-tag>
-make build APP=swarmops TARGET=cli TAG=<immutable-tag>
+find scripts -maxdepth 1 -name '*.sh' -exec bash -n {} \;
+make build TARGET=api TAG=<immutable-tag>
+make build TARGET=agent TAG=<immutable-tag>
+make build TARGET=cli TAG=<immutable-tag>
 make stack-check STACK=swarmops TAG=<immutable-tag>
 make stack-check STACK=swarmops-agent TAG=<immutable-tag>
 make stack-check STACK=swarmops-observability TAG=<immutable-tag>
@@ -875,10 +869,6 @@ make stack-check STACK=mongo-replicaset TAG=<immutable-tag>
 make stack-check STACK=postgres-primary-replica TAG=<immutable-tag>
 make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
 
-# The controlled build path will refuse to start until the same plan passes.
-make swarmops-checked-build \
-  MANIFEST=deploy/swarmops/platform.example.yml \
-  APP=swarmops TARGET=api TAG=<immutable-tag>
 ```
 
 No Docker daemon or Swarm is required to run the local UI against the deployed
@@ -899,9 +889,8 @@ make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
 # After a remote manager is connected through its machine API, compare the same
 # manifest to that selected server's current Docker inventory. The controller
 # API password is prompted locally.
-cd apps/swarmops
 go run ./cmd/swarmopsctl preflight \
-  --manifest ../../deploy/swarmops/platform.example.yml \
+  --manifest deploy/swarmops/platform.example.yml \
   --url https://swarmops.example.com --username operator --server-id <server-id> \
   --core-fingerprint 'SHA256:<64-hex>'
 ```
@@ -984,7 +973,7 @@ After a reconnect or reboot, run the catalogued continuity diagnostic from the
 node page before touching data. It checks Docker, Swarm membership,
 local-volume continuity, and manager visibility; it never restores, deletes,
 or promotes a database. The full stateful contract is
-[`../../docs/swarmops-stateful.md`](../../docs/swarmops-stateful.md).
+[`docs/swarmops-stateful.md`](docs/swarmops-stateful.md).
 
 ## Durable node operations
 
@@ -1106,8 +1095,8 @@ secrets or configs, change DNS/firewalls, push images, or enable
 mutations/builds.
 
 ```bash
-make push APP=swarmops TARGET=api TAG=<immutable-tag>
-make push APP=swarmops TARGET=agent TAG=<immutable-tag>
+make push TARGET=api TAG=<immutable-tag>
+make push TARGET=agent TAG=<immutable-tag>
 make swarmops-preflight MANIFEST=/secure/swarmops-platform.yml
 make config-create HOST=manager-01 CONFIG=swarmops_platform_manifest_v1 FILE=/secure/swarmops-platform.yml
 make stack-check STACK=traefik TAG=<immutable-tag>

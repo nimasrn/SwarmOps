@@ -63,8 +63,9 @@ func (s *Server) provisioningStatus(ctx context.Context) agentcontrol.Provisioni
 	available := s.config.RemoteControlEnabled && strings.TrimSpace(s.config.ProvisionSocket) != ""
 	status.Capabilities = agentcontrol.ProvisioningCapabilities{
 		ApplyUFW:        available && status.OS.Supported,
-		InitializeSwarm: available && status.OS.Supported,
+		InitializeSwarm: available && status.OS.Supported && status.Swarm.State != "active",
 		InstallDocker:   available && status.OS.Supported && !status.Docker.Installed,
+		JoinSwarm:       available && status.OS.Supported && status.Docker.Running && status.Swarm.State == "inactive",
 		UpdateDocker:    available && status.OS.Supported && status.Docker.Installed,
 		UpdateOS:        available && status.OS.Supported,
 	}
@@ -88,6 +89,18 @@ func (s *Server) provision(ctx context.Context, request agentcontrol.Provisionin
 	}
 	if err := json.NewEncoder(connection).Encode(request); err != nil {
 		return fmt.Errorf("send machine provisioning request")
+	}
+	// The helper reads to EOF to prove it received exactly ONE request — a
+	// second object on the same connection would be a second host operation
+	// nobody authorised. That check only terminates if this side closes its
+	// write half: without this, both processes wait for the other and the
+	// operation appears to hang for the whole 45-minute timeout before
+	// failing as "invalid". Reading the response is unaffected; only the
+	// write direction is shut down.
+	if unixConnection, ok := connection.(*net.UnixConn); ok {
+		if err := unixConnection.CloseWrite(); err != nil {
+			return fmt.Errorf("send machine provisioning request")
+		}
 	}
 	var response provisionerResponse
 	if err := json.NewDecoder(io.LimitReader(connection, provisioningRequestLimit)).Decode(&response); err != nil {
@@ -240,6 +253,11 @@ func (p systemProvisioner) apply(ctx context.Context, request agentcontrol.Provi
 			return err
 		}
 	}
+	if request.JoinSwarm {
+		if err := p.joinSwarm(ctx, request); err != nil {
+			return err
+		}
+	}
 	if request.ApplyUFW {
 		if err := p.applyUFW(ctx, request); err != nil {
 			return err
@@ -323,6 +341,70 @@ func (p systemProvisioner) initializeSwarm(ctx context.Context, requested string
 		return err
 	}
 	return runFixed(ctx, "docker", "swarm", "init", "--advertise-addr", address)
+}
+
+// joinSwarm makes this host a member of an existing cluster.
+//
+// It refuses a host that is already in a Swarm rather than leaving one and
+// joining another: a node that leaves takes its running tasks with it, and
+// that is a decision with data behind it, not a step in a bootstrap.
+func (p systemProvisioner) joinSwarm(ctx context.Context, request agentcontrol.ProvisioningRequest) error {
+	state, err := outputCommand(ctx, "docker", "info", "--format", "{{.Swarm.LocalNodeState}}")
+	if err != nil {
+		return fmt.Errorf("read Docker Swarm state")
+	}
+	switch strings.TrimSpace(state) {
+	case "active":
+		// Already a member. Joining again would fail, and the operator's
+		// intent — this host is in a cluster — already holds.
+		return nil
+	case "inactive":
+	default:
+		return fmt.Errorf("Docker Swarm state needs operator review")
+	}
+	// Validate() has already checked both, but this is the boundary that turns
+	// them into a command line, so it checks again rather than trusting that
+	// the caller did.
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	advertise, err := localAdvertiseAddress(request.AdvertiseAddress)
+	if err != nil {
+		return err
+	}
+	return runFixed(ctx, "docker", "swarm", "join",
+		"--advertise-addr", advertise,
+		"--token", request.JoinToken,
+		net.JoinHostPort(strings.TrimSpace(request.JoinAddress), strconv.Itoa(agentcontrol.JoinPort)),
+	)
+}
+
+// swarmJoinToken reads the credential a new node needs from this manager.
+//
+// It is served only to the pinned controller over the machine API and is never
+// stored here, logged here, or returned by any other route. Docker's own
+// `swarm join-token --quiet` is the only source.
+func (p systemProvisioner) swarmJoinToken(ctx context.Context, role string) (agentcontrol.SwarmJoinToken, error) {
+	if !agentcontrol.ValidJoinRole(role) {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("invalid Swarm join role")
+	}
+	state, err := outputCommand(ctx, "docker", "info", "--format", "{{.Swarm.LocalNodeState}}")
+	if err != nil || strings.TrimSpace(state) != "active" {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("this machine is not a Swarm manager")
+	}
+	token, err := outputCommand(ctx, "docker", "swarm", "join-token", "--quiet", role)
+	if err != nil {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("read Swarm join token")
+	}
+	address, err := outputCommand(ctx, "docker", "info", "--format", "{{.Swarm.NodeAddr}}")
+	if err != nil {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("read Swarm advertise address")
+	}
+	return agentcontrol.SwarmJoinToken{
+		Address: strings.TrimSpace(address),
+		Role:    role,
+		Token:   strings.TrimSpace(token),
+	}, nil
 }
 
 func (p systemProvisioner) applyUFW(ctx context.Context, request agentcontrol.ProvisioningRequest) error {
@@ -424,7 +506,7 @@ func localAdvertiseAddress(requested string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("inspect network interfaces")
 	}
-	addresses := make([]string, 0)
+	candidates := make([]advertiseCandidate, 0, len(interfaces))
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -435,14 +517,62 @@ func localAdvertiseAddress(requested string) (string, error) {
 			if err != nil || !prefix.Addr().Is4() || prefix.Addr().IsLoopback() || prefix.Addr().IsUnspecified() {
 				continue
 			}
-			addresses = append(addresses, prefix.Addr().String())
+			candidates = append(candidates, advertiseCandidate{Interface: iface.Name, Address: prefix.Addr()})
 		}
 	}
-	sort.Strings(addresses)
-	if len(addresses) == 0 {
+	return chooseAdvertiseAddress(candidates)
+}
+
+type advertiseCandidate struct {
+	Address   netip.Addr
+	Interface string
+}
+
+// containerNetworkInterface names the interfaces a container runtime creates.
+//
+// Their addresses exist on every Docker host and are reachable from nowhere
+// else, which makes them the worst possible thing to advertise a Swarm on.
+func containerNetworkInterface(name string) bool {
+	for _, prefix := range []string{"docker", "br-", "veth", "virbr", "cni", "flannel", "kube-", "cali", "tunl", "nodelocaldns"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// chooseAdvertiseAddress picks the address a PEER would use to reach this
+// machine.
+//
+// Two rules, both learned the hard way. First, an interface a container
+// runtime made is never the answer: `docker0` is 172.17.0.1 on every Docker
+// host on earth, and a cluster advertised on it forms and then cannot talk to
+// itself. Second, ordering addresses as TEXT is not ordering them at all —
+// "172.17.0.1" sorts before "192.168.1.5", so a host on a 192.168 network
+// picked Docker's bridge over its own LAN address and the join hung until it
+// timed out. Comparison is on the address bytes, and container interfaces are
+// removed before any comparison happens.
+func chooseAdvertiseAddress(candidates []advertiseCandidate) (string, error) {
+	usable := make([]advertiseCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !containerNetworkInterface(candidate.Interface) {
+			usable = append(usable, candidate)
+		}
+	}
+	if len(usable) == 0 {
+		// Everything this machine has belongs to a container runtime. That is
+		// almost certainly wrong, but refusing outright would strand a host
+		// whose only interface is named unusually, so the old behaviour stands
+		// as the fallback.
+		usable = candidates
+	}
+	if len(usable) == 0 {
 		return "", fmt.Errorf("could not determine a local Swarm advertise address")
 	}
-	return addresses[0], nil
+	sort.Slice(usable, func(left, right int) bool {
+		return usable[left].Address.Compare(usable[right].Address) < 0
+	})
+	return usable[0].Address.String(), nil
 }
 
 func localIP(want netip.Addr) bool {

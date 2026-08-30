@@ -448,6 +448,33 @@ func (c *Client) InspectSwarm(ctx context.Context) (SwarmObject, error) {
 	return output, nil
 }
 
+// SwarmJoinToken is the ONE function in this package that returns a join
+// token, and it returns nothing else.
+//
+// SwarmObject above deliberately omits JoinTokens so that no console read path
+// can ever disclose one. That rule is worth keeping, and a node cannot join a
+// cluster without a token — so the disclosure lives here, in a function whose
+// name says exactly what it hands back, reachable only from the agent's
+// controller-authenticated join-token route. Nothing stores its result.
+func (c *Client) SwarmJoinToken(ctx context.Context, role string) (string, error) {
+	if role != "manager" && role != "worker" {
+		return "", fmt.Errorf("invalid Swarm join role")
+	}
+	var output struct {
+		JoinTokens struct {
+			Manager string `json:"Manager"`
+			Worker  string `json:"Worker"`
+		} `json:"JoinTokens"`
+	}
+	if err := c.getJSON(ctx, "/swarm", &output); err != nil {
+		return "", err
+	}
+	if role == "manager" {
+		return output.JoinTokens.Manager, nil
+	}
+	return output.JoinTokens.Worker, nil
+}
+
 func (c *Client) DiskUsage(ctx context.Context) (DiskUsage, error) {
 	var output DiskUsage
 	if err := c.getJSON(ctx, "/system/df", &output); err != nil {

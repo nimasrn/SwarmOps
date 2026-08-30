@@ -5,11 +5,11 @@ REGISTRY_NS ?= nimasrn
 TAG         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli fluentd logs
-STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs swarmops-postgres swarmops-mongo swarmops-redis
+STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs swarmops-postgres swarmops-mongo swarmops-redis mongo-replicaset postgres-primary-replica
 
 .PHONY: help test web-build web-dev local dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \
-	platform-deploy swarmops-provision swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
+	platform-deploy swarmops-bootstrap-swarm swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
 
 help:
 	@printf '%s\n' \
@@ -22,7 +22,7 @@ help:
 	  '          make dev-api    # Core only; prepares a persistent local identity' \
 	  'Deploy:   make deploy STACK=<stack> HOST=<host>' \
 	  'Platform: make platform-deploy HOST=<host>  # Traefik, then SwarmOps' \
-	  'Bootstrap: make swarmops-provision' \
+	  'Bootstrap: make swarmops-bootstrap-swarm CORE=<https url> [MANAGERS=3]' \
 	  'Native:   make swarmops-native-api  # no Docker; requires protected secret-file env vars' \
 	  'Secrets:  make secret-create HOST=<manager> SECRET=<versioned-name> FILE=<secure-file>'
 
@@ -194,8 +194,14 @@ endif
 	@$(MAKE) --no-print-directory deploy STACK=traefik HOST='$(HOST)' TAG='$(TAG)'
 	@$(MAKE) --no-print-directory deploy STACK=swarmops HOST='$(HOST)' TAG='$(TAG)'
 
-swarmops-provision:
-	@bash scripts/provision-swarmops.sh
+# Forming a Swarm goes through the controller, not through SSH. The script
+# prints the one command to run on each machine and then queues the typed
+# Docker and Swarm operations for machines that have connected.
+swarmops-bootstrap-swarm:
+ifndef CORE
+	$(error set CORE=<https origin of the SwarmOps controller>)
+endif
+	@bash scripts/bootstrap-swarm.sh --core '$(CORE)' --managers '$(or $(MANAGERS),1)' $(if $(APPLY),--apply,)
 
 swarmops-native-api:
 	@bash scripts/run-swarmops-api.sh
@@ -273,6 +279,5 @@ docs-check:
 	@test -f NOTICE
 	@test -f SECURITY.md
 	@test -f deploy/README.md
-	@test -f deploy/ansible/README.md
 	@test -f deploy/hosts/example.env
 	@for stack in $(STACKS); do test -f deploy/stacks/$$stack.yml || exit 1; done

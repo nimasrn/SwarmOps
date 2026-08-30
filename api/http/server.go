@@ -78,6 +78,8 @@ type Target struct {
 	Build       build.Service
 	Control     *ops.ControlPlane
 	Host        HostInspector
+	Joiner      SwarmJoiner
+	Meter       MachineMeter
 	Provisioner Provisioner
 }
 
@@ -86,6 +88,14 @@ type Target struct {
 // when it cannot yet report the newer inventory projection.
 type HostInspector interface {
 	Snapshot(context.Context) (agent.Snapshot, error)
+}
+
+// SwarmJoiner is the one surface that returns a Swarm join token, and it is
+// reachable only from the command worker. It is separate from Provisioner so
+// that "this agent can prepare a host" and "this agent can hand out the
+// cluster's join credential" stay two different capabilities.
+type SwarmJoiner interface {
+	SwarmJoinToken(ctx context.Context, role string) (agentcontrol.SwarmJoinToken, error)
 }
 
 // Provisioner is intentionally narrower than ops.Runner: it exposes only the
@@ -105,22 +115,23 @@ type TargetResolverFunc func(id string) (Target, error)
 func (f TargetResolverFunc) Resolve(id string) (Target, error) { return f(id) }
 
 type Server struct {
-	audit         *audit.Store
-	auth          *auth.Service
-	config        config.Config
-	commands      *queue.Store
-	core          *coretopology.Store
-	history       *insights.History
-	loginLimiter  *auth.LoginLimiter
-	logger        *slog.Logger
-	requestTotal  atomic.Uint64
-	servers       *remote.Manager
-	sources       *source.Service
-	apps          *ops.ApplicationStore
-	agentBroker   *agentpull.Broker
-	agentRegistry *agentpull.Registry
-	namespace     string
-	targets       TargetResolver
+	audit          *audit.Store
+	auth           *auth.Service
+	config         config.Config
+	commands       *queue.Store
+	core           *coretopology.Store
+	history        *insights.History
+	loginLimiter   *auth.LoginLimiter
+	logger         *slog.Logger
+	requestTotal   atomic.Uint64
+	machineSamples *machineMetricsCache
+	servers        *remote.Manager
+	sources        *source.Service
+	apps           *ops.ApplicationStore
+	agentBroker    *agentpull.Broker
+	agentRegistry  *agentpull.Registry
+	namespace      string
+	targets        TargetResolver
 }
 
 func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, auditStore *audit.Store, logger *slog.Logger) (*Server, error) {
@@ -159,7 +170,7 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	return &Server{audit: auditStore, agentBroker: agentpull.NewBroker(core.AuthorityEpoch()), agentRegistry: registry, auth: authService, commands: commandStore, config: cfg, core: core, history: insights.NewHistory(insights.DefaultLimit), loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
+	return &Server{audit: auditStore, agentBroker: agentpull.NewBroker(core.AuthorityEpoch()), agentRegistry: registry, machineSamples: newMachineMetricsCache(), auth: authService, commands: commandStore, config: cfg, core: core, history: insights.NewHistory(insights.DefaultLimit), loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -172,6 +183,9 @@ func (s *Server) Handler() http.Handler {
 	// from the public hostname hides this too; it carries no credential and no
 	// cluster state beyond service DNS names, ports, and paths.
 	mux.HandleFunc("GET /metrics/targets", s.metricsTargets)
+	// One endpoint per enrolled machine. Agents hold no inbound port, so Core
+	// is the only place a scrape can terminate; see api/http/machine_metrics.go.
+	mux.HandleFunc("GET /metrics/machines/{id}", s.machineMetrics)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("GET /api/v1/auth/me", s.withAuth(false, s.me))
 	mux.HandleFunc("POST /api/v1/auth/logout", s.withAuth(true, s.logout))
@@ -502,6 +516,7 @@ func (s *Server) serverDisconnect(response http.ResponseWriter, request *http.Re
 		s.operationError(response, request, err)
 		return
 	}
+	s.machineSamples.forget(id)
 	s.record(claims.Username, requestID(request), "server.disconnect", "server/"+id, nil, nil)
 	response.WriteHeader(http.StatusNoContent)
 }
@@ -512,6 +527,8 @@ func (s *Server) serverRemove(response http.ResponseWriter, request *http.Reques
 		s.operationError(response, request, err)
 		return
 	}
+	// A removed machine must stop answering a scrape from cache.
+	s.machineSamples.forget(id)
 	s.record(claims.Username, requestID(request), "server.remove", "server/"+id, nil, nil)
 	response.WriteHeader(http.StatusNoContent)
 }
@@ -840,8 +857,24 @@ func agentVersionAtLeast(value string, requiredMajor, requiredMinor, requiredPat
 
 // metricsTargets serves the Prometheus HTTP service-discovery document for
 // every rendered application that publishes metrics.
-func (s *Server) metricsTargets(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, ops.MetricsTargetsFor(s.apps, s.namespace))
+// metricsTargets is what Prometheus polls instead of holding a Docker socket
+// or having its config regenerated. It carries two kinds of target: the
+// applications SwarmOps rendered, and one entry per enrolled machine whose
+// scrape Core terminates on that machine's behalf.
+func (s *Server) metricsTargets(response http.ResponseWriter, request *http.Request) {
+	// Prometheus cannot rewrite a target's `job` from a discovery response, so
+	// applications and machines are asked for separately and land in the job
+	// each belongs to. No parameter means both, which is what the shipped
+	// configuration asked for before machines existed.
+	kind := request.URL.Query().Get("kind")
+	targets := []ops.MetricsTarget{}
+	if kind == "" || kind == "application" {
+		targets = append(targets, ops.MetricsTargetsFor(s.apps, s.namespace)...)
+	}
+	if kind == "" || kind == "machine" {
+		targets = append(targets, machineMetricsTargets(s.servers.List())...)
+	}
+	writeJSON(response, http.StatusOK, targets)
 }
 
 // SetApplicationDiscovery supplies the stored applications and reviewed

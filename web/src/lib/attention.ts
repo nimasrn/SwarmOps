@@ -50,7 +50,7 @@ export function attentionItems(
       detail: 'Select a connected Swarm manager to resume cluster reads and operations.',
       id: 'manager-missing',
       label: 'Cluster manager is not connected',
-      page: 'servers',
+      page: 'machines',
       tone: 'warning',
     })
   }
@@ -59,7 +59,7 @@ export function attentionItems(
       detail: server.agentHealth?.summary ?? 'The agent cannot currently be reached by the controller.',
       id: `server-${server.id}`,
       label: `${server.name} needs connectivity review`,
-      page: 'agent-diagnostics',
+      page: 'machines',
       tone: 'danger',
     })
   }
@@ -88,7 +88,7 @@ export function attentionItems(
       detail: attempts > 1 ? `${base} ${attempts} attempts have stopped this way.` : base,
       id: `command-${command.action}`,
       label: command.action === 'observability.core' ? 'Monitoring deployment needs review' : `${command.action} needs review`,
-      page: 'commands',
+      page: 'runs',
       tone: 'danger',
     })
   }

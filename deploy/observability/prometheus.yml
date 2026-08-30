@@ -28,7 +28,20 @@ scrape_configs:
   # the application labels come from the discovery response.
   - job_name: swarmops-applications
     http_sd_configs:
-      - url: http://swarmops-control.swarmops.internal:8081/metrics/targets
+      - url: http://swarmops-control.swarmops.internal:8081/metrics/targets?kind=application
+        refresh_interval: 30s
+
+  # Hosts and containers. The agents hold no inbound port, so there is nothing
+  # for Prometheus to scrape on a node directly: the controller terminates each
+  # machine's scrape over the outbound channel that machine already holds open,
+  # and serves it at /metrics/machines/<id>. Discovery lists one entry per
+  # connected machine, so enrolling a host starts its collection and removing
+  # one stops it, with no config to regenerate.
+  - job_name: swarmops-machines
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    http_sd_configs:
+      - url: http://swarmops-control.swarmops.internal:8081/metrics/targets?kind=machine
         refresh_interval: 30s
 
   - job_name: traefik

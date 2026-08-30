@@ -126,6 +126,9 @@ export const FIXTURES: Record<string, unknown> = {
   '/api/v1/commands/catalogue': [],
   '/api/v1/databases': [],
   '/api/v1/applications': [],
+  // Without this the deploy screen reports a failed capability read — which is
+  // correct behaviour and exactly what it did before this fixture existed.
+  '/api/v1/sources/status': { buildEnabled: true, enabled: true, imagePrefixConfigured: true, privateHostsConfigured: false },
   '/api/v1/sources/connections': [],
   '/api/v1/builds': [],
   '/api/v1/volumes': [],

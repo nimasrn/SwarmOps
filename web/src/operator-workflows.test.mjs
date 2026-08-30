@@ -18,9 +18,15 @@ async function tree(directory = '.', prefix = '') {
 test('the information architecture is one source, and every screen is reachable from it', async () => {
   const [nav, console_] = await Promise.all([source('navigation/navigation.ts'), source('shell/console.tsx')])
 
-  // Areas are named for the operator's job, not the system's object model.
-  for (const area of ['Overview', 'Deliver', 'Fleet', 'Workloads', 'Traffic', 'Observe', 'Activity', 'Control']) {
+  // Six areas, named for the operator's job rather than the system's object
+  // model. There were eight: Deliver and Workloads were the same object at two
+  // points in its life, and Observe was a place charts went to be unattached
+  // from the thing they measured.
+  for (const area of ['Home', 'Apps', 'Machines', 'Traffic', 'Activity', 'Control']) {
     assert.match(nav, new RegExp(`label: '${area}'`))
+  }
+  for (const retired of ["label: 'Deliver'", "label: 'Workloads'", "label: 'Observe'", "label: 'Fleet'"]) {
+    assert.doesNotMatch(nav, new RegExp(retired), 'an area that was merged away is still declared')
   }
 
   // Every screen the console can route to must appear in an area. A screen
@@ -28,13 +34,21 @@ test('the information architecture is one source, and every screen is reachable 
   // `agent-diagnostics` had both a label and a section for three releases and
   // could not be opened from navigation at all.
   const declared = [...nav.matchAll(/key: '([a-z-]+)', label:/g)].map((match) => match[1])
-  for (const destination of ['agent-diagnostics', 'applications', 'audit', 'builds', 'catalogue', 'commands', 'core', 'databases', 'dns', 'gateway', 'insights', 'logs', 'nodes', 'observability', 'overview', 'provisioning', 'registry', 'resources', 'routes', 'servers', 'services', 'source-deploy', 'stacks', 'tls']) {
+  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'images', 'logs', 'machines', 'overview', 'platform', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
     assert.ok(declared.includes(destination), `${destination} is routable but appears in no area`)
+  }
+
+  // Every hash that used to address a screen still resolves. This rebuild
+  // retired more of them at once than every previous release together, and a
+  // bookmark should not pay for the console learning what its screens are for.
+  const legacy = nav.slice(nav.indexOf('LEGACY_ROUTES'))
+  for (const retired of ['servers', 'nodes', 'commands', 'catalogue', 'resources', 'databases', 'observability', 'insights', 'provisioning', 'agent-diagnostics', 'source-deploy', 'registry', 'builds', 'services', 'stacks', 'kubernetes-import']) {
+    assert.match(legacy, new RegExp(`'?${retired}'?:`), `the retired hash #${retired} no longer resolves`)
   }
 
   // Every page carries the one line that says what decision it serves; the
   // contextual sidebar, the palette, and now every screen heading read it.
-  assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 8, 'each page needs a summary and each of the 8 areas needs one too')
+  assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 6, 'each page needs a summary and each of the 6 areas needs one too')
 
   assert.match(console_, /navigation="rail"/)
   assert.match(console_, /contextualGroups=\{contextualGroups\}/)
@@ -57,18 +71,41 @@ test('every routable screen has a branch in the router', async () => {
   }
 })
 
-test('deploying is a first-class area, not a setting', async () => {
+test('an application and the service running it live in the same area', async () => {
   const nav = await source('navigation/navigation.ts')
-  const deliver = nav.slice(nav.indexOf("label: 'Deliver'"), nav.indexOf("label: 'Fleet'"))
-  // Source deployment, applications, builds and the registry used to be split
-  // between "Settings" and "Workloads" — the act of shipping was filed under
-  // configuration. The whole path is one area now, and deploying opens it.
-  for (const page of ['source-deploy', 'applications', 'builds', 'registry']) {
-    assert.match(deliver, new RegExp(`key: '${page}'`))
+  const apps = nav.slice(nav.indexOf("label: 'Apps'"), nav.indexOf("label: 'Machines'"))
+
+  // Shipping and running were two areas: an application was a lifecycle under
+  // Deliver and the service running it was an object under Workloads, so the
+  // same thing at two levels of abstraction sat in different halves of the
+  // navigation. One area owns the whole life of a workload now.
+  for (const page of ['applications', 'deploy', 'platform', 'images', 'workloads']) {
+    assert.match(apps, new RegExp(`key: '${page}'`))
   }
-  assert.match(nav, /key: 'source-deploy', label: 'Deploy from source'/)
+  assert.match(nav, /key: 'deploy', label: 'Deploy'/)
+
+  // The cluster singletons are one destination, because they are one idea: a
+  // database every application shares and a Prometheus every application
+  // shares were in different areas and neither could say so.
+  assert.match(apps, /key: 'platform', label: 'Platform services'/)
+
   const control = nav.slice(nav.indexOf("label: 'Control'"), nav.indexOf('export const PAGES'))
-  assert.doesNotMatch(control, /source-deploy|registry/)
+  assert.doesNotMatch(control, /'deploy'|'images'/)
+})
+
+test('every reading sits beside the object it describes', async () => {
+  const [nav, files] = await Promise.all([source('navigation/navigation.ts'), tree()])
+
+  // There is no Observe area. A fleet-wide chart cannot answer "for which
+  // node?", which is the question this rebuild started from — so metrics live
+  // on the machine, the container, the application and the gateway.
+  assert.doesNotMatch(nav, /key: 'insights'/)
+  assert.doesNotMatch(nav, /key: 'observability'/)
+  assert.ok(!files.some((file) => file.startsWith('screens/observe/')), 'the observe area still has screens')
+
+  // Its two screens each went somewhere an object owns them.
+  assert.match(nav, /key: 'platform'/)
+  assert.match(nav, /key: 'containers'/)
 })
 
 test('the palette runs actions and finds named things, not only screens', async () => {
@@ -126,8 +163,8 @@ test('every keyboard shortcut is installed and documented from one list', async 
 
 test('catalog actions open a sheet and activity/resources expose working filters', async () => {
   const [catalogue, resources, runs] = await Promise.all([
-    source('screens/activity/catalogue.tsx'),
-    source('screens/fleet/resources/containers.tsx'),
+    source('screens/activity/catalog.tsx'),
+    source('screens/machines/resources/containers.tsx'),
     source('screens/activity/runs.tsx'),
   ])
   assert.match(catalogue, /<Sheet closeLabel="Close action review"/)
@@ -139,7 +176,7 @@ test('catalog actions open a sheet and activity/resources expose working filters
 })
 
 test('readiness presents one reviewed fix at a time instead of a switch plan', async () => {
-  const readiness = await source('screens/fleet/server-readiness.tsx')
+  const readiness = await source('screens/machines/setup.tsx')
   assert.match(readiness, /title="Setup checks"/)
   assert.match(readiness, /Start single-server cluster/)
   assert.match(readiness, /<Sheet closeLabel="Close setup review"/)
@@ -153,9 +190,9 @@ test('gateway and source dead ends have explicit setup actions', async () => {
     source('screens/traffic/gateway.tsx'),
     source('screens/traffic/preflight.tsx'),
     source('screens/traffic/dns.tsx'),
-    source('screens/deliver/source-deploy.tsx'),
-    source('screens/deliver/source/registry.tsx'),
-    source('screens/deliver/source/setup.tsx'),
+    source('screens/apps/deploy.tsx'),
+    source('screens/apps/deploy-parts/registry.tsx'),
+    source('screens/apps/deploy-parts/setup.tsx'),
   ])
   assert.match(gateway, />Install gateway<\/Button>/)
   assert.match(dns, /Cloudflare and ArvanCloud/)
@@ -188,10 +225,10 @@ test('gateway, routes, DNS, and certificates are separate operator destinations'
     source('screens/traffic/gateway.tsx'),
     source('screens/traffic/dns.tsx'),
   ])
-  assert.match(nav, /key: 'gateway', label: 'Gateway & ports'/)
+  assert.match(nav, /key: 'gateway', label: 'Gateway'/)
   assert.match(nav, /key: 'routes', label: 'Routes'/)
-  assert.match(nav, /key: 'dns', label: 'DNS providers'/)
-  assert.match(nav, /key: 'tls', label: 'TLS certificates'/)
+  assert.match(nav, /key: 'dns', label: 'Domains & DNS'/)
+  assert.match(nav, /key: 'tls', label: 'Certificates'/)
 
   // Each tab is its own destination with its own heading, so an operator who
   // wanted DNS credentials never lands on a gateway installer.
@@ -203,14 +240,14 @@ test('gateway, routes, DNS, and certificates are separate operator destinations'
 
 test('controller recovery UI does not expose the internal Core name', async () => {
   const [topology, nav] = await Promise.all([
-    source('screens/control/core-topology.tsx'),
+    source('screens/control/core.tsx'),
     source('navigation/navigation.ts'),
   ])
   for (const oldLabel of ['Open Core logs', 'Move Core', 'Core identity', 'Core members', 'Install new Core standby']) {
     assert.doesNotMatch(topology, new RegExp(oldLabel))
   }
   // The screen is titled from navigation now, so the name lives in one place.
-  assert.match(nav, /key: 'core', label: 'Controller & recovery'/)
+  assert.match(nav, /key: 'core', label: 'Core'/)
   assert.match(topology, /Controller members/)
   assert.match(topology, /Controller identity <Mono>/)
 })
@@ -220,7 +257,7 @@ test('background refreshes preserve the current workspace and loaded content', a
     source('shell/console.tsx'),
     source('data/hooks.ts'),
     source('shell/page-router.tsx'),
-    source('screens/observe/logs.tsx'),
+    source('screens/activity/logs.tsx'),
   ])
   assert.match(console_, /readSession\(SELECTED_SERVER_KEY\)/)
   assert.match(console_, /servers\.some\(\(server\) => server\.id === activeServerID\)/)
@@ -254,7 +291,7 @@ test('runs explain observability failures and block unsafe retries', async () =>
 })
 
 test('the command center verdict answers to the blockers listed under it', async () => {
-  const home = await source('screens/overview/command-center.tsx')
+  const home = await source('screens/home/command-center.tsx')
 
   // The hero read a green "Production is operating" while rows beneath it were
   // marked Blocking, because the verdict was computed without reference to
@@ -288,7 +325,7 @@ test('what needs a decision is computed once and reachable from every screen', a
     source('lib/attention.ts'),
     source('components/attention-menu.tsx'),
     source('shell/console.tsx'),
-    source('screens/overview/command-center.tsx'),
+    source('screens/home/command-center.tsx'),
   ])
 
   // The list used to live inside the command centre, so an operator who went
@@ -327,7 +364,7 @@ test('the command center is the only overview screen, and covers its own loading
 })
 
 test('the evidence ledger survives on the screen that is actually reachable', async () => {
-  const home = await source('screens/overview/command-center.tsx')
+  const home = await source('screens/home/command-center.tsx')
 
   // The measured / not-evidence split was only ever on the unreachable screen.
   assert.match(home, /import \{ EvidenceLedger \} from '\.\/evidence-ledger'/)
@@ -340,7 +377,7 @@ test('the evidence ledger survives on the screen that is actually reachable', as
 })
 
 test('the path from an empty controller to a served request is written down', async () => {
-  const home = await source('screens/overview/command-center.tsx')
+  const home = await source('screens/home/command-center.tsx')
 
   // Every step existed; nothing showed them as a sequence. An operator who has
   // just enrolled a host has no way to know that a gateway is what stands
@@ -358,7 +395,7 @@ test('every field read behind an object guard is guarded itself', async () => {
     source('screens/traffic/gateway.tsx'),
     source('screens/traffic/routes.tsx'),
     source('screens/traffic/dns.tsx'),
-    source('screens/observe/logs.tsx'),
+    source('screens/activity/logs.tsx'),
   ])
 
   // `a?.b.c` reads as defensive and is not: the chain short-circuits only when
@@ -415,11 +452,11 @@ test('a screen is titled what its navigation item is called', async () => {
 test('confirmation is one component, not eleven hand-rolled copies', async () => {
   const [confirm, ...users] = await Promise.all([
     source('components/confirm-phrase.tsx'),
-    source('screens/workloads/databases.tsx'),
-    source('screens/observe/observability.tsx'),
-    source('screens/deliver/applications.tsx'),
-    source('screens/fleet/resources/volumes.tsx'),
-    source('screens/fleet/swarm-settings.tsx'),
+    source('screens/apps/databases.tsx'),
+    source('screens/apps/observability.tsx'),
+    source('screens/apps/applications.tsx'),
+    source('screens/machines/resources/volumes.tsx'),
+    source('screens/machines/swarm-settings.tsx'),
   ])
 
   // The phrase is shown and copyable: the friction that makes this gate work

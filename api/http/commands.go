@@ -625,6 +625,29 @@ func (s *Server) recordCommandSubmission(claims auth.Claims, request *http.Reque
 	}
 }
 
+// swarmJoinGrant asks a manager for the credential a joining node needs.
+//
+// A missing or unreachable manager is a RETRYABLE failure: the token is not
+// gone, the manager is momentarily out of reach, and a bootstrap that gives up
+// because one poll was late is worse than one that waits.
+func (s *Server) swarmJoinGrant(ctx context.Context, managerID, role string) (agentcontrol.SwarmJoinToken, error) {
+	if !agentcontrol.ValidJoinRole(role) {
+		return agentcontrol.SwarmJoinToken{}, queue.PermanentError(fmt.Errorf("invalid Swarm join role"))
+	}
+	manager, err := s.targets.Resolve(managerID)
+	if err != nil {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("resolve the Swarm manager to join: %w", err)
+	}
+	if manager.Joiner == nil {
+		return agentcontrol.SwarmJoinToken{}, queue.PermanentError(fmt.Errorf("the selected Swarm manager cannot issue a join token"))
+	}
+	grant, err := manager.Joiner.SwarmJoinToken(ctx, role)
+	if err != nil {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("read the Swarm join token: %w", err)
+	}
+	return grant, nil
+}
+
 // ExecuteCommand is called only by the singleton worker. Payload decoding and
 // target resolution occur after durable claiming, so an API restart cannot
 // lose a command that was acknowledged to the browser.
@@ -637,17 +660,31 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		return err
 	}
 	if record.Command.Action == commandServerReadiness {
-		var input agentcontrol.ProvisioningRequest
+		var input serverReadinessCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
-			return queue.PermanentError(err)
-		}
-		if err := input.Validate(); err != nil {
 			return queue.PermanentError(err)
 		}
 		if target.Provisioner == nil {
 			return queue.PermanentError(fmt.Errorf("selected server has no machine provisioning agent"))
 		}
-		return queue.PermanentError(target.Provisioner.Provision(ctx, input))
+		plan := input.ProvisioningRequest
+		if plan.JoinSwarm {
+			// The join credential is read HERE, from the manager the operator
+			// named, at the moment the command runs — not when it was queued.
+			// That is what keeps it out of the sealed payload, the audit
+			// record, and every browser response, and it also means a token
+			// rotated between queueing and execution is the one that is used.
+			grant, err := s.swarmJoinGrant(ctx, input.JoinFromServerID, input.JoinRole)
+			if err != nil {
+				return err
+			}
+			plan.JoinAddress, plan.JoinToken = grant.Address, grant.Token
+			defer func() { plan.JoinToken = "" }()
+		}
+		if err := plan.Validate(); err != nil {
+			return queue.PermanentError(err)
+		}
+		return queue.PermanentError(target.Provisioner.Provision(ctx, plan))
 	}
 	if target.Control == nil {
 		return queue.PermanentError(fmt.Errorf("selected server has no control plane"))

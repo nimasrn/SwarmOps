@@ -50,7 +50,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
 
   const { error: serversError, loading: serversLoading, refresh: refreshServers, servers } = useServers(onLogout)
   const { error: auditError, events: auditEvents, initialLoading: auditInitialLoading, refresh: refreshAudit, refreshing: auditRefreshing } = useAuditEvents(workspace === 'audit', onLogout)
-  const watchingQueue = workspace === 'commands' || workspace === 'catalogue' || workspace === 'overview' || workspace === 'nodes'
+  const watchingQueue = workspace === 'runs' || workspace === 'catalog' || workspace === 'overview' || workspace === 'swarm'
   const { commands, error: commandsError, initialLoading: commandsInitialLoading, refresh: refreshCommands, refreshing: commandsRefreshing } = useCommands(
     watchingQueue ? 5_000 : 30_000,
     onLogout,
@@ -91,7 +91,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
       toast({ message: `${server.name} connected`, tone: 'success' })
       return
     }
-    setWorkspace('provisioning')
+    setWorkspace('machines')
     toast({
       message: server.dockerAvailable
         ? `${server.name} is connected. Complete server readiness before using cluster operations.`
@@ -160,32 +160,32 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
 
   const refreshAction = workspace === 'audit'
     ? refreshAudit
-    : workspace === 'commands'
+    : workspace === 'runs'
       ? refreshCommands
       : workspace === 'core'
         ? refreshCore
-        : workspace === 'servers' || workspace === 'agent-diagnostics' || !activeServer
+        : workspace === 'machines' || !activeServer
           ? refreshServers
           : refresh
   const refreshLoading = workspace === 'audit'
     ? auditInitialLoading || auditRefreshing
-    : workspace === 'commands'
+    : workspace === 'runs'
       ? commandsInitialLoading || commandsRefreshing
-      : workspace === 'servers' || workspace === 'agent-diagnostics' || !activeServer
+      : workspace === 'machines' || !activeServer
         ? serversLoading
         : refreshing
   const refreshLabel = workspace === 'audit'
     ? 'Refresh audit trail'
-    : workspace === 'commands'
+    : workspace === 'runs'
       ? 'Refresh command queue'
-      : workspace === 'servers' || workspace === 'agent-diagnostics'
+      : workspace === 'machines'
         ? 'Refresh servers'
         : activeServer
           ? 'Refresh cluster snapshot'
           : 'Refresh server profiles'
 
   useShortcuts({
-    onDiagnostics: () => setWorkspace('agent-diagnostics'),
+    onDiagnostics: () => setWorkspace('machines'),
     onHelp: () => setShortcutsOpen(true),
     onOpen: setWorkspace,
     onPalette: () => setPaletteOpen(true),
@@ -256,7 +256,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
             <>
               <Select
                 aria-label="Selected Docker Swarm cluster manager"
-                onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('servers')}
+                onChange={(event) => event.target.value ? selectServer(event.target.value) : setWorkspace('machines')}
                 options={managers.map((server) => ({ label: server.name, value: server.id }))}
                 placeholder="Select a cluster"
                 value={activeServerID}
@@ -264,7 +264,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
               <StatusDot pulse={agentTone === 'warning'} tone={agentTone}>{agentLabel}</StatusDot>
             </>
           ) : (
-            <Button iconStart="plus" onClick={() => setWorkspace('servers')} size="sm" variant="secondary">Connect a server</Button>
+            <Button iconStart="plus" onClick={() => setWorkspace('machines')} size="sm" variant="secondary">Connect a server</Button>
           )}
         </Inline>
       }
@@ -285,7 +285,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
               { kind: 'separator' },
               { icon: 'settings', label: 'Controller & recovery', onSelect: () => setWorkspace('core') },
               { icon: 'shield', label: 'Audit trail', onSelect: () => setWorkspace('audit') },
-              { icon: 'link', label: 'Connection diagnostics', onSelect: () => setWorkspace('agent-diagnostics') },
+              { icon: 'link', label: 'Connection diagnostics', onSelect: () => setWorkspace('machines') },
               { kind: 'separator' },
               { icon: 'sign-out', label: 'Sign out', onSelect: () => void signOut() },
             ]}

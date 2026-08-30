@@ -102,15 +102,15 @@ The published version is the `version` constant in `cmd/api/main.go`. Bumping
 it is not finished until, in the same task:
 
 1. `CHANGELOG.md` here gains the release, newest first.
-2. `apps/nim/content/docs/swarmops.json` and
-   `apps/nim/content/fa/docs/swarmops.json` gain the matching `changelog` entry
+2. `content/docs/swarmops.json` and `content/fa/docs/swarmops.json` in the
+   separate `nim-zone` repository gain the matching `changelog` entry
    and their `version` field matches it — the site generator fails the build
    when it does not — with `status`, `stats`, `use_cases`, and `roadmap`
    corrected wherever the release made them untrue. Roadmap entries carry a
    status, never a date.
 3. README.md agrees with both: capabilities, boundaries, and limitations are
    the material those records are written from.
-4. `npm --prefix ../nim run generate && npm --prefix ../nim test` passes.
+4. `npm run generate && npm test` passes in the separate `nim-zone` repository.
 
 Never write a secret, remote output, Compose body, or build context into any of
 these documents. See the root `AGENTS.md` section "Released software is

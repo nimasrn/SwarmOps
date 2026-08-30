@@ -148,6 +148,7 @@ type Info struct {
 		} `json:"Cluster"`
 		LocalNodeState string `json:"LocalNodeState"`
 		Managers       int    `json:"Managers"`
+		NodeAddr       string `json:"NodeAddr"`
 		NodeID         string `json:"NodeID"`
 	} `json:"Swarm"`
 }

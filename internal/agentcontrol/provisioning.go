@@ -23,9 +23,17 @@ type ProvisioningRequest struct {
 	ControllerCIDRs  []string `json:"controllerCidrs,omitempty"`
 	InitializeSwarm  bool     `json:"initializeSwarm,omitempty"`
 	InstallDocker    bool     `json:"installDocker,omitempty"`
-	SwarmPeerCIDRs   []string `json:"swarmPeerCidrs,omitempty"`
-	UpdateDocker     bool     `json:"updateDocker,omitempty"`
-	UpdateOS         bool     `json:"updateOs,omitempty"`
+	// JoinSwarm makes this host a member of an EXISTING Swarm. The token is
+	// resolved by the controller at execution time from the manager the
+	// operator named, is held only in memory for the length of one call, and
+	// is never written to the command ledger, the audit trail, or a browser —
+	// see SwarmJoinToken and api/http/commands.go.
+	JoinSwarm      bool     `json:"joinSwarm,omitempty"`
+	JoinAddress    string   `json:"joinAddress,omitempty"`
+	JoinToken      string   `json:"joinToken,omitempty"`
+	SwarmPeerCIDRs []string `json:"swarmPeerCidrs,omitempty"`
+	UpdateDocker   bool     `json:"updateDocker,omitempty"`
+	UpdateOS       bool     `json:"updateOs,omitempty"`
 }
 
 // ProvisioningStatus is a deliberately small readiness projection. It lets
@@ -43,8 +51,12 @@ type ProvisioningCapabilities struct {
 	ApplyUFW        bool `json:"applyUfw"`
 	InitializeSwarm bool `json:"initializeSwarm"`
 	InstallDocker   bool `json:"installDocker"`
-	UpdateDocker    bool `json:"updateDocker"`
-	UpdateOS        bool `json:"updateOs"`
+	// JoinSwarm is false for a machine already in a cluster. Leaving one takes
+	// its running tasks with it, which is a decision with data behind it and
+	// not a step the console should offer as part of a bootstrap.
+	JoinSwarm    bool `json:"joinSwarm"`
+	UpdateDocker bool `json:"updateDocker"`
+	UpdateOS     bool `json:"updateOs"`
 }
 
 type ProvisioningDocker struct {
@@ -69,15 +81,44 @@ type ProvisioningSwarm struct {
 	State   string `json:"state,omitempty"`
 }
 
-func (r ProvisioningRequest) Validate() error {
+// Validate is the agent boundary: by the time a request reaches a machine it
+// must be complete, join token included.
+func (r ProvisioningRequest) Validate() error { return r.validate(true) }
+
+// ValidateWithoutJoinToken is the CONTROLLER boundary, where a join request is
+// deliberately incomplete. The token is resolved from the manager at execution
+// time so it never enters the sealed command ledger, which means the request
+// an operator submits cannot carry one and cannot be checked for one.
+func (r ProvisioningRequest) ValidateWithoutJoinToken() error { return r.validate(false) }
+
+func (r ProvisioningRequest) validate(requireJoinToken bool) error {
 	if strings.TrimSpace(r.Confirmation) != ProvisionConfirmation {
 		return fmt.Errorf("server readiness requires confirmation %s", ProvisionConfirmation)
 	}
-	if !r.UpdateOS && !r.InstallDocker && !r.UpdateDocker && !r.InitializeSwarm && !r.ApplyUFW {
+	if !r.UpdateOS && !r.InstallDocker && !r.UpdateDocker && !r.InitializeSwarm && !r.JoinSwarm && !r.ApplyUFW {
 		return fmt.Errorf("select at least one server readiness operation")
 	}
 	if r.InstallDocker && r.UpdateDocker {
 		return fmt.Errorf("choose Docker installation or update, not both")
+	}
+	// Forming a new cluster and joining an existing one are opposite acts, and
+	// a host that did both would silently abandon whichever ran first.
+	if r.InitializeSwarm && r.JoinSwarm {
+		return fmt.Errorf("choose Swarm initialization or joining an existing Swarm, not both")
+	}
+	if r.JoinSwarm {
+		if requireJoinToken {
+			if err := validateJoinAddress(r.JoinAddress); err != nil {
+				return err
+			}
+			if !validJoinToken(r.JoinToken) {
+				return fmt.Errorf("a Swarm join token is required")
+			}
+		} else if strings.TrimSpace(r.JoinToken) != "" {
+			return fmt.Errorf("a Swarm join token is never accepted from a request")
+		}
+	} else if strings.TrimSpace(r.JoinAddress) != "" || strings.TrimSpace(r.JoinToken) != "" {
+		return fmt.Errorf("join details require the Swarm join operation")
 	}
 	if address := strings.TrimSpace(r.AdvertiseAddress); address != "" {
 		parsed, err := netip.ParseAddr(address)
@@ -97,6 +138,49 @@ func (r ProvisioningRequest) Validate() error {
 	}
 	return nil
 }
+
+// JoinPort is Swarm's fixed cluster-management port. It is a constant rather
+// than a parameter so a join can never be pointed at an arbitrary service.
+const JoinPort = 2377
+
+// validateJoinAddress accepts a literal IP only. A hostname would make the
+// join target depend on whatever DNS the machine happens to be using, which
+// is not a decision an operator can review.
+func validateJoinAddress(value string) error {
+	address := strings.TrimSpace(value)
+	if address == "" {
+		return fmt.Errorf("a Swarm manager address is required to join")
+	}
+	parsed, err := netip.ParseAddr(address)
+	if err != nil || !parsed.IsValid() || parsed.IsLoopback() || parsed.IsUnspecified() || parsed.IsMulticast() {
+		return fmt.Errorf("invalid Swarm manager address")
+	}
+	return nil
+}
+
+// A Swarm join token is `SWMTKN-1-<secret>-<secret>`. Checking its shape keeps
+// anything that is not a token — an argument, a path, a flag — out of the
+// command line the agent builds.
+func validJoinToken(value string) bool {
+	token := strings.TrimSpace(value)
+	if len(token) < 24 || len(token) > 256 || !strings.HasPrefix(token, "SWMTKN-") {
+		return false
+	}
+	return strings.IndexFunc(token, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-')
+	}) < 0
+}
+
+// SwarmJoinToken is what a manager returns when the controller asks it for the
+// credential a new node needs. It is a response type, never a stored one.
+type SwarmJoinToken struct {
+	Address string `json:"address"`
+	Role    string `json:"role"`
+	Token   string `json:"token"`
+}
+
+// ValidJoinRole is the closed set of things a node can be asked to join as.
+func ValidJoinRole(role string) bool { return role == "manager" || role == "worker" }
 
 // NormalizedControllerCIDRs returns stable, validated CIDRs for an executor.
 // The caller cannot turn these into arbitrary UFW arguments because each is

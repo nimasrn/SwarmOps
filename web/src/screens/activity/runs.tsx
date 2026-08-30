@@ -126,7 +126,7 @@ export function RunsPage({
         { hint: attention.length ? 'Stopped rather than replayed — an outcome could not be proven' : 'No run is waiting on a decision', icon: 'alert', label: 'Needs attention', tone: attention.length ? 'danger' : 'success', value: String(attention.length) },
         { hint: retryScheduled ? 'A bounded retry is already scheduled' : `${completed} completed in the retained window`, icon: 'refresh', label: 'Retry scheduled', tone: retryScheduled ? 'warning' : 'neutral', value: String(retryScheduled) },
       ]}
-      page="commands"
+      page="runs"
       status={attention.length ? <StatusDot tone="danger">{attention.length} need attention</StatusDot> : <StatusDot tone="success">No attention required</StatusDot>}
       width="full"
     >

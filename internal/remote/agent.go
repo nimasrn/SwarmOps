@@ -81,6 +81,35 @@ func (r *AgentRunner) Snapshot(ctx context.Context) (agent.Snapshot, error) {
 	return output, err
 }
 
+// Metrics returns one measurement sample of the host and every container on
+// it. The document is typed and is sanitized by the caller before anything is
+// rendered from it: an agent supplies numbers, never metric names.
+func (r *AgentRunner) Metrics(ctx context.Context) (agentcontrol.MachineMetrics, error) {
+	if r == nil || r.client == nil {
+		return agentcontrol.MachineMetrics{}, fmt.Errorf("machine API client is not configured")
+	}
+	var output agentcontrol.MachineMetrics
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/metrics", nil, &output)
+	return output, err
+}
+
+// SwarmJoinToken reads the credential a new node needs from this manager.
+//
+// The result is deliberately not cached and not returned by any /api route.
+// The only caller is the command worker, which passes it straight to the
+// joining machine and then drops it.
+func (r *AgentRunner) SwarmJoinToken(ctx context.Context, role string) (agentcontrol.SwarmJoinToken, error) {
+	if r == nil || r.client == nil {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("machine API client is not configured")
+	}
+	if !agentcontrol.ValidJoinRole(role) {
+		return agentcontrol.SwarmJoinToken{}, fmt.Errorf("invalid Swarm join role")
+	}
+	var output agentcontrol.SwarmJoinToken
+	err := r.client.requestJSON(ctx, http.MethodGet, "/v1/swarm/join-token?role="+url.QueryEscape(role), nil, &output)
+	return output, err
+}
+
 func (r *AgentRunner) Diagnostics(ctx context.Context) (agent.Diagnostics, error) {
 	if r == nil || r.client == nil {
 		return agent.Diagnostics{}, fmt.Errorf("machine API client is not configured")

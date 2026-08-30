@@ -33,7 +33,7 @@ export function AttentionMenu({ items, onOpen }: { items: AttentionItem[]; onOpe
       onSelect: () => onOpen(item.page),
     })),
     { kind: 'separator' },
-    { icon: 'activity', label: 'Open runs', onSelect: () => onOpen('commands') },
+    { icon: 'activity', label: 'Open runs', onSelect: () => onOpen('runs') },
   ]
 
   return (

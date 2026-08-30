@@ -10,6 +10,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/auth"
+	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 )
 
@@ -63,11 +64,11 @@ func (s *Server) serverReadinessQueue(response http.ResponseWriter, request *htt
 		writeError(response, http.StatusUnprocessableEntity, "This server does not expose the SwarmOps machine provisioning agent")
 		return
 	}
-	var input agentcontrol.ProvisioningRequest
+	var input serverReadinessCommand
 	if !decodeJSON(response, request, &input) {
 		return
 	}
-	if err := input.Validate(); err != nil {
+	if err := input.validateSubmission(s.servers.List(), serverID); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -116,4 +117,44 @@ func (s *Server) savedServer(id string) bool {
 		}
 	}
 	return false
+}
+
+// serverReadinessCommand is the queued shape of a readiness plan.
+//
+// It embeds the machine's own vocabulary so a payload written by an earlier
+// release still decodes, and adds the two fields that exist only on the
+// controller: which manager a join should get its token from, and whether the
+// node joins as a manager or a worker. The TOKEN is deliberately not here —
+// the worker reads it from that manager when the command runs, so no join
+// credential is ever written to the sealed ledger or the audit trail.
+type serverReadinessCommand struct {
+	agentcontrol.ProvisioningRequest
+	JoinFromServerID string `json:"joinFromServerId,omitempty"`
+	JoinRole         string `json:"joinRole,omitempty"`
+}
+
+func (c serverReadinessCommand) validateSubmission(servers []domain.Server, target string) error {
+	if err := c.ValidateWithoutJoinToken(); err != nil {
+		return err
+	}
+	if !c.JoinSwarm {
+		if strings.TrimSpace(c.JoinFromServerID) != "" || strings.TrimSpace(c.JoinRole) != "" {
+			return fmt.Errorf("a join source requires the Swarm join operation")
+		}
+		return nil
+	}
+	if !agentcontrol.ValidJoinRole(c.JoinRole) {
+		return fmt.Errorf("choose whether this machine joins as a manager or a worker")
+	}
+	source := strings.TrimSpace(c.JoinFromServerID)
+	if source == "" {
+		return fmt.Errorf("choose the Swarm manager this machine should join")
+	}
+	if source == target {
+		return fmt.Errorf("a machine cannot join itself")
+	}
+	if _, found := savedServerProfile(servers, source); !found {
+		return fmt.Errorf("the selected Swarm manager is not a managed machine")
+	}
+	return nil
 }

@@ -1,9 +1,9 @@
 # Docker Swarm platform
 
-This directory is the operational path for the monorepo:
+This directory is the operational path for the SwarmOps control plane:
 
 ```text
-local source ── make build/push ──> GHCR or private registry
+SwarmOps source ── make build/push ──> GHCR or private registry
                                        │
                                Docker Swarm pulls image only
                                        │
@@ -12,11 +12,9 @@ local source ── make build/push ──> GHCR or private registry
 
 This source release carries the SwarmOps, Traefik, observability, and reviewed
 managed PostgreSQL/MongoDB/Redis templates needed to render and inspect the
-control plane. Use the
-[nim monorepo](https://github.com/nimasrn/nim) for a complete platform rollout:
-it owns the reviewed manifests for unrelated applications and the corresponding
-operator automation. Publishing this release does not build images, change
-servers, or deploy a stack.
+control plane. Each application repository owns its own image build,
+`deploy/stacks/<app>.yml`, and public build arguments. Publishing this release
+does not build images, change servers, or deploy a stack.
 
 `make build` passes its immutable `TAG` to the API and agent binaries as their
 reported version. Native GitHub Release bundles are a separate path for a
@@ -104,38 +102,36 @@ selected remote target only through that target's fixed machine API.
 
 ## Automated host and Swarm bootstrap
 
-For a new Debian/Ubuntu cluster, prefer the checked Ansible bootstrap in
-[ansible/README.md](ansible/README.md). It installs Docker from the official
-APT repository, forms the manager quorum, creates the encrypted traefik
-overlay, and applies placement labels. It stops before secrets, DNS/firewall
-changes, image pushes, and stack deployment; those remain explicit operator
-actions below.
+Forming a cluster goes through the controller. There is no push mechanism and
+no inventory: an agent is installed by running one command on the machine, and
+everything after that is a typed operation with an actor, an audit record and a
+retry policy behind it.
 
 ~~~bash
-cp deploy/ansible/inventory.example.yml deploy/ansible/inventory.yml
-bash scripts/bootstrap-swarm.sh --inventory deploy/ansible/inventory.yml
-bash scripts/bootstrap-swarm.sh --inventory deploy/ansible/inventory.yml --apply
+# Reports what it would do and changes nothing.
+bash scripts/bootstrap-swarm.sh --core https://core.example.com --managers 3
+
+# Queues the operations and follows each run to a terminal result.
+bash scripts/bootstrap-swarm.sh --core https://core.example.com --managers 3 --apply
 ~~~
 
-If the servers are reached with an SSH username and password rather than a
-key, run `make swarmops-provision`. It accepts the three addresses and the SSH
-user, prompts Ansible for passwords without storing them, creates ignored local
-inventory/context files, and can optionally deploy the prepared Traefik and
-SwarmOps stacks when the operator supplies protected secret-file paths.
+The script signs in to the controller, mints a short-lived enrolment code for
+each machine, prints the exact installer command to run on it, and waits for
+that machine to connect. It then queues Docker installation on each, starts the
+Swarm on the first, and joins the rest. It opens no SSH connection and holds no
+credential for any host — the only thing it talks to is the controller.
 
-To add a fourth or later fresh server to an existing cluster, add it to the
-ignored inventory's `swarm_join_nodes` group and use:
+Adding a machine later is the same script with a different name prefix, or the
+**Add a machine** action in the console. Join tokens are read from the manager
+by the controller when the join runs; they are never written to the command
+ledger, the audit trail, or a browser response.
 
-```bash
-make swarmops-join-node INVENTORY=deploy/ansible/inventory.yml
-make swarmops-join-node INVENTORY=deploy/ansible/inventory.yml APPLY=1
-```
-
-The checked workflow probes the host, installs Docker only when needed, refuses
-to replace an unknown runtime, joins with its private advertised address, and
-applies the reviewed role and labels. A stateful node gets a unique slot label;
-see [`../docs/swarmops-stateful.md`](../docs/swarmops-stateful.md) before
-assigning MongoDB or PostgreSQL data.
+This replaced an Ansible playbook that reached every host over SSH. Every task
+it performed — Docker from Docker's signed repository, Swarm formation, manager
+promotion, the encrypted overlay, placement labels — is a typed operation the
+controller already offers, and running them through the controller means they
+are recorded. Secrets, DNS and firewall changes, image pushes, and stack
+deployment remain explicit operator actions below.
 
 ## Remote SwarmOps connection
 
@@ -337,35 +333,33 @@ It does not create secrets, configs, change DNS, or open firewalls. The
 interactive provisioner performs the manifest preflight and immutable config
 creation before it calls this deployment step.
 
-## Everyday image and stack workflow
+## Everyday SwarmOps image and stack workflow
 
 ```bash
-# Build locally; this never talks to a server.
-make build APP=vlora-web TAG=<git-sha>
+# Build a SwarmOps image locally; this never talks to a server.
+make build TARGET=api TAG=<git-sha>
 
 # Login interactively, then build and push an immutable image.
 make registry-login
-make push APP=vlora-web TAG=<git-sha>
+make push TARGET=api TAG=<git-sha>
 
 # Validate the fully rendered Swarm manifest.
-make stack-check STACK=vlora-web TAG=<git-sha>
+make stack-check STACK=swarmops TAG=<git-sha>
 
 # Deploy one stack only. Server-side builds are never used.
-make deploy STACK=vlora-web HOST=manager-01 TAG=<git-sha>
+make deploy STACK=swarmops HOST=manager-01 TAG=<git-sha>
 
 # Operate one service without changing its manifest.
-make ps HOST=manager-01 STACK=vlora-web
-make logs HOST=manager-01 STACK=vlora-web SERVICE=vlora-web
-make scale HOST=manager-01 STACK=vlora-web SERVICE=vlora-web REPLICAS=1
-make rollback HOST=manager-01 STACK=vlora-web SERVICE=vlora-web
+make ps HOST=manager-01 STACK=swarmops
+make logs HOST=manager-01 STACK=swarmops SERVICE=api
+make scale HOST=manager-01 STACK=swarmops SERVICE=api REPLICAS=1
+make rollback HOST=manager-01 STACK=swarmops SERVICE=api
 ```
 
-Each app owns its pinned build stage. The Vlora app currently uses Node 24 for
-its lockfile-compatible build stage and Nginx only for its static runtime.
-
-Use `make build-all`, `make push-all`, and `make stack-check-all` only for a
-deliberate broad release. The `push` and `deploy` commands reject a dirty
-worktree so an image and its manifest can be traced back to a committed SHA.
+Application images and manifests are built and validated in their owning
+repositories. Here, `make stack-check-all` validates only the SwarmOps platform
+stacks. The `push` and `deploy` commands reject a dirty worktree so an image and
+its manifest can be traced back to a committed SHA.
 
 ## Secrets and configuration
 
@@ -382,12 +376,6 @@ Runtime configuration is a versioned Swarm secret, never an image layer,
 | `swarmops` | `swarmops_admin_password_hash_v1`, `swarmops_session_key_v1`, `swarmops_data_encryption_key_v1`, `swarmops_agent_token_v1`, `swarmops_registry_config_v1` | bcrypt operator hash, session HMAC key, and a base64-encoded random 32-byte AES-256-GCM data key for the API; node-agent token for the optional agent; standard Docker `config.json` for capped remote Engine builds only. Private stack pulls use reviewed credentials on the remote Swarm nodes. |
 | `swarmops-agent` | `swarmops_agent_token_v1` | Optional global read-only host inventory agent; the companion node-exporter has no credential and remains internal |
 | `swarmops-observability` | none | Prometheus, Alertmanager, and Jaeger remain internal; Alertmanager uses a checked-in blackhole receiver until an operator supplies a reviewed, credential-safe receiver config |
-| `ai-gateway` | `ai_gateway_config_v1` | `/run/secrets/ai_gateway_config` via `AI_GATEWAY_CONFIG_FILE` |
-| `vlora-backend` | `vlora_runtime_env_v1` | `/.env` for API and scan worker |
-| `iranianlawclub-backend` | `iranianlawclub_runtime_env_v1` | `/app/.env` for API and worker |
-| `reelforge` | `reelforge_runtime_env_v1` | `/app/.env` for API and worker |
-| `fatemifar-go` | `fatemifar_runtime_env_v1` | `/usr/src/app/.env` for the API |
-| `fa-backend` | `fa_backend_env_v1` | env file for the Mongo-only API (MONGO_URI, JWT, SMS, Zarinpal) |
 
 The native machine agent's API key is a protected host file created or copied
 by `scripts/install-swarmops-agent.sh`; it is not a Swarm secret and is never
@@ -428,7 +416,7 @@ IP, resource reservations, and stateful anti-affinity:
 
 ```bash
 make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
-make swarmops-checked-build MANIFEST=deploy/swarmops/platform.example.yml APP=swarmops TARGET=api TAG=<immutable-tag>
+go run ./cmd/swarmopsctl preflight --manifest deploy/swarmops/platform.example.yml
 ```
 
 Once SwarmOps is healthy, use `swarmopsctl preflight --url ... --username ...`
@@ -456,59 +444,36 @@ before it reaches the normal deploy command. Use
 `swarmops-checked-platform-deploy` for the initial offline Traefik/SwarmOps
 bootstrap.
 
-Run the reviewed all-node operations from the trusted workstation:
+### Fleet operations and volume backups
 
-```bash
-make swarmops-fleet-run INVENTORY=deploy/ansible/inventory.yml OPERATION=node-health-report
-make swarmops-fleet-status INVENTORY=deploy/ansible/inventory.yml RUN_ID=fleet-<generated-id>
-```
+Two capabilities described in earlier revisions of this file were driven by the
+Ansible inventory that has been removed, and neither has an implementation in
+this repository: an all-node job runner (`swarmops-fleet-run`) and a Restic
+volume-backup timer (`swarmops-backup-install`). The Makefile targets they named
+do not exist and the roles that would have installed them are not here.
 
-The first command queues a host-local transient systemd unit so accepted work
-survives a dropped Ansible connection. The CLI re-submits the same run ID up to
-eight times with 2, 4, 8, 16, 32, and 64 second backoff, while the host runner
-persists its own bounded attempts and retry schedule in the fixed status file.
-The second is the dependable SSH status path for remote-server operation; no
-path permits arbitrary commands or returns operation output.
+What does exist today:
 
-To protect local named volumes at every selected host, install the opt-in
-Restic S3-compatible timer with a protected controller-side file, then
-explicitly initialise only a confirmed empty repository:
-
-```bash
-make swarmops-backup-install INVENTORY=deploy/ansible/inventory.yml BACKUP_ENV_FILE=/secure/swarmops-restic-s3.env
-make swarmops-backup-init INVENTORY=deploy/ansible/inventory.yml
-```
-
-All hosts share the reviewed repository but snapshot/retention filtering is
-host-specific and repository locks are retried. Declare every intentional
-local bind-mount data root in `swarmops_backup_paths`; the timer is not a substitute for MongoDB/Postgres-consistent backups or a
-tested restore. Do not schedule replica databases in the Swarm until their
-logical backup/recovery runbook and capacity proof exist.
-
-After a server reconnect or reboot, run the non-mutating continuity check:
-
-```bash
-make swarmops-recovery-check INVENTORY=deploy/ansible/inventory.yml
-```
-
-It verifies Docker, Swarm membership, local volume-root continuity, optional
-backup-timer state, and manager visibility. Set a stateful host's exact volume
-names in `swarmops_recovery_expected_volumes` in the ignored inventory to make
-the read-only check fail if a required local volume is gone. It never restores
-data. The stateful deployment and restore boundaries are in
-[`../docs/swarmops-stateful.md`](../docs/swarmops-stateful.md).
+- **Running an operation on many machines** is the console's **Activity → Runs**
+  and the typed action catalogue behind it. Each machine gets its own durable
+  run with its own attempts and retry schedule, which is what a dropped
+  connection needed in the first place.
+- **Controller state** is backed up as one sealed file with its separately held
+  key; see **Control → Core** and the recovery procedure in the root README.
+- **Local Docker volumes are not backed up by SwarmOps.** Use your own snapshot
+  or backup tooling on the stateful node until this is built, and do not treat
+  the absence of an error as evidence that data is protected.
 
 ## Stack readiness and cutover scope
 
 | Stack family | Manifest status | Cutover condition |
 | --- | --- | --- |
-| `traefik`, `swarmops`, `nim`, `ai-gateway` | ready for operator deployment | platform bootstrap, required secrets, immutable image push, and live checks completed |
+| `traefik`, `swarmops` | ready for operator deployment | platform bootstrap, required secrets, immutable image push, and live checks completed |
 | `swarmops-agent`, `swarmops-observability`, `swarmops-logs` | optional host monitoring, shared monitoring, and logging manifests | enable only after capacity, retention, alert receiver, and backup plan are reviewed; operator graphs stay in SwarmOps |
 | `mongo-replicaset`, `postgres-primary-replica` | reviewed stateful manifests | only after distinct durable slot labels, live capacity admission, versioned database secrets, and tested database-consistent recovery |
-| `vlora-*` | Swarm manifests are ready; existing project Compose path remains live | validate Mongo/Redis/S3, payment callbacks, CORS, Android/PWA behavior, DNS |
-| `iranianlawclub-*` | Swarm manifests are ready; existing Compose path remains live | supply Mongo/Redis/S3/ClamAV, seed/migration plan, DNS and auth smoke tests |
-| `reelforge` | API/worker manifest ready; no standalone web-image contract has been added | supply hostname, data stores, rendering capacity, and scoped gateway token |
-| `fatemifar-*`, `fa-app`, `fa-admin`, `fa-backend` | staged manifests only; Liara remains the live deployment | Postgres→Mongo import run, payment/SMS/OAuth callbacks, DNS and rollback approval (see docs/products/fatemifar.md) |
+
+Application readiness and cutover notes now live beside each application's
+own `deploy/stacks/<app>.yml`; SwarmOps does not duplicate those manifests.
 
 No production cutover is performed by these files or by the commands above.
 See [`../docs/swarm-platform.md`](../docs/swarm-platform.md) for the architecture
