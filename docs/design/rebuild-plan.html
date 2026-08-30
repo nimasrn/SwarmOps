@@ -1,0 +1,639 @@
+<title>SwarmOps Rebuild Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+
+<style>
+  /* The palette is not chosen for this document — it is SwarmOps' own
+     `nim-ui` malachite colourway, resolved for each scheme, so the plan reads
+     as part of the product it plans. */
+  :root {
+    --canvas: #f7f9f8;
+    --sunken: #eef2f1;
+    --surface: #ffffff;
+    --muted: #eff3f2;
+    --ink: #111820;
+    --ink-2: #3f4a55;
+    --ink-3: #68757f;
+    --line: rgba(17, 27, 34, 0.13);
+    --line-soft: rgba(17, 27, 34, 0.08);
+    --accent: #0f8a63;
+    --accent-soft: rgba(15, 138, 99, 0.11);
+    --accent-line: rgba(15, 138, 99, 0.26);
+    --warning: #8a6206;
+    --warning-soft: rgba(138, 98, 6, 0.13);
+    --danger: #c1332c;
+    --danger-soft: rgba(193, 51, 44, 0.11);
+    --info: #2f6ad0;
+    --info-soft: rgba(47, 106, 208, 0.1);
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --canvas: #0d1117;
+      --sunken: #090d12;
+      --surface: #151b23;
+      --muted: #1b232c;
+      --ink: #e6edf3;
+      --ink-2: rgba(230, 237, 243, 0.76);
+      --ink-3: rgba(230, 237, 243, 0.55);
+      --line: rgba(255, 255, 255, 0.14);
+      --line-soft: rgba(255, 255, 255, 0.08);
+      --accent: #2fbf8f;
+      --accent-soft: rgba(47, 191, 143, 0.15);
+      --accent-line: rgba(47, 191, 143, 0.32);
+      --warning: #d6a13a;
+      --warning-soft: rgba(214, 161, 58, 0.15);
+      --danger: #f0776d;
+      --danger-soft: rgba(240, 119, 109, 0.15);
+      --info: #7aa2ef;
+      --info-soft: rgba(122, 162, 239, 0.15);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --canvas: #0d1117;
+    --sunken: #090d12;
+    --surface: #151b23;
+    --muted: #1b232c;
+    --ink: #e6edf3;
+    --ink-2: rgba(230, 237, 243, 0.76);
+    --ink-3: rgba(230, 237, 243, 0.55);
+    --line: rgba(255, 255, 255, 0.14);
+    --line-soft: rgba(255, 255, 255, 0.08);
+    --accent: #2fbf8f;
+    --accent-soft: rgba(47, 191, 143, 0.15);
+    --accent-line: rgba(47, 191, 143, 0.32);
+    --warning: #d6a13a;
+    --warning-soft: rgba(214, 161, 58, 0.15);
+    --danger: #f0776d;
+    --danger-soft: rgba(240, 119, 109, 0.15);
+    --info: #7aa2ef;
+    --info-soft: rgba(122, 162, 239, 0.15);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 56px 32px 96px; }
+
+  header.masthead { margin-bottom: 48px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 14px;
+  }
+  h1 {
+    margin: 0 0 14px; font-size: clamp(30px, 4.2vw, 42px); font-weight: 600;
+    letter-spacing: -0.03em; line-height: 1.08; text-wrap: balance; max-width: 20ch;
+  }
+  .standfirst { margin: 0; font-size: 17px; color: var(--ink-2); max-width: 68ch; line-height: 1.6; }
+
+  .layout { display: grid; grid-template-columns: 188px minmax(0, 1fr); gap: 48px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; } nav.index { position: static !important; } }
+
+  nav.index { position: sticky; top: 32px; }
+  nav.index ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: idx; }
+  nav.index a {
+    display: flex; gap: 10px; padding: 5px 8px; border-radius: 2px;
+    font-size: 13px; color: var(--ink-2); text-decoration: none; line-height: 1.35;
+  }
+  nav.index a:hover { background: var(--accent-soft); color: var(--accent); }
+  nav.index a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  nav.index .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding-top: 2px; }
+
+  section { margin-bottom: 52px; scroll-margin-top: 24px; }
+  h2 {
+    margin: 0 0 6px; font-size: 24px; font-weight: 600; letter-spacing: -0.022em;
+    line-height: 1.2; text-wrap: balance;
+  }
+  h2 .num { font-family: var(--mono); font-size: 13px; font-weight: 400; color: var(--ink-3); margin-right: 10px; }
+  h3 { margin: 26px 0 8px; font-size: 16px; font-weight: 600; letter-spacing: -0.015em; }
+  .lede { margin: 0 0 20px; color: var(--ink-2); max-width: 72ch; }
+  p { max-width: 72ch; }
+  a { color: var(--accent); }
+
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  code { background: var(--muted); padding: 1px 5px; border-radius: 2px; color: var(--ink); }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 18px 20px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 760px) { .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); } }
+
+  .label {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  .pill {
+    display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap;
+  }
+  .pill.gap { background: var(--danger-soft); color: var(--danger); }
+  .pill.partial { background: var(--warning-soft); color: var(--warning); }
+  .pill.have { background: var(--accent-soft); color: var(--accent); }
+  .pill.info { background: var(--info-soft); color: var(--info); }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th {
+    text-align: left; padding: 9px 14px; font-size: 11px; font-weight: 500;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3);
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  td { padding: 10px 14px; font-size: 13.5px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td .mono { font-size: 12.5px; color: var(--ink-2); }
+
+  /* The phases are a real dependency order — 2 cannot start before 1 has
+     numbers to read. The numbering encodes that, and nothing else does. */
+  .phase { border: 1px solid var(--line); border-radius: 3px; background: var(--surface); margin-bottom: 14px; overflow: hidden; }
+  .phase > header { display: flex; align-items: baseline; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+  .phase .pnum {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    border: 1px solid var(--accent-line); background: var(--accent-soft);
+    border-radius: 2px; padding: 2px 7px; flex: none;
+  }
+  .phase h3 { margin: 0; font-size: 17px; flex: 1; min-width: 240px; }
+  .phase .when { font-size: 12.5px; color: var(--ink-3); font-family: var(--mono); }
+  .phase > .body { padding: 16px 20px 18px; }
+  .phase p { margin: 0 0 14px; }
+
+  ul.work { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  ul.work > li { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 700px) { ul.work > li { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+  ul.work .where { font-family: var(--mono); font-size: 12px; color: var(--ink-2); word-break: break-word; padding-top: 1px; }
+  ul.work .what { font-size: 14px; color: var(--ink-2); }
+  ul.work .what strong { color: var(--ink); font-weight: 500; }
+
+  .accept { margin-top: 16px; padding: 12px 14px; border-radius: 2px; background: var(--muted); }
+  .accept .label { display: block; margin-bottom: 5px; }
+  .accept p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+
+  .callout { border-left: 2px solid var(--accent); background: var(--accent-soft); padding: 14px 18px; border-radius: 0 2px 2px 0; }
+  .callout.warn { border-left-color: var(--warning); background: var(--warning-soft); }
+  .callout p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .callout p + p { margin-top: 10px; }
+  .callout strong { color: var(--ink); font-weight: 600; }
+
+  dl.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 18px; margin: 0; font-size: 13.5px; }
+  dl.facts dt { color: var(--ink-3); }
+  dl.facts dd { margin: 0; color: var(--ink-2); }
+
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+  .flow .node { border: 1px solid var(--line); border-radius: 2px; padding: 6px 10px; background: var(--surface); white-space: nowrap; }
+  .flow .node.hi { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+  .flow .arr { color: var(--ink-3); }
+
+  footer.end { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow">SwarmOps · build plan · 30 August 2026</div>
+    <h1>Measure first, then move the furniture</h1>
+    <p class="standfirst">
+      The console is being reorganised around six areas and object pages, and four capabilities that
+      the product describes but does not have are being built. This is the order that work has to
+      happen in, what each step touches, and what will count as done. The screens themselves are in
+      the <a href="https://claude.ai/code/artifact/fcf22dc5-2c63-4961-ab0f-47966c0ae48a">design canvas</a>.
+    </p>
+  </header>
+
+  <div class="layout">
+    <nav class="index" aria-label="Sections">
+      <ol>
+        <li><a href="#have"><span class="n">01</span><span>What already works</span></a></li>
+        <li><a href="#gaps"><span class="n">02</span><span>What is actually missing</span></a></li>
+        <li><a href="#shape"><span class="n">03</span><span>The target shape</span></a></li>
+        <li><a href="#phases"><span class="n">04</span><span>The phases</span></a></li>
+        <li><a href="#verify"><span class="n">05</span><span>How it gets verified</span></a></li>
+        <li><a href="#limits"><span class="n">06</span><span>What I will not claim</span></a></li>
+        <li><a href="#decisions"><span class="n">07</span><span>Decisions taken</span></a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <section id="have">
+        <h2><span class="num">01</span>What already works</h2>
+        <p class="lede">
+          Most of what this rebuild needs is already built and tested. Listing it first is not
+          throat-clearing — it is the difference between a redesign and a rewrite, and several of
+          these were on the list of things to add.
+        </p>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th style="width: 27%">Capability</th><th>State today</th><th style="width: 15%">Verdict</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Durable command queue</td>
+                <td>Written to sealed storage <em>before</em> dispatch; states <code>queued → running → retry_scheduled → succeeded | needs_attention</code>; retry ladder 2·4·8·16·32·64 s to eight attempts; a newer identical request for the same server, action and target atomically replaces the older queued one.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Agent transport</td>
+                <td>Outbound mutual-TLS long polls. No inbound port, no SSH, no WebSocket. Resumes after disconnection; rejects work from a stale authority epoch.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Self-update, both binaries</td>
+                <td><code>internal/warden</code> already downloads, verifies the SHA-256 against the release, health-checks the candidate, rolls back on failure, and keeps exactly three releases on disk.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Container logs</td>
+                <td><code>internal/logstore</code> defaults to seven-day retention with a 20 GiB cap, and says so when the cap shortens retention.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Traffic</td>
+                <td>Typed HTTP/TCP/UDP routes, entrypoints, Cloudflare and ArvanCloud DNS, ACME state and retry, one-action cutover. No raw label or rule is ever accepted.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Source to deploy</td>
+                <td>Sealed provider tokens, full-tree discovery of every Dockerfile and Compose file, and the substitution rule that replaces a repository's PostgreSQL, MongoDB, Redis, Prometheus and Jaeger with the cluster's own.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+              <tr>
+                <td>Audit and action catalogue</td>
+                <td>Every mutation recorded with actor and outcome; the operation vocabulary is closed and served, so an action absent from it has no route and no argv the agent will accept.</td>
+                <td><span class="pill have">Keep</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="gaps">
+        <h2><span class="num">02</span>What is actually missing</h2>
+        <p class="lede">
+          Each of these was checked against the source, not against the README. Two are capability
+          gaps, two are surfaces that exist but do not answer, and one is a subsystem to delete.
+        </p>
+
+        <div class="grid-2" style="margin-bottom: 14px">
+          <div class="card">
+            <div class="label" style="margin-bottom: 8px">Gap 1 <span class="pill gap" style="margin-left: 6px">Nothing collects it</span></div>
+            <h3 style="margin-top: 0">No host or container metrics reach Prometheus</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              <code>deploy/observability/prometheus.yml</code> has four scrape jobs: Prometheus itself,
+              the Core API, Traefik, and Alertmanager, plus HTTP service discovery for applications.
+              There is no job for a node and none for a container. A <code>node-exporter</code> runs in
+              the agent stack and <em>nothing scrapes it</em>. Per-container statistics exist only as a
+              one-shot API call behind <code>GET /api/v1/containers/{id}/stats</code>, stored nowhere.
+            </p>
+          </div>
+          <div class="card">
+            <div class="label" style="margin-bottom: 8px">Gap 2 <span class="pill gap" style="margin-left: 6px">No surface</span></div>
+            <h3 style="margin-top: 0">There is no dashboard for any single thing</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              The Health screen draws a cluster-wide in-memory series, bounded to four hours and lost
+              on restart. There is no page for one machine, one container, or the gateway's own
+              traffic — which is why a chart in this console can never answer <em>“for which node?”</em>
+              That question is the complaint this rebuild starts from.
+            </p>
+          </div>
+          <div class="card">
+            <div class="label" style="margin-bottom: 8px">Gap 3 <span class="pill partial">Exists, unfindable</span></div>
+            <h3 style="margin-top: 0">The core is a footnote</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              <em>Control → Controller &amp; recovery</em> opens on a ten-row handoff timeline whose every
+              row reads “Pending”. It never states the version, never offers an update, and shows no
+              sign that the machine it runs on exists. The updater that could answer all three is
+              built and unreachable from the browser.
+            </p>
+          </div>
+          <div class="card">
+            <div class="label" style="margin-bottom: 8px">Gap 4 <span class="pill partial">Per-host only</span></div>
+            <h3 style="margin-top: 0">Agent versions are managed one host at a time</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              <code>POST /api/v1/servers/{id}/agent-update</code> exists; a fleet view, an update
+              policy, a rollout and a rollback do not. A machine two releases behind silently rejects
+              newer commands and nothing on screen connects the two facts.
+            </p>
+          </div>
+        </div>
+
+        <div class="callout warn">
+          <p><strong>Gap 5 — Ansible is still shipped.</strong> <code>deploy/ansible/</code> holds a
+          playbook, an inventory example and three roles, and <code>scripts/bootstrap-swarm.sh</code>
+          and <code>scripts/setup-three-managers.sh</code> both drive it. Every task it performs is
+          also a typed agent operation. It is a second, unaudited path to the same hosts, and it goes.</p>
+        </div>
+      </section>
+
+      <section id="shape">
+        <h2><span class="num">03</span>The target shape</h2>
+        <p class="lede">
+          Six areas instead of eight, and the depth moves into the object. You open a machine, a
+          container, an application or a run, and everything about that thing — including its
+          charts — is on its page. <em>Observe</em> stops being a destination for exactly that reason.
+        </p>
+
+        <div class="grid-3" style="margin-bottom: 18px">
+          <div class="card">
+            <div class="label">Home</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">What production is doing, and the one thing worth doing about it.</p>
+          </div>
+          <div class="card">
+            <div class="label">Apps</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">Applications, Deploy, Platform services, Images &amp; registries, Stacks &amp; services.</p>
+          </div>
+          <div class="card">
+            <div class="label">Machines</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">Machines, Swarm, Containers, Storage &amp; networks. Setup and diagnostics move onto the host.</p>
+          </div>
+          <div class="card">
+            <div class="label">Traffic</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">Gateway, Routes, Domains &amp; DNS, Certificates.</p>
+          </div>
+          <div class="card">
+            <div class="label">Activity</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">Runs, Logs, Audit, Action catalog.</p>
+          </div>
+          <div class="card">
+            <div class="label">Control</div>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2)">Core, Agents &amp; updates, Settings &amp; access.</p>
+          </div>
+        </div>
+
+        <p>
+          Nothing is removed. Every screen that exists today keeps a home, and most of them stop
+          being screens — <em>Host setup</em> becomes a machine's Setup tab, <em>Connection diagnostics</em>
+          becomes its Agent tab, <em>Collectors</em> becomes Platform services, and
+          <em>Import from Kubernetes</em> becomes one of the five things you can point Deploy at.
+          Every retired hash keeps resolving.
+        </p>
+      </section>
+
+      <section id="phases">
+        <h2><span class="num">04</span>The phases</h2>
+        <p class="lede">
+          Ordered by dependency, not by preference. Phase 2 has nothing to read until phase 1
+          writes it, and the console rebuild has nothing to draw until phase 2 serves it — so the
+          screens come last even though they are the visible part.
+        </p>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">01</span>
+            <h3>The agent becomes the measurement</h3>
+            <span class="when">no design dependency · can start now</span>
+          </header>
+          <div class="body">
+            <p>
+              One collector, on the host, in the process that is already there. It answers before
+              Docker exists, needs no privileged sidecar, and its readings arrive over the connection
+              that is already authenticated.
+            </p>
+            <ul class="work">
+              <li><span class="where">internal/hostmetrics/</span><span class="what"><strong>New.</strong> CPU per core and aggregate, load average, memory and swap, every mounted filesystem, per-interface network counters, uptime, and pressure stall where the kernel exposes it. Linux reads <code>/proc</code> and <code>/sys</code>; a darwin path exists so the thing can be developed and tested on this machine.</span></li>
+              <li><span class="where">internal/containermetrics/</span><span class="what"><strong>New.</strong> Per-container CPU, memory against limit, network, block I/O, PIDs and restart count, sampled from the Docker API — labelled by container, service, stack, application and node so a query can group by any of them.</span></li>
+              <li><span class="where">cmd/agent/</span><span class="what">A <code>metrics.sample</code> catalogue entry that returns one Prometheus-format exposition for the host and every container on it. It is a catalogued read like any other; the agent still opens no port.</span></li>
+              <li><span class="where">api/http/metrics.go</span><span class="what"><strong>New.</strong> Core pulls each connected machine's sample on a 15-second tick over the existing channel, caches the last one with its age, and serves it at <code>GET /metrics/machines/{id}</code>. Prometheus scrapes Core, which is the only way to collect from a fleet that has no inbound ports.</span></li>
+              <li><span class="where">internal/ops/metrics_targets.go</span><span class="what">The discovery response grows the machine targets beside the application targets it already returns, so a newly enrolled host starts being scraped without anyone editing a file.</span></li>
+              <li><span class="where">deploy/observability/prometheus.yml</span><span class="what">One new job, <code>swarmops-machines</code>, using the same HTTP service discovery. The unscraped <code>node-exporter</code> comes out of the agent stack.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p>A one-node Swarm on this Mac has an enrolled agent; <code>curl</code> against Core's machine endpoint returns host <em>and</em> per-container series; Prometheus shows the target up and holds fifteen minutes of history for a container that was started and stopped during the run.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">02</span>
+            <h3>A closed set of readings the console can ask for</h3>
+            <span class="when">needs 01</span>
+          </header>
+          <div class="body">
+            <p>
+              The browser never sends PromQL. It asks for a named reading about a named object, and
+              Core owns the query — the same rule that governs every other operation in this product.
+            </p>
+            <ul class="work">
+              <li><span class="where">internal/metrics/queries.go</span><span class="what"><strong>New.</strong> Named, parameterised queries: host series for a machine, container series for a container, request rate and latency percentiles and error ratio for an application or route from Traefik's own metrics, and fleet aggregates.</span></li>
+              <li><span class="where">api/http/</span><span class="what">Range endpoints per object — machine, container, application, gateway, cluster — each with a bounded window and a step the server picks. Every response states which source answered it and how old that reading is.</span></li>
+              <li><span class="where">internal/insights/</span><span class="what">The existing in-memory series becomes the documented fallback for a cluster with no Prometheus. A screen says which one it is reading rather than averaging the two.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p>Every chart in the canvas has an endpoint that returns it, an absent Prometheus degrades to a stated four-hour window instead of an empty screen, and no endpoint accepts an expression.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">03</span>
+            <h3>Ansible comes out</h3>
+            <span class="when">independent</span>
+          </header>
+          <div class="body">
+            <p>
+              Every task the playbook performs already exists as a typed agent operation with an
+              audit record. Keeping both means two ways to change a host and one of them is invisible.
+            </p>
+            <ul class="work">
+              <li><span class="where">deploy/ansible/</span><span class="what">Deleted — playbook, inventory example, and the <code>docker_engine</code>, <code>swarm</code> and <code>swarmops_preflight</code> roles.</span></li>
+              <li><span class="where">scripts/bootstrap-swarm.sh<br>scripts/setup-three-managers.sh</span><span class="what">Rewritten against <code>swarmopsctl</code>: install the agent, approve it, then queue the same install, init and join operations the console queues. Same outcome, one path, every step audited.</span></li>
+              <li><span class="where">README.md · deploy/README.md · CHANGELOG.md</span><span class="what">The Ansible sections go; the replacement path is documented where they were.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p><code>grep -ri ansible</code> over the repository returns only changelog history, and the rewritten bootstrap script brings up a working one-node Swarm on this machine end to end.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">04</span>
+            <h3>The core and the fleet can be updated from the console</h3>
+            <span class="when">independent of 01–02</span>
+          </header>
+          <div class="body">
+            <p>
+              The mechanism exists and has no route. This phase is mostly wiring, and it is what turns
+              <em>Control</em> from a recovery procedure into a place you visit.
+            </p>
+            <ul class="work">
+              <li><span class="where">api/http/core.go</span><span class="what">Releases available and installed, the running one, the process's own resident memory and CPU, state size and free disk, last backup and last verified restore; an update endpoint that drives the existing warden; an update policy of manual, windowed or never.</span></li>
+              <li><span class="where">api/http/agents.go</span><span class="what"><strong>New.</strong> Fleet version inventory, a rollout that walks machines one at a time and stops on the first failure, per-machine rollback to a kept release, and the same three-way policy.</span></li>
+              <li><span class="where">internal/agentcontrol/</span><span class="what">The catalogue gains the minimum agent version each operation needs, so “this machine will reject that command” becomes a fact the console can state instead of a mystery.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p>An agent is updated and rolled back from the browser against the local cluster, and a deliberately failed candidate leaves the previous release serving.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">05</span>
+            <h3>The console is rebuilt to the six areas</h3>
+            <span class="when">needs 02 and 04 · needs the canvas signed off</span>
+          </header>
+          <div class="body">
+            <p>
+              The console's directory rules stay exactly as they are — this is a change of what the
+              screens are, not of how the code is organised.
+            </p>
+            <ul class="work">
+              <li><span class="where">web/src/navigation/navigation.ts</span><span class="what">Six areas, their screens, chords and one-line purposes. Every one of today's twenty-four hashes joins <code>LEGACY_ROUTES</code> and resolves to its new home.</span></li>
+              <li><span class="where">web/src/shell/page-router.tsx</span><span class="what">Object routes — <code>#machine/&lt;id&gt;</code>, <code>#container/&lt;id&gt;</code>, <code>#app/&lt;name&gt;</code>, <code>#run/&lt;id&gt;</code> — so the thing you are looking at is addressable and shareable.</span></li>
+              <li><span class="where">web/src/components/metric-chart.tsx</span><span class="what"><strong>New.</strong> One wrapper over the kit's <code>Chart</code>: a reading, its meaning, its window, and its source. Every chart in the product is this component, so “which node, over what period, measured by whom” is answered in one place.</span></li>
+              <li><span class="where">web/src/screens/</span><span class="what">Machine, container and application detail pages; the gateway's traffic panels; Platform services; the consolidated Deploy flow; the rewritten Core screen. A screen is deleted only once its content has a home.</span></li>
+              <li><span class="where">web/src/operator-workflows.test.mjs</span><span class="what">The existing test that fails a routable screen with no area or no router branch is extended to object routes, so the failure mode that shipped an unreachable screen for three releases stays impossible.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p>Every old hash resolves, no screen shows a control without a handler, a 390-pixel viewport has no horizontal overflow, and the review harness renders all six areas against fixtures.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">06</span>
+            <h3>Deploy becomes one flow with five inputs</h3>
+            <span class="when">needs 05</span>
+          </header>
+          <div class="body">
+            <p>
+              A Git repository, an uploaded archive, a public URL, an image you already pushed, and a
+              set of Kubernetes manifests are five ways to start the same four stages. The Kubernetes
+              importer stops being a destination.
+            </p>
+            <ul class="work">
+              <li><span class="where">web/src/screens/apps/deploy/</span><span class="what">Source, Discovery, Plan, Release as four stages of one screen, with the substitution panel promoted: what the repository asked for, what it will get instead, and why.</span></li>
+              <li><span class="where">api/http/source_api.go</span><span class="what">The discovery response returns substitutions as first-class records — variable, previous value, new value, reason — rather than leaving the console to infer them.</span></li>
+            </ul>
+            <div class="accept">
+              <span class="label">Done when</span>
+              <p>A repository carrying its own PostgreSQL, Redis, Prometheus and Jaeger deploys against the local cluster, runs three services and no fifth database, and the plan shown beforehand matches what exists afterwards.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <header>
+            <span class="pnum">07</span>
+            <h3>The record is made true again</h3>
+            <span class="when">needs everything</span>
+          </header>
+          <div class="body">
+            <ul class="work">
+              <li><span class="where">CHANGELOG.md · README.md<br>docs/console-information-architecture.md</span><span class="what">Capabilities, boundaries and limitations corrected wherever this work made them untrue — in particular the monitoring row, which currently describes an in-memory series as the product's observability.</span></li>
+              <li><span class="where">cmd/api/main.go</span><span class="what">The version constant, with the release duty its own <code>AGENTS.md</code> defines.</span></li>
+            </ul>
+            <div class="callout" style="margin-top: 14px">
+              <p><strong>One item here needs you.</strong> The release duty also requires
+              <code>apps/nim/content/docs/swarmops.json</code> and its Persian counterpart, which live
+              in the nim monorepo, not in this checkout. I will prepare the entries; mirroring them
+              is a step you take on that side.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="verify">
+        <h2><span class="num">05</span>How it gets verified</h2>
+        <p class="lede">
+          A disposable one-node Swarm on this machine, through OrbStack, plus the checks the
+          repository already defines. Nothing below is a claim about a remote cluster.
+        </p>
+
+        <div class="card" style="margin-bottom: 14px">
+          <div class="flow">
+            <span class="node hi">swarmops-core</span>
+            <span class="arr">←</span>
+            <span class="node">agent, host process</span>
+            <span class="arr">→</span>
+            <span class="node">OrbStack Docker</span>
+            <span class="arr">→</span>
+            <span class="node">one-node Swarm</span>
+            <span class="arr">→</span>
+            <span class="node">Traefik + Prometheus</span>
+          </div>
+          <p style="margin: 14px 0 0; font-size: 13.5px; color: var(--ink-2)">
+            Real enrolment, real certificates, real Docker, real scrapes. The agent runs as a host
+            process on this Mac, which is the same shape it takes on a server.
+          </p>
+        </div>
+
+        <dl class="facts">
+          <dt>Every phase</dt><dd><code>go test ./...</code>, <code>npm --prefix web run typecheck</code>, <code>npm --prefix web run build</code>, and the installer shell checks.</dd>
+          <dt>Phase 1</dt><dd>Prometheus target up; container series present for a container created and destroyed inside the window.</dd>
+          <dt>Phase 3</dt><dd>The rewritten bootstrap script brings the local cluster up from nothing.</dd>
+          <dt>Phase 4</dt><dd>A real agent update and a real rollback, plus a deliberately broken candidate that does not take the fleet with it.</dd>
+          <dt>Phase 5</dt><dd>Every screen driven in a browser against the live local Core, not only against fixtures.</dd>
+          <dt>Phase 6</dt><dd>A repository with its own database and observability containers deploys and is rewired.</dd>
+        </dl>
+      </section>
+
+      <section id="limits">
+        <h2><span class="num">06</span>What I will not claim</h2>
+        <p class="lede">Stated now, so no report later has to walk it back.</p>
+        <div class="grid-2">
+          <div class="card">
+            <h3 style="margin-top: 0">Not verified here</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              Multi-node Swarm behaviour, controller handoff between two real hosts, ACME issuance
+              against a real DNS provider, and Ubuntu-specific host paths. A one-node cluster on macOS
+              proves the mechanism, not the fleet.
+            </p>
+          </div>
+          <div class="card">
+            <h3 style="margin-top: 0">Deliberately not built</h3>
+            <p style="margin: 0; font-size: 14px; color: var(--ink-2)">
+              Automatic controller failover. Two active cores would both believe they own the cluster;
+              a move stays a deliberate act with a fence in the middle of it, and the console will keep
+              saying so rather than implying a quorum it does not have.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="decisions">
+        <h2><span class="num">07</span>Decisions taken</h2>
+        <p class="lede">Four questions were settled before any of this was written down.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th style="width: 26%">Question</th><th>Settled as</th></tr></thead>
+            <tbody>
+              <tr><td>Which checkout is canonical</td><td><code>/Users/nima/go/pkg/SwarmOps</code>. The identical copy inside the nim monorepo is left alone; the site-content release step is handed back rather than done from here.</td></tr>
+              <tr><td>What can be verified</td><td>A disposable local Docker Swarm on this Mac. Remote and multi-node behaviour stays unclaimed.</td></tr>
+              <tr><td>Who collects metrics</td><td>The native agent, for both the host and every container — no cAdvisor, no scraped node-exporter, no privileged extra container, and readings that arrive before Docker does.</td></tr>
+              <tr><td>How far Traefik reaches</td><td>Everything the cluster publishes, including this console if you publish it. Not the agent control channel: the gateway is a thing you install <em>with</em> agents, so it cannot be what they need in order to reach you.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="end">
+        Written against commit <span class="mono">880b6b6</span> plus the uncommitted 0.11.0 console
+        refactor in the working tree. Every gap in section 02 was confirmed in the source before it
+        was written down here.
+      </footer>
+    </main>
+  </div>
+</div>
