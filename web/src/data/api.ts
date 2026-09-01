@@ -70,6 +70,9 @@ import type {
   TraefikSettings,
   LogPage,
   LogStatus,
+  CoreSelf,
+  MachineMetrics,
+  MetricRange,
 } from './types'
 
 export class APIError extends Error {
@@ -255,6 +258,44 @@ export class SwarmOpsAPI {
   configs() { return this.request<SwarmObjectMeta[]>('/api/v1/configs') }
   commandCatalogue() { return this.request<CommandDefinition[]>('/api/v1/commands/catalogue') }
   insightsHistory() { return this.request<InsightsSample[]>('/api/v1/insights/history') }
+
+  /** What the controller knows about itself. */
+  coreSelf() { return this.request<CoreSelf>('/api/v1/core/self') }
+
+  /** Ask the LOCAL updater to check for a release. The controller does not
+      download, verify or restart itself — a process cannot supervise its own
+      replacement. */
+  requestCoreUpdate() { return this.request<{ status: string }>('/api/v1/core/update', { method: 'POST' }) }
+
+  /** One sample of a machine and every container on it. Measured on the host
+      by its own agent, so it answers before Docker exists. */
+  machineMetrics(id: string) {
+    return this.request<MachineMetrics>(`/api/v1/machines/${encodeURIComponent(id)}/metrics`)
+  }
+
+  /** One named reading about one object. The scope and series name a row in a
+      fixed table on the machine that runs the query; nothing resembling an
+      expression crosses this boundary. */
+  metricRange(input: {
+    application?: string
+    container?: string
+    from: Date
+    machine?: string
+    scope: string
+    series: string
+    to: Date
+  }) {
+    const parameters = new URLSearchParams({
+      from: input.from.toISOString(),
+      scope: input.scope,
+      series: input.series,
+      to: input.to.toISOString(),
+    })
+    if (input.application) parameters.set('application', input.application)
+    if (input.container) parameters.set('container', input.container)
+    if (input.machine) parameters.set('machine', input.machine)
+    return this.request<MetricRange>(`/api/v1/metrics/range?${parameters.toString()}`)
+  }
 
   // runCatalogued executes one catalogue entry from the values an operator
   // typed into its generated form. It builds the request from the definition

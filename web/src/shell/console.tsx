@@ -23,7 +23,7 @@ import { formatClock } from '../lib/format'
 import { serverCanManage } from '../lib/health'
 import { readSession, writeSession } from '../lib/storage'
 import { AREAS, areaOf, landingPage, pageEntry } from '../navigation/navigation'
-import { useScreenMemory, useWorkspace } from '../navigation/use-workspace'
+import { useScreenMemory, useSelectedRecord, useWorkspace } from '../navigation/use-workspace'
 import { useShortcuts } from '../navigation/shortcuts'
 import { paletteCommands, paletteEntities } from '../navigation/palette'
 import { Brand } from '../components/brand'
@@ -45,6 +45,7 @@ const SELECTED_SERVER_KEY = 'swarmops:selected-server'
  */
 export function Console({ onLogout, session }: { onLogout: () => void; session: Session }) {
   const [workspace, setWorkspace] = useWorkspace()
+  const [selectedRecordID, setSelectedRecordID] = useSelectedRecord()
   const toast = useToast()
   const toggleScheme = useSchemeToggle()
 
@@ -236,8 +237,11 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
       }
       contextualGroups={contextualGroups}
       contextualHeader={
+        // The eyebrow is the area and the heading is the screen — except where
+        // an area opens a screen of the same name, and printing "Machines"
+        // twice in two type sizes tells a reader nothing they did not have.
         <>
-          <Label>{area.label}</Label>
+          {area.label === page.label ? null : <Label>{area.label}</Label>}
           <strong>{page.label}</strong>
           <span>{area.summary}</span>
         </>
@@ -309,15 +313,17 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
       />
       <ShortcutsSheet onClose={() => setShortcutsOpen(false)} open={shortcutsOpen} />
 
-      {/* Two tiers of navigation still leave "where am I" unanswered on a
-          console with twenty-four screens; the crumb answers it in one line
-          and gives the area back as a target. */}
+      {/* Two tiers of navigation still leave "where am I" unanswered, so the
+          crumb answers it in one line and gives the area back as a target.
+
+          An area and its landing screen can share a name — Machines the area
+          opens Machines the screen — and repeating it teaches nobody anything,
+          so the crumb names both only when they are different things. */}
       {workspace === 'overview' ? null : (
         <Breadcrumb
-          items={[
-            { href: `#${landingPage(area)}`, label: area.label },
-            { label: page.label },
-          ]}
+          items={area.label === page.label
+            ? [{ label: page.label }]
+            : [{ href: `#${landingPage(area)}`, label: area.label }, { label: page.label }]}
         />
       )}
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
@@ -349,6 +355,8 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
           onOpen={setWorkspace}
           onRefreshCommands={refreshCommands}
           onRefreshServers={refreshServers}
+          onSelectMachine={setSelectedRecordID}
+          selectedMachineID={selectedRecordID}
           onSelectServer={selectServer}
           serversLoading={serversLoading}
           servers={servers}

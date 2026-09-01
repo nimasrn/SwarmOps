@@ -55,11 +55,21 @@ export function DatabasesTab({ toast }: { toast: Toast }) {
   if (error) return <Banner tone="danger" title="Managed databases are unavailable">{error}</Banner>
   if (!databases) return <Panel><Spinner label="Reading managed databases" /></Panel>
 
-  const running = databases.filter((database) => database.installed && database.runningTasks > 0)
+  // A database that is deployed and has no running task is the worst state
+  // this screen can report: applications are wired to it and it is not there.
+  // It used to be an insight on this screen's own header; the header moved to
+  // Platform services, so the alarm moves into the tab rather than being lost.
   const stalled = databases.filter((database) => database.installed && database.runningTasks === 0)
 
   return (
     <>
+      {stalled.length ? (
+        <Banner title={`${stalled.length} deployed ${stalled.length === 1 ? 'engine is' : 'engines are'} not serving`} tone="danger">
+          {stalled.map((database) => database.displayName).join(', ')} {stalled.length === 1 ? 'is' : 'are'} deployed
+          with no running task. Every application holding a connection to {stalled.length === 1 ? 'it' : 'them'} is
+          failing right now.
+        </Banner>
+      ) : null}
       <Columns>
         {databases.map((database) => (
           <Panel

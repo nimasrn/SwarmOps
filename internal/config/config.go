@@ -51,11 +51,16 @@ type Config struct {
 	// Core identity is intentionally independent from saved machine-agent
 	// servers. A host running this API enters Servers only after its agent is
 	// separately installed and enrolled like any other machine.
-	CoreEndpoint                  string
-	CoreID                        string
-	CoreMode                      string
-	CoreName                      string
-	DataDir                       string
+	CoreEndpoint string
+	CoreID       string
+	CoreMode     string
+	CoreName     string
+	DataDir      string
+	// What the installer told this process about its own releases. Empty in a
+	// source checkout, which has no updater and says so rather than pretending.
+	CoreReleaseDir                string
+	CoreUpdateRequestFile         string
+	CoreUpdateStatusFile          string
 	DataEncryptionKey             []byte
 	DevMachineAPI                 *DevMachineAPI
 	ImagePrefixes                 []string
@@ -142,6 +147,9 @@ func Load() (Config, error) {
 		CoreMode:               env("SWARMOPS_CORE_MODE", "active"),
 		CoreName:               env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
 		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
+		CoreReleaseDir:         env("SWARMOPS_CORE_RELEASE_DIR", ""),
+		CoreUpdateRequestFile:  env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
+		CoreUpdateStatusFile:   env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
 		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
 		HTTPAllowRemote:        envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
 		HTTPEnabled:            envBool("SWARMOPS_HTTP_ENABLED", false),

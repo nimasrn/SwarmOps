@@ -24,6 +24,7 @@ import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import type { CoreMember, CoreTopology, Server } from '../../data/types'
 import { Screen } from '../../components/screen'
+import { CoreIdentityPanels } from './core-identity'
 import { formatDateTime } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 
@@ -147,6 +148,12 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
       width="full"
     >
       {error ? <Banner title="Control-plane action needs attention" tone="danger">{error}</Banner> : null}
+
+      {/* What this controller IS comes first. The move procedure below is the
+          thing you do once a year; the version, the host and the disk are the
+          things you came to look at. */}
+      <CoreIdentityPanels toast={toast} />
+
       {!topology ? <Panel><Spinner label="Reading control-plane topology" /></Panel> : (
         <>
           <DetailLayout aside={<CoreRail onRefresh={() => void refresh()} pending={pending} topology={topology} />}>

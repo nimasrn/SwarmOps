@@ -12,6 +12,7 @@ import { ImagesPage } from '../screens/apps/images'
 import { PlatformServicesPage } from '../screens/apps/platform'
 import { WorkloadsPage } from '../screens/apps/workloads'
 import { MachinesPage } from '../screens/machines/machines'
+import { MachineDetailView } from '../screens/machines/machine-detail'
 import { SwarmPage } from '../screens/machines/swarm'
 import { ContainersPage } from '../screens/machines/containers'
 import { StoragePage } from '../screens/machines/storage'
@@ -44,7 +45,9 @@ export interface PageRouterProps {
   onOpen: (page: WorkspacePage) => void
   onRefreshCommands: () => Promise<void>
   onRefreshServers: () => Promise<void>
+  onSelectMachine: (id: string) => void
   onSelectServer: (id: string) => void
+  selectedMachineID: string
   servers: Server[]
   serversLoading: boolean
   toast: Toast
@@ -66,25 +69,42 @@ export function PageRouter(props: PageRouterProps) {
   const {
     activeServer, auditError, auditEvents, auditInitialLoading, clusterError, commands, commandsError,
     commandsInitialLoading, core, coreError, data, highlightedCommandID, onConnected, onHighlightCommand,
-    onOpen, onRefreshCommands, onRefreshServers, onSelectServer, servers, serversLoading, toast, workspace,
+    onOpen, onRefreshCommands, onRefreshServers, onSelectMachine, onSelectServer, selectedMachineID, servers,
+    serversLoading, toast, workspace,
   } = props
 
   // Screens that never need a cluster. These are exactly what an operator needs
   // when nothing is connected, so none of them may be gated behind a selection.
   switch (workspace) {
-    case 'machines':
+    case 'machines': {
+      // A machine in the hash opens that machine. Everything about a host —
+      // its charts, its containers, its setup and its agent — is on its own
+      // page, so the list's job is to get you there.
+      const machine = servers.find((server) => server.id === selectedMachineID)
+      if (machine) {
+        return (
+          <MachineDetailView
+            onBack={() => onSelectMachine('')}
+            onOpen={onOpen}
+            onRefreshServers={onRefreshServers}
+            server={machine}
+            servers={servers}
+            toast={toast}
+          />
+        )
+      }
       return (
         <MachinesPage
           activeServerID={activeServer?.id ?? ''}
           onConnected={onConnected}
-          onDiagnostics={(id) => { if (id) onSelectServer(id) }}
-          onProvision={() => undefined}
+          onOpenMachine={onSelectMachine}
           onRefresh={onRefreshServers}
           onSelect={onSelectServer}
           servers={servers}
           toast={toast}
         />
       )
+    }
     case 'core':
       return (
         <>
@@ -141,6 +161,7 @@ export function PageRouter(props: PageRouterProps) {
         <DeployPage
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
+          onOpenWorkloads={() => onOpen('workloads')}
           toast={toast}
         />
       )

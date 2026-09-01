@@ -80,6 +80,7 @@ type Target struct {
 	Host        HostInspector
 	Joiner      SwarmJoiner
 	Meter       MachineMeter
+	Metrics     MetricReader
 	Provisioner Provisioner
 }
 
@@ -125,13 +126,17 @@ type Server struct {
 	logger         *slog.Logger
 	requestTotal   atomic.Uint64
 	machineSamples *machineMetricsCache
-	servers        *remote.Manager
-	sources        *source.Service
-	apps           *ops.ApplicationStore
-	agentBroker    *agentpull.Broker
-	agentRegistry  *agentpull.Registry
-	namespace      string
-	targets        TargetResolver
+	// What this process is and when it started. The controller could describe
+	// every machine and nothing about itself.
+	startedAt     time.Time
+	version       string
+	servers       *remote.Manager
+	sources       *source.Service
+	apps          *ops.ApplicationStore
+	agentBroker   *agentpull.Broker
+	agentRegistry *agentpull.Registry
+	namespace     string
+	targets       TargetResolver
 }
 
 func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, auditStore *audit.Store, logger *slog.Logger) (*Server, error) {
@@ -170,7 +175,7 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	return &Server{audit: auditStore, agentBroker: agentpull.NewBroker(core.AuthorityEpoch()), agentRegistry: registry, machineSamples: newMachineMetricsCache(), auth: authService, commands: commandStore, config: cfg, core: core, history: insights.NewHistory(insights.DefaultLimit), loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
+	return &Server{audit: auditStore, agentBroker: agentpull.NewBroker(core.AuthorityEpoch()), agentRegistry: registry, machineSamples: newMachineMetricsCache(), startedAt: time.Now().UTC(), auth: authService, commands: commandStore, config: cfg, core: core, history: insights.NewHistory(insights.DefaultLimit), loginLimiter: auth.NewLoginLimiter(8, 15*time.Minute), logger: logger, servers: servers, targets: targets}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -199,6 +204,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /agent/v1/responses", s.agentResponse)
 	mux.HandleFunc("POST /agent/v1/certificates/renew", s.agentCertificateRenew)
 	mux.HandleFunc("GET /api/v1/core", s.withAuth(false, s.coreStatus))
+	// The controller describing itself: version, host, storage, releases.
+	mux.HandleFunc("GET /api/v1/core/self", s.withAuth(false, s.coreSelf))
+	mux.HandleFunc("POST /api/v1/core/update", s.withActiveAuth(s.coreUpdate))
 	mux.HandleFunc("POST /api/v1/core/replicas", s.withActiveAuth(s.coreReplicaAdd))
 	mux.HandleFunc("POST /api/v1/core/replicas/{id}/verify", s.withActiveAuth(s.coreReplicaVerify))
 	mux.HandleFunc("POST /api/v1/core/handoff", s.withActiveAuth(s.coreHandoffPrepare))
@@ -276,6 +284,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/sources/deploy", s.withActiveAuth(s.sourceDeploy))
 	mux.HandleFunc("GET /api/v1/databases", s.withAuth(false, s.databases))
 	mux.HandleFunc("POST /api/v1/databases/{engine}", s.withActiveAuth(s.databaseSet))
+	// A named reading about a named object. No expression is ever accepted;
+	// see api/http/metrics_read.go.
+	mux.HandleFunc("GET /api/v1/machines/{id}/metrics", s.withAuth(false, s.machineMetricsJSON))
+	mux.HandleFunc("GET /api/v1/metrics/range", s.withAuth(false, s.metricsRange))
+	mux.HandleFunc("GET /api/v1/metrics/series", s.withAuth(false, s.metricsSeries))
 	mux.HandleFunc("GET /api/v1/insights", s.withAuth(false, s.insights))
 	mux.HandleFunc("GET /api/v1/insights/history", s.withAuth(false, s.insightsHistory))
 	mux.HandleFunc("GET /api/v1/events", s.withAuth(false, s.events))
@@ -806,6 +819,16 @@ func (s *Server) traefikPrerequisitesRepair(response http.ResponseWriter, reques
 	s.submitTraefikPrerequisites(response, request, claims, repair, username, password)
 }
 
+// expectedAgentProtocol is the protocol number an agent should report for the
+// way it is attached. A pull agent reports the outbound transport version; a
+// directly connected one reports the machine API's own version.
+func expectedAgentProtocol(connectionType string) uint {
+	if connectionType == remote.ConnectionAgentAPI {
+		return agent.ProtocolVersion
+	}
+	return agentpull.ProtocolVersion
+}
+
 func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.TraefikInstallPreflight, error) {
 	preflight, err := target.Control.TraefikInstallPreflight(request.Context())
 	if err != nil {
@@ -814,18 +837,28 @@ func (s *Server) traefikPreflightFor(request *http.Request, target Target) (ops.
 	serverID := strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
 	version := "Not reported"
 	protocol := uint(0)
+	connection := ""
 	for _, profile := range s.servers.List() {
 		if profile.ID == serverID {
 			if profile.AgentHealth.AgentVersion != "" {
 				version = profile.AgentHealth.AgentVersion
 			}
 			protocol = profile.AgentHealth.ProtocolVersion
+			connection = profile.ConnectionType
 			break
 		}
 	}
-	compatible := protocol == agentpull.ProtocolVersion && agentVersionAtLeast(version, 0, 9, 3)
+	// AgentHealth.ProtocolVersion means two different things depending on how
+	// the agent is attached: the outbound transport version for a pull agent,
+	// and the machine-API version for a directly connected one. Comparing both
+	// against the transport constant permanently blocked every direct agent
+	// from the one-button repair, with a message that read as a contradiction —
+	// "reports protocol 2 ... requires protocol 1" — while the agent was in
+	// fact current.
+	expected := expectedAgentProtocol(connection)
+	compatible := protocol == expected && agentVersionAtLeast(version, 0, 9, 3)
 	check := ops.TraefikInstallCheck{
-		Detail:   fmt.Sprintf("Agent %s reports protocol %d; one-button Traefik repair requires Agent v0.9.3 or newer on Core protocol %d.", version, protocol, agentpull.ProtocolVersion),
+		Detail:   fmt.Sprintf("Agent %s reports protocol %d; one-button Traefik repair requires Agent v0.9.3 or newer on protocol %d.", version, protocol, expected),
 		ID:       "agent-version",
 		Label:    "Machine agent compatibility",
 		Recovery: "Update the selected server's agent before installing Traefik.",
@@ -885,6 +918,11 @@ func (s *Server) SetApplicationDiscovery(apps *ops.ApplicationStore, namespace s
 	s.apps = apps
 	s.namespace = namespace
 }
+
+// SetVersion records the released version this process is. It is separate from
+// New so the version constant stays in cmd/api, which is where the release
+// duty says it lives.
+func (s *Server) SetVersion(version string) { s.version = version }
 
 // SetSourceService enables the optional sealed Git-provider boundary. Keeping
 // it out of New preserves the default-off posture for existing deployments.

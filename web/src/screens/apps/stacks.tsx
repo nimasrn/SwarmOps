@@ -90,8 +90,6 @@ export function StacksTab({ nodes, stacks, onDeployFromSource, toast }: {
     }
   }
 
-  const degraded = stacks.filter((stack) => stack.health !== 'healthy')
-  const services = stacks.reduce((total, stack) => total + stack.serviceCount, 0)
 
   const columns: TableColumn<Stack>[] = [
     { header: 'Stack', key: 'name', render: (stack) => <strong>{stack.name}</strong> },

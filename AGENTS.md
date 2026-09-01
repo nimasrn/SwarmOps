@@ -14,9 +14,9 @@ Read [README.md](README.md) before changing this application. Root
   cloud token, Compose content, build context, or service-log content into an
   audit record or log. Persist only non-secret remote-server profile metadata.
 - `web/src/navigation/navigation.ts` is the console's information architecture
-  and the ONLY place it is written down: areas, screens, icons, `G`-chord
-  letters, the one line each screen exists to answer, retired hashes, and the
-  set that needs a selected cluster. Both navigation tiers, the breadcrumb, the
+  and the ONLY place it is written down: the six areas, screens, icons,
+  `G`-chord letters, the one line each screen exists to answer, retired hashes,
+  and the set that needs a selected cluster. Both navigation tiers, the breadcrumb, the
   palette, the keyboard chords, and every screen's own TITLE and subtitle are
   derived from it. Adding a screen means adding it there and giving it a branch
   in `web/src/shell/page-router.tsx` — a routable screen in no area, or in no
@@ -81,6 +81,30 @@ Read [README.md](README.md) before changing this application. Root
   title and its one-line purpose from `navigation.ts`. Only a detail view
   INSIDE a screen reaches for `Page` and `DetailHeader` directly. This is why
   the nav item and the heading it opens can no longer disagree.
+- METRICS LIVE ON THEIR OBJECT. There is no Observe area and adding one back is
+  a regression: a fleet-wide chart cannot say which node it means, and a console
+  that shows one teaches operators to distrust every number on it. A machine, a
+  container, an application and the gateway each carry their own charts.
+- Every chart in the product is `components/metric-chart.tsx`, and it states
+  four things rather than one: what was measured, about which object, over what
+  period, and from which source. A range whose source is `unavailable` draws
+  NOTHING and says why — an empty plot and an idle machine are
+  indistinguishable, and only one of them is a measurement. A second charting
+  component is a missing feature in that one.
+- Reading a metric is a CLOSED vocabulary, exactly like changing something is.
+  The browser names a series and an object; the query language is built on the
+  machine from the fixed table in `internal/agentcontrol/metrics_query.go`.
+  Never accept an expression from a browser, and never interpolate a selector
+  that has not matched the selector pattern.
+- Machine metrics cross the agent boundary as a TYPED document that Core
+  sanitizes before rendering. The agent supplies numbers; Core chooses the
+  metric names. An agent that could return exposition text could introduce
+  metric families, overwrite another node's series, or break the whole scrape
+  with one unescaped byte.
+- A join token is read from the manager by the command worker at EXECUTION
+  time and never written to the sealed payload, the audit record, or a browser
+  response. `dockerapi.SwarmJoinToken` is the only function in that package
+  that returns one, and nothing stores its result.
 - A screen offers between two and four INSIGHTS under its title: a reading, what
   it means, and where to act on it. A fifth is a table. A control that does
   nothing is never rendered — a "Create alert" button with no handler teaches

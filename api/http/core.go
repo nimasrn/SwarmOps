@@ -4,8 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/auth"
+	"github.com/nimasrn/SwarmOps/internal/coreself"
 	"github.com/nimasrn/SwarmOps/internal/coretopology"
 )
 
@@ -19,6 +21,49 @@ const (
 // core member to a server requires a normal, explicit agent enrollment.
 func (s *Server) coreStatus(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
 	writeJSON(response, http.StatusOK, s.core.Status())
+}
+
+// coreSelf is what this process knows about ITSELF: the version it is, the
+// host it runs on, the storage it holds the ledger in, and the releases it
+// could roll back to.
+//
+// None of it is a cluster read. The controller is not a node, and the screen
+// that describes it should not have to pretend it is one to say how much disk
+// it has left.
+func (s *Server) coreSelf(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	writeJSON(response, http.StatusOK, coreself.Describe(s.selfConfig(), s.startedAt, time.Now().UTC()))
+}
+
+// coreUpdate asks the LOCAL updater to check for a release.
+//
+// The controller does not download, verify or restart itself: a process cannot
+// supervise its own replacement, and one that tried would have no way to roll
+// back after it had already exited. It writes a marker; the updater does the
+// rest, starting the candidate beside this process and retiring this one only
+// once the new one answers.
+func (s *Server) coreUpdate(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	config := s.selfConfig()
+	if strings.TrimSpace(config.UpdateRequestFile) == "" {
+		writeError(response, http.StatusConflict, "This controller was not installed with an updater, so it cannot update itself. Reinstall from the release installer to gain one.")
+		return
+	}
+	if err := coreself.RequestUpdate(config); err != nil {
+		s.logger.Warn("core update request failed", "error", err)
+		writeError(response, http.StatusServiceUnavailable, "The update check could not be scheduled on this host")
+		return
+	}
+	s.record(claims.Username, requestID(request), "core.update.request", "core/"+s.core.Status().LocalID, nil, nil)
+	writeJSON(response, http.StatusAccepted, map[string]string{"status": "scheduled"})
+}
+
+func (s *Server) selfConfig() coreself.Config {
+	return coreself.Config{
+		ReleaseDir:        s.config.CoreReleaseDir,
+		StateDir:          s.config.DataDir,
+		UpdateRequestFile: s.config.CoreUpdateRequestFile,
+		UpdateStatusFile:  s.config.CoreUpdateStatusFile,
+		Version:           s.version,
+	}
 }
 
 func (s *Server) coreReplicaAdd(response http.ResponseWriter, request *http.Request, claims auth.Claims) {

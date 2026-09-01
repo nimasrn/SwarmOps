@@ -16,6 +16,7 @@ import {
   Panel,
   Select,
   Spinner,
+  Segmented,
   StageTrack,
   Stack as Rows,
   Body,
@@ -37,8 +38,8 @@ import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { DeploymentPlan } from './deploy-parts/plan'
-import { RegistryBoundaryPage } from './deploy-parts/registry'
 import { SourceSetupPanel } from './deploy-parts/setup'
+import { KubernetesImportPanel } from './kubernetes-import'
 import {
   DiscoveryEvidence,
   connectionColumns,
@@ -63,19 +64,36 @@ import {
   type SourceDraft,
 } from './deploy-parts/parts'
 
-interface SourceDeployPageProps {
+interface DeployPageProps {
   managerID: string
   managerName?: string
+  /** Where the Kubernetes reader hands its generated Compose off to. */
+  onOpenWorkloads?: () => void
   toast: ReturnType<typeof useToast>
-  view?: 'registry' | 'source'
 }
+
+/**
+ * Where a deployment can START.
+ *
+ * These are four ways into ONE flow, not four products. Reading Kubernetes
+ * manifests used to be its own destination in its own area, which made a way
+ * of starting a deployment look like a different thing you could do — and left
+ * an operator who had manifests with no reason to think Deploy was for them.
+ */
+type DeploySource = 'kubernetes' | 'repository'
+
+const DEPLOY_SOURCES: { hint: string; label: string; value: DeploySource }[] = [
+  { hint: 'Connect a Git provider and build a pinned revision', label: 'Git repository', value: 'repository' },
+  { hint: 'Read manifests and see what Swarm can run, and what it cannot', label: 'Kubernetes manifests', value: 'kubernetes' },
+]
 const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
   { label: 'GitHub or GitHub Enterprise', value: 'github' },
   { label: 'GitLab or self-managed GitLab', value: 'gitlab' },
   { label: 'Gitea or Forgejo', value: 'gitea' },
 ]
 
-export function DeployPage({ managerID, managerName, toast, view = 'source' }: SourceDeployPageProps) {
+export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: DeployPageProps) {
+  const [source, setSource] = useState<DeploySource>('repository')
   const [status, setStatus] = useState<SourceStatus | null>(null)
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
@@ -403,10 +421,6 @@ export function DeployPage({ managerID, managerName, toast, view = 'source' }: S
       : <Screen page="deploy"><Panel><Spinner label="Reading source deployment capability" /></Panel></Screen>
   }
 
-  if (view === 'registry') {
-    return <RegistryBoundaryPage status={status} />
-  }
-
   const deployBlocks = deploymentBlocks({
     managerID,
     selectedService,
@@ -438,7 +452,18 @@ export function DeployPage({ managerID, managerName, toast, view = 'source' }: S
       width="full"
     >
       {error ? <Banner title="Source deployment needs attention" tone="danger">{error}</Banner> : null}
-      {!ready ? (
+
+      {/* One flow, several ways in. */}
+      <Segmented
+        label="Where this deployment starts"
+        onChange={(value: string) => setSource(value as DeploySource)}
+        options={DEPLOY_SOURCES.map((entry) => ({ label: entry.label, value: entry.value }))}
+        value={source}
+      />
+
+      {source === 'kubernetes' ? (
+        <KubernetesImportPanel onOpenWorkloads={onOpenWorkloads ?? (() => undefined)} />
+      ) : !ready ? (
         <>
         <SourceSetupPanel status={status} />
         </>

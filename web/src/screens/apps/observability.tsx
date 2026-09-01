@@ -60,8 +60,6 @@ export function TelemetryTab({ nodes, onOpenGateway, onOpenSwarm, status, toast,
     }
   }
 
-  const collectors = [status.coreInstalled, status.logsEnabled, status.agentInstalled].filter(Boolean).length
-
   return (
     <>
       <Columns>

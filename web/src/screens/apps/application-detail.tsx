@@ -18,6 +18,7 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import type { ApplicationStatus } from '../../data/types'
+import { MetricChart } from '../../components/metric-chart'
 import { capitalize } from '../../lib/format'
 import { StatusBadge } from '../../components/badges'
 
@@ -98,6 +99,24 @@ export function ApplicationDetailView({
             <Metric hint="Per replica" icon="package" label="Memory limit" value={`${status.spec.memoryMiB} MiB`} />
             <Metric hint={status.spec.domain ? 'A public hostname routes to this application' : 'No public hostname is assigned'} icon="globe" label="Exposure" tone={status.spec.domain ? 'accent' : 'neutral'} value={status.spec.domain ? 'Public' : 'Internal'} />
           </MetricGrid>
+          {/* Traffic is measured AT THE GATEWAY, not inside the application.
+              An application that has stopped answering cannot report that it
+              has stopped answering, so its own numbers are exactly the ones
+              you cannot trust during an incident. */}
+          <Columns>
+            <MetricChart
+              note="Reaching this application through the gateway"
+              query={{ application: status.spec.name, scope: 'application', series: 'requests' }}
+              refreshMs={30_000}
+              title="Requests"
+            />
+            <MetricChart
+              note="Responses the gateway recorded as failures"
+              query={{ application: status.spec.name, scope: 'application', series: 'errors' }}
+              refreshMs={30_000}
+              title="Failing requests"
+            />
+          </Columns>
           <Columns template="two-thirds">
             <Rows gap="md">
               <Panel flush title={`Replicas · ${status.runningTasks} / ${status.spec.replicas} running`}>

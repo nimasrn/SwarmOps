@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Banner,
   Body,
@@ -13,10 +13,11 @@ import {
   useToast,
 } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { Command } from '../../data/types'
+import type { Command, SourceStatus } from '../../data/types'
 import { sentence, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
+import { RegistryBoundaryPanel } from './deploy-parts/registry'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -29,6 +30,8 @@ type Toast = ReturnType<typeof useToast>
  * proving what the caps are.
  */
 export function ImagesPage({ onDeployFromSource, toast }: { onDeployFromSource: () => void; toast: Toast }) {
+  const [sourceStatus, setSourceStatus] = useState<SourceStatus | null>(null)
+  useEffect(() => { void api.sourceStatus().then(setSourceStatus).catch(() => setSourceStatus(null)) }, [])
   const [archive, setArchive] = useState<File | null>(null)
   const [image, setImage] = useState('')
   const [dockerfile, setDockerfile] = useState('Dockerfile')
@@ -66,6 +69,11 @@ export function ImagesPage({ onDeployFromSource, toast }: { onDeployFromSource: 
       ]}
       page="images"
     >
+      {/* Where images GO is the same subject as what was built. The registry
+          boundary was its own destination behind the deploy screen, which is
+          not where anyone looks for "which registry do we push to". */}
+      {sourceStatus ? <RegistryBoundaryPanel status={sourceStatus} /> : null}
+
       <Columns>
         <Panel eyebrow="Build request" title="Build and optionally push">
           <Rows>

@@ -20,6 +20,7 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
+	"github.com/nimasrn/SwarmOps/internal/agentpull"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
@@ -734,3 +735,22 @@ type testCommandFailure struct{ code string }
 
 func (err testCommandFailure) Error() string           { return "machine API returned HTTP 502" }
 func (err testCommandFailure) SafeFailureCode() string { return err.code }
+
+// AgentHealth.ProtocolVersion means two different things depending on how the
+// agent is attached: the outbound transport version for a pull agent, and the
+// machine API's own version for a directly connected one. Comparing both
+// against the transport constant permanently blocked every direct agent from
+// the one-button gateway repair, while telling the operator it "reports
+// protocol 2" and "requires protocol 1" — which reads as a contradiction
+// because it is one.
+func TestExpectedAgentProtocolFollowsTheTransport(t *testing.T) {
+	if got := expectedAgentProtocol(remote.ConnectionAgentAPI); got != agent.ProtocolVersion {
+		t.Fatalf("a directly connected agent reports the machine API version, got %d", got)
+	}
+	if got := expectedAgentProtocol(remote.ConnectionAgentPull); got != agentpull.ProtocolVersion {
+		t.Fatalf("a pull agent reports the transport version, got %d", got)
+	}
+	if agent.ProtocolVersion == agentpull.ProtocolVersion {
+		t.Skip("the two protocols happen to match; this test guards the case where they do not")
+	}
+}

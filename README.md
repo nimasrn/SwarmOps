@@ -163,57 +163,64 @@ routable and appears in no area — or in no branch of
 `web/src/shell/page-router.tsx` — is a test failure, not a discovery an
 operator makes.
 
-The same record supplies each screen's own heading. Every top-level screen is
-drawn in one frame (`web/src/components/screen.tsx`) that reads its title and
-its one-line purpose from navigation, so the words on the item you clicked are
-the words at the top of the screen that opens; before this the item read "Swarm
-& placement" and the screen it opened was titled "Infrastructure".
+There are six areas: **Home**, **Apps**, **Machines**, **Traffic**,
+**Activity**, and **Control**. There were eight, and two of them — Deliver and
+Workloads — were the same object at two points in its life, which is why an
+application and the service running it lived in different halves of the
+navigation. Home answers what is healthy and what to do next. Apps owns the
+whole path from source to running production, plus the cluster singletons every
+application shares. Machines owns the hosts, their agents, the Swarm they form,
+their containers and their storage. Traffic gives the gateway, routes, domains
+and certificates their own destinations. Activity owns runs, logs, audit and
+the fixed action catalog. Control owns the controller itself and the software
+on every host.
 
-The areas are named for the operator's job rather than the system's object
-model. A persistent icon rail owns **Overview**, **Deliver**, **Fleet**,
-**Workloads**, **Traffic**, **Observe**, **Activity**, and **Control**; a
-contextual sidebar names the screens inside the active area and states what the
-area is for. Overview answers what is healthy and what to do next. Deliver owns
-the whole path from source to running production — deploy from source,
-applications, images and builds, the container registry, and reading a
-Kubernetes workload to see whether Swarm can run it. Fleet owns
-servers, host setup, Swarm placement, connection diagnostics, and Docker
-resources. Workloads owns what is scheduled right now: Swarm services, stacks,
-and managed databases. Traffic gives gateway ports, routes, DNS providers, and
-TLS their own destinations. Observe owns health, logs, and collectors. Activity
-owns runs, the fixed action catalog, and audit. Control owns controller
-authority and recovery.
+**The depth is in the object, not in the navigation.** You open a machine, a
+container, an application or a run, and everything about that thing is on its
+page — its charts included. `#machines/<id>` is an address you can paste into
+an incident channel. Host setup and connection diagnostics stopped being
+fleet-wide destinations because readiness is a property of one host and was
+never a property of all of them.
+
+**There is no Observe area**, and that is the point. A fleet-wide chart cannot
+answer "for which node?", so every reading now sits beside the object it
+describes. The collectors and the managed databases became **Platform
+services**, which is one idea rather than two: the cluster singletons — one
+PostgreSQL, one MongoDB, one Redis, one Prometheus, one Jaeger — that every
+application is wired to instead of shipping its own.
 
 Under every screen title sit two to four **insights**: a reading, what it
 means, and — where one exists — the screen that would change it. A screen an
 operator opens and reads nothing else on has still told them the thing it
 exists to say. A control that does nothing is never drawn.
 
-⌘K (or `/`) opens a command palette that reaches any destination, runs the
-operations an operator reaches for under pressure — deploy from source, add a
-server, refresh, diagnose a connection, review runs, sign out, point the console
-at another cluster — and finds the named things in the selected cluster, so
-typing `checkout-api` offers the service rather than the screen it might be on.
-It ranks by where the match landed, so the thing whose name was started is the
-thing Enter is already on, and the screens you opened most recently come first.
+Every chart in the product is one component, and it states four things rather
+than one: what was measured, about which object, over what period, and by
+whom. A reading with no source available draws nothing at all and says why —
+an empty plot and an idle machine look identical, and only one of them is a
+measurement.
 
-The rest of the keyboard is written down in one place and shown by `?`: `G` then
-an area letter jumps (`G` `H` for the command centre, `G` `F` for fleet), `R`
+⌘K (or `/`) opens a command palette that reaches any destination, runs the
+operations an operator reaches for under pressure, and finds the named things
+in the selected cluster, so typing `checkout-api` offers the service rather
+than the screen it might be on.
+
+The rest of the keyboard is written down in one place and shown by `?`: `G`
+then an area letter jumps (`G` `H` for home, `G` `M` for machines), `R`
 re-reads the current screen, `D` opens connection diagnostics, and Escape
 dismisses. Bare letters never fire inside a text field, because this console
 asks operators to type exact confirmation phrases and a swallowed keystroke
 there is expensive.
 
-What currently needs a decision is computed once and shown twice: as rows on the
-command centre, and as a labelled control in the masthead from every other
+What currently needs a decision is computed once and shown twice: as rows on
+the command centre, and as a labelled control in the masthead from every other
 screen. Each row opens the screen that can resolve it, rather than the screen
 that noticed it.
 
-A page may show a compact status owned elsewhere, but it must link to the
-owner for investigation or mutation. It must not recreate the owner's tables,
-filters, charts, configuration, or action menus. Overview is the deliberate
-exception for summaries, never a second full workspace. Every destination is
-directly addressable and preserves the selected server.
+Every retired hash keeps resolving. This rebuild retired more of them at once
+than every previous release together, and each one lands on the screen that
+took over its job rather than on the home page, which is what a redirect that
+has given up looks like.
 
 The complete ownership table, drill-down rules, and cleanup acceptance criteria
 are in [console information architecture](docs/console-information-architecture.md).
@@ -228,7 +235,8 @@ are in [console information architecture](docs/console-information-architecture.
 | Stacks | Validate and deploy approved image-only Compose v3.9 application stacks; optionally pin all services to one selected node | Browser deployment requires a mounted reviewed namespace manifest. Stateful profiles remain Git-only; external secrets/configs/volumes must use the exact stack-name prefix, and Traefik labels are restricted to the approved HTTPS domain/resolver. |
 | Services | Read a bounded service-log tail; restart, rollback, or scale a replicated service with fixed Docker command shapes | Mutations are off by default and every request has CSRF plus an audit record. The console permits a whole replica count from 0 through 1000 and deliberately omits replica control for global services. |
 | Docker resources | Read containers, images, volumes, networks, secrets, and configs on the selected target, and create or delete networks, volumes, and configs; start, stop, restart, or remove a container; pull or remove an image | Reads are projections, not a socket proxy: container environment values are reduced to variable names, secret values are unreadable by Docker itself, and config payloads are never returned. Every create or delete is one fixed, CSRF-protected, audited command with its own typed confirmation phrase. |
-| Monitoring health | Compact task, node, container, and disk trends over the rolling minute series; current alerts derived from manager evidence; recent Engine activity; explicit source boundaries for traces and scrape-target failures | The series is in-memory only, bounded to four hours per target, and lost on API restart; it holds counts and byte totals, never operator data. Logs, traces, and scrape failures are shown only when their owning collectors return them; long-range history remains the Prometheus stack SwarmOps deploys. |
+| Machine and container metrics | The host agent measures CPU (busy, iowait and steal separately), load, memory, swap, every mounted filesystem, per-interface network and per-disk I/O, plus per-container CPU, memory against limit, network, block I/O and restarts. Prometheus scrapes the controller, which terminates each machine's scrape over that machine's existing outbound channel. | The agent sends a TYPED document that is sanitized before any exposition is rendered, so no metric name or label was chosen by a machine. Agents hold no inbound port, so there is nothing to scrape on a node directly. A reading the agent cannot take is reported as absent rather than as zero. |
+| Reading a metric | A closed vocabulary: the browser names a series and an object, and the query language is built on the machine from a fixed table. Every chart in the console states what it measured, about which object, over what period, and from which source. | No expression is ever accepted from a browser. Selectors are validated against a pattern admitting no quote, brace or space, so a selector cannot close its own label matcher. A cluster with no Prometheus has no history, and the console says so instead of drawing an empty plot. |
 | Command runner | Run any catalogued operation from the console against an explicitly chosen server: the form is generated from the operation's own parameter description, a read shows exactly what that server returned, and a mutation is queued in the ledger for it | The target is named per command rather than inherited from the shell's selection, and only a connected remote Swarm manager is eligible; the Command queue shows the server each row will change. The runner adds no capability. It builds requests only from catalogued routes, and a destructive entry stays disabled until the operator types the phrase the API derives for that exact target. |
 | Cluster insights | Node, service, task, and container counts; fleet CPU/memory/disk capacity; image, volume, container, and build-cache disk usage with reclaimable totals; a bounded Engine event window; and swarm orchestration settings | Computed once on the control plane so every screen reads the same numbers. Pruning any resource kind needs its own `PRUNE_<RESOURCE>` confirmation; a volume prune destroys data SwarmOps cannot restore. |
 | Swarm | Read the cluster object and raft/orchestration settings, set the task-history retention limit, and rotate a leaked worker or manager join token | Join tokens are never returned by any read path or by the rotation itself; enrolment stays an installer workflow on the machine. |
@@ -240,7 +248,7 @@ are in [console information architecture](docs/console-information-architecture.
 | Applications | Render and deploy an application from a small spec: approved slot, immutable image, container port, health path, attached databases, metrics/tracing, optional backend, and an optional policy-bounded domain | SwarmOps generates the Compose and puts its own output through `ValidateCompose` and platform admission. Manual applications use an already-pushed image; Source deploy may first build a pinned repository context through the same capped build service. Exact domains and optional suffix policies come from the reviewed manifest, runtime assignments are unique, and removal needs the application-specific confirmation. |
 | Databases | Deploy or remove one managed PostgreSQL, MongoDB, or Redis instance from the console | Each is a reviewed, checked-in Compose asset rendered on the controller; the browser never authors it. The password and routed connection URI are generated as Swarm secrets and never returned to a browser. Each engine is pinned to a `nim.stateful=true` node and attached only to its encrypted service-and-Traefik overlay; removal needs the exact `REMOVE_DATABASE_<ENGINE>` confirmation and leaves the named volume in place. |
 | Observability | Prometheus + Alertmanager + Jaeger core stack; separately enable/disable the read-only agent/node-exporter and Docker JSON-log collection. Applications that publish metrics are discovered automatically, and SwarmOps renders its own operator graphs and metrics. | Every scrape/dependency path uses a typed internal Traefik alias. The console exposes bounded, product-owned views rather than arbitrary PromQL or a separate dashboard service. |
-| Provisioning | After enrollment, Server readiness shows the agent's bounded live host snapshot and queues typed Docker install/repair, Swarm init/join/leave, manager promotion, node availability, package, and diagnostic operations for explicit targets. | Docker comes from Docker's signed apt repository. Host inspection exposes capacity and OS metadata, never files, processes, environment, package lists, or command output. The agent validates each closed operation locally; no arbitrary remote shell or Docker-socket proxy exists. |
+| Provisioning | A machine's own Setup tab shows the agent's bounded live host snapshot and queues typed Docker install/update, OS package update, Swarm initialisation, Swarm JOIN of an existing cluster, and a CIDR-scoped firewall baseline. | Docker comes from Docker's signed apt repository. Host inspection exposes capacity and OS metadata, never files, processes, environment, package lists, or command output. A join token is read from the manager by the command worker at execution time and is never written to the sealed ledger, the audit trail, or a browser response. The agent validates each closed operation locally; no arbitrary remote shell or Docker-socket proxy exists. |
 | Platform admission | Validate a non-secret platform manifest offline or against fresh authenticated node inventory | It rejects duplicate namespace/domain claims, unavailable capacity, incompatible certificate settings, and unsafe stateful placement before a build or deployment is requested. |
 | Agent operations | Queue a typed operation for one node or an explicit node set and inspect durable attempts, evidence, retries, and attention states. | Agents lease work through outbound HTTPS, acknowledge ordered events, resume after disconnects, and reject commands from stale Core authority epochs. |
 | Backups | Install an opt-in Restic timer for local Docker named-volume paths to S3-compatible storage | Credentials are supplied only through a protected controller-side file; repository initialisation and restore validation stay explicit operator actions. |
@@ -389,7 +397,7 @@ commands and remain synchronous.
 
 ## Versions
 
-The current source version is `0.11.0`. Release history is in
+The current source version is `0.12.0`. Release history is in
 [CHANGELOG.md](CHANGELOG.md), and the public reference — capabilities, use
 cases, changelog, and roadmap — is published at
 [nim.zone/docs/swarmops](https://nim.zone/docs/swarmops).
@@ -442,8 +450,8 @@ targets and invalid TLS certificates. The production API remains the source of
 truth for cluster profiles, audit records, checked-in deployment assets, and
 the served production console.
 
-The console has eight stable areas: **Overview**, **Deliver**, **Fleet**,
-**Workloads**, **Traffic**, **Observe**, **Activity**, and **Control**. They
+The console has six stable areas: **Home**, **Apps**, **Machines**,
+**Traffic**, **Activity**, and **Control**. They
 appear in a persistent desktop icon rail and in the same order with labels in
 the mobile drawer. A
 contextual sidebar shows the destinations owned by the active area and becomes a
@@ -455,14 +463,15 @@ of silently replacing the requested destination.
 
 The production console uses one calm command-center geometry at the 1536×1024
 reference viewport: a compact masthead, top-level icon rail, contextual sidebar,
-table-first evidence, and one malachite action language. Overview names the
-evidence path and hands back the single next operator decision; Fleet opens the
-topology and then a node; node container rows open health, resource sample,
-configuration, telemetry boundary, and fixed restart/stop actions. Deliver,
-Traffic, Observe, Activity, Workloads, and Control preserve the same header,
-breadcrumb, panel, table, and review-sheet hierarchy. A surface never invents missing logs,
-traces, scrape failures, routes, or telemetry: it labels the unavailable
-source and directs the operator to the owning collection view.
+table-first evidence, and one malachite action language. Home names the
+evidence path and hands back the single next operator decision; Machines opens
+the fleet and then one host, whose own page carries its charts, its containers,
+its setup checklist and its agent. Apps, Traffic, Activity and Control preserve
+the same header, breadcrumb, panel, table, and review-sheet hierarchy. A
+surface never invents missing logs, traces, scrape failures, routes, or
+telemetry: it labels the unavailable source and directs the operator to the
+owning collection view — and a chart with no source available draws nothing at
+all rather than a flat line.
 
 ### First server onboarding
 

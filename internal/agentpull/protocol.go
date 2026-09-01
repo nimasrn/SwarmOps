@@ -76,7 +76,8 @@ func validateRequest(method, requestURI string) error {
 	}
 	path := parsed.Path
 	if path == "/v1/status" || path == "/v1/diagnostics" || path == "/v1/snapshot" ||
-		path == "/v1/metrics" || path == "/v1/swarm/join-token" ||
+		path == "/v1/metrics" || path == "/v1/metrics/query" ||
+		path == "/v1/swarm/join-token" ||
 		path == "/v1/provisioning/status" || path == "/v1/agent/update" ||
 		path == "/v1/commands" || path == "/v1/logs/query" || path == "/v1/logs/status" ||
 		strings.HasPrefix(path, "/v1/routing/") ||

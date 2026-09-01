@@ -22,9 +22,14 @@ import { isNativeAgent, serverEndpointLabel } from '../../data/server-connection
 import type { AgentHealth, Server } from '../../data/types'
 import { formatDateTime, formatDuration } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
-import { Screen } from '../../components/screen'
 
-interface AgentDiagnosticsPageProps {
+interface AgentTabProps {
+  /** The machine this tab is about. A detail page has already chosen it, so
+      this tab never shows a picker: choosing the object is the page's job and
+      doing it twice is how a console ends up with two selections that
+      disagree. */
+  serverID: string
+
   onRefreshServers: () => Promise<void>
   servers: Server[]
   toast: ReturnType<typeof useToast>
@@ -41,9 +46,8 @@ function agentUpgradeCommand(platform: 'linux' | 'macos') {
 // AgentDiagnosticsPage is intentionally a safe event view, not a host-log
 // tail. It combines the core's retained transport observations with the
 // bounded lifecycle events emitted by the native machine agent.
-export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: AgentDiagnosticsPageProps) {
+export function AgentTab({ onRefreshServers, serverID, servers, toast }: AgentTabProps) {
   const agents = useMemo(() => servers.filter(isNativeAgent), [servers])
-  const [serverID, setServerID] = useState('')
   const [health, setHealth] = useState<AgentHealth | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -53,10 +57,6 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
   const state = current?.state ?? 'unknown'
   const update = current?.update
   const compatibilityIssue = current?.events?.some((event) => event.code === 'agent_protocol_incompatible') ?? false
-
-  useEffect(() => {
-    setServerID((currentID) => agents.some((server) => server.id === currentID) ? currentID : agents[0]?.id ?? '')
-  }, [agents])
 
   useEffect(() => {
     let cancelled = false
@@ -103,39 +103,12 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
 
   const events = [...(current?.events ?? [])].reverse()
   return (
-    <Screen
-      about="The last authenticated agent probe, the controller’s safe failure observations, and the agent’s bounded lifecycle events. Service logs and command output stay on the server."
-      actions={
-        <Inline>
-          <Button disabled={!serverID || loading} iconStart="refresh" loading={loading} onClick={() => void refresh()} variant="secondary">Refresh diagnosis</Button>
-          <Button onClick={() => { window.location.hash = 'logs' }} variant="ghost">Open agent logs</Button>
-        </Inline>
-      }
-      insights={server ? [
-        { hint: current?.detail || 'No authenticated probe has completed yet.', icon: 'activity', label: 'Agent health', tone: metricTone(state), value: statusLabel(state, current?.summary) },
-        { hint: current?.protocolVersion ? `Machine API protocol ${current.protocolVersion}` : 'The server has not reported its fixed agent protocol yet.', icon: 'server', label: 'Agent version', tone: current?.agentVersion ? 'success' : 'neutral', value: current?.agentVersion || 'Unknown' },
-        { hint: current?.lastFailureAt ? `Last failed probe ${formatDateTime(current.lastFailureAt)}` : 'No failed probe has been retained.', icon: 'clock', label: 'Last probe', tone: current?.lastReachableAt ? 'success' : 'warning', unmeasured: !current?.lastReachableAt, value: current?.lastReachableAt ? formatDateTime(current.lastReachableAt) : 'No response' },
-        { hint: update?.automatic ? 'Warden checks checksum-verified release bundles every six hours even if the controller is unavailable.' : 'Automatic updates are not configured on this agent.', icon: 'refresh', label: 'Automatic updates', tone: update?.automatic ? 'success' : 'neutral', value: update?.state ? update.state.replace('_', ' ') : update?.automatic ? 'Scheduled' : 'Not configured' },
-      ] : undefined}
-      page="machines"
-      status={<StatusDot tone={statusTone(state)}>{statusLabel(state, current?.summary)}</StatusDot>}
-      width="full"
-    >
+    <>
+      <Inline>
+        <Button disabled={!serverID || loading} iconStart="refresh" loading={loading} onClick={() => void refresh()} variant="secondary">Refresh diagnosis</Button>
+        <Button onClick={() => { window.location.hash = 'logs' }} variant="ghost">Open agent logs</Button>
+      </Inline>
       {error ? <Banner title="Agent diagnostics need attention" tone="danger">{error}</Banner> : null}
-      <Panel title="Machine agent">
-        <Rows>
-		  <Inline>
-            <Select
-              label="Saved native machine agent"
-              onChange={(event) => setServerID(event.target.value)}
-              options={agents.map((candidate) => ({ label: `${candidate.name} · ${candidate.host}`, value: candidate.id }))}
-              placeholder="Add a native machine agent in Servers"
-              value={serverID}
-            />
-          </Inline>
-          {!agents.length ? <Banner title="No native machine agent saved" tone="warning">Connect a server from Servers first. Legacy SSH profiles intentionally have no diagnostics or automatic update channel.</Banner> : null}
-        </Rows>
-      </Panel>
       {!server ? null : loading && !current ? <Panel title="Reading agent evidence"><Spinner label="Contacting the pinned machine agent" /></Panel> : <>
         <Panel title="Safe connection evidence">
           <Facts items={[
@@ -170,7 +143,7 @@ export function AgentDiagnosticsPage({ onRefreshServers, servers, toast }: Agent
           {events.length ? <List plain>{events.map((event) => <ListRow key={`${event.source}-${event.occurredAt}-${event.code}`} leading={<Icon name={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'alert' : 'activity'} size="sm" tone={event.level === 'error' ? 'danger' : event.level === 'warning' ? 'warning' : 'accent'} />} subtitle={`${event.source === 'core' ? 'Controller observation' : 'Machine agent'} · ${formatDateTime(event.occurredAt)}`} title={event.message} trailing={<Mono>{event.code}</Mono>} />)}</List> : <Body size="sm">No safe event has been retained yet. Refresh diagnostics after the agent completes an authenticated probe.</Body>}
         </Panel>
       </>}
-    </Screen>
+    </>
   )
 }
 

@@ -64,11 +64,27 @@ export const FIXTURES: Record<string, unknown> = {
     activeId: 'core-1', authorityEpoch: 4, controlEnabled: true, localId: 'core-1', localRole: 'active',
     members: [{ endpoint: 'https://core.nim.zone', id: 'core-1', name: 'core-1', replicaState: 'verified', role: 'active' }],
   },
-  '/api/v1/servers': [{
-    agentHealth: { state: 'healthy', summary: 'Outbound poll received 22s ago', checkedAt: ago(22) },
-    connectionState: 'connected', createdAt: ago(2592000), id: 'srv-1', kind: 'agent', name: 'agent',
-    swarmControlAvailable: true,
-  }],
+  // Two enrolled machines, described the way the controller actually
+  // describes them. This fixture used to carry a `kind` field the API does not
+  // have and no `connectionType`, so every screen read the profile as a legacy
+  // SSH server and rendered "undefined:undefined" for its endpoint — a defect
+  // in the harness that looked exactly like a defect in the product.
+  '/api/v1/servers': [
+    {
+      agentHealth: { agentVersion: 'v0.11.0', checkedAt: ago(4), protocolVersion: 2, state: 'healthy', summary: 'Outbound poll received 4s ago', uptimeSeconds: 1036800 },
+      authentication: 'mutual_tls', connectionState: 'connected', connectionType: 'agent_pull',
+      dockerAvailable: true, dockerVersion: '27.3.1', host: '10.0.0.11', hostKeyFingerprint: '', id: 'srv-1',
+      lastConnectedAt: ago(4), name: 'node-1', port: 9180, swarmControlAvailable: true, swarmState: 'active', username: '',
+    },
+    {
+      // Two releases behind, which is what makes the fleet-wide agent view
+      // worth having: this machine answers and still refuses newer commands.
+      agentHealth: { agentVersion: 'v0.10.4', checkedAt: ago(9), protocolVersion: 2, state: 'healthy', summary: 'Outbound poll received 9s ago', uptimeSeconds: 1814400 },
+      authentication: 'mutual_tls', connectionState: 'connected', connectionType: 'agent_pull',
+      dockerAvailable: true, dockerVersion: '27.3.1', host: '10.0.0.21', hostKeyFingerprint: '', id: 'srv-2',
+      lastConnectedAt: ago(9), name: 'web-01', port: 9180, swarmControlAvailable: false, swarmState: 'active', username: '',
+    },
+  ],
   '/api/v1/overview': overview,
   '/api/v1/nodes': nodes,
   '/api/v1/services': services,

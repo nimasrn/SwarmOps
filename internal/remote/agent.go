@@ -110,6 +110,20 @@ func (r *AgentRunner) SwarmJoinToken(ctx context.Context, role string) (agentcon
 	return output, err
 }
 
+// MetricRange runs one NAMED reading against the cluster's Prometheus.
+//
+// The controller sends the name and the object, never an expression: the
+// machine builds the query from its own fixed table. See
+// internal/agentcontrol/metrics_query.go for why.
+func (r *AgentRunner) MetricRange(ctx context.Context, query agentcontrol.MetricQuery) (agentcontrol.MetricRange, error) {
+	if r == nil || r.client == nil {
+		return agentcontrol.MetricRange{}, fmt.Errorf("machine API client is not configured")
+	}
+	var output agentcontrol.MetricRange
+	err := r.client.postTyped(ctx, "/v1/metrics/query", query, &output)
+	return output, err
+}
+
 func (r *AgentRunner) Diagnostics(ctx context.Context) (agent.Diagnostics, error) {
 	if r == nil || r.client == nil {
 		return agent.Diagnostics{}, fmt.Errorf("machine API client is not configured")

@@ -752,3 +752,30 @@ func TestClaimDueRollsBackWhenTheDurableWriteFails(t *testing.T) {
 		t.Fatalf("claim after recovery = %#v, %t, %v", record, found, err)
 	}
 }
+
+// A refusal is not an unconfirmed change.
+//
+// "SwarmOps could not confirm that the requested change completed" sent
+// operators to inspect Docker, where nothing was wrong: the controller had
+// declined before it ever spoke to a machine, and retrying could not help.
+// This was the single most misleading message in the product.
+func TestPolicyRefusalIsNotReportedAsAnUnconfirmedChange(t *testing.T) {
+	for _, sample := range []struct {
+		message string
+		code    string
+	}{
+		{"browser stack deployment requires a reviewed platform manifest", "platform_manifest_required"},
+		{`stack "shop" is not declared in the reviewed platform manifest`, "stack_not_declared"},
+	} {
+		code, summary, hint := commandFailureDiagnostic("stack.deploy", errors.New(sample.message))
+		if code != sample.code {
+			t.Fatalf("%q classified as %q, expected %q", sample.message, code, sample.code)
+		}
+		if strings.Contains(summary, "could not confirm") {
+			t.Fatalf("a refusal must not be described as an unconfirmed change: %q", summary)
+		}
+		if hint == "" {
+			t.Fatalf("%q gives the operator no next step", sample.message)
+		}
+	}
+}

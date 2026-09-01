@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Banner,
   Body,
@@ -235,18 +235,29 @@ export function useServiceDiagnosis(
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // The fetcher is an injection point for tests, not a reason to refetch.
+  //
+  // Callers pass it inline — `(id) => api.serviceDiagnosis(id)` — so it is a
+  // new function on every render. Depending on it made `run` new on every
+  // render, which re-ran the effect that set the state that caused the render:
+  // an infinite loop that only appeared once a DEGRADED service existed to
+  // diagnose, which is why it survived so long. The ref keeps the latest
+  // fetcher without letting its identity drive anything.
+  const latest = useRef(fetcher)
+  latest.current = fetcher
+
   const run = useCallback(async () => {
     if (!serviceID) return
     setLoading(true)
     setError(null)
     try {
-      setResult(await fetcher(serviceID))
+      setResult(await latest.current(serviceID))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not reach the controller')
     } finally {
       setLoading(false)
     }
-  }, [fetcher, serviceID])
+  }, [serviceID])
 
   useEffect(() => { void run() }, [run])
 

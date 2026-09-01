@@ -20,12 +20,18 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 )
 
+// ProtocolVersion is the machine API's own version, which a directly connected
+// agent reports in its status. It is NOT the outbound transport version in
+// internal/agentpull — the two are different protocols and comparing one
+// against the other blocked every direct agent from the gateway repair.
+const ProtocolVersion = 2
+
 const (
 	commandOutputLimit   = 256 << 10
 	commandTimeout       = 10 * time.Minute
 	buildTimeout         = 30 * time.Minute
 	registryConfigLimit  = 64 << 10
-	agentProtocolVersion = 2
+	agentProtocolVersion = ProtocolVersion
 )
 
 type Server struct {
@@ -102,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /v1/engine/configs", s.engineConfigs)
 		mux.HandleFunc("GET /v1/engine/swarm", s.engineSwarm)
 		mux.HandleFunc("GET /v1/swarm/join-token", s.swarmJoinToken)
+		mux.HandleFunc("POST /v1/metrics/query", s.metricsQuery)
 		mux.HandleFunc("GET /v1/engine/system/df", s.engineDiskUsage)
 		mux.HandleFunc("GET /v1/engine/events", s.engineEvents)
 		mux.HandleFunc("POST /v1/engine/build", s.engineBuild)

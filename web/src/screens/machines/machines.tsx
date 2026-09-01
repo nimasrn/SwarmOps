@@ -28,11 +28,12 @@ import { OutboundEnrollmentGuide, StandaloneClaimGuide } from '../../shell/enrol
 
 type Toast = ReturnType<typeof useToast>
 
-interface ServersPageProps {
+interface MachinesPageProps {
   activeServerID: string
   onConnected: (server: Server) => Promise<void>
-  onDiagnostics: (id: string) => void
-  onProvision: () => void
+  /** Opens one machine's own page — where its charts, containers, setup
+      and agent all are. */
+  onOpenMachine: (id: string) => void
   onRefresh: () => Promise<void>
   onSelect: (id: string) => void
   servers: Server[]
@@ -52,13 +53,12 @@ interface ServersPageProps {
 export function MachinesPage({
   activeServerID,
   onConnected,
-  onDiagnostics,
-  onProvision,
+  onOpenMachine,
   onRefresh,
   onSelect,
   servers,
   toast,
-}: ServersPageProps) {
+}: MachinesPageProps) {
   const [apiKey, setAPIKey] = useState('')
   const [apiURL, setAPIURL] = useState('')
   const [editing, setEditing] = useState<Server | null>(null)
@@ -151,7 +151,17 @@ export function MachinesPage({
   }
 
   const columns: TableColumn<Server>[] = [
-    { header: 'Server', key: 'server', render: (server) => <RecordLink meta={server.connectionType === 'agent_pull' ? 'Connects out securely · no inbound agent port' : serverEndpointLabel(server)} title={server.name} /> },
+    {
+      header: 'Machine',
+      key: 'server',
+      render: (server) => (
+        <RecordLink
+          meta={server.connectionType === 'agent_pull' ? 'Connects out securely · no inbound agent port' : serverEndpointLabel(server)}
+          onClick={isNativeAgent(server) ? () => onOpenMachine(server.id) : undefined}
+          title={server.name}
+        />
+      ),
+    },
     { header: 'Connection', key: 'transport', render: serverConnectionLabel },
     { header: 'Docker', key: 'docker', render: (server) => server.dockerAvailable ? server.dockerVersion || 'Engine reachable' : 'Not detected' },
     { header: 'Swarm', key: 'swarm', render: (server) => server.swarmControlAvailable ? 'Manager' : server.dockerAvailable ? server.swarmState || 'Not active' : 'Bootstrap required' },
@@ -165,12 +175,12 @@ export function MachinesPage({
         : server.connectionState === 'connected'
           ? (
             <Inline gap="tight">
-              <Button onClick={() => onDiagnostics(server.id)} size="sm" variant="ghost">Diagnostics</Button>
+              <Button onClick={() => onOpenMachine(server.id)} size="sm" variant="ghost">Open</Button>
               {serverCanManage(server)
                 ? <Button onClick={() => onSelect(server.id)} size="sm" variant={activeServerID === server.id ? 'secondary' : 'ghost'}>{activeServerID === server.id ? 'Selected' : 'Use server'}</Button>
                 : serverHealth(server) === 'unhealthy'
                   ? null
-                  : <Button onClick={onProvision} size="sm" variant="secondary">Finish host setup</Button>}
+                  : <Button onClick={() => onOpenMachine(server.id)} size="sm" variant="secondary">Finish host setup</Button>}
               <Button onClick={() => void disconnect(server)} size="sm" variant="ghost">Disconnect</Button>
             </Inline>
           )
@@ -183,7 +193,7 @@ export function MachinesPage({
   return (
     <Screen
       about="Each server initiates an encrypted connection to SwarmOps, so no agent exposes an inbound port. The machine running this controller appears here only if you also install and enroll an agent on it."
-      actions={<Button iconStart="link" onClick={() => onDiagnostics(activeServerID)} variant="secondary">Diagnose a connection</Button>}
+      actions={activeServerID ? <Button iconStart="link" onClick={() => onOpenMachine(activeServerID)} variant="secondary">Open the selected machine</Button> : undefined}
       insights={[
         { hint: servers.length ? 'Hosts with an approved agent identity' : 'No host has completed enrollment', icon: 'server', label: 'Enrolled hosts', tone: servers.length ? 'accent' : 'neutral', value: String(servers.length) },
         { hint: connected.length ? 'Agents answering outbound long polls' : 'No agent is answering the controller', icon: 'link', label: 'Answering agents', tone: connected.length ? 'success' : 'warning', value: String(connected.length) },

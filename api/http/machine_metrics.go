@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
+	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/remote"
@@ -154,6 +155,38 @@ func (s *Server) machineMetrics(response http.ResponseWriter, request *http.Requ
 
 	response.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = response.Write([]byte(renderMachineMetrics(server, metrics, fetchedAt, now, s.namespace)))
+}
+
+// machineMetricsJSON serves the same cached sample the scrape endpoint uses,
+// as the typed document rather than as exposition text.
+//
+// The console needs one machine's current numbers on its own page, and it
+// needs them whether or not this cluster runs a Prometheus — the agent
+// measures regardless. Reading Prometheus for a reading the agent just took
+// would make a machine's own page depend on a stack that may not exist.
+func (s *Server) machineMetricsJSON(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	id := request.PathValue("id")
+	if _, found := savedServerProfile(s.servers.List(), id); !found {
+		writeError(response, http.StatusNotFound, "Machine was not found")
+		return
+	}
+	target, err := s.targets.Resolve(id)
+	if err != nil || target.Meter == nil {
+		writeError(response, http.StatusServiceUnavailable, "This machine is not reporting measurements")
+		return
+	}
+	ctx, cancel := context.WithTimeout(request.Context(), machineMetricsBudget)
+	defer cancel()
+	metrics, fetchedAt, fetchErr := s.machineSamples.get(ctx, id, time.Now().UTC(), target.Meter.Metrics)
+	if fetchErr != nil && metrics.CollectedAt.IsZero() {
+		writeError(response, http.StatusServiceUnavailable, "This machine has not answered a measurement yet")
+		return
+	}
+	if time.Now().UTC().Sub(fetchedAt) > machineMetricsMaxAge {
+		writeError(response, http.StatusServiceUnavailable, "The last measurement from this machine is too old to show")
+		return
+	}
+	writeJSON(response, http.StatusOK, metrics)
 }
 
 /* ── Exposition ─────────────────────────────────────────────────────────

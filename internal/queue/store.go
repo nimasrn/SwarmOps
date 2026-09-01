@@ -121,6 +121,15 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "gateway_required", "The managed Traefik gateway is required before this stack can create private routes.", "Install and verify Traefik under Gateway, routes & DNS, then retry."
 	case strings.Contains(message, "nim.stateful"):
 		return "stateful_node_required", "No ready active node satisfies the required nim.stateful=true placement.", "Open Swarm, assign the stateful label to the reviewed node, then retry."
+	// A policy refusal is not an unconfirmed change. This one fell through to
+	// the default bucket and told operators "SwarmOps could not confirm that
+	// the requested change completed", which sends them to inspect Docker —
+	// where nothing is wrong, because the controller declined before it ever
+	// spoke to a machine. It is also deterministic: retrying cannot help.
+	case strings.Contains(message, "is not declared in the reviewed platform manifest"):
+		return "stack_not_declared", "This stack name is not declared in the reviewed platform manifest.", "Add the stack to the manifest and restart the controller, or deploy an application whose slot the manifest already approves."
+	case strings.Contains(message, "reviewed platform manifest"):
+		return "platform_manifest_required", "This controller has no reviewed platform manifest, so it will not deploy a stack composed in a browser.", "Mount the reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE on the controller, or deploy through Apps → Deploy, which renders an approved application spec instead."
 	case strings.Contains(message, "read trusted stack asset"):
 		return "controller_asset_missing", "The controller's reviewed deployment asset is unavailable.", "Repair or update the controller installation before retrying."
 	case strings.Contains(message, "config") && strings.Contains(message, "not found"):

@@ -1145,3 +1145,105 @@ export interface ChangePreview {
    *  running it. A preview that promises everything is lying. */
   unknowns: string[]
 }
+
+/** A named reading about a named object. The browser never sends an
+    expression — see api/http/metrics_read.go. */
+export interface MetricQuery {
+  application?: string
+  container?: string
+  machine?: string
+  scope: 'application' | 'cluster' | 'container' | 'gateway' | 'machine'
+  series: string
+  /** How far back to read. Defaults to six hours. */
+  windowSeconds?: number
+}
+
+export interface MetricPoint {
+  at: string
+  value: number
+}
+
+/** A range always states its source: a chart drawn from Prometheus and one
+    drawn from nothing are different claims. */
+export interface MetricRange {
+  from: string
+  note?: string
+  points: MetricPoint[]
+  scope: string
+  series: string
+  source: 'prometheus' | 'unavailable'
+  stepSeconds: number
+  to: string
+  unit: string
+}
+
+/** One sample of a host and every container on it, measured by the agent that
+    runs on that host. Typed rather than a Prometheus exposition: the agent
+    supplies numbers and the controller chooses the names. */
+export interface MachineMetrics {
+  collectedAt: string
+  containers: {
+    blockReadBytes: number
+    blockWriteBytes: number
+    cpuUsageSeconds: number
+    cpuUsedRatio: number
+    id: string
+    image?: string
+    memoryLimitBytes: number
+    memoryUsedBytes: number
+    name: string
+    processes?: number
+    receivedBytes: number
+    restartCount: number
+    sentBytes: number
+    service?: string
+    stack?: string
+    state?: string
+    taskSlot?: string
+  }[]
+  containersTruncated?: boolean
+  /** Whether Docker ANSWERED, not whether a socket was configured. */
+  dockerAvailable: boolean
+  host: {
+    cpuCores: number
+    /** -1 when the machine cannot measure it. Zero would claim it was idle. */
+    cpuIoWaitRatio: number
+    cpuUsedRatio: number
+    disks?: { device: string; readBytes: number; writeBytes: number }[]
+    filesystems?: { availableBytes: number; device?: string; fstype?: string; mount: string; totalBytes: number; usedBytes: number }[]
+    interfaces?: { name: string; receivedBytes: number; sentBytes: number }[]
+    load1: number
+    load5: number
+    load15: number
+    memoryAvailableBytes: number
+    memoryTotalBytes: number
+    memoryUsedBytes: number
+    processCount?: number
+    swapTotalBytes: number
+    swapUsedBytes: number
+    uptimeSeconds: number
+  }
+}
+
+/** What the controller knows about ITSELF: its version, its host, the storage
+    it holds the ledger in, and the releases it could roll back to. None of it
+    is a cluster read — the controller is not a node. */
+export interface CoreSelf {
+  architecture: string
+  hostname: string
+  inCluster: boolean
+  os: string
+  releases: { installedAt: string; running: boolean; sizeBytes: number; version: string }[]
+  startedAt: string
+  storage: { freeBytes: number; path: string; totalBytes: number; usedBytes: number }
+  update: {
+    automatic: boolean
+    available?: string
+    checkedAt?: string
+    configured: boolean
+    lastUpdatedAt?: string
+    state?: string
+  }
+  uptimeSeconds: number
+  version: string
+}

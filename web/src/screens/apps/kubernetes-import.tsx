@@ -18,7 +18,6 @@ import {
 import { api } from '../../data/api'
 import type { ImportGap, ImportMapping, ImportReport } from '../../data/types'
 import { messageOf } from '../../lib/errors'
-import { Screen } from '../../components/screen'
 
 /**
  * What Swarm can run from a Kubernetes manifest, and — the half that matters —
@@ -28,7 +27,7 @@ import { Screen } from '../../components/screen'
  * The value here is the reading: an import that silently dropped the objects
  * with no equivalent would produce a cluster that looks migrated and is not.
  */
-export function KubernetesImportPage({ onOpenStacks }: { onOpenStacks: () => void }) {
+export function KubernetesImportPanel({ onOpenWorkloads }: { onOpenWorkloads: () => void }) {
   const [manifests, setManifests] = useState('')
   const [report, setReport] = useState<ImportReport | null>(null)
   const [error, setError] = useState('')
@@ -57,17 +56,7 @@ export function KubernetesImportPage({ onOpenStacks }: { onOpenStacks: () => voi
   const gaps = report?.gaps.length ?? 0
 
   return (
-    <Screen
-      about="Nothing is created. SwarmOps reads the manifests, reports what it can run and what it will change, and returns a stack for you to review."
-      insights={[
-        { hint: report ? 'Objects with an honest Swarm equivalent' : 'Paste manifests to read them', icon: 'check-circle', label: 'Maps cleanly', tone: report ? 'success' : 'neutral', unmeasured: !report, value: String(mapped) },
-        { hint: gaps ? 'No equivalent exists — each one needs a decision' : 'Nothing in these manifests needs a decision', icon: 'alert', label: 'Needs a decision', tone: gaps ? 'warning' : 'success', unmeasured: !report, value: String(gaps) },
-        { hint: report?.errors?.length ? 'Documents that could not be parsed at all' : 'Every document was read', icon: 'danger', label: 'Unreadable documents', tone: report?.errors?.length ? 'danger' : 'success', unmeasured: !report, value: String(report?.errors?.length ?? 0) },
-        { hint: report?.compose ? 'A reviewed Compose stack is ready to read' : 'A stack is generated once the manifests are read', icon: 'layers', label: 'Generated stack', tone: report?.compose ? 'accent' : 'neutral', unmeasured: !report, value: report?.compose ? 'Ready' : 'Not yet' },
-      ]}
-      page="deploy"
-      width="full"
-    >
+    <>
       <Panel
         description="Paste your manifests. SwarmOps reads them and reports what it can run, what it will change, and what it cannot take. Nothing is created — the generated stack is returned for review."
         title="Bring a Kubernetes workload across"
@@ -167,12 +156,12 @@ export function KubernetesImportPage({ onOpenStacks }: { onOpenStacks: () => voi
                 >
                   Copy the Compose stack
                 </Button>
-                <Button onClick={onOpenStacks} variant="ghost">Open Stacks to deploy it</Button>
+                <Button onClick={onOpenWorkloads} variant="ghost">Open Stacks to deploy it</Button>
               </DecideBar>
             </Panel>
           ) : null}
         </>
       ) : null}
-    </Screen>
+    </>
   )
 }

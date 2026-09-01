@@ -94,8 +94,6 @@ export function ServicesTab({
     }
   }
 
-  const unhealthy = services.filter((service) => service.runningTasks < service.desiredTasks)
-  const updating = services.filter((service) => Boolean(service.updateState) && service.updateState !== 'completed')
 
   const columns: TableColumn<Service>[] = [
     { header: 'Service', key: 'name', render: (service) => <RecordLink meta={service.stack ?? 'unmanaged service'} onClick={() => void readLogs(service)} title={service.name} /> },
@@ -152,6 +150,10 @@ export function ServicesTab({
             <Button loading={busy === 'restart'} onClick={() => void act('restart')} variant="secondary">Force restart</Button>
             <Button loading={busy === 'rollback'} onClick={() => void act('rollback')} variant="danger">Roll back</Button>
             <Button onClick={() => void readLogs(selected)} variant="ghost">Read logs</Button>
+            {/* The tail below is two hundred lines fetched on demand. Anything
+                older, or across more than this one service, is the Logs
+                screen — which is a different question and a different tool. */}
+            <Button onClick={onOpenLogs} variant="ghost">Search all logs</Button>
           </Inline>
           <Rows gap="tight">
             <Label as="p">Replica control</Label>

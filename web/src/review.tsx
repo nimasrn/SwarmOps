@@ -126,6 +126,36 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ action: 'review.noop', attempt: 1, createdAt: new Date().toISOString(), id: `rev-${Date.now()}`, maxAttempts: 1, nodeId: 'n1', state: 'succeeded', target: 'review' })
   }
 
+  // A machine's own measurements. Real shape, real absences: web-01 reports a
+  // host it cannot measure CPU on, which is how a macOS or unprivileged agent
+  // actually answers.
+  const machineMetrics = path.match(/^\/api\/v1\/machines\/([^/]+)\/metrics$/)
+  if (machineMetrics) return json(sampleMachineMetrics(machineMetrics[1]!))
+
+  // A named reading. The harness answers with a walk so the chart, its units
+  // and its provenance line are all exercised; `source` is what the console
+  // reads to decide whether it may draw at all.
+  if (path === '/api/v1/metrics/range') {
+    const parameters = new URL(url, 'http://local').searchParams
+    return json(sampleRange(parameters.get('scope') ?? 'machine', parameters.get('series') ?? 'cpu'))
+  }
+
+  const since = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString()
+  if (path === '/api/v1/core/self') {
+    return json({
+      architecture: 'arm64', hostname: 'nima-mbp', inCluster: false, os: 'darwin',
+      releases: [
+        { installedAt: since(1036800), running: true, sizeBytes: 38e6, version: 'v0.11.0' },
+        { installedAt: since(1900800), running: false, sizeBytes: 37e6, version: 'v0.10.4' },
+        { installedAt: since(3024000), running: false, sizeBytes: 37e6, version: 'v0.10.3' },
+      ],
+      startedAt: since(1036800),
+      storage: { freeBytes: 84e9, path: '/var/lib/swarmops', totalBytes: 480e9, usedBytes: 412e6 },
+      update: { automatic: false, available: 'v0.11.1', checkedAt: since(21600), configured: true, state: 'up_to_date' },
+      uptimeSeconds: 1036800, version: 'v0.11.0',
+    })
+  }
+
   if (path in FIXTURES) return json(FIXTURES[path])
 
   // Unmodelled reads answer empty so a screen shows its own empty state rather
@@ -135,6 +165,55 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   // get []; everything else gets null, which guards correctly.
   const COLLECTIONS = /\/(containers|images|networks|volumes|configs|secrets|nodes|services|stacks|databases|applications|builds|commands|audit-events|routes|certificates|replicas|connections)$/
   return json(COLLECTIONS.test(path) ? [] : null)
+}
+
+function sampleMachineMetrics(id: string) {
+  const cores = 8
+  // The second machine deliberately cannot measure its own CPU. An operator
+  // has to be able to see the difference between "idle" and "not measured",
+  // and the review build is where that gets checked.
+  const measurable = id !== 'srv-2'
+  return {
+    collectedAt: new Date().toISOString(),
+    containers: [
+      { blockReadBytes: 1e6, blockWriteBytes: 4.2e6, cpuUsageSeconds: 1204.5, cpuUsedRatio: 0.184, id: 'c1f2a3b4c5d6', image: 'ghcr.io/nimasrn/checkout:41ab77c', memoryLimitBytes: 2147483648, memoryUsedBytes: 2040109465, name: 'production_checkout.1', processes: 42, receivedBytes: 8.1e8, restartCount: 0, sentBytes: 4.4e8, service: 'production_checkout', stack: 'production', state: 'running', taskSlot: '1' },
+      { blockReadBytes: 2e5, blockWriteBytes: 1e5, cpuUsageSeconds: 4.2, cpuUsedRatio: -1, id: 'd2e3f4a5b6c7', image: 'traefik:v3.6', memoryLimitBytes: 0, memoryUsedBytes: 96e6, name: 'traefik.1', processes: 11, receivedBytes: 2e7, restartCount: 0, sentBytes: 3e7, state: 'running' },
+      { blockReadBytes: 0, blockWriteBytes: 0, cpuUsageSeconds: 88.1, cpuUsedRatio: 0.04, id: 'a9b8c7d6e5f4', image: 'ghcr.io/nimasrn/worker:41ab77c', memoryLimitBytes: 536870912, memoryUsedBytes: 310e6, name: 'production_worker.3', processes: 8, receivedBytes: 4e6, restartCount: 2, sentBytes: 2e6, service: 'production_worker', stack: 'production', state: 'running', taskSlot: '3' },
+    ],
+    dockerAvailable: true,
+    host: {
+      cpuCores: cores,
+      cpuIoWaitRatio: measurable ? 0.02 : -1,
+      cpuUsedRatio: measurable ? 0.61 : -1,
+      disks: [{ device: 'nvme0n1', readBytes: 8.1e9, writeBytes: 4.1e9 }],
+      filesystems: [
+        { availableBytes: 292e9, device: '/dev/nvme0n1p2', fstype: 'ext4', mount: '/', totalBytes: 480e9, usedBytes: 188e9 },
+        { availableBytes: 9e9, device: '/dev/nvme0n1p3', fstype: 'xfs', mount: '/var/lib/docker', totalBytes: 200e9, usedBytes: 191e9 },
+      ],
+      interfaces: [{ name: 'ens3', receivedBytes: 9.1e10, sentBytes: 4.1e10 }],
+      load1: 4.9, load5: 4.4, load15: 3.8,
+      memoryAvailableBytes: 9.9e9, memoryTotalBytes: 34.3e9, memoryUsedBytes: 24e9,
+      processCount: 314, swapTotalBytes: 2e9, swapUsedBytes: 0,
+      uptimeSeconds: 2937600,
+    },
+  }
+}
+
+function sampleRange(scope: string, series: string) {
+  const unit = series === 'cpu' ? 'ratio'
+    : series.startsWith('network') || series.startsWith('disk') || series.startsWith('block') ? 'bytes/s'
+      : series === 'requests' || series === 'errors' ? 'req/s'
+        : series === 'latency-p95' ? 'seconds' : 'bytes'
+  const base = unit === 'ratio' ? 0.55 : unit === 'bytes/s' ? 4.2e7 : unit === 'req/s' ? 410 : unit === 'seconds' ? 0.18 : 22e9
+  const to = new Date()
+  const from = new Date(to.getTime() - 6 * 3600 * 1000)
+  let seed = 0x5eed
+  const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
+  const points = Array.from({ length: 72 }, (_, index) => ({
+    at: new Date(from.getTime() + index * 300 * 1000).toISOString(),
+    value: Math.max(0, base * (0.8 + random() * 0.4)),
+  }))
+  return { from: from.toISOString(), points, scope, series, source: 'prometheus', stepSeconds: 300, to: to.toISOString(), unit }
 }
 
 createRoot(document.getElementById('root')!).render(

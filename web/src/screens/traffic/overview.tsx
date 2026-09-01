@@ -16,6 +16,7 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import type { CertificateStatus, PrometheusStatus, RouteInventoryRow, RoutingState } from '../../data/types'
+import { MetricChart } from '../../components/metric-chart'
 import { capitalize } from '../../lib/format'
 
 
@@ -44,6 +45,38 @@ export function TrafficOverview({ certificates, prometheus, routes, state }: { c
         <Metric label="Runtime failures" tone={routes.some((row) => row.status.includes('fail')) ? 'danger' : 'success'} value={String(routes.filter((row) => row.status.includes('fail')).length)} />
         <Metric label="Certificates expiring" tone={expiring.length ? 'warning' : 'success'} value={String(expiring.length)} />
       </MetricGrid>
+      {/* What the edge is actually carrying. These come from the gateway's own
+          metrics rather than from the applications behind it: an application
+          that has stopped answering cannot report that it has stopped
+          answering. */}
+      <Columns>
+        <MetricChart
+          note="Every entry point, all protocols"
+          query={{ scope: 'gateway', series: 'requests' }}
+          refreshMs={30_000}
+          title="Requests"
+        />
+        <MetricChart
+          note="Responses the gateway itself could not complete"
+          query={{ scope: 'gateway', series: 'errors' }}
+          refreshMs={30_000}
+          title="Failing requests"
+        />
+      </Columns>
+      <Columns>
+        <MetricChart
+          note="95th percentile, measured at the edge"
+          query={{ scope: 'gateway', series: 'latency-p95' }}
+          refreshMs={30_000}
+          title="Latency"
+        />
+        <MetricChart
+          note="Written back to clients"
+          query={{ scope: 'gateway', series: 'bytes-out' }}
+          refreshMs={30_000}
+          title="Bytes out"
+        />
+      </Columns>
       <Columns template="two-thirds">
         <Panel flush title="Routes">
           <DataTable columns={routeColumns} empty={<EmptyState description="Declare a typed route for a reviewed service to make it visible here." icon="external" title="No routes" />} rowKey={(row) => row.route.key} rows={filtered} summary={`Showing ${filtered.length} of ${routes.length} routes`} />

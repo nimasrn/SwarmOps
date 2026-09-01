@@ -2,10 +2,16 @@
 
 This document is the product contract for where information and actions live in
 the SwarmOps console. Navigation is organized around an operator's task, not an
-implementation subsystem. Eight primary areas live in a persistent icon rail; a
+implementation subsystem. Six primary areas live in a persistent icon rail; a
 labelled contextual sidebar exposes the screens inside the active area and
 states what the area is for. The command palette reaches every destination
 directly and every route preserves the explicitly selected server.
+
+**The depth is in the object.** A machine, a container, an application and a
+run each have their own page, addressable as `#<screen>/<id>`, and everything
+about that thing is on it — its charts included. That is the single largest
+change this document has ever recorded, and it is the answer to the question
+the previous architecture could not answer: *for which node?*
 
 The table below is not a description of the code: `web/src/navigation/navigation.ts`
 is the code, and it is the only place any of it is written down. Both navigation
@@ -59,28 +65,58 @@ the ledger and one thing to decide.
 
 | Area | Screens | Operator question |
 | --- | --- | --- |
-| **Overview** | Command center | Is the environment healthy, where did each signal come from, and what is the one thing to do next? |
-| **Deliver** | Deploy from source, Applications, Images & builds, Container registry | How do I get a change from source into running production, and what was built to get it there? |
-| **Fleet** | Servers, Host setup, Swarm & placement, Connection diagnostics, Docker resources | Which hosts are under management, what is answering, what is their Swarm role, and how do I repair one? |
-| **Workloads** | Swarm services, Stacks, Managed databases | What is scheduled and running right now, and what does it depend on? |
-| **Traffic** | Gateway & ports, Routes, DNS providers, TLS certificates | Is a gateway installed, which routes are published, which ports listen, and how are DNS and certificates managed? |
-| **Observe** | Health, Logs, Collectors | What is happening now, what evidence was collected, and which collection sources are healthy? |
-| **Activity** | Runs, Action catalog, Audit trail | What work was requested, what can SwarmOps safely do, and who did what? |
-| **Control** | Controller & recovery | How is the controller's authority held, moved, and restored? |
+| **Home** | Overview | Is the environment healthy, where did each signal come from, and what is the one thing to do next? |
+| **Apps** | Applications, Deploy, Platform services, Images & registries, Stacks & services | What do I ship, how do I ship it, and what shared services does it run against? |
+| **Machines** | Machines, Swarm, Containers, Storage & networks | Which hosts are under management, what is each one doing, what is its Swarm role, and how do I repair one? |
+| **Traffic** | Gateway, Routes, Domains & DNS, Certificates | Is a gateway installed, what is it carrying, which routes are published, and how are DNS and certificates managed? |
+| **Activity** | Runs, Logs, Audit, Action catalog | What work was requested, what was written down, what can SwarmOps safely do, and who did what? |
+| **Control** | Core, Agents & updates | What is this controller, what version is everything on, and how does authority move? |
 
-**Deliver exists because shipping is not configuration.** Source deployment and
-the registry used to sit under Settings while Applications sat under Workloads,
-which split one job across two areas and filed the act of shipping under
-setup. The whole path is one area, and it is the second thing in the rail.
+### Object pages
 
-**Workloads is what is running, not what you deploy.** An application is a
-lifecycle you own and therefore belongs to Deliver; a service, a stack, and a
-managed database are things currently scheduled, and belong here.
+An area lists things; an object page *is* one of them. These are addressable
+and are where the depth lives:
+
+| Address | Owns |
+| --- | --- |
+| `#machines/<id>` | One host: its CPU, memory, network and disk charts; the containers on it; its setup checklist; its agent. |
+| `#containers/<id>` | One container: its own CPU and memory series, its environment variable NAMES, its mounts and ports, its logs. |
+| `#applications/<name>` | One application: its request rate, latency and error rate measured at the gateway; its replicas; its releases. |
+| `#runs/<id>` | One run: its lifecycle, its attempts, its failure class, and the command to run next. |
+
+**Metrics live on their object.** There is no Observe area, and adding one back
+would be a regression. A fleet-wide chart cannot say which node it means, and
+a console that shows one teaches operators to distrust every number on it.
+
+**Every chart states its provenance.** One component (`components/metric-chart.tsx`)
+draws every reading in the product. It shows what was measured, about which
+object, over what period, and from which source. A range whose source is
+unavailable draws **nothing** and says why: an empty plot and an idle machine
+are indistinguishable, and only one of them is a measurement.
+
+**Reading a metric is a closed vocabulary.** The browser names a series and an
+object; the query is built on the machine from a fixed table. This is the same
+rule that governs mutations, for the same reason — an expression is a program.
+
+**Apps owns the whole life of a workload.** Shipping and running were two
+areas: an application was a lifecycle under Deliver and the service running it
+was an object under Workloads, so the same thing at two levels of abstraction
+sat in different halves of the navigation. Stacks and services are still
+reachable, last in the area, because most of what an operator wants is on the
+application and this is where they go when it is not.
+
+**Platform services is one idea.** A database every application shares and a
+Prometheus every application shares were in different areas, and neither screen
+could state the rule that governs both: one of each per cluster, and a
+deployment that brings its own is rewired to them.
+
+**Setup and diagnostics belong to a host.** They were fleet-wide destinations
+with their own server pickers, which meant choosing the object twice and two
+selections that could disagree. They are tabs on the machine now.
 
 **Control plane** and **Operations** are not used as navigation labels. They
 described implementation concepts without telling an operator where to find
-controller recovery or a run. **Observe** and **Traffic** are used, and are
-named for what the operator is doing rather than for the subsystem underneath.
+controller recovery or a run.
 
 ## Workload vocabulary
 

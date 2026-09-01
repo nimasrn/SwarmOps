@@ -16,24 +16,17 @@ import {
   StatusDot,
 } from '@nim.zone/ui'
 import type { SourceStatus } from '../../../data/types'
-import { Screen } from '../../../components/screen'
 
-export function RegistryBoundaryPage({ status }: { status: SourceStatus }) {
+export function RegistryBoundaryPanel({ status }: { status: SourceStatus }) {
   const [open, setOpen] = useState(false)
   const ready = status.imagePrefixConfigured && status.buildEnabled
   return (
-    <Screen
-      about="The registry is where SwarmOps pushes immutable application images. It is separate from source-provider access and from Docker’s runtime image inventory."
-      actions={<Button iconStart="settings" onClick={() => setOpen(true)} variant="accent">Configure registry</Button>}
-      insights={[
-        { hint: status.imagePrefixConfigured ? 'The namespace SwarmOps may push generated images to' : 'No namespace is allowed, so nothing can be pushed', icon: 'cloud', label: 'Image prefix', tone: status.imagePrefixConfigured ? 'success' : 'warning', value: status.imagePrefixConfigured ? 'Configured' : 'Required' },
-        { hint: status.buildEnabled ? 'Only resource-bounded builds with immutable tags may push' : 'The controller will not run a source build', icon: 'package', label: 'Bounded builds', tone: status.buildEnabled ? 'success' : 'warning', value: status.buildEnabled ? 'Enabled' : 'Required' },
-        { hint: 'Read from a protected controller file and never returned to this browser', icon: 'key', label: 'Push credential', value: 'Host-managed' },
-      ]}
-      page="images"
-      status={<StatusDot tone={ready ? 'success' : 'warning'}>{ready ? 'Registry boundary ready' : 'Setup required'}</StatusDot>}
-    >
-      <Panel title="Current controller boundary">
+    <>
+      <Panel
+        actions={<Button iconStart="settings" onClick={() => setOpen(true)} size="sm" variant="accent">Configure registry</Button>}
+        description={ready ? 'This controller may push generated application images.' : 'Setup is required before anything can be pushed.'}
+        title="Current controller boundary"
+      >
         <List plain>
           <ListRow leading={<Icon name={status.imagePrefixConfigured ? 'check-circle' : 'alert'} size="sm" tone={status.imagePrefixConfigured ? 'success' : 'warning'} />} subtitle="The exact namespace SwarmOps may use for generated application images." title="Registry image prefix" trailing={<StatusDot tone={status.imagePrefixConfigured ? 'success' : 'warning'}>{status.imagePrefixConfigured ? 'Configured' : 'Required'}</StatusDot>} />
           <ListRow leading={<Icon name={status.buildEnabled ? 'check-circle' : 'alert'} size="sm" tone={status.buildEnabled ? 'success' : 'warning'} />} subtitle="Only resource-bounded builds with allow-listed immutable tags can push." title="Bounded image builds" trailing={<StatusDot tone={status.buildEnabled ? 'success' : 'warning'}>{status.buildEnabled ? 'Enabled' : 'Required'}</StatusDot>} />
@@ -42,7 +35,7 @@ export function RegistryBoundaryPage({ status }: { status: SourceStatus }) {
       </Panel>
       <Columns>
         <Panel title="What belongs here"><Facts columns={1} items={[{ label: 'Image prefix', value: 'Registry host and namespace allowed for application images' }, { label: 'Push credential', value: 'Protected Docker config read only by the controller' }, { label: 'Build policy', value: 'CPU, memory, context size, and tag allow-list' }]} /></Panel>
-        <Panel title="What does not belong here"><Facts columns={1} items={[{ label: 'Source tokens', value: 'Settings → Source deployment' }, { label: 'Running images', value: 'Workloads → Images & builds' }, { label: 'Node pull access', value: 'Configured on each Docker host through reviewed deployment credentials' }]} /></Panel>
+        <Panel title="What does not belong here"><Facts columns={1} items={[{ label: 'Source tokens', value: 'Apps → Deploy' }, { label: 'Running images', value: 'Machines → Storage & networks' }, { label: 'Node pull access', value: 'Configured on each Docker host through reviewed deployment credentials' }]} /></Panel>
       </Columns>
       <Sheet closeLabel="Close registry setup" onClose={() => setOpen(false)} open={open} title="Configure the container registry">
         <Rows>
@@ -53,7 +46,7 @@ export function RegistryBoundaryPage({ status }: { status: SourceStatus }) {
           <Inline><Button href="#core" variant="secondary">Open controller settings</Button><Button onClick={() => setOpen(false)} variant="ghost">Done</Button></Inline>
         </Rows>
       </Sheet>
-    </Screen>
+    </>
   )
 }
 

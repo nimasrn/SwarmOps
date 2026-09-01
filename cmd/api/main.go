@@ -26,7 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.11.0"
+const version = "0.12.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -163,6 +163,9 @@ func main() {
 		if joiner, ok := connection.Runner.(apihttp.SwarmJoiner); ok {
 			target.Joiner = joiner
 		}
+		if reader, ok := connection.Runner.(apihttp.MetricReader); ok {
+			target.Metrics = reader
+		}
 		if !connection.Profile.DockerAvailable || connection.Docker == nil {
 			// A connected native agent remains a valid server-readiness target even
 			// before Docker exists. Cluster reads and operations still fail closed
@@ -218,6 +221,7 @@ func main() {
 	})
 	api, err := apihttp.New(cfg, targets, servers, auditStore, logger)
 	if err == nil {
+		api.SetVersion(version)
 		api.SetApplicationDiscovery(applications, admission.Namespace())
 		api.SetSourceService(sourceService)
 	}

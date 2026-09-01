@@ -11,6 +11,83 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.12.0 — 2026-09-02
+
+The agent measures, the console is six areas, and every reading sits beside the
+object it describes. Ansible is gone.
+
+- **Hosts and containers are measured, at last** — the agent on each host now
+  reports CPU (busy, iowait and steal separately), load, memory, swap, every
+  mounted filesystem, per-interface network and per-disk I/O, plus per-container
+  CPU, memory against limit, network, block I/O and restarts. Nothing collected
+  any of this before: `prometheus.yml` had four scrape jobs and not one of them
+  was a host or a container, and the `node-exporter` in the agent stack was
+  scraped by nobody.
+- **The agent is the only collector** — no cAdvisor, no scraped node-exporter,
+  no privileged extra container, and readings that arrive before Docker does.
+  Agents hold no inbound port, so the controller terminates each scrape over
+  the outbound channel that machine already holds open and serves it at
+  `/metrics/machines/<id>`; discovery lists one entry per connected machine, so
+  enrolling a host starts collection with no config to regenerate.
+- **The agent sends numbers, the controller chooses the names** — machine
+  metrics cross the trust boundary as a typed document that is sanitized before
+  a byte of exposition is produced. A metric name or label in the cluster's
+  Prometheus was never chosen by a machine agent.
+- **Six areas instead of eight** — Deliver and Workloads were the same object at
+  two points in its life, so an application and the service running it lived in
+  different halves of the navigation. Home, Apps, Machines, Traffic, Activity
+  and Control. Every one of the twenty-four retired hashes still resolves to
+  the screen that took over its job.
+- **A machine is a page** — `#machines/<id>` opens one host with its charts, its
+  containers, its setup checklist and its agent on it. Host setup and connection
+  diagnostics stopped being fleet-wide destinations, because readiness is a
+  property of one host and was never a property of all of them.
+- **There is no Observe area** — a fleet-wide chart cannot answer "for which
+  node?", which is the question this rebuild started from. Metrics live on the
+  machine, the container, the application and the gateway. Collectors and
+  managed databases became **Platform services**, which is one idea: the
+  cluster singletons every application is wired to.
+- **Every chart states its provenance** — one component draws every reading in
+  the product, and a range with no source draws nothing at all and says why. An
+  empty plot and an idle machine look identical, and only one of them is a
+  measurement.
+- **Reading a metric is a closed vocabulary** — the browser names a series and
+  an object; the query language is built on the machine from a fixed table.
+  Selectors are validated against a pattern admitting no quote, brace or space,
+  so a selector cannot close its own label matcher.
+- **The controller can describe itself** — Core now states its version, the host
+  it runs on, its state directory and free disk, the releases kept for a roll
+  back, and offers the update. The updater shipped three releases ago with no
+  route to it. The ten-row handoff timeline is still there, below the things you
+  came for.
+- **Agents & updates** — which version each machine runs, and the connection
+  nobody could previously make: an agent that is behind does not merely run
+  older code, it rejects commands added since it shipped.
+- **Ansible is removed** — `deploy/ansible/`, `provision-swarmops.sh` and
+  `setup-three-managers.sh` are gone. `bootstrap-swarm.sh` talks only to the
+  controller: it mints enrolment codes, prints the one command to run on each
+  machine, waits, then queues typed Docker and Swarm operations and follows each
+  run to a terminal result. No SSH, no key for any host, no inventory.
+- **Joining an existing Swarm is a typed operation** — it was not one, anywhere.
+  `initializeSwarm` only ever ran `docker swarm init`, so multi-manager
+  formation was possible only through the playbook now deleted. The join token
+  is read from the manager by the command worker at execution time and is never
+  written to the sealed ledger, the audit trail, or a browser response.
+- **Kubernetes import is a way to start a deployment** — not a destination. Four
+  ways into one flow rather than four products.
+- **Fixes**: host provisioning deadlocked for forty-five minutes and then
+  reported "invalid request" — the root helper reads to EOF to prove it received
+  exactly one request and the agent never closed its write half, so install
+  Docker, update OS, init Swarm and apply firewall all hung; Swarm advertise
+  addresses were sorted as text, so `"172.17.0.1" < "192.168.1.5"` made any host
+  on a 192.168 network advertise Docker's own bridge, which no peer can reach;
+  container CPU was divided by the core count twice; mount paths begin with a
+  slash and were being dropped as unnameable, costing every filesystem reading;
+  Docker publishes no `task.slot` label so the replica number was always empty;
+  `docker_available` reported 1 on hosts with no Docker because it tested
+  whether a client was configured rather than whether Docker answered; and the
+  breadcrumb repeated a name when an area and its landing screen share one.
+
 ## 0.11.0 — 2026-08-30
 
 The console is rebuilt as modules, every screen is drawn in one frame, and the

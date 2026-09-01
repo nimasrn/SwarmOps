@@ -26,9 +26,11 @@ import { isConnectedNativeAgent, serverEndpointLabel } from '../../data/server-c
 import type { Command, Server, ServerReadiness } from '../../data/types'
 import { formatBytes, formatDateTime, formatDuration, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
-import { Screen } from '../../components/screen'
 
-interface ServerReadinessPageProps {
+interface SetupTabProps {
+  /** The machine this tab is about — chosen by the page above it. */
+  serverID: string
+
   servers: Server[]
   toast: ReturnType<typeof useToast>
 }
@@ -57,9 +59,8 @@ const emptyPlan: ReadinessPlan = {
 
 type ReadinessAction = 'docker' | 'firewall' | 'os' | 'swarm'
 
-export function ServerReadinessPage({ servers, toast }: ServerReadinessPageProps) {
+export function SetupTab({ serverID, servers, toast }: SetupTabProps) {
   const connected = useMemo(() => servers.filter(isConnectedNativeAgent), [servers])
-  const [serverID, setServerID] = useState('')
   const [readiness, setReadiness] = useState<ServerReadiness | null>(null)
   const [plan, setPlan] = useState<ReadinessPlan>(emptyPlan)
   const [error, setError] = useState('')
@@ -68,10 +69,6 @@ export function ServerReadinessPage({ servers, toast }: ServerReadinessPageProps
   const [reviewing, setReviewing] = useState<ReadinessAction | null>(null)
 
   const server = connected.find((candidate) => candidate.id === serverID)
-
-  useEffect(() => {
-    setServerID((current) => connected.some((server) => server.id === current) ? current : connected[0]?.id ?? '')
-  }, [connected])
 
   useEffect(() => {
     let cancelled = false
@@ -150,34 +147,8 @@ export function ServerReadinessPage({ servers, toast }: ServerReadinessPageProps
   const outstanding = readiness ? readinessIssueCount(readiness) : 0
 
   return (
-    <Screen
-      about="Each fix is a fixed, reviewed operation with an explicit target. SwarmOps never accepts a shell command from the browser."
-      actions={<Button disabled={!serverID || pending} iconStart="refresh" loading={pending} onClick={() => void refresh()} variant="secondary">Refresh evidence</Button>}
-      insights={readiness ? [
-        { hint: outstanding ? 'Each one opens a review before anything changes' : 'This host is ready to run workloads', icon: 'check-circle', label: 'Checks outstanding', tone: outstanding ? 'warning' : 'success', value: `${4 - outstanding} / 4 ready` },
-        { hint: readiness.docker.running ? 'The agent can reach the local Engine' : readiness.docker.installed ? 'Installed, but not running' : 'Docker is not installed on this host', icon: 'package', label: 'Docker Engine', tone: readiness.docker.running ? 'success' : readiness.docker.installed ? 'warning' : 'neutral', value: readiness.docker.running ? readiness.docker.version || 'Running' : readiness.docker.installed ? 'Stopped' : 'Not installed' },
-        { hint: readiness.swarm.manager ? 'This host can be selected as a cluster' : 'A manager is required to orchestrate workloads', icon: 'layers', label: 'Swarm', tone: readiness.swarm.manager ? 'success' : readiness.swarm.state === 'active' ? 'warning' : 'neutral', value: readiness.swarm.manager ? 'Manager' : readiness.swarm.state || 'Inactive' },
-        { hint: readiness.firewall.enabled ? 'The controller and Swarm peers are allowed; nothing else is' : readiness.firewall.available ? 'UFW is installed but not enforcing' : 'UFW is not installed on this host', icon: 'shield', label: 'Firewall', tone: readiness.firewall.enabled ? 'success' : readiness.firewall.available ? 'warning' : 'neutral', value: readiness.firewall.enabled ? 'Enabled' : readiness.firewall.available ? 'Installed, off' : 'Not installed' },
-      ] : undefined}
-      page="machines"
-      status={<StatusDot tone={!server ? 'neutral' : error ? 'danger' : readiness ? 'success' : 'warning'}>{!server ? 'Choose a host' : error ? 'Needs attention' : readiness ? 'Agent connected' : 'Inspecting host'}</StatusDot>}
-      title={server ? `Prepare ${server.name} for workloads` : undefined}
-      width="full"
-    >
+    <>
       {error ? <Banner title="Server readiness needs attention" tone="danger">{error}</Banner> : null}
-      <Panel title="Server">
-          <Rows>
-            <Body size="sm">Choose the connected server you want to prepare. A new server can be set up before it joins a Swarm.</Body>
-            <Select
-              label="Connected server"
-              onChange={(event) => setServerID(event.target.value)}
-              options={connected.map((candidate) => ({ label: `${candidate.name} · ${candidate.host}`, value: candidate.id }))}
-              placeholder="Connect a server in Servers"
-              value={serverID}
-            />
-            {!connected.length ? <Banner title="No connected native agent" tone="warning">Run the one-command installer, paste its one-time enrollment token in Servers, then return here. SSH profiles intentionally cannot receive browser-driven host changes.</Banner> : null}
-          </Rows>
-      </Panel>
 
       {!server ? null : !readiness ? <Panel title="Checking server"><Spinner label="Reading server readiness" /></Panel> : <>
           <Panel caption="Live evidence from the connected server" title="Current state">
@@ -238,7 +209,7 @@ export function ServerReadinessPage({ servers, toast }: ServerReadinessPageProps
           </Rows>
         </Sheet>
       ) : null}
-    </Screen>
+    </>
   )
 }
 
