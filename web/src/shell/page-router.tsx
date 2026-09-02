@@ -243,6 +243,8 @@ function ClusterScreen({ commands, data, onOpen, toast, workspace }: {
       return <ImagesPage onDeployFromSource={() => onOpen('deploy')} toast={toast} />
     case 'gateway':
       return <TraefikControlPage initialTab="overview" status={data.traefik} toast={toast} />
+    case 'gateway-settings':
+      return <TraefikControlPage initialTab="settings" status={data.traefik} toast={toast} />
     case 'routes':
       return <TraefikControlPage initialTab="routes" status={data.traefik} toast={toast} />
     case 'dns':

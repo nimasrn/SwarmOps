@@ -34,6 +34,7 @@ const (
 	defaultHealthTimeout  = 45 * time.Second
 	defaultHealthInterval = time.Second
 	maxChecksumBytes      = 1 << 20
+	maxRequestMarkerBytes = 4 << 10
 	maxBundleBytes        = 256 << 20
 	maxExtractedBytes     = 512 << 20
 )
@@ -80,7 +81,7 @@ type Result struct {
 	Deferred   bool
 }
 
-type agentUpdateStatus struct {
+type updateStatus struct {
 	Automatic     bool      `json:"automatic"`
 	CheckedAt     time.Time `json:"checkedAt"`
 	LastUpdatedAt time.Time `json:"lastUpdatedAt,omitempty"`
@@ -107,30 +108,37 @@ func Update(ctx context.Context, config Config, requestedVersion string) (result
 	if err != nil {
 		return Result{}, err
 	}
-	if config.Component == "agent" {
-		defer func() {
-			if err := recordAgentUpdateStatus(config, result, returnErr); err != nil {
-				if returnErr != nil {
-					returnErr = fmt.Errorf("%w; record agent update status: %v", returnErr, err)
-					return
-				}
-				returnErr = fmt.Errorf("record agent update status: %w", err)
+	// Both components are managed the same way: the console writes a request
+	// marker, the local Warden consumes it and records what it did. The core
+	// once skipped this and its console could only ever say "Never checked".
+	defer func() {
+		if err := recordUpdateStatus(config, result, returnErr); err != nil {
+			if returnErr != nil {
+				returnErr = fmt.Errorf("%w; record %s update status: %v", returnErr, config.Component, err)
+				return
 			}
-		}()
-		if err := consumeRequestMarker(config.RequestFile); err != nil {
-			return Result{}, err
+			returnErr = fmt.Errorf("record %s update status: %w", config.Component, err)
 		}
-		busy, err := markerExists(config.BusyFile)
-		if err != nil {
-			return Result{}, err
+	}()
+	// A marker may name an exact release, which is how the console rolls a
+	// component back. An explicit command-line version still wins.
+	marked, err := consumeRequestMarker(config.RequestFile)
+	if err != nil {
+		return Result{}, err
+	}
+	if requestedVersion == "" {
+		requestedVersion = marked
+	}
+	busy, err := markerExists(config.BusyFile)
+	if err != nil {
+		return Result{}, err
+	}
+	if busy {
+		version, versionErr := currentVersion(config.ReleaseDir)
+		if versionErr != nil {
+			return Result{}, fmt.Errorf("read installed release while deferring update: %w", versionErr)
 		}
-		if busy {
-			version, versionErr := currentVersion(config.ReleaseDir)
-			if versionErr != nil {
-				return Result{}, fmt.Errorf("read installed release while deferring update: %w", versionErr)
-			}
-			return Result{Version: version, Deferred: true}, nil
-		}
+		return Result{Version: version, Deferred: true}, nil
 	}
 	if requestedVersion != "" && !validVersion(requestedVersion) {
 		return Result{}, fmt.Errorf("release version has unsupported characters")
@@ -284,43 +292,71 @@ func markerExists(filename string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("inspect agent update busy marker: %w", err)
+		return false, fmt.Errorf("inspect update busy marker: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return false, fmt.Errorf("agent update busy marker must not be a symlink")
+		return false, fmt.Errorf("update busy marker must not be a symlink")
 	}
 	if !info.Mode().IsRegular() {
-		return false, fmt.Errorf("agent update busy marker must be a regular file")
+		return false, fmt.Errorf("update busy marker must be a regular file")
 	}
 	return true, nil
 }
 
-func consumeRequestMarker(filename string) error {
+// consumeRequestMarker removes the marker and returns the release it asked
+// for, if any. The marker is written by the local control plane, not by a
+// browser, and is still validated here: the version it names is the only part
+// of an update the operator can influence, so it must survive nothing more
+// than a tag lookup.
+func consumeRequestMarker(filename string) (string, error) {
 	if filename == "" {
-		return nil
+		return "", nil
 	}
 	info, err := os.Lstat(filepath.Clean(filename))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return "", nil
 	}
 	if err != nil {
-		return fmt.Errorf("inspect agent update request marker: %w", err)
+		return "", fmt.Errorf("inspect update request marker: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return fmt.Errorf("agent update request marker must be a regular file")
+		return "", fmt.Errorf("update request marker must be a regular file")
+	}
+	if info.Size() > maxRequestMarkerBytes {
+		return "", fmt.Errorf("update request marker must be a bounded regular file")
+	}
+	data, err := os.ReadFile(filepath.Clean(filename))
+	if err != nil {
+		return "", fmt.Errorf("read update request marker: %w", err)
 	}
 	if err := os.Remove(filepath.Clean(filename)); err != nil {
-		return fmt.Errorf("consume agent update request marker: %w", err)
+		return "", fmt.Errorf("consume update request marker: %w", err)
 	}
-	return nil
+	return requestedMarkerVersion(string(data)), nil
 }
 
-func recordAgentUpdateStatus(config Config, result Result, updateErr error) error {
+// requestedMarkerVersion reads `version=<tag>` from the marker. Anything else
+// in the file — the timestamp older markers carry — means "latest".
+func requestedMarkerVersion(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
+		if !found || strings.TrimSpace(key) != "version" {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"`)
+		if validVersion(value) {
+			return value
+		}
+	}
+	return ""
+}
+
+func recordUpdateStatus(config Config, result Result, updateErr error) error {
 	if config.StatusFile == "" {
 		return nil
 	}
-	status := agentUpdateStatus{Automatic: true, CheckedAt: time.Now().UTC(), Version: result.Version}
-	if previous, err := readAgentUpdateStatus(config.StatusFile); err == nil {
+	status := updateStatus{Automatic: true, CheckedAt: time.Now().UTC(), Version: result.Version}
+	if previous, err := readUpdateStatus(config.StatusFile); err == nil {
 		status.LastUpdatedAt = previous.LastUpdatedAt
 	}
 	switch {
@@ -342,35 +378,35 @@ func recordAgentUpdateStatus(config Config, result Result, updateErr error) erro
 			status.Version = current
 		}
 	}
-	return writeAgentUpdateStatus(config.StatusFile, status)
+	return writeUpdateStatus(config.StatusFile, status)
 }
 
-func readAgentUpdateStatus(filename string) (agentUpdateStatus, error) {
+func readUpdateStatus(filename string) (updateStatus, error) {
 	info, err := os.Lstat(filepath.Clean(filename))
 	if err != nil {
-		return agentUpdateStatus{}, err
+		return updateStatus{}, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxChecksumBytes {
-		return agentUpdateStatus{}, fmt.Errorf("agent update status must be a bounded regular file")
+		return updateStatus{}, fmt.Errorf("update status must be a bounded regular file")
 	}
 	data, err := os.ReadFile(filepath.Clean(filename))
 	if err != nil {
-		return agentUpdateStatus{}, err
+		return updateStatus{}, err
 	}
-	var status agentUpdateStatus
+	var status updateStatus
 	if err := json.Unmarshal(data, &status); err != nil {
-		return agentUpdateStatus{}, err
+		return updateStatus{}, err
 	}
 	return status, nil
 }
 
-func writeAgentUpdateStatus(filename string, status agentUpdateStatus) error {
+func writeUpdateStatus(filename string, status updateStatus) error {
 	directory := filepath.Dir(filepath.Clean(filename))
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
 	if info, err := os.Lstat(filepath.Clean(filename)); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("agent update status must not be a symlink")
+		return fmt.Errorf("update status must not be a symlink")
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

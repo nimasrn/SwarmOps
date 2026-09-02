@@ -140,8 +140,15 @@ type Info struct {
 	MemTotal        uint64 `json:"MemTotal"`
 	NCPU            int    `json:"NCPU"`
 	OperatingSystem string `json:"OperatingSystem"`
-	ServerVersion   string `json:"ServerVersion"`
-	Swarm           struct {
+	// RegistryConfig is how the daemon ITSELF reports the mirrors it will try
+	// before Docker Hub. Reading it back from the engine, rather than from the
+	// file SwarmOps wrote, is what makes the console show the mirror that is
+	// actually in effect after a restart.
+	RegistryConfig struct {
+		Mirrors []string `json:"Mirrors"`
+	} `json:"RegistryConfig"`
+	ServerVersion string `json:"ServerVersion"`
+	Swarm         struct {
 		ControlAvailable bool `json:"ControlAvailable"`
 		Cluster          struct {
 			ID string `json:"ID"`

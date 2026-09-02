@@ -11,6 +11,49 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.13.0 — 2026-09-02
+
+A hostname is published in one order, the image mirror is a fleet-wide fact,
+and the core updates itself the same way an agent does.
+
+- **A domain is accepted before anything is published under it** — the gateway
+  now holds a registry of accepted apex zones, and publication has exactly one
+  order: accept the domain, create the subdomain record inside it, then assign
+  that hostname to a service. A record cannot be created in a zone nobody
+  accepted, and a route cannot claim a hostname that has no record — public and
+  internal alike, host match and SNI alike. A name that has not been through
+  the order gets no router at all rather than an unresolvable one. Withdrawing
+  a domain is refused while any record or route still depends on it, so
+  acceptance can never be revoked out from under something already published.
+  A wildcard host is admitted only against its own apex record, because a
+  wildcard covers subdomains that were never created one by one. State sealed
+  before the registry existed adopts the zones its records already use, so an
+  existing cluster keeps running while all new work goes through the gate.
+- **The registry mirror belongs to the fleet, not to a machine** — a mirror set
+  on four hosts out of five is worse than no mirror: the fifth still pulls from
+  Docker Hub, and the service that lands there is the one that fails when Hub
+  is slow or rate-limiting. Mirrors are now applied to every enrolled agent in
+  one reviewed action from Core, and the read reports each machine's actual
+  daemon configuration — from the engine itself, never from the file SwarmOps
+  wrote — so a host that drifted is visible rather than assumed. An empty list
+  is the explicit "go back to Docker Hub" request, so removing a mirror is as
+  reviewable as adding one.
+- **Core updates are no longer a weaker screen than agent updates** — both
+  components now run the same Warden path: the console writes a request
+  marker, the local Warden consumes it and records what it did, and the core
+  reads that status back. Core update state could previously only ever say
+  "Never checked". A marker may also name an exact release, which is how a
+  component is rolled back.
+- **A listed network is not a working network** — Traefik installation
+  prerequisites now inspect the ingress and traefik overlays by name instead of
+  trusting the cluster listing. A swarm-scoped network can remain listed after
+  a node's local index has lost it, which used to pass preflight and then fail
+  the deploy with "declared as external, but could not be found". Each stale
+  case now says so and carries its own recovery.
+- **The gateway dashboard and its settings are two destinations** — reading
+  what the edge is carrying no longer puts a singleton-restarting settings form
+  on the same screen.
+
 ## 0.12.0 — 2026-09-02
 
 The agent measures, the console is six areas, and every reading sits beside the

@@ -36,7 +36,7 @@ import { RoutesTab } from './routes'
 import { CertificatesTab } from './certificates'
 import { DNSSettingsTab } from './dns'
 
-type Tab = 'certificates' | 'dns' | 'overview' | 'routes'
+type Tab = 'certificates' | 'dns' | 'overview' | 'routes' | 'settings'
 type Toast = ReturnType<typeof useToast>
 
 const TAB_PAGE: Record<Tab, WorkspacePage> = {
@@ -44,12 +44,17 @@ const TAB_PAGE: Record<Tab, WorkspacePage> = {
   dns: 'dns',
   overview: 'gateway',
   routes: 'routes',
+  settings: 'gateway-settings',
 }
 
 /**
- * The edge, split into the four questions an operator actually asks about it:
- * what owns the edge, what is published on it, where records are written, and
- * whether certificates are valid.
+ * The edge, split into the questions an operator actually asks about it:
+ * what the edge is carrying, how it is configured, what is published on it,
+ * where records are written, and whether certificates are valid.
+
+ * The gateway dashboard and the gateway's global settings are two of those
+ * questions, not one: reading what the edge is doing must not put a
+ * singleton-restarting settings form on the same screen.
  *
  * They share one controller because they share one read — the sealed routing
  * state, the route inventory, and the certificate list arrive together, and
@@ -197,6 +202,11 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
       { hint: 'Records SwarmOps owns and can verify', icon: 'cloud', label: 'Owned records', unmeasured: !state, value: String(dnsRecords) },
       { hint: 'Certificates issued through a DNS-01 challenge', icon: 'shield', label: 'DNS-01 resolvers', unmeasured: !state, value: String(dnsResolvers) },
     ],
+    settings: [
+      { hint: 'Entrypoints the reviewed stack publishes', icon: 'external', label: 'Entrypoints', unmeasured: !state, value: String(entryPoints) },
+      { hint: 'Certificates issued through a DNS-01 challenge', icon: 'shield', label: 'DNS-01 resolvers', unmeasured: !state, value: String(dnsResolvers) },
+      { hint: installed ? 'Applying static settings restarts the singleton' : 'Settings apply once the gateway is installed', icon: 'globe', label: 'Gateway', tone: installed ? (running ? 'success' : 'danger') : 'warning', value: installed ? (running ? 'Healthy' : 'Unhealthy') : 'Not installed' },
+    ],
     certificates: [
       { hint: 'Certificates the gateway currently serves', icon: 'shield', label: 'Certificates', value: String(certificates.length) },
       { hint: expiring ? 'Inside the 30-day renewal window' : 'None expires in the next 30 days', icon: 'clock', label: 'Expiring soon', tone: expiring ? 'warning' : 'success', value: String(expiring) },
@@ -206,7 +216,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
 
   return (
     <Screen
-      about="Gateway & ports owns the Traefik runtime and entrypoints. Routes owns published application traffic. DNS providers owns Cloudflare and ArvanCloud credentials and records. TLS certificates owns ACME and handshake evidence."
+      about="Gateway owns the edge dashboard: what Traefik is carrying and where it is failing. Gateway settings owns entrypoints, ports and certificate resolvers. Routes owns published application traffic. DNS providers owns Cloudflare and ArvanCloud credentials and records. TLS certificates owns ACME and handshake evidence."
       actions={
         <Inline>
           {!installed ? <Button disabled={installing} iconStart="plus" onClick={() => setInstallOpen(true)} variant="accent">Install gateway</Button> : null}
@@ -268,9 +278,9 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
             />
           ) : null}
           <TrafficOverview certificates={certificates} prometheus={prometheus} routes={routes} state={state} />
-          <DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} />
         </Rows>
       ) : null}
+      {!loading && state && tab === 'settings' ? <DNSSettingsTab onQueued={() => void load(false)} scope="gateway" state={state} toast={toast} /> : null}
       {!loading && state && tab === 'routes' ? <RoutesTab cutover={cutover} onQueued={() => void load(false)} routes={routes} state={state} toast={toast} /> : null}
       {!loading && state && tab === 'certificates' ? <CertificatesTab certificates={certificates} onQueued={() => void load(false)} routes={routes} toast={toast} /> : null}
       {!loading && state && tab === 'dns' ? <DNSSettingsTab onQueued={() => void load(false)} scope="dns" state={state} toast={toast} /> : null}

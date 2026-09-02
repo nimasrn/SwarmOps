@@ -34,7 +34,7 @@ test('the information architecture is one source, and every screen is reachable 
   // `agent-diagnostics` had both a label and a section for three releases and
   // could not be opened from navigation at all.
   const declared = [...nav.matchAll(/key: '([a-z-]+)', label:/g)].map((match) => match[1])
-  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'images', 'logs', 'machines', 'overview', 'platform', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
+  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'machines', 'overview', 'platform', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
     assert.ok(declared.includes(destination), `${destination} is routable but appears in no area`)
   }
 

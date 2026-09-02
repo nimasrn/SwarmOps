@@ -775,6 +775,18 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(err)
 		}
 		return classifyCommandError(target.Control.RemoveDNSCredentialVersion(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Version, input.Confirmation))
+	case commandTraefikDomainRegister:
+		var input traefikDomainCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RegisterDomain(record.Command.Actor, record.Command.RequestID, input.Domain))
+	case commandTraefikDomainRemove:
+		var input traefikDomainRemoveCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.RemoveDomain(record.Command.Actor, record.Command.RequestID, input.Zone, input.Confirmation))
 	case commandTraefikDNSRecordApply:
 		var input traefikDNSRecordCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {

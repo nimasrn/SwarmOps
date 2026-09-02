@@ -140,13 +140,14 @@ export interface ServerInput extends ServerCredentials {
 
 export interface ServerReadiness {
   capabilities: {
+    applyRegistryMirrors?: boolean
     applyUfw: boolean
     initializeSwarm: boolean
     installDocker: boolean
     updateDocker: boolean
     updateOs: boolean
   }
-  docker: { installed: boolean; running: boolean; version?: string }
+  docker: { installed: boolean; registryMirrors?: string[]; running: boolean; version?: string }
   firewall: { available: boolean; enabled: boolean }
   os: { id?: string; name?: string; supported: boolean }
   swarm: { manager: boolean; state?: string }
@@ -171,14 +172,39 @@ export interface ServerReadiness {
 
 export interface ServerReadinessRequest {
   advertiseAddress?: string
+  applyRegistryMirrors?: boolean
   applyUfw: boolean
   confirmation: 'PREPARE_SERVER'
   controllerCidrs?: string[]
   initializeSwarm: boolean
   installDocker: boolean
+  registryMirrors?: string[]
   swarmPeerCidrs?: string[]
   updateDocker: boolean
   updateOs: boolean
+}
+
+/** What each enrolled machine's Docker daemon actually reports as its
+ *  pull-through mirrors. A machine that drifted from the fleet shows here as
+ *  its own row rather than being averaged away. */
+export interface RegistryMirrorMachine {
+  mirrors?: string[]
+  name: string
+  reachable: boolean
+  reason?: string
+  serverId: string
+  supported: boolean
+}
+
+export interface RegistryMirrorFleet {
+  consistent: boolean
+  machines: RegistryMirrorMachine[]
+  mirrors?: string[]
+}
+
+export interface RegistryMirrorApplyResult {
+  queued: string[]
+  skipped?: Record<string, string>
 }
 
 export interface Node {
@@ -444,6 +470,14 @@ export interface DNSRecordSpec {
   zone: string
 }
 
+/** An apex zone the gateway has accepted. Records and routes are refused until one exists. */
+export interface DomainSpec {
+  createdAt: string
+  note?: string
+  version: number
+  zone: string
+}
+
 export interface DNSProviderRecord {
   content: string
   name: string
@@ -497,6 +531,7 @@ export interface RoutingState {
   cutover?: CutoverPlan
   declarations: ServiceRouteDeclaration[]
   dnsRecords: DNSRecordSpec[]
+  domains: DomainSpec[]
   routes: RouteSpec[]
   runtime: RouteRuntime[]
   settings: TraefikSettings

@@ -32,6 +32,8 @@ import type {
   Node,
   ObservabilityStatus,
   Overview,
+  RegistryMirrorApplyResult,
+  RegistryMirrorFleet,
   Service,
   Server,
   ServerCredentials,
@@ -57,6 +59,7 @@ import type {
   DNSPropagationStatus,
   DNSRecordPreview,
   DNSRecordSpec,
+  DomainSpec,
   PrometheusStatus,
   RouteInventoryRow,
   RoutePlan,
@@ -259,13 +262,32 @@ export class SwarmOpsAPI {
   commandCatalogue() { return this.request<CommandDefinition[]>('/api/v1/commands/catalogue') }
   insightsHistory() { return this.request<InsightsSample[]>('/api/v1/insights/history') }
 
+  /** The image mirror every enrolled machine is actually using, read from the
+      daemons themselves rather than from a stored intent. */
+  registryMirrors() { return this.request<RegistryMirrorFleet>('/api/v1/core/registry-mirror') }
+
+  /** Set the pull-through mirror on EVERY enrolled machine. One command per
+      machine is queued, so a host that refuses stays visible in Commands.
+      An empty list is the explicit "pull from Docker Hub again" request. */
+  applyRegistryMirrors(mirrors: string[]) {
+    return this.commandRequest<RegistryMirrorApplyResult>('/api/v1/core/registry-mirror', {
+      body: JSON.stringify({ confirmation: 'PREPARE_SERVER', mirrors }),
+      method: 'POST',
+    })
+  }
+
   /** What the controller knows about itself. */
   coreSelf() { return this.request<CoreSelf>('/api/v1/core/self') }
 
   /** Ask the LOCAL updater to check for a release. The controller does not
       download, verify or restart itself — a process cannot supervise its own
       replacement. */
-  requestCoreUpdate() { return this.request<{ status: string }>('/api/v1/core/update', { method: 'POST' }) }
+  requestCoreUpdate(version?: string) {
+    return this.request<{ status: string; version?: string }>('/api/v1/core/update', {
+      body: JSON.stringify({ version: version ?? '' }),
+      method: 'POST',
+    })
+  }
 
   /** One sample of a machine and every container on it. Measured on the host
       by its own agent, so it answers before Docker exists. */
@@ -543,6 +565,14 @@ export class SwarmOpsAPI {
     const query = new URLSearchParams({ id, name, provider })
     const headers = new Headers({ 'Content-Type': 'text/plain' })
     return this.commandRequest<Command>(`/api/v1/traefik/dns/credentials?${query}`, { method: 'POST', body: value, headers })
+  }
+
+  registerDomain(domain: DomainSpec) {
+    return this.commandRequest<Command>('/api/v1/traefik/domains', { method: 'POST', body: JSON.stringify({ domain }) })
+  }
+
+  removeDomain(zone: string, confirmation: string) {
+    return this.commandRequest<Command>(`/api/v1/traefik/domains/${encodeURIComponent(zone)}`, { method: 'DELETE', body: JSON.stringify({ confirmation, zone }) })
   }
 
   previewDNSRecord(record: DNSRecordSpec, protocol: RouteProtocol) {

@@ -109,6 +109,10 @@ export function credentialRemovalConfirmation(id: string, version: number) {
   return `REMOVE_DNS_CREDENTIAL_${value}_V${version}`
 }
 
+export function domainRemovalConfirmation(zone: string) {
+  return `REMOVE_DOMAIN_${zone.trim().toUpperCase().replaceAll(/[^A-Z0-9_]/g, '_')}`
+}
+
 export function filterOptions(values: string[]) { return [{ label: 'All', value: 'all' }, ...values.map(option)] }
 export function option(value: string) { return { label: value === '' ? 'All levels' : value.replaceAll('-', ' '), value } }
 export function commaValues(value: string) { return value.split(',').map((item) => item.trim()).filter(Boolean) }

@@ -163,6 +163,12 @@ func (c *ControlPlane) PlanRoute(ctx context.Context, requested RouteSpec) (Rout
 	if err := ValidateRouteCompatibility(route, state.Settings, state.DNSRecords); err != nil {
 		return RoutePlan{}, err
 	}
+	// The publication order is checked here, not only at seal time, so the
+	// browser is told that a host is unaccepted or uncreated while it is still
+	// planning rather than after it has confirmed an apply.
+	if err := ValidateRouteAdmission(route, state.DNSRecords, state.Domains); err != nil {
+		return RoutePlan{}, err
+	}
 	network := RouteNetworkName(route.ServiceKey)
 	labels, err := RenderRouteLabels(route, network)
 	if err != nil {
@@ -201,6 +207,7 @@ func (c *ControlPlane) PlanRoute(ctx context.Context, requested RouteSpec) (Rout
 		Validation: []RouteValidation{
 			{Code: "closed-contract", Message: "No raw Traefik rule or label is accepted.", Valid: true},
 			{Code: "dedicated-overlay", Message: "The backend and Traefik use one encrypted service overlay.", Valid: true},
+			{Code: "accepted-domain", Message: "Every route host is an existing record under an accepted gateway domain.", Valid: true},
 			{Code: "singleton-risk", Message: "A new static entrypoint restarts the singleton Traefik service.", Valid: !restart},
 		},
 		Version: RoutingSchemaVersion,

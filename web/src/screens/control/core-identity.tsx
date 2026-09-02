@@ -28,11 +28,16 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
   const read = () => api.coreSelf().then((next) => { setSelf(next); setError('') }).catch((reason) => setError(messageOf(reason)))
   useEffect(() => { void read() }, [])
 
-  const update = async () => {
+  const update = async (version?: string) => {
     setPending(true)
     try {
-      await api.requestCoreUpdate()
-      toast({ message: 'Update check scheduled. The updater starts the new release beside this one and retires this process only once the new one answers.', tone: 'success' })
+      await api.requestCoreUpdate(version)
+      toast({
+        message: version
+          ? `Install of ${version} scheduled. The updater starts it beside this process and keeps the running release if it does not answer its own health check.`
+          : 'Update check scheduled. The updater starts the new release beside this one and retires this process only once the new one answers.',
+        tone: 'success',
+      })
       await read()
     } catch (reason) {
       toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
@@ -43,6 +48,14 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
 
   if (error) return <Banner title="This controller could not describe itself" tone="danger">{error}</Banner>
   if (!self) return <Panel><Spinner label="Reading the controller" /></Panel>
+
+  const rollBack = (version: string) => {
+    // A rollback is an install of a named release, not a separate mechanism:
+    // the same staged start, the same health check, the same refusal to
+    // retire the running process until the candidate answers.
+    if (!window.confirm(`Install ${version} on this controller? The console is briefly unavailable while the updater restarts it, and the running release returns if ${version} does not answer its health check.`)) return
+    void update(version)
+  }
 
   const storageFull = self.storage.totalBytes > 0 && self.storage.freeBytes / self.storage.totalBytes < 0.1
   const available = self.update.available && self.update.available !== self.version ? self.update.available : ''
@@ -114,9 +127,16 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
                 { label: 'Available', value: available ? <Mono>{available}</Mono> : 'Nothing newer' },
                 { label: 'Update policy', value: self.update.automatic ? 'Automatic' : 'Manual' },
                 { label: 'Last checked', value: self.update.checkedAt ? formatDateTime(self.update.checkedAt) : 'Never' },
+                { label: 'Last installed', value: self.update.lastUpdatedAt ? formatDateTime(self.update.lastUpdatedAt) : 'Never' },
               ]}
             />
             {self.update.state ? <Body size="sm" tone="muted">Last result: {self.update.state.replace(/_/g, ' ')}</Body> : null}
+            {self.update.state === 'failed' ? (
+              <Banner title="The last controller update failed" tone="warning">
+                The updater kept the running release. Check the controller Warden log on this host before asking for
+                the same version again, or install one of the releases below.
+              </Banner>
+            ) : null}
           </Rows>
         )}
 
@@ -126,7 +146,7 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
               Three releases are kept on disk. A fourth install deletes the oldest, and what is listed here is what a
               roll back can actually return to.
             </Body>
-            <Table columns={releaseColumns} rowKey={(row) => row.version} rows={self.releases ?? []} />
+            <Table columns={releaseColumns(self.update.configured && !pending, rollBack)} rowKey={(row) => row.version} rows={self.releases ?? []} />
           </>
         ) : self.update.configured ? (
           <Body size="sm" tone="muted">No release directory is readable, so there is nothing to roll back to yet.</Body>
@@ -136,7 +156,11 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
   )
 }
 
-const releaseColumns: TableColumn<CoreSelf['releases'][number]>[] = [
+function releaseColumns(
+  canInstall: boolean,
+  onInstall: (version: string) => void,
+): TableColumn<CoreSelf['releases'][number]>[] {
+  return [
   {
     header: 'Version',
     key: 'version',
@@ -149,7 +173,15 @@ const releaseColumns: TableColumn<CoreSelf['releases'][number]>[] = [
   },
   { header: 'Installed', key: 'installedAt', render: (row) => formatDateTime(row.installedAt) },
   { header: 'Size', key: 'size', numeric: true, render: (row) => formatBytes(row.sizeBytes) },
-]
+  {
+    header: '',
+    key: 'install',
+    render: (row) => row.running
+      ? null
+      : <Button disabled={!canInstall} onClick={() => onInstall(row.version)} size="sm" variant="secondary">Install this version</Button>,
+  },
+  ]
+}
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86_400)

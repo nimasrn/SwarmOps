@@ -70,7 +70,7 @@ func TestUpdateRollsBackAnUnhealthyCandidate(t *testing.T) {
 	if manager.stops != 2 || manager.starts != 2 {
 		t.Fatalf("service calls = stop %d/start %d, want stop 2/start 2", manager.stops, manager.starts)
 	}
-	status, statusErr := readAgentUpdateStatus(statusFile)
+	status, statusErr := readUpdateStatus(statusFile)
 	if statusErr != nil {
 		t.Fatal(statusErr)
 	}
@@ -173,7 +173,7 @@ func TestAgentUpdateDefersWhileMutationIsBusyAndConsumesRequest(t *testing.T) {
 	if _, err := os.Stat(requestFile); !os.IsNotExist(err) {
 		t.Fatalf("request marker should be consumed, stat err = %v", err)
 	}
-	status, err := readAgentUpdateStatus(statusFile)
+	status, err := readUpdateStatus(statusFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,12 +213,74 @@ func TestAgentUpdateRecordsActivatedRelease(t *testing.T) {
 	if !result.Updated {
 		t.Fatalf("Update() result = %#v, want updated", result)
 	}
-	status, err := readAgentUpdateStatus(statusFile)
+	status, err := readUpdateStatus(statusFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.State != "updated" || status.Version != "v1.1.0" || status.LastUpdatedAt.IsZero() {
 		t.Fatalf("status = %#v, want updated v1.1.0", status)
+	}
+}
+
+// The core is managed from the console the same way an agent is: it writes a
+// request marker, and the marker may name the exact release to install, which
+// is how a rollback reaches a controller nobody can SSH into.
+func TestUpdateCoreConsumesMarkerVersionAndRecordsStatus(t *testing.T) {
+	releaseDir := t.TempDir()
+	installRelease(t, releaseDir, "v1.0.0")
+	linkCurrent(t, releaseDir, "v1.0.0")
+	health := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer health.Close()
+	release := releaseServer(t, "v1.1.0", "core", "linux", "amd64", testBundle(t, "core"))
+	defer release.Close()
+	stateDir := t.TempDir()
+	requestFile := filepath.Join(stateDir, "update.request")
+	if err := os.WriteFile(requestFile, []byte("requestedAt=2026-01-01T00:00:00Z\nversion=v1.1.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	statusFile := filepath.Join(stateDir, "update-status.json")
+	result, err := Update(context.Background(), Config{
+		Component:      "core",
+		ReleaseDir:     releaseDir,
+		HealthURL:      health.URL,
+		RequestFile:    requestFile,
+		StatusFile:     statusFile,
+		APIBaseURL:     release.URL,
+		HealthTimeout:  time.Second,
+		HealthInterval: 5 * time.Millisecond,
+		Service:        &fakeService{},
+		OS:             "linux",
+		Arch:           "amd64",
+	}, "")
+	if err != nil {
+		t.Fatalf("Update(): %v", err)
+	}
+	if !result.Updated || result.Version != "v1.1.0" {
+		t.Fatalf("Update() result = %#v, want updated v1.1.0", result)
+	}
+	if _, err := os.Stat(requestFile); !os.IsNotExist(err) {
+		t.Fatalf("request marker should be consumed, stat err = %v", err)
+	}
+	status, err := readUpdateStatus(statusFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != "updated" || status.Version != "v1.1.0" {
+		t.Fatalf("status = %#v, want updated v1.1.0", status)
+	}
+}
+
+func TestRequestedMarkerVersionIgnoresJunk(t *testing.T) {
+	if version := requestedMarkerVersion("2026-01-01T00:00:00Z\n"); version != "" {
+		t.Fatalf("version = %q, want empty for a timestamp-only marker", version)
+	}
+	if version := requestedMarkerVersion("version=; reboot\n"); version != "" {
+		t.Fatalf("version = %q, want empty for an invalid tag", version)
+	}
+	if version := requestedMarkerVersion("version=\"v1.2.3\"\n"); version != "v1.2.3" {
+		t.Fatalf("version = %q, want v1.2.3", version)
 	}
 }
 
@@ -359,7 +421,7 @@ func releaseServer(t *testing.T, version, component, operatingSystem, architectu
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
-		case "/repos/nimasrn/SwarmOps/releases/latest":
+		case "/repos/nimasrn/SwarmOps/releases/latest", "/repos/nimasrn/SwarmOps/releases/tags/" + version:
 			writer.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(writer).Encode(releasePayload{TagName: version, Assets: []releaseAsset{
 				{Name: "checksums.txt", BrowserDownloadURL: server.URL + "/checksums.txt"},

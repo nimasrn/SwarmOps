@@ -116,12 +116,17 @@ func assertTraefikCheck(t *testing.T, preflight TraefikInstallPreflight, id, sta
 func TestTraefikInstallPreflightReportsMissingIngressNetwork(t *testing.T) {
 	t.Parallel()
 	for _, testCase := range []struct {
-		name     string
-		networks string
-		state    string
-		fixable  bool
+		name       string
+		networks   string
+		resolvable bool
+		state      string
+		fixable    bool
 	}{
-		{name: "present", networks: `[{"Name":"ingress","Driver":"overlay","Scope":"swarm","Ingress":true,"IPAM":{"Config":[{"Subnet":"10.0.0.0/24"}]}}]`, state: "ready", fixable: false},
+		{name: "present", networks: `[{"Name":"ingress","Driver":"overlay","Scope":"swarm","Ingress":true,"IPAM":{"Config":[{"Subnet":"10.0.0.0/24"}]}}]`, resolvable: true, state: "ready", fixable: false},
+		// Listed from the cluster store but unusable: the console must not call
+		// this ready, because the deploy resolves networks by name.
+		{name: "listed but unresolvable", networks: `[{"Name":"ingress","Driver":"overlay","Scope":"swarm","Ingress":true}]`, state: "blocked", fixable: false},
+		{name: "listed without a driver", networks: `[{"Name":"ingress","Scope":"swarm","Ingress":true}]`, resolvable: true, state: "blocked", fixable: false},
 		{name: "missing", networks: `[]`, state: "blocked", fixable: true},
 		{name: "missing with default range taken", networks: `[{"Name":"other","Driver":"overlay","Scope":"swarm","IPAM":{"Config":[{"Subnet":"10.0.0.0/16"}]}}]`, state: "blocked", fixable: true},
 		{name: "missing with every candidate taken", networks: `[{"Name":"a","IPAM":{"Config":[{"Subnet":"10.0.0.0/8"}]}},{"Name":"b","IPAM":{"Config":[{"Subnet":"172.31.0.0/16"}]}}]`, state: "blocked", fixable: false},
@@ -134,6 +139,12 @@ func TestTraefikInstallPreflightReportsMissingIngressNetwork(t *testing.T) {
 				switch request.URL.Path {
 				case "/networks":
 					_, _ = response.Write([]byte(testCase.networks))
+				case "/networks/ingress":
+					if !testCase.resolvable {
+						http.NotFound(response, request)
+						return
+					}
+					_, _ = response.Write([]byte(`{"Name":"ingress","Driver":"overlay","Scope":"swarm","Ingress":true}`))
 				case "/configs", "/secrets":
 					_, _ = response.Write([]byte("[]"))
 				case "/nodes":
@@ -177,5 +188,56 @@ func TestIngressAddressCandidateAvoidsOccupiedRanges(t *testing.T) {
 	subnet, gateway = control.ingressAddressCandidate(taken)
 	if subnet != "10.255.0.0/24" || gateway != "10.255.0.1" {
 		t.Fatalf("candidate with default taken = %s / %s, want the first free alternate", subnet, gateway)
+	}
+}
+
+// The traefik overlay can survive in the cluster store while this node loses
+// the name index the deploy uses. Docker then rejects the stack with "declared
+// as external, but could not be found" after the console has already called
+// the prerequisite ready, so the check has to resolve the name itself.
+func TestTraefikInstallPreflightReportsUnresolvableEdgeNetwork(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name       string
+		resolvable bool
+		state      string
+	}{
+		{name: "resolvable", resolvable: true, state: "ready"},
+		{name: "listed but unresolvable", resolvable: false, state: "blocked"},
+	} {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				switch request.URL.Path {
+				case "/networks":
+					_, _ = response.Write([]byte(`[{"Name":"traefik","Driver":"overlay","Scope":"swarm","Attachable":true,"Options":{"encrypted":""}}]`))
+				case "/networks/traefik":
+					if !testCase.resolvable {
+						http.NotFound(response, request)
+						return
+					}
+					_, _ = response.Write([]byte(`{"Name":"traefik","Driver":"overlay","Scope":"swarm","Attachable":true}`))
+				case "/configs", "/secrets":
+					_, _ = response.Write([]byte("[]"))
+				case "/nodes":
+					_, _ = response.Write([]byte(`[{"ID":"manager-1","Spec":{"Availability":"active","Labels":{},"Role":"manager"},"Status":{"State":"ready"}}]`))
+				default:
+					http.NotFound(response, request)
+				}
+			}))
+			t.Cleanup(server.Close)
+			docker, err := dockerapi.NewForURL(server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			control := NewControlPlane(docker, DockerCLI{}, nil, ControlPlaneOptions{TraefikSettings: testTraefikSettings()})
+			preflight, err := control.TraefikInstallPreflight(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertTraefikCheck(t, preflight, "edge-network", testCase.state, true)
+		})
 	}
 }

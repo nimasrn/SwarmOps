@@ -22,6 +22,8 @@ const (
 	commandTraefikSettingsApply       = "traefik.settings.apply"
 	commandTraefikDNSCredential       = "traefik.dns-credential.rotate"
 	commandTraefikDNSCredentialRemove = "traefik.dns-credential.remove"
+	commandTraefikDomainRegister      = "traefik.domain.register"
+	commandTraefikDomainRemove        = "traefik.domain.remove"
 	commandTraefikDNSRecordApply      = "traefik.dns-record.apply"
 	commandTraefikDNSRecordDelete     = "traefik.dns-record.delete"
 	commandTraefikCertificateRetry    = "traefik.certificate.retry"
@@ -58,6 +60,15 @@ type traefikDNSCredentialRemoveCommand struct {
 	Confirmation string `json:"confirmation"`
 	ID           string `json:"id"`
 	Version      int    `json:"version"`
+}
+
+type traefikDomainCommand struct {
+	Domain ops.DomainSpec `json:"domain"`
+}
+
+type traefikDomainRemoveCommand struct {
+	Confirmation string `json:"confirmation"`
+	Zone         string `json:"zone"`
 }
 
 type traefikDNSRecordCommand struct {
@@ -250,6 +261,34 @@ func (s *Server) traefikDNSCredentialRemove(response http.ResponseWriter, reques
 		return
 	}
 	s.submitCommand(response, request, claims, commandTraefikDNSCredentialRemove, "dns-credential/"+input.ID, input, false)
+}
+
+// traefikDomainRegister accepts an apex zone for the gateway. Nothing is
+// published by it; it only unlocks creating records under that zone.
+func (s *Server) traefikDomainRegister(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input traefikDomainCommand
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	input.Domain = input.Domain.Normalize()
+	if err := input.Domain.Validate(); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	s.submitCommand(response, request, claims, commandTraefikDomainRegister, "domain/"+input.Domain.Zone, input, false)
+}
+
+func (s *Server) traefikDomainRemove(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	var input traefikDomainRemoveCommand
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	input.Zone = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(request.PathValue("zone")), "."))
+	if input.Confirmation != ops.DomainRemovalConfirmation(input.Zone) {
+		writeError(response, http.StatusUnprocessableEntity, "domain removal requires confirmation "+ops.DomainRemovalConfirmation(input.Zone))
+		return
+	}
+	s.submitCommand(response, request, claims, commandTraefikDomainRemove, "domain/"+input.Zone, input, false)
 }
 
 func (s *Server) traefikDNSRecordPreview(response http.ResponseWriter, request *http.Request, _ auth.Claims) {

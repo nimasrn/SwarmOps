@@ -3,7 +3,9 @@ package agentcontrol
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -17,23 +19,31 @@ const ProvisionConfirmation = "PREPARE_SERVER"
 // no executable, package name, script, URL, file path, or arbitrary firewall
 // rule. The machine derives every command from these flags.
 type ProvisioningRequest struct {
-	AdvertiseAddress string   `json:"advertiseAddress,omitempty"`
-	ApplyUFW         bool     `json:"applyUfw,omitempty"`
-	Confirmation     string   `json:"confirmation"`
-	ControllerCIDRs  []string `json:"controllerCidrs,omitempty"`
-	InitializeSwarm  bool     `json:"initializeSwarm,omitempty"`
-	InstallDocker    bool     `json:"installDocker,omitempty"`
+	AdvertiseAddress string `json:"advertiseAddress,omitempty"`
+	// ApplyRegistryMirrors rewrites the daemon's registry-mirror list and
+	// restarts Docker. It carries no file path and no daemon.json fragment:
+	// the machine owns the file, and this only names the mirrors.
+	ApplyRegistryMirrors bool     `json:"applyRegistryMirrors,omitempty"`
+	ApplyUFW             bool     `json:"applyUfw,omitempty"`
+	Confirmation         string   `json:"confirmation"`
+	ControllerCIDRs      []string `json:"controllerCidrs,omitempty"`
+	InitializeSwarm      bool     `json:"initializeSwarm,omitempty"`
+	InstallDocker        bool     `json:"installDocker,omitempty"`
 	// JoinSwarm makes this host a member of an EXISTING Swarm. The token is
 	// resolved by the controller at execution time from the manager the
 	// operator named, is held only in memory for the length of one call, and
 	// is never written to the command ledger, the audit trail, or a browser —
 	// see SwarmJoinToken and api/http/commands.go.
-	JoinSwarm      bool     `json:"joinSwarm,omitempty"`
-	JoinAddress    string   `json:"joinAddress,omitempty"`
-	JoinToken      string   `json:"joinToken,omitempty"`
-	SwarmPeerCIDRs []string `json:"swarmPeerCidrs,omitempty"`
-	UpdateDocker   bool     `json:"updateDocker,omitempty"`
-	UpdateOS       bool     `json:"updateOs,omitempty"`
+	JoinSwarm   bool   `json:"joinSwarm,omitempty"`
+	JoinAddress string `json:"joinAddress,omitempty"`
+	JoinToken   string `json:"joinToken,omitempty"`
+	// RegistryMirrors is the ordered list of pull-through mirrors. An empty
+	// list with ApplyRegistryMirrors set is the explicit "go back to Docker
+	// Hub" request, so removing a mirror is as reviewable as adding one.
+	RegistryMirrors []string `json:"registryMirrors,omitempty"`
+	SwarmPeerCIDRs  []string `json:"swarmPeerCidrs,omitempty"`
+	UpdateDocker    bool     `json:"updateDocker,omitempty"`
+	UpdateOS        bool     `json:"updateOs,omitempty"`
 }
 
 // ProvisioningStatus is a deliberately small readiness projection. It lets
@@ -48,9 +58,10 @@ type ProvisioningStatus struct {
 }
 
 type ProvisioningCapabilities struct {
-	ApplyUFW        bool `json:"applyUfw"`
-	InitializeSwarm bool `json:"initializeSwarm"`
-	InstallDocker   bool `json:"installDocker"`
+	ApplyRegistryMirrors bool `json:"applyRegistryMirrors"`
+	ApplyUFW             bool `json:"applyUfw"`
+	InitializeSwarm      bool `json:"initializeSwarm"`
+	InstallDocker        bool `json:"installDocker"`
 	// JoinSwarm is false for a machine already in a cluster. Leaving one takes
 	// its running tasks with it, which is a decision with data behind it and
 	// not a step the console should offer as part of a bootstrap.
@@ -60,9 +71,12 @@ type ProvisioningCapabilities struct {
 }
 
 type ProvisioningDocker struct {
-	Installed bool   `json:"installed"`
-	Running   bool   `json:"running"`
-	Version   string `json:"version,omitempty"`
+	Installed bool `json:"installed"`
+	// RegistryMirrors is what the daemon on this machine reports, not what an
+	// operator once asked for. A machine that drifted shows its drift.
+	RegistryMirrors []string `json:"registryMirrors,omitempty"`
+	Running         bool     `json:"running"`
+	Version         string   `json:"version,omitempty"`
 }
 
 type ProvisioningFirewall struct {
@@ -95,7 +109,7 @@ func (r ProvisioningRequest) validate(requireJoinToken bool) error {
 	if strings.TrimSpace(r.Confirmation) != ProvisionConfirmation {
 		return fmt.Errorf("server readiness requires confirmation %s", ProvisionConfirmation)
 	}
-	if !r.UpdateOS && !r.InstallDocker && !r.UpdateDocker && !r.InitializeSwarm && !r.JoinSwarm && !r.ApplyUFW {
+	if !r.UpdateOS && !r.InstallDocker && !r.UpdateDocker && !r.InitializeSwarm && !r.JoinSwarm && !r.ApplyUFW && !r.ApplyRegistryMirrors {
 		return fmt.Errorf("select at least one server readiness operation")
 	}
 	if r.InstallDocker && r.UpdateDocker {
@@ -136,7 +150,74 @@ func (r ProvisioningRequest) validate(requireJoinToken bool) error {
 	} else if len(r.ControllerCIDRs) != 0 || len(r.SwarmPeerCIDRs) != 0 {
 		return fmt.Errorf("firewall networks require the UFW operation")
 	}
+	if r.ApplyRegistryMirrors {
+		if _, err := r.NormalizedRegistryMirrors(); err != nil {
+			return err
+		}
+	} else if len(r.RegistryMirrors) != 0 {
+		return fmt.Errorf("image mirrors require the registry mirror operation")
+	}
 	return nil
+}
+
+// NormalizedRegistryMirrors returns the validated mirror list an executor may
+// write. Each entry is reduced to scheme://host[:port] so nothing that reaches
+// daemon.json can carry a path, a query, or credentials, and the order the
+// operator chose is preserved because Docker tries mirrors in order.
+func (r ProvisioningRequest) NormalizedRegistryMirrors() ([]string, error) {
+	if len(r.RegistryMirrors) > 4 {
+		return nil, fmt.Errorf("provide at most 4 image mirrors")
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(r.RegistryMirrors))
+	for _, value := range r.RegistryMirrors {
+		mirror, err := normalizedRegistryMirror(value)
+		if err != nil {
+			return nil, err
+		}
+		if seen[mirror] {
+			return nil, fmt.Errorf("duplicate image mirror %s", mirror)
+		}
+		seen[mirror] = true
+		result = append(result, mirror)
+	}
+	return result, nil
+}
+
+func normalizedRegistryMirror(value string) (string, error) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return "", fmt.Errorf("an image mirror URL is required")
+	}
+	if len(raw) > 253 {
+		return "", fmt.Errorf("image mirror URL is too long")
+	}
+	// A bare host is the shape operators type. Defaulting it to HTTPS keeps
+	// the daemon from being pointed at a plaintext registry by a typo.
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return "", fmt.Errorf("an image mirror must be an http or https URL")
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("an image mirror URL must not carry credentials")
+	}
+	if strings.Trim(parsed.Path, "/") != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("an image mirror must be a registry host, without a path")
+	}
+	host := parsed.Hostname()
+	if host == "" || strings.ContainsAny(host, " \t/\\") {
+		return "", fmt.Errorf("invalid image mirror host")
+	}
+	if port := parsed.Port(); port != "" {
+		number, convErr := strconv.Atoi(port)
+		if convErr != nil || number < 1 || number > 65535 {
+			return "", fmt.Errorf("invalid image mirror port")
+		}
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
 // JoinPort is Swarm's fixed cluster-management port. It is a constant rather

@@ -3,6 +3,7 @@ package apihttp
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,19 +43,46 @@ func (s *Server) coreSelf(response http.ResponseWriter, _ *http.Request, _ auth.
 // rest, starting the candidate beside this process and retiring this one only
 // once the new one answers.
 func (s *Server) coreUpdate(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	// An empty body still means "check for the latest release", so a caller
+	// that never learned about pinning keeps working.
+	var input struct {
+		Version string `json:"version"`
+	}
+	if request.Body != nil && request.ContentLength != 0 && !decodeJSON(response, request, &input) {
+		return
+	}
+	version := strings.TrimSpace(input.Version)
 	config := s.selfConfig()
 	if strings.TrimSpace(config.UpdateRequestFile) == "" {
 		writeError(response, http.StatusConflict, "This controller was not installed with an updater, so it cannot update itself. Reinstall from the release installer to gain one.")
 		return
 	}
-	if err := coreself.RequestUpdate(config); err != nil {
+	// A pinned version is only ever a release tag. The updater still verifies
+	// the published checksum; this refuses the request before it is written.
+	if version != "" && !releaseVersionAllowed(version) {
+		writeError(response, http.StatusUnprocessableEntity, "A release version may contain only letters, digits, dots, dashes and underscores")
+		return
+	}
+	if err := coreself.RequestUpdate(config, version); err != nil {
+		if errors.Is(err, coreself.ErrVersion) {
+			writeError(response, http.StatusUnprocessableEntity, "A release version may contain only letters, digits, dots, dashes and underscores")
+			return
+		}
 		s.logger.Warn("core update request failed", "error", err)
 		writeError(response, http.StatusServiceUnavailable, "The update check could not be scheduled on this host")
 		return
 	}
-	s.record(claims.Username, requestID(request), "core.update.request", "core/"+s.core.Status().LocalID, nil, nil)
-	writeJSON(response, http.StatusAccepted, map[string]string{"status": "scheduled"})
+	detail := map[string]string{}
+	if version != "" {
+		detail["requested_version"] = version
+	}
+	s.record(claims.Username, requestID(request), "core.update.request", "core/"+s.core.Status().LocalID, nil, detail)
+	writeJSON(response, http.StatusAccepted, map[string]string{"status": "scheduled", "version": version})
 }
+
+func releaseVersionAllowed(version string) bool { return releaseVersionPattern.MatchString(version) }
+
+var releaseVersionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func (s *Server) selfConfig() coreself.Config {
 	return coreself.Config{

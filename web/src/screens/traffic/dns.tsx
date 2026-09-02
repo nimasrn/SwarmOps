@@ -20,6 +20,7 @@ import type {
   DNSPropagationStatus,
   DNSRecordPreview,
   DNSRecordSpec,
+  DomainSpec,
   RouteProtocol,
   RoutingState,
   TraefikSettings,
@@ -28,6 +29,7 @@ import { messageOf } from '../../lib/errors'
 import {
   cloneSettings,
   credentialRemovalConfirmation,
+  domainRemovalConfirmation,
   emptyDNSRecord,
   option,
   latestCredentialVersions,
@@ -57,6 +59,10 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
   const [deleteCredentialConfirmation, setDeleteCredentialConfirmation] = useState('')
   const [deleteCredentialID, setDeleteCredentialID] = useState('')
   const [deleteCredentialVersion, setDeleteCredentialVersion] = useState(0)
+  const [domainZone, setDomainZone] = useState('')
+  const [domainNote, setDomainNote] = useState('')
+  const [removeDomainZone, setRemoveDomainZone] = useState('')
+  const [removeDomainConfirmation, setRemoveDomainConfirmation] = useState('')
 
   useEffect(() => setSettings(cloneSettings(state.settings)), [state.settings])
 
@@ -75,6 +81,25 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
       const command = await api.uploadDNSCredential(credentialID, credentialName, provider, credentialValue)
       queuedToast(toast, command, 'DNS credential rotation')
       setCredentialValue('')
+      onQueued()
+    } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
+  }
+  const queueDomain = async () => {
+    setPending('domain')
+    try {
+      const domain: DomainSpec = { createdAt: '', note: domainNote, version: state.version, zone: domainZone }
+      const command = await api.registerDomain(domain)
+      queuedToast(toast, command, 'Domain acceptance')
+      setDomainZone(''); setDomainNote('')
+      onQueued()
+    } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
+  }
+  const queueDomainRemoval = async () => {
+    setPending('domain-remove')
+    try {
+      const command = await api.removeDomain(removeDomainZone, removeDomainConfirmation)
+      queuedToast(toast, command, 'Domain withdrawal')
+      setRemoveDomainZone(''); setRemoveDomainConfirmation('')
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -157,10 +182,19 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
         </Panel> : null}
       </Columns>
       {scope === 'dns' ? <Columns>
+        <Panel eyebrow="First step of publication" title="Accepted domains">
+          <Rows>
+            <Banner tone="info">A zone is accepted here before anything is published under it. Records may only be created inside an accepted domain, and a route may only claim a hostname that already exists as a record — an unaccepted domain gets no record, no route, and no public exposure.</Banner>
+            <Columns><Input autoCapitalize="none" label="Apex zone" onChange={(event) => setDomainZone(event.target.value)} placeholder="example.com" spellCheck={false} value={domainZone} /><Input label="Note" onChange={(event) => setDomainNote(event.target.value)} placeholder="Who owns this zone" value={domainNote} /></Columns>
+            <Button disabled={Boolean(pending) || !domainZone.includes('.')} loading={pending === 'domain'} onClick={() => void queueDomain()} variant="accent">Accept domain</Button>
+            <Rows gap="tight">{state.domains.length ? state.domains.map((domain) => <Inline key={domain.zone}><Mono>{domain.zone}</Mono><Badge variant="success">accepted</Badge><Body size="sm">{domain.note}</Body><Button disabled={Boolean(pending)} onClick={() => { setRemoveDomainZone(domain.zone); setRemoveDomainConfirmation('') }} size="sm" variant="ghost">Prepare withdrawal</Button></Inline>) : <EmptyState description="Accept the apex zone this gateway is allowed to publish under before creating any subdomain." icon="globe" title="No accepted domains" />}</Rows>
+            {removeDomainZone ? <Rows><Banner title="Withdrawal is refused while dependents exist" tone="warning">Every record and route under {removeDomainZone} must be removed first.</Banner><Input hint={`Type ${domainRemovalConfirmation(removeDomainZone)}.`} label="Withdrawal confirmation" onChange={(event) => setRemoveDomainConfirmation(event.target.value)} value={removeDomainConfirmation} /><Inline><Button disabled={Boolean(pending) || removeDomainConfirmation !== domainRemovalConfirmation(removeDomainZone)} loading={pending === 'domain-remove'} onClick={() => void queueDomainRemoval()} variant="danger">Queue domain withdrawal</Button><Button disabled={Boolean(pending)} onClick={() => setRemoveDomainZone('')} variant="ghost">Cancel</Button></Inline></Rows> : null}
+          </Rows>
+        </Panel>
         <Panel eyebrow="Read before write" title="DNS record preview">
           <Rows>
             <Columns><Input label="Record ID" onChange={(event) => setRecord({ ...record, id: event.target.value })} value={record.id} /><Select label="Route protocol" onChange={(event) => { const next = event.target.value as RouteProtocol; setProtocol(next); if (next !== 'http') setRecord({ ...record, proxied: false }) }} options={['http', 'tcp', 'udp'].map(option)} value={protocol} /></Columns>
-            <Columns><Input label="Zone" onChange={(event) => setRecord({ ...record, zone: event.target.value })} placeholder="example.com" value={record.zone} /><Input label="Record name" onChange={(event) => setRecord({ ...record, name: event.target.value })} placeholder="app.example.com" value={record.name} /></Columns>
+            <Columns><Select hint="Only accepted domains can hold a record." label="Zone" onChange={(event) => setRecord({ ...record, zone: event.target.value })} options={state.domains.map((domain) => ({ label: domain.zone, value: domain.zone }))} placeholder="Accept a domain first" value={record.zone} /><Input label="Record name" onChange={(event) => setRecord({ ...record, name: event.target.value })} placeholder="app.example.com" value={record.name} /></Columns>
             <Columns><Select label="Type" onChange={(event) => setRecord({ ...record, type: event.target.value as DNSRecordSpec['type'] })} options={['A', 'AAAA', 'CNAME'].map(option)} value={record.type} /><Input label="Content" onChange={(event) => setRecord({ ...record, content: event.target.value })} placeholder="203.0.113.10" value={record.content} /><Input label="TTL seconds" min="60" max="86400" onChange={(event) => setRecord({ ...record, ttl: Number(event.target.value) })} type="number" value={record.ttl} /></Columns>
             <Select label="Provider credential" onChange={(event) => setRecord({ ...record, credentialId: event.target.value })} options={latestCredentials.map((credential) => ({ label: `${credential.name} · ${credential.provider} v${credential.version}`, value: credential.id }))} placeholder="Select credential" value={record.credentialId} />
             <Columns><Switch checked={record.adopted} description="Required before SwarmOps may change a matching provider record it did not create." onChange={(event) => setRecord({ ...record, adopted: event.target.checked, managed: !event.target.checked })}>Adopt existing record</Switch><Switch checked={record.proxied} disabled={protocol !== 'http' || providerForCredential(latestCredentials, record.credentialId) !== 'cloudflare'} description="Raw TCP/UDP records are always DNS-only." onChange={(event) => setRecord({ ...record, proxied: event.target.checked })}>Cloudflare proxy</Switch></Columns>

@@ -49,6 +49,7 @@ func (s *Server) provisioningStatus(ctx context.Context) agentcontrol.Provisioni
 			status.Docker.Version = version.Version
 		}
 		if info, err := s.config.Docker.Info(ctx); err == nil {
+			status.Docker.RegistryMirrors = info.RegistryConfig.Mirrors
 			status.Swarm.State = info.Swarm.LocalNodeState
 			status.Swarm.Manager = info.Swarm.ControlAvailable
 		}
@@ -62,12 +63,15 @@ func (s *Server) provisioningStatus(ctx context.Context) agentcontrol.Provisioni
 	// inspect readiness but cannot make host-level changes.
 	available := s.config.RemoteControlEnabled && strings.TrimSpace(s.config.ProvisionSocket) != ""
 	status.Capabilities = agentcontrol.ProvisioningCapabilities{
-		ApplyUFW:        available && status.OS.Supported,
-		InitializeSwarm: available && status.OS.Supported && status.Swarm.State != "active",
-		InstallDocker:   available && status.OS.Supported && !status.Docker.Installed,
-		JoinSwarm:       available && status.OS.Supported && status.Docker.Running && status.Swarm.State == "inactive",
-		UpdateDocker:    available && status.OS.Supported && status.Docker.Installed,
-		UpdateOS:        available && status.OS.Supported,
+		// Changing the mirror list means rewriting daemon.json and restarting
+		// Docker, so it is offered only where Docker is actually installed.
+		ApplyRegistryMirrors: available && status.OS.Supported && status.Docker.Installed,
+		ApplyUFW:             available && status.OS.Supported,
+		InitializeSwarm:      available && status.OS.Supported && status.Swarm.State != "active",
+		InstallDocker:        available && status.OS.Supported && !status.Docker.Installed,
+		JoinSwarm:            available && status.OS.Supported && status.Docker.Running && status.Swarm.State == "inactive",
+		UpdateDocker:         available && status.OS.Supported && status.Docker.Installed,
+		UpdateOS:             available && status.OS.Supported,
 	}
 	return status
 }
@@ -263,7 +267,49 @@ func (p systemProvisioner) apply(ctx context.Context, request agentcontrol.Provi
 			return err
 		}
 	}
+	// The mirror change runs last: it restarts the daemon, and anything above
+	// it that still needed Docker has already finished by the time it does.
+	if request.ApplyRegistryMirrors {
+		if err := p.applyRegistryMirrors(ctx, request); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// dockerDaemonConfig is the file the mirror list lives in. It is a constant
+// rather than a request field: the machine owns its own daemon configuration,
+// and a path from the controller would be a path anyone could choose.
+const dockerDaemonConfig = "/etc/docker/daemon.json"
+
+// applyRegistryMirrors rewrites ONLY the registry-mirrors key of daemon.json.
+//
+// Every other key the host already had is preserved: an operator who set a
+// log driver, a storage driver or an address pool by hand does not lose it to
+// a mirror change. An empty list removes the key entirely, which is how the
+// machine goes back to pulling from Docker Hub directly.
+func (p systemProvisioner) applyRegistryMirrors(ctx context.Context, request agentcontrol.ProvisioningRequest) error {
+	mirrors, err := request.NormalizedRegistryMirrors()
+	if err != nil {
+		return err
+	}
+	existing, readErr := os.ReadFile(dockerDaemonConfig)
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("read Docker daemon configuration")
+	}
+	encoded, err := mergeRegistryMirrors(existing, mirrors)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dockerDaemonConfig), 0o755); err != nil {
+		return fmt.Errorf("prepare Docker daemon configuration directory")
+	}
+	if err := writeSystemFile(dockerDaemonConfig, encoded, 0o644); err != nil {
+		return err
+	}
+	// The daemon reads this file only at start. A reload would leave the
+	// console reporting a mirror that no pull is actually using.
+	return runFixed(ctx, "systemctl", "restart", "docker")
 }
 
 func (p systemProvisioner) installDocker(ctx context.Context, osInfo provisioningOS) error {
@@ -632,3 +678,28 @@ func (b *boundedProvisionOutput) Write(value []byte) (int, error) {
 }
 
 func (b *boundedProvisionOutput) String() string { return b.buffer.String() }
+
+// mergeRegistryMirrors rewrites only the registry-mirrors key of an existing
+// daemon.json. It is separate from the host operation so the merge — the part
+// that can silently destroy an operator's configuration — is testable without
+// a Docker host.
+func mergeRegistryMirrors(existing []byte, mirrors []string) ([]byte, error) {
+	settings := map[string]any{}
+	if len(bytes.TrimSpace(existing)) > 0 {
+		if err := json.Unmarshal(existing, &settings); err != nil {
+			// Overwriting a file the daemon may be reading, and that this
+			// process cannot understand, would be a silent configuration loss.
+			return nil, fmt.Errorf("existing Docker daemon configuration needs operator review")
+		}
+	}
+	if len(mirrors) == 0 {
+		delete(settings, "registry-mirrors")
+	} else {
+		settings["registry-mirrors"] = mirrors
+	}
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("prepare Docker daemon configuration")
+	}
+	return append(encoded, '\n'), nil
+}

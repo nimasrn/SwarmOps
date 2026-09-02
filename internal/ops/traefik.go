@@ -282,22 +282,30 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	// was removed afterwards. Nothing downstream can publish a port without
 	// it: the daemon rejects service creation outright, which reads as an
 	// opaque deploy failure rather than a missing prerequisite.
-	ingressReady := false
+	ingressListed := false
+	ingressUsable := false
 	for _, network := range networks {
-		if network.Ingress || network.Name == "ingress" {
-			ingressReady = true
-			break
+		if !network.Ingress && network.Name != "ingress" {
+			continue
 		}
+		ingressListed = true
+		// A record can be listed from the swarm store and still be unusable:
+		// a half-materialised network carries no driver, and a desynchronised
+		// libnetwork index fails to resolve the name that every deploy uses.
+		// Presence alone is therefore not readiness.
+		ingressUsable = network.Driver == "overlay" && c.networkNameResolves(ctx, "ingress")
+		break
 	}
 	ingressSubnet, _ := c.ingressAddressCandidate(networks)
+	ingressStale := ingressListed && !ingressUsable
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
-		Detail:   choose(ingressReady, "The swarm ingress network is present.", "The swarm ingress network is missing, so no service can publish a port."),
-		Fixable:  !ingressReady && ingressSubnet != "",
+		Detail:   choose(ingressUsable, "The swarm ingress network is present and resolvable.", choose(ingressStale, "A swarm ingress network is listed but cannot be resolved, so this node's network state is out of sync with the cluster store.", "The swarm ingress network is missing, so no service can publish a port.")),
+		Fixable:  !ingressListed && ingressSubnet != "",
 		ID:       "ingress-network",
 		Label:    "Swarm ingress network",
-		Recovery: choose(ingressReady, "", choose(ingressSubnet != "", "Recreate the swarm ingress network from Installation prerequisites.", "Every candidate ingress subnet overlaps an existing network. Free a range, then recreate the ingress network manually.")),
+		Recovery: choose(ingressUsable, "", choose(ingressStale, "Remove the stale ingress record by its full network ID and restart the Docker daemon on the manager, then refresh these prerequisites.", choose(ingressSubnet != "", "Recreate the swarm ingress network from Installation prerequisites.", "Every candidate ingress subnet overlaps an existing network. Free a range, then recreate the ingress network manually."))),
 		Required: true,
-		State:    choose(ingressReady, "ready", "blocked"),
+		State:    choose(ingressUsable, "ready", "blocked"),
 	})
 
 	networkReady := false
@@ -312,14 +320,18 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 			break
 		}
 	}
+	// The deploy resolves this network by name, so a listed-but-unresolvable
+	// record fails the stack with "declared as external, but could not be
+	// found" long after the console has called the prerequisite ready.
+	networkResolves := !networkReady || c.networkNameResolves(ctx, "traefik")
 	appendTraefikCheck(&preflight, TraefikInstallCheck{
-		Detail:   choose(networkReady, "External attachable Swarm overlay traefik is ready.", "No compatible external traefik overlay network exists."),
+		Detail:   choose(networkReady && networkResolves, "External attachable Swarm overlay traefik is ready.", choose(networkReady, "The traefik overlay is listed but its name cannot be resolved, so this node's network state is out of sync with the cluster store.", "No compatible external traefik overlay network exists.")),
 		Fixable:  !networkReady && !networkNameTaken,
 		ID:       "edge-network",
 		Label:    "External traefik network",
-		Recovery: choose(networkReady, "", "Create an attachable encrypted overlay named traefik in Docker resources."),
+		Recovery: choose(networkReady && networkResolves, "", choose(networkReady, "Restart the Docker daemon on the manager to resynchronise its network state, then refresh these prerequisites.", "Create an attachable encrypted overlay named traefik in Docker resources.")),
 		Required: true,
-		State:    choose(networkReady, "ready", "blocked"),
+		State:    choose(networkReady && networkResolves, "ready", "blocked"),
 	})
 
 	edgeReady := false
@@ -643,4 +655,16 @@ func (c *ControlPlane) ingressAddressCandidate(networks []dockerapi.Network) (st
 		}
 	}
 	return "", ""
+}
+
+// networkNameResolves reports whether the daemon can still resolve a network
+// by the name a stack deploy uses. A swarm-scoped network can remain listed
+// from the cluster store after this node's local index has lost it, and only
+// an inspect by name distinguishes that from a healthy one.
+func (c *ControlPlane) networkNameResolves(ctx context.Context, name string) bool {
+	if c.Docker == nil {
+		return true
+	}
+	detail, err := c.Docker.InspectNetwork(ctx, name)
+	return err == nil && detail.Name == name
 }

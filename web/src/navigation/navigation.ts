@@ -37,6 +37,7 @@ export type WorkspacePage =
   | 'storage'
   // Traffic — how a request from the internet reaches a workload.
   | 'gateway'
+  | 'gateway-settings'
   | 'routes'
   | 'dns'
   | 'tls'
@@ -127,6 +128,7 @@ export const AREAS: AreaEntry[] = [
     summary: 'How a request from the internet reaches a workload.',
     pages: [
       { icon: 'external', key: 'gateway', label: 'Gateway', summary: 'What the edge is carrying, and where it is failing.', keywords: 'traefik ingress proxy ports entrypoints metrics' },
+      { icon: 'settings', key: 'gateway-settings', label: 'Gateway settings', summary: 'Entrypoints, ports, and certificate resolver policy.', keywords: 'traefik global settings entrypoints ports resolvers acme static' },
       { icon: 'arrow-forward', key: 'routes', label: 'Routes', summary: 'Hostname, TCP and UDP rules mapped onto workloads.', keywords: 'router host rule path port publish' },
       { icon: 'cloud', key: 'dns', label: 'Domains & DNS', summary: 'Where records are published from, and their credentials.', keywords: 'domain record cloudflare arvan provider' },
       { icon: 'shield', key: 'tls', label: 'Certificates', summary: 'Issuance, renewal, and expiry.', keywords: 'ssl https acme letsencrypt certificate' },
@@ -228,7 +230,7 @@ export const LEGACY_ROUTES: Record<string, WorkspacePage> = {
  * connected, and must never be gated behind one.
  */
 export const CLUSTER_PAGES: ReadonlySet<WorkspacePage> = new Set<WorkspacePage>([
-  'applications', 'containers', 'dns', 'gateway', 'images', 'logs', 'platform',
+  'applications', 'containers', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'platform',
   'routes', 'storage', 'swarm', 'tls', 'workloads',
 ])
 

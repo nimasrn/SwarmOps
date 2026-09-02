@@ -24,6 +24,7 @@ type RoutingState struct {
 	CutoverRollback *CutoverRollbackPlan      `json:"cutoverRollback,omitempty"`
 	Declarations    []ServiceRouteDeclaration `json:"declarations"`
 	DNSRecords      []DNSRecordSpec           `json:"dnsRecords"`
+	Domains         []DomainSpec              `json:"domains"`
 	Routes          []RouteSpec               `json:"routes"`
 	Runtime         []RouteRuntime            `json:"runtime"`
 	Settings        TraefikSettings           `json:"settings"`
@@ -38,6 +39,7 @@ type routingCluster struct {
 	CutoverRollback *CutoverRollbackPlan               `json:"cutoverRollback,omitempty"`
 	Declarations    map[string]ServiceRouteDeclaration `json:"declarations"`
 	DNSRecords      map[string]DNSRecordSpec           `json:"dnsRecords"`
+	Domains         map[string]DomainSpec              `json:"domains"`
 	Routes          map[string]RouteSpec               `json:"routes"`
 	Runtime         map[string]RouteRuntime            `json:"runtime"`
 	Secrets         map[string]string                  `json:"secrets"`
@@ -111,7 +113,7 @@ func (s *RoutingStore) Snapshot(clusterID string) (RoutingState, error) {
 	cluster := s.clusters[clusterID]
 	if cluster == nil {
 		settings := DefaultTraefikSettings(s.defaultEmail)
-		return RoutingState{Bindings: []DependencyBinding{}, Certificates: []CertificateStatus{}, Credentials: []DNSCredentialMetadata{}, Declarations: []ServiceRouteDeclaration{}, DNSRecords: []DNSRecordSpec{}, Routes: []RouteSpec{}, Runtime: []RouteRuntime{}, Settings: settings, Version: RoutingSchemaVersion}, nil
+		return RoutingState{Bindings: []DependencyBinding{}, Certificates: []CertificateStatus{}, Credentials: []DNSCredentialMetadata{}, Declarations: []ServiceRouteDeclaration{}, DNSRecords: []DNSRecordSpec{}, Domains: []DomainSpec{}, Routes: []RouteSpec{}, Runtime: []RouteRuntime{}, Settings: settings, Version: RoutingSchemaVersion}, nil
 	}
 	return publicRoutingState(cluster), nil
 }
@@ -145,6 +147,9 @@ func (s *RoutingStore) PutRoute(clusterID string, route RouteSpec) error {
 	}
 	return s.update(clusterID, func(cluster *routingCluster) error {
 		if err := ValidateRouteCompatibility(route, cluster.Settings, mapDNSRecords(cluster.DNSRecords)); err != nil {
+			return err
+		}
+		if err := ValidateRouteAdmission(route, mapDNSRecords(cluster.DNSRecords), mapDomains(cluster.Domains)); err != nil {
 			return err
 		}
 		for key, existing := range cluster.Routes {
@@ -328,6 +333,9 @@ func (s *RoutingStore) PutDNSRecord(clusterID string, record DNSRecordSpec, prot
 		return err
 	}
 	return s.update(clusterID, func(cluster *routingCluster) error {
+		if err := ValidateDomainAdmission(record, mapDomains(cluster.Domains)); err != nil {
+			return err
+		}
 		if versions := cluster.Credentials[record.CredentialID]; len(versions) == 0 || versions[len(versions)-1].State == "removed" {
 			return fmt.Errorf("DNS record credential was not found")
 		}
@@ -357,6 +365,54 @@ func (s *RoutingStore) RemoveDNSRecord(clusterID, id string) error {
 			}
 		}
 		delete(cluster.DNSRecords, id)
+		return nil
+	})
+}
+
+// PutDomain accepts an apex zone for this gateway. Nothing about a zone is
+// published by accepting it; acceptance only unlocks creating records under it.
+func (s *RoutingStore) PutDomain(clusterID string, domain DomainSpec) error {
+	domain = domain.Normalize()
+	if err := domain.Validate(); err != nil {
+		return err
+	}
+	return s.update(clusterID, func(cluster *routingCluster) error {
+		if existing, found := cluster.Domains[domain.Zone]; found && !existing.CreatedAt.IsZero() {
+			domain.CreatedAt = existing.CreatedAt
+		} else if domain.CreatedAt.IsZero() {
+			domain.CreatedAt = s.now().UTC()
+		}
+		cluster.Domains[domain.Zone] = domain
+		return nil
+	})
+}
+
+// RemoveDomain withdraws acceptance. It refuses while anything still depends on
+// the zone, so withdrawal can never leave a record or route published under a
+// domain the gateway no longer accepts.
+func (s *RoutingStore) RemoveDomain(clusterID, zone string) error {
+	zone = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(zone), "."))
+	return s.update(clusterID, func(cluster *routingCluster) error {
+		if _, found := cluster.Domains[zone]; !found {
+			return nil
+		}
+		remaining := make([]DomainSpec, 0, len(cluster.Domains))
+		for key, domain := range cluster.Domains {
+			if key != zone {
+				remaining = append(remaining, domain)
+			}
+		}
+		for _, record := range cluster.DNSRecords {
+			if _, found := acceptedZone(remaining, record.Normalize().Name); !found {
+				return fmt.Errorf("domain %q still owns DNS record %q", zone, record.ID)
+			}
+		}
+		for _, route := range cluster.Routes {
+			if err := ValidateRouteAdmission(route, mapDNSRecords(cluster.DNSRecords), remaining); err != nil {
+				return fmt.Errorf("domain %q still owns route %q", zone, route.Key)
+			}
+		}
+		delete(cluster.Domains, zone)
 		return nil
 	})
 }
@@ -490,6 +546,20 @@ func normalizeRoutingCluster(cluster *routingCluster, defaultEmail string) {
 	if cluster.DNSRecords == nil {
 		cluster.DNSRecords = map[string]DNSRecordSpec{}
 	}
+	if cluster.Domains == nil {
+		// State sealed before the domain registry existed keeps working: the
+		// zones its records already live in are adopted as accepted domains
+		// once, so the gate applies to new work rather than stranding routes
+		// that are already published.
+		cluster.Domains = map[string]DomainSpec{}
+		for _, record := range cluster.DNSRecords {
+			zone := record.Normalize().Zone
+			if zone == "" {
+				continue
+			}
+			cluster.Domains[zone] = DomainSpec{CreatedAt: time.Time{}, Note: "adopted from existing DNS records", Version: RoutingSchemaVersion, Zone: zone}
+		}
+	}
 	if cluster.Declarations == nil {
 		cluster.Declarations = map[string]ServiceRouteDeclaration{}
 	}
@@ -587,6 +657,9 @@ func publicRoutingState(cluster *routingCluster) RoutingState {
 	for _, record := range cluster.DNSRecords {
 		state.DNSRecords = append(state.DNSRecords, record)
 	}
+	for _, domain := range cluster.Domains {
+		state.Domains = append(state.Domains, domain)
+	}
 	for _, declaration := range cluster.Declarations {
 		state.Declarations = append(state.Declarations, declaration)
 	}
@@ -620,6 +693,7 @@ func publicRoutingState(cluster *routingCluster) RoutingState {
 		return state.Credentials[i].ID < state.Credentials[j].ID
 	})
 	sort.Slice(state.DNSRecords, func(i, j int) bool { return state.DNSRecords[i].ID < state.DNSRecords[j].ID })
+	sort.Slice(state.Domains, func(i, j int) bool { return state.Domains[i].Zone < state.Domains[j].Zone })
 	sort.Slice(state.Declarations, func(i, j int) bool { return state.Declarations[i].ServiceKey < state.Declarations[j].ServiceKey })
 	sort.Slice(state.Certificates, func(i, j int) bool { return state.Certificates[i].RouteKey < state.Certificates[j].RouteKey })
 	sort.Slice(state.Runtime, func(i, j int) bool { return state.Runtime[i].RouteKey < state.Runtime[j].RouteKey })
@@ -634,6 +708,9 @@ func publicRoutingState(cluster *routingCluster) RoutingState {
 	}
 	if state.DNSRecords == nil {
 		state.DNSRecords = []DNSRecordSpec{}
+	}
+	if state.Domains == nil {
+		state.Domains = []DomainSpec{}
 	}
 	if state.Declarations == nil {
 		state.Declarations = []ServiceRouteDeclaration{}
@@ -651,6 +728,14 @@ func cloneSettings(settings TraefikSettings) TraefikSettings {
 	settings.EntryPoints = append([]StaticEntryPoint(nil), settings.EntryPoints...)
 	settings.Resolvers = append([]ACMEPolicy(nil), settings.Resolvers...)
 	return settings
+}
+
+func mapDomains(domains map[string]DomainSpec) []DomainSpec {
+	result := make([]DomainSpec, 0, len(domains))
+	for _, domain := range domains {
+		result = append(result, domain)
+	}
+	return result
 }
 
 func mapDNSRecords(records map[string]DNSRecordSpec) []DNSRecordSpec {

@@ -12,8 +12,11 @@
 package coreself
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -196,6 +199,9 @@ func describeUpdate(config Config) Update {
 	if err != nil {
 		return update
 	}
+	if json.Valid(data) {
+		return applyWardenStatus(update, data)
+	}
 	parsed := parseStatus(string(data))
 	update.Automatic = parsed["automatic"] == "true"
 	update.Available = parsed["available"]
@@ -206,6 +212,33 @@ func describeUpdate(config Config) Update {
 	if at, err := time.Parse(time.RFC3339, parsed["lastUpdatedAt"]); err == nil {
 		update.LastUpdatedAt = at.UTC()
 	}
+	return update
+}
+
+// wardenStatus is what the local Warden writes after every run. It is the same
+// file the machine agent's updater writes, which is the point: the console
+// reads one shape for both, and "Core updates" stops being a different,
+// weaker screen than "Agent updates".
+type wardenStatus struct {
+	Automatic     bool      `json:"automatic"`
+	CheckedAt     time.Time `json:"checkedAt"`
+	LastUpdatedAt time.Time `json:"lastUpdatedAt"`
+	State         string    `json:"state"`
+	Version       string    `json:"version"`
+}
+
+func applyWardenStatus(update Update, data []byte) Update {
+	var status wardenStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return update
+	}
+	update.Automatic = status.Automatic
+	// Warden records the release it converged on. When that is not the version
+	// this process is, an update is waiting for a restart or has been staged.
+	update.Available = strings.TrimSpace(status.Version)
+	update.CheckedAt = status.CheckedAt.UTC()
+	update.LastUpdatedAt = status.LastUpdatedAt.UTC()
+	update.State = status.State
 	return update
 }
 
@@ -221,14 +254,28 @@ func parseStatus(text string) map[string]string {
 	return values
 }
 
-// RequestUpdate asks the local updater to check for a release. It writes a
-// marker and nothing else: the controller never downloads, never verifies and
-// never restarts itself, because a process cannot supervise its own
-// replacement.
-func RequestUpdate(config Config) error {
+// ErrVersion reports a requested release the updater would refuse to look up.
+var ErrVersion = errors.New("release version has unsupported characters")
+
+var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// RequestUpdate asks the local updater to check for a release, or to install
+// one exact release when version is set — which is how the console rolls the
+// controller back to something on disk. It writes a marker and nothing else:
+// the controller never downloads, never verifies and never restarts itself,
+// because a process cannot supervise its own replacement.
+func RequestUpdate(config Config, version string) error {
 	path := strings.TrimSpace(config.UpdateRequestFile)
 	if path == "" {
 		return os.ErrNotExist
 	}
-	return os.WriteFile(path, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+	version = strings.TrimSpace(version)
+	if version != "" && !versionPattern.MatchString(version) {
+		return ErrVersion
+	}
+	marker := "requestedAt=" + time.Now().UTC().Format(time.RFC3339) + "\n"
+	if version != "" {
+		marker += "version=" + version + "\n"
+	}
+	return os.WriteFile(path, []byte(marker), 0o600)
 }

@@ -207,6 +207,8 @@ func (s *Server) Handler() http.Handler {
 	// The controller describing itself: version, host, storage, releases.
 	mux.HandleFunc("GET /api/v1/core/self", s.withAuth(false, s.coreSelf))
 	mux.HandleFunc("POST /api/v1/core/update", s.withActiveAuth(s.coreUpdate))
+	mux.HandleFunc("GET /api/v1/core/registry-mirror", s.withAuth(false, s.coreRegistryMirrors))
+	mux.HandleFunc("POST /api/v1/core/registry-mirror", s.withActiveAuth(s.coreRegistryMirrorApply))
 	mux.HandleFunc("POST /api/v1/core/replicas", s.withActiveAuth(s.coreReplicaAdd))
 	mux.HandleFunc("POST /api/v1/core/replicas/{id}/verify", s.withActiveAuth(s.coreReplicaVerify))
 	mux.HandleFunc("POST /api/v1/core/handoff", s.withActiveAuth(s.coreHandoffPrepare))
@@ -253,6 +255,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/traefik/settings", s.withActiveAuth(s.traefikSettingsApply))
 	mux.HandleFunc("POST /api/v1/traefik/dns/credentials", s.withActiveAuth(s.traefikDNSCredential))
 	mux.HandleFunc("DELETE /api/v1/traefik/dns/credentials/{id}/versions/{version}", s.withActiveAuth(s.traefikDNSCredentialRemove))
+	mux.HandleFunc("POST /api/v1/traefik/domains", s.withActiveAuth(s.traefikDomainRegister))
+	mux.HandleFunc("DELETE /api/v1/traefik/domains/{zone}", s.withActiveAuth(s.traefikDomainRemove))
 	mux.HandleFunc("POST /api/v1/traefik/dns/records/preview", s.withActiveAuth(s.traefikDNSRecordPreview))
 	mux.HandleFunc("POST /api/v1/traefik/dns/records", s.withActiveAuth(s.traefikDNSRecordApply))
 	mux.HandleFunc("DELETE /api/v1/traefik/dns/records/{id}", s.withActiveAuth(s.traefikDNSRecordDelete))

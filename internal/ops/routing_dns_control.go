@@ -35,6 +35,11 @@ func (c *ControlPlane) PreviewDNSRecord(ctx context.Context, requested DNSRecord
 	if err != nil {
 		return DNSRecordPreview{}, err
 	}
+	// Acceptance is checked before the provider is contacted: an unaccepted
+	// zone must not produce provider traffic at all.
+	if err := ValidateDomainAdmission(record, state.Domains); err != nil {
+		return DNSRecordPreview{}, err
+	}
 	tracked := findDNSRecord(state.DNSRecords, record.ID)
 	metadata, secret, err := c.Routing.CredentialSecret(c.ServerID, record.CredentialID, 0)
 	if err != nil {
@@ -197,4 +202,45 @@ func dnsProviderRecordMatches(existing DNSProviderRecord, requested DNSRecordSpe
 
 func credentialVersionDetail(metadata DNSCredentialMetadata) map[string]string {
 	return map[string]string{"provider": string(metadata.Provider), "version": strconv.Itoa(metadata.Version)}
+}
+
+// RegisterDomain accepts an apex zone for this gateway. It is the first step of
+// the publication order: accept the domain, create the subdomain record, then
+// assign that name to a service.
+func (c *ControlPlane) RegisterDomain(actor, requestID string, requested DomainSpec) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if err := c.requireAudit(); err != nil {
+		return err
+	}
+	if err := c.requireRouting(); err != nil {
+		return err
+	}
+	domain := requested.Normalize()
+	err := c.Routing.PutDomain(c.ServerID, domain)
+	c.record(actor, requestID, "traefik.domain.register", "domain/"+domain.Zone, err, map[string]string{"zone": domain.Zone})
+	return err
+}
+
+// RemoveDomain withdraws acceptance of a zone. It fails while any record or
+// route still depends on it, so acceptance can never be revoked out from under
+// something that is already published.
+func (c *ControlPlane) RemoveDomain(actor, requestID, zone, confirmation string) error {
+	if !c.Mutations {
+		return fmt.Errorf("cluster mutations are disabled")
+	}
+	if err := c.requireAudit(); err != nil {
+		return err
+	}
+	if err := c.requireRouting(); err != nil {
+		return err
+	}
+	zone = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(zone), "."))
+	if confirmation != DomainRemovalConfirmation(zone) {
+		return fmt.Errorf("domain removal requires confirmation %s", DomainRemovalConfirmation(zone))
+	}
+	err := c.Routing.RemoveDomain(c.ServerID, zone)
+	c.record(actor, requestID, "traefik.domain.remove", "domain/"+zone, err, map[string]string{"zone": zone})
+	return err
 }
