@@ -42,12 +42,15 @@ func SetCoreAllowedCIDRs(ctx context.Context, environmentFile string, requested 
 	if err != nil {
 		return nil, err
 	}
-	localCIDRs, err := certificateLocalCIDRs(configuration.certificateFile)
-	if err != nil {
-		return nil, err
+	policy := ""
+	if len(operatorCIDRs) > 0 {
+		localCIDRs, err := certificateLocalCIDRs(configuration.certificateFile)
+		if err != nil {
+			return nil, err
+		}
+		policy = strings.Join(appendUnique(append([]string{}, operatorCIDRs...), localCIDRs...), ",")
 	}
-	allCIDRs := appendUnique(append([]string{}, operatorCIDRs...), localCIDRs...)
-	updated := replaceEnvironmentValue(previous, "SWARMOPS_ALLOWED_CLIENT_CIDRS", strings.Join(allCIDRs, ","))
+	updated := replaceEnvironmentValue(previous, "SWARMOPS_ALLOWED_CLIENT_CIDRS", policy)
 	healthURL, err := localCoreReadyURL(configuration.listenAddress)
 	if err != nil {
 		return nil, err
@@ -98,7 +101,10 @@ func parseCoreEnvironment(data []byte) (coreEnvironment, error) {
 			values[key] = value
 		}
 	}
-	for _, key := range []string{"SWARMOPS_ALLOWED_CLIENT_CIDRS", "SWARMOPS_LISTEN_ADDR", "SWARMOPS_TLS_CERT_FILE"} {
+	if counts["SWARMOPS_ALLOWED_CLIENT_CIDRS"] != 1 {
+		return coreEnvironment{}, errors.New("Core environment must contain exactly one SWARMOPS_ALLOWED_CLIENT_CIDRS entry")
+	}
+	for _, key := range []string{"SWARMOPS_LISTEN_ADDR", "SWARMOPS_TLS_CERT_FILE"} {
 		if counts[key] != 1 || strings.TrimSpace(values[key]) == "" {
 			return coreEnvironment{}, fmt.Errorf("Core environment must contain exactly one non-empty %s entry", key)
 		}
@@ -113,10 +119,10 @@ func parseCoreEnvironment(data []byte) (coreEnvironment, error) {
 	}, nil
 }
 
+// normalizeOperatorCIDRs returns an empty list when no CIDR is requested,
+// which disables the operator allowlist and lets Core accept every client
+// network. Operators without a static address rely on that default.
 func normalizeOperatorCIDRs(requested []string) ([]string, error) {
-	if len(requested) == 0 {
-		return nil, errors.New("at least one operator CIDR is required")
-	}
 	normalized := make([]string, 0, len(requested))
 	for _, value := range requested {
 		prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
@@ -125,7 +131,7 @@ func normalizeOperatorCIDRs(requested []string) ([]string, error) {
 		}
 		prefix = prefix.Masked()
 		if prefix.Bits() == 0 {
-			return nil, errors.New("operator CIDRs must not permit every address; use a specific trusted network")
+			return nil, errors.New("operator CIDRs must not permit every address; list a specific trusted network, or run \"swarmops-core access disable\" to allow every client network")
 		}
 		if prefix.Addr().IsUnspecified() && prefix.Bits() != 0 {
 			if prefix.Addr().Is4() {

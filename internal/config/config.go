@@ -314,21 +314,15 @@ func Load() (Config, error) {
 		if err := requireProtectedFile(c.TLSKeyFile, "TLS private key"); err != nil {
 			return Config{}, err
 		}
-		loopback, err := listenAddressIsLoopback("SWARMOPS_LISTEN_ADDR", c.ListenAddr)
-		if err != nil {
+		// SWARMOPS_ALLOWED_CLIENT_CIDRS stays optional: operators without a
+		// static address run with the allowlist disabled until they enable it.
+		if _, err := listenAddressIsLoopback("SWARMOPS_LISTEN_ADDR", c.ListenAddr); err != nil {
 			return Config{}, err
-		}
-		if !loopback && len(c.AllowedClientCIDRs) == 0 {
-			return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for direct TLS on a non-loopback listener")
 		}
 	}
 	if c.HTTPEnabled {
-		httpLoopback, err := listenAddressIsLoopback("SWARMOPS_HTTP_LISTEN_ADDR", c.HTTPListenAddr)
-		if err != nil {
+		if _, err := listenAddressIsLoopback("SWARMOPS_HTTP_LISTEN_ADDR", c.HTTPListenAddr); err != nil {
 			return Config{}, err
-		}
-		if !httpLoopback && len(c.AllowedClientCIDRs) == 0 {
-			return Config{}, fmt.Errorf("SWARMOPS_ALLOWED_CLIENT_CIDRS is required for remote plaintext HTTP")
 		}
 	}
 	return c, nil

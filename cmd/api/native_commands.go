@@ -31,29 +31,39 @@ func runCoreUpgrade(args []string) {
 }
 
 func runCoreAccess(args []string) {
-	if len(args) < 2 || args[0] != "set-cidrs" {
-		fmt.Fprintln(os.Stderr, "Usage: swarmops-core access set-cidrs <CIDR> [CIDR...]")
+	var requested []string
+	switch {
+	case len(args) >= 2 && args[0] == "set-cidrs":
+		requested = args[1:]
+	case len(args) == 1 && args[0] == "disable":
+		requested = nil
+	default:
+		fmt.Fprintln(os.Stderr, "Usage: swarmops-core access set-cidrs <CIDR> [CIDR...] | swarmops-core access disable")
 		os.Exit(2)
 	}
 	if runtime.GOOS != "linux" {
-		fmt.Fprintln(os.Stderr, "swarmops-core access set-cidrs: the native Core component is supported on Linux only")
+		fmt.Fprintln(os.Stderr, "swarmops-core access: the native Core component is supported on Linux only")
 		os.Exit(1)
 	}
 	if os.Geteuid() != 0 {
-		fmt.Fprintln(os.Stderr, "swarmops-core access set-cidrs: run this command with sudo on Linux")
+		fmt.Fprintln(os.Stderr, "swarmops-core access: run this command with sudo on Linux")
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	updated, err := nativectl.SetCoreAllowedCIDRs(ctx, "/etc/swarmops/control-plane.env", args[1:], nativectl.CoreAccessHooks{
+	updated, err := nativectl.SetCoreAllowedCIDRs(ctx, "/etc/swarmops/control-plane.env", requested, nativectl.CoreAccessHooks{
 		Restart: func(restartCtx context.Context) error {
 			return nativectl.Restart(restartCtx, nativectl.Core, nativectl.CurrentPlatform(), nativectl.Run)
 		},
 		Ready: waitForCoreReadiness,
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "swarmops-core access set-cidrs:", err)
+		fmt.Fprintln(os.Stderr, "swarmops-core access:", err)
 		os.Exit(1)
+	}
+	if len(updated) == 0 {
+		fmt.Println("Core operator CIDR allowlist disabled: every client network may reach Core; Core passed /readyz.")
+		return
 	}
 	fmt.Printf("Core operator CIDRs updated: %s\n", strings.Join(updated, ", "))
 	fmt.Println("Certificate-IP and loopback access were preserved; Core passed /readyz.")

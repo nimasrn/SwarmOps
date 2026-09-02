@@ -11,6 +11,24 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.14.1 — 2026-09-03
+
+The operator CIDR allowlist is optional in both directions: it can be left off
+at installation and turned off afterwards.
+
+- **`swarmops-core access disable`** — an operator whose address is not static
+  had no supported way back out of the allowlist once it was on, because
+  `access` only accepted `set-cidrs` and Core refused to start with an empty
+  policy on a direct-TLS listener. The allowlist is now genuinely optional:
+  empty means Core accepts every client network, `disable` writes that policy
+  through the same transaction as `set-cidrs` — atomic write, restart, `/readyz`
+  verification, and rollback to the previous policy if either fails — and the
+  installer no longer requires `--allow-cidr`, prompting instead and saying what
+  an empty answer means. Enabling the allowlist still preserves certificate-IP
+  and loopback access automatically. This is a boundary an operator chooses,
+  not one they can be trapped behind; a host or cloud firewall remains the
+  right place to restrict the port when the client address is unpredictable.
+
 ## 0.14.0 — 2026-09-02
 
 Source deployment is set up from the console, and setup no longer hides the

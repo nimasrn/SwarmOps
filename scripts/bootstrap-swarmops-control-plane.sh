@@ -48,7 +48,7 @@ usage() {
     'or contact any cluster.' \
     '' \
     '--listen-ip <server-ip>     A literal IP configured on this host.' \
-    '--allow-cidr <CIDR>         An operator device or trusted network; repeatable.' \
+    '--allow-cidr <CIDR>         An operator device or trusted network; repeatable and optional.' \
     '--release <tag|latest>      GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
     '--generate-admin-password   Generate a 256-bit password for the operator account and print it once after a successful install.' \
@@ -151,11 +151,16 @@ configure_automatic_network() {
   [[ -r /dev/tty && -w /dev/tty ]] || fail 'the zero-argument installer needs an interactive terminal; use --listen-ip and --allow-cidr for unattended installation'
   detected_listen_ip="$(detected_controller_ip)"
   detected_cidr="$(detected_operator_cidr)"
-  printf '\n%s\n' 'SwarmOps needs one controller IP for its TLS identity and one trusted operator network.' >/dev/tty
+  printf '\n%s\n' 'SwarmOps needs one controller IP for its TLS identity, and optionally one trusted operator network.' >/dev/tty
   printf '%s\n' 'Press Enter to accept a detected value, or type the correct value.' >/dev/tty
+  printf '%s\n' 'Leave the operator CIDR empty to accept every client network; enable the allowlist later from the panel or with swarmops-core access set-cidrs.' >/dev/tty
   listen_ip="$(prompt_value 'Controller IP' "$detected_listen_ip")"
   selected_cidr="$(prompt_value 'Allowed operator CIDR' "$detected_cidr")"
-  append_allowed_cidr "$selected_cidr"
+  if [[ -n "$selected_cidr" ]]; then
+    append_allowed_cidr "$selected_cidr"
+  else
+    info 'No operator CIDR was provided; Core will accept every client network until the allowlist is enabled.'
+  fi
 }
 
 validate_repository() {
@@ -496,7 +501,11 @@ write_environment_file() {
     listen_address="0.0.0.0:$port"
     local_cidrs="$listen_ip/32,127.0.0.1/32"
   fi
-  all_cidrs="$operator_cidrs,$local_cidrs"
+  if [[ -n "$operator_cidrs" ]]; then
+    all_cidrs="$operator_cidrs,$local_cidrs"
+  else
+    all_cidrs=""
+  fi
   install -d -o root -g "$service_user" -m 0750 "$config_dir"
   temporary="$(mktemp "$config_dir/.control-plane.env.XXXXXX")"
   {
@@ -725,7 +734,6 @@ if [[ "$automatic_setup" == true ]]; then
   configure_automatic_network
 fi
 [[ -n "$listen_ip" ]] || fail '--listen-ip is required'
-[[ -n "$operator_cidrs" ]] || fail 'at least one --allow-cidr is required'
 assert_local_ip "$listen_ip"
 validate_allowed_cidrs
 assert_fresh_controller

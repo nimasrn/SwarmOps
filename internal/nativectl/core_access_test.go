@@ -243,3 +243,37 @@ func writeCoreAccessCertificate(t *testing.T, name string, address net.IP) {
 		t.Fatal(err)
 	}
 }
+
+func TestSetCoreAllowedCIDRsDisablesTheAllowlistWithoutRequestedNetworks(t *testing.T) {
+	environmentFile := writeCoreAccessFixture(t)
+	restarts := 0
+	updated, err := SetCoreAllowedCIDRs(context.Background(), environmentFile, nil, CoreAccessHooks{
+		Restart: func(context.Context) error { restarts++; return nil },
+		Ready:   func(context.Context, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 0 {
+		t.Fatalf("updated operator CIDRs = %v, want none", updated)
+	}
+	if restarts != 1 {
+		t.Fatalf("restart count = %d, want 1", restarts)
+	}
+	data, err := os.ReadFile(environmentFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "SWARMOPS_ALLOWED_CLIENT_CIDRS=\n") {
+		t.Fatalf("updated environment:\n%s", data)
+	}
+	if _, err := SetCoreAllowedCIDRs(context.Background(), environmentFile, nil, CoreAccessHooks{
+		Restart: func(context.Context) error { restarts++; return nil },
+		Ready:   func(context.Context, string) error { return nil },
+	}); err != nil {
+		t.Fatalf("re-running the disable path on an empty allowlist: %v", err)
+	}
+	if restarts != 1 {
+		t.Fatalf("restart count = %d, want the unchanged policy to skip a restart", restarts)
+	}
+}

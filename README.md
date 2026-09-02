@@ -652,7 +652,23 @@ ssh -L 8085:127.0.0.1:8085 <ssh-user>@<controller>
 ```
 
 Then open `http://127.0.0.1:8085`. The native bootstrap already includes
-`127.0.0.1/32` in `SWARMOPS_ALLOWED_CLIENT_CIDRS`.
+`127.0.0.1/32` in `SWARMOPS_ALLOWED_CLIENT_CIDRS` whenever that allowlist is
+enabled.
+
+`SWARMOPS_ALLOWED_CLIENT_CIDRS` is optional and empty by default: Core then
+accepts every client network, which is what operators without a static address
+need. Enable the allowlist once you have a stable network, with at least one
+CIDR, and turn it back off with `disable`:
+
+```bash
+sudo swarmops-core access set-cidrs <operator-device-ip>/32
+```
+
+```bash
+sudo swarmops-core access disable
+```
+
+Enabling it preserves certificate-IP and loopback access automatically.
 
 If HTTP must be reachable directly, bind a different unused port on the
 controller IP and explicitly acknowledge the exposure:
@@ -668,7 +684,7 @@ Restrict that port to the same CIDRs in the host/cloud firewall. To disable the
 listener, set both `SWARMOPS_HTTP_ENABLED=false` and
 `SWARMOPS_HTTP_ALLOW_REMOTE=false`, then restart
 `swarmops-control-plane.service`. Core refuses to start if remote HTTP lacks the
-explicit acknowledgement or a client allowlist, if its address collides with
+explicit acknowledgement, if its address collides with
 the primary listener, or if primary TLS is not configured.
 
 The bootstrap writes a stable `SWARMOPS_CORE_ID` derived from its bound IP and

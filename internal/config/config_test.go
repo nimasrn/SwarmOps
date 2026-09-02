@@ -172,7 +172,7 @@ func TestLoadProductionRejectsGroupReadableDataEncryptionKey(t *testing.T) {
 	}
 }
 
-func TestLoadDirectTLSRequiresAllowedClientNetwork(t *testing.T) {
+func TestLoadDirectTLSAllowsEveryClientNetworkWithoutAllowlist(t *testing.T) {
 	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "false")
 	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
 	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
@@ -183,8 +183,12 @@ func TestLoadDirectTLSRequiresAllowedClientNetwork(t *testing.T) {
 	t.Setenv("SWARMOPS_LISTEN_ADDR", "192.0.2.20:42420")
 	t.Setenv("SWARMOPS_ALLOWED_CLIENT_CIDRS", "")
 
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_ALLOWED_CLIENT_CIDRS") {
-		t.Fatalf("Load() error = %v, want direct-TLS allowlist failure", err)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want a non-loopback listener without an allowlist to load", err)
+	}
+	if len(cfg.AllowedClientCIDRs) != 0 {
+		t.Fatalf("allowed client CIDRs = %#v, want the allowlist disabled", cfg.AllowedClientCIDRs)
 	}
 }
 
@@ -250,8 +254,8 @@ func TestLoadBreakGlassHTTPLoopbackAndRemoteGuards(t *testing.T) {
 	}
 
 	t.Setenv("SWARMOPS_HTTP_ALLOW_REMOTE", "true")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "SWARMOPS_ALLOWED_CLIENT_CIDRS") {
-		t.Fatalf("remote HTTP without allowlist error = %v", err)
+	if cfg, err := Load(); err != nil || len(cfg.AllowedClientCIDRs) != 0 {
+		t.Fatalf("remote HTTP without allowlist = %#v, error %v; want the allowlist disabled", cfg.AllowedClientCIDRs, err)
 	}
 
 	t.Setenv("SWARMOPS_ALLOWED_CLIENT_CIDRS", "198.51.100.20/32")
