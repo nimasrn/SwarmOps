@@ -37,13 +37,26 @@ type PollRequest struct {
 // an outbound agent. It intentionally mirrors, rather than embeds, the agent
 // package contract to keep the transport dependency one-way.
 type Status struct {
-	DockerAvailable       bool   `json:"dockerAvailable"`
-	DockerVersion         string `json:"dockerVersion,omitempty"`
-	NodeName              string `json:"nodeName"`
-	RemoteControlEnabled  bool   `json:"remoteControlEnabled"`
-	SwarmControlAvailable bool   `json:"swarmControlAvailable"`
-	SwarmState            string `json:"swarmState,omitempty"`
-	Version               string `json:"version"`
+	DockerAvailable       bool         `json:"dockerAvailable"`
+	DockerVersion         string       `json:"dockerVersion,omitempty"`
+	NodeName              string       `json:"nodeName"`
+	RemoteControlEnabled  bool         `json:"remoteControlEnabled"`
+	SwarmControlAvailable bool         `json:"swarmControlAvailable"`
+	SwarmState            string       `json:"swarmState,omitempty"`
+	Update                UpdateStatus `json:"update"`
+	Version               string       `json:"version"`
+}
+
+// UpdateStatus mirrors the agent's native updater state so an outbound agent
+// can surface it during the handshake. Core cannot probe a pull agent, so this
+// is the only path by which the local updater configuration becomes visible.
+type UpdateStatus struct {
+	Automatic     bool      `json:"automatic"`
+	CheckedAt     time.Time `json:"checkedAt,omitempty"`
+	LastUpdatedAt time.Time `json:"lastUpdatedAt,omitempty"`
+	Revision      string    `json:"revision,omitempty"`
+	State         string    `json:"state,omitempty"`
+	Version       string    `json:"version,omitempty"`
 }
 
 type Request struct {

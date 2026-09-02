@@ -311,7 +311,8 @@ func newOutboundClient(runtime runtimeConfig, server *agent.Server) (*agentpull.
 		if nodeName == "" {
 			nodeName = status.NodeName
 		}
-		return agentpull.Status{DockerAvailable: status.DockerAvailable, DockerVersion: status.DockerVersion, NodeName: nodeName, RemoteControlEnabled: status.RemoteControlEnabled, SwarmControlAvailable: status.SwarmControlAvailable, SwarmState: status.SwarmState, Version: status.Version}, nil
+		update := server.CurrentUpdate()
+		return agentpull.Status{DockerAvailable: status.DockerAvailable, DockerVersion: status.DockerVersion, NodeName: nodeName, RemoteControlEnabled: status.RemoteControlEnabled, SwarmControlAvailable: status.SwarmControlAvailable, SwarmState: status.SwarmState, Update: agentpull.UpdateStatus{Automatic: update.Automatic, CheckedAt: update.CheckedAt, LastUpdatedAt: update.LastUpdatedAt, Revision: update.Revision, State: update.State, Version: update.Version}, Version: status.Version}, nil
 	}})
 }
 

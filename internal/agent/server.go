@@ -536,6 +536,14 @@ func dockerCommandFailureCode(args []string, output string, contextErr, outputEr
 	}
 	message := strings.ToLower(output)
 	switch {
+	// The swarm ingress network is created by swarm init, not by this stack,
+	// so a published port cannot be allocated without it. Docker reports this
+	// as a FailedPrecondition that never mentions "declared as external": it
+	// used to fall through to the generic stack-deploy bucket, which retried a
+	// deterministic failure eight times and told operators to inspect service
+	// tasks that were never created.
+	case strings.Contains(message, "ingress network") && (strings.Contains(message, "no ingress network is present") || strings.Contains(message, "needs ingress network")):
+		return agentcontrol.CommandFailureIngressMissing
 	case strings.Contains(message, "network") && strings.Contains(message, "declared as external") && strings.Contains(message, "could not be found"):
 		return agentcontrol.CommandFailureNetworkMissing
 	case strings.Contains(message, "config") && strings.Contains(message, "declared as external") && strings.Contains(message, "could not be found"):
@@ -648,6 +656,16 @@ func (s *Server) CurrentStatus(ctx context.Context) Status {
 		return Status{}
 	}
 	return s.currentStatus(ctx)
+}
+
+// CurrentUpdate exposes the same native updater projection used by
+// /v1/diagnostics to the outbound pull client. Core cannot probe a pull agent,
+// so the agent must carry this state in its handshake instead.
+func (s *Server) CurrentUpdate() UpdateStatus {
+	if s == nil {
+		return UpdateStatus{}
+	}
+	return readUpdateStatus(s.config.UpdateStatusFile, s.config.AutomaticUpdates)
 }
 
 var jsonEncoder = func(response http.ResponseWriter, value any) error {

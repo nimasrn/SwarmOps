@@ -87,7 +87,7 @@ configs:
     external: true
     name: ${TRAEFIK_STATIC_CONFIG_NAME:-swarmops_traefik_static_v1_0000000000000000}
   traefik_dynamic:
-    file: ../traefik/dynamic.yml
+    external: true
     name: ${TRAEFIK_DYNAMIC_CONFIG_NAME:-nim_traefik_dynamic_v1}
 
 secrets:

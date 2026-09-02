@@ -26,6 +26,7 @@ func TestDockerCommandFailureCodeReturnsOnlyAllowlistedDiagnostics(t *testing.T)
 		outErr error
 		want   string
 	}{
+		{name: "missing swarm ingress network", args: []string{"stack", "deploy"}, output: "failed to create service traefik_traefik: Error response from daemon: rpc error: code = FailedPrecondition desc = service needs ingress network, but no ingress network is present", want: agentcontrol.CommandFailureIngressMissing},
 		{name: "external network", args: []string{"stack", "deploy"}, output: "network traefik is declared as external, but could not be found", want: agentcontrol.CommandFailureNetworkMissing},
 		{name: "external config", args: []string{"stack", "deploy"}, output: "config platform_static is declared as external, but could not be found", want: agentcontrol.CommandFailureConfigMissing},
 		{name: "external secret", args: []string{"stack", "deploy"}, output: "secret dashboard_auth is declared as external, but could not be found", want: agentcontrol.CommandFailureSecretMissing},

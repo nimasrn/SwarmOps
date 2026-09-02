@@ -496,3 +496,44 @@ func serveDocker(channel ssh.Channel) {
 func testDataEncryptionKey() []byte {
 	return bytes.Repeat([]byte{17}, 32)
 }
+
+func TestAttachPullCarriesNativeUpdaterStateAndKeepsCoreRequestedAt(t *testing.T) {
+	t.Parallel()
+	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkedAt := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	status := agentpull.Status{
+		DockerAvailable:      true,
+		NodeName:             "manager-1",
+		RemoteControlEnabled: true,
+		Update:               agentpull.UpdateStatus{Automatic: true, CheckedAt: checkedAt, State: "up_to_date", Version: "v0.12.0"},
+		Version:              "v0.12.0",
+	}
+	profile, err := manager.AttachPull("agent-1", "manager-1", status, unavailableRoundTripper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !profile.AgentHealth.Update.Automatic || profile.AgentHealth.Update.State != "up_to_date" || !profile.AgentHealth.Update.CheckedAt.Equal(checkedAt) {
+		t.Fatalf("attached outbound update = %#v", profile.AgentHealth.Update)
+	}
+
+	requestedAt := time.Now().UTC().Truncate(time.Second)
+	manager.mu.Lock()
+	stored := manager.profiles[profile.ID]
+	stored.AgentHealth.Update.RequestedAt = requestedAt
+	manager.profiles[profile.ID] = stored
+	manager.mu.Unlock()
+
+	refreshed, err := manager.AttachPull("agent-1", "manager-1", status, unavailableRoundTripper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !refreshed.AgentHealth.Update.RequestedAt.Equal(requestedAt) {
+		t.Fatalf("re-attach dropped Core-owned RequestedAt = %#v", refreshed.AgentHealth.Update)
+	}
+	if !refreshed.AgentHealth.Update.Automatic {
+		t.Fatalf("re-attach dropped automatic updates = %#v", refreshed.AgentHealth.Update)
+	}
+}

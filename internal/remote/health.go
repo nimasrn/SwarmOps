@@ -174,7 +174,7 @@ func (m *Manager) probeAndScheduleUpdates(ctx context.Context) {
 		_ = failure // Probe persists the safe observation; callers may log separately if needed.
 	}
 	for _, server := range m.List() {
-		if server.ConnectionType != ConnectionAgentAPI || !server.AgentHealth.Update.Automatic || !shouldRequestAgentUpdate(server.AgentHealth.Update, time.Now().UTC()) {
+		if (server.ConnectionType != ConnectionAgentAPI && server.ConnectionType != ConnectionAgentPull) || !server.AgentHealth.Update.Automatic || !shouldRequestAgentUpdate(server.AgentHealth.Update, time.Now().UTC()) {
 			continue
 		}
 		updateContext, cancel := context.WithTimeout(ctx, agentProbeTimeout)

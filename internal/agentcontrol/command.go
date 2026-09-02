@@ -37,6 +37,7 @@ const (
 const (
 	CommandFailureConfigMissing    = "docker_external_config_missing"
 	CommandFailureImageUnavailable = "docker_image_unavailable"
+	CommandFailureIngressMissing   = "docker_ingress_network_missing"
 	CommandFailureNetworkMissing   = "docker_external_network_missing"
 	CommandFailureOutputLimit      = "docker_command_output_limit"
 	CommandFailurePlacement        = "docker_placement_unsatisfied"
@@ -59,6 +60,7 @@ func ValidCommandFailureCode(code string) bool {
 	switch code {
 	case CommandFailureConfigMissing,
 		CommandFailureImageUnavailable,
+		CommandFailureIngressMissing,
 		CommandFailureNetworkMissing,
 		CommandFailureOutputLimit,
 		CommandFailurePlacement,

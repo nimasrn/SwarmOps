@@ -1077,6 +1077,7 @@ func classifyCommandError(err error) error {
 	if errors.As(err, &classified) {
 		switch classified.SafeFailureCode() {
 		case agentcontrol.CommandFailureConfigMissing,
+			agentcontrol.CommandFailureIngressMissing,
 			agentcontrol.CommandFailureNetworkMissing,
 			agentcontrol.CommandFailureOutputLimit,
 			agentcontrol.CommandFailurePlacement,

@@ -359,6 +359,18 @@ func (m *Manager) AttachPull(agentID, name string, status agentpull.Status, tran
 	profile.AgentHealth.ProtocolVersion = agentpull.ProtocolVersion
 	profile.AgentHealth.State = domain.HealthHealthy
 	profile.AgentHealth.Summary = "Outbound agent is connected"
+	// Core never probes a pull agent, so the handshake is the only place the
+	// native updater state becomes visible. RequestedAt is Core-owned and must
+	// survive the refresh.
+	profile.AgentHealth.Update = domain.AgentUpdateStatus{
+		Automatic:     status.Update.Automatic,
+		CheckedAt:     status.Update.CheckedAt,
+		LastUpdatedAt: status.Update.LastUpdatedAt,
+		RequestedAt:   profile.AgentHealth.Update.RequestedAt,
+		Revision:      status.Update.Revision,
+		State:         status.Update.State,
+		Version:       status.Update.Version,
+	}
 	if existing := m.connections[agentID]; existing != nil {
 		existing.Profile = profile
 		m.profiles[agentID] = profile

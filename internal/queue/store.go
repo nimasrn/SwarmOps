@@ -99,6 +99,8 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "traefik_dynamic_config_required", "The reviewed Traefik dynamic config is missing.", "Create the configured dynamic Swarm config, then retry."
 	case action == "traefik.reconcile" && strings.Contains(message, "dashboard") && strings.Contains(message, "secret"):
 		return "traefik_dashboard_auth_required", "The Traefik dashboard-auth secret is missing.", "Create the configured htpasswd Swarm secret, then retry."
+	case safeCode == "docker_ingress_network_missing":
+		return "swarm_ingress_network_missing", "Docker has no swarm ingress network, so no service can publish a port.", "Recreate the ingress network on the manager (docker network create --driver overlay --ingress --subnet 10.0.0.0/24 --gateway 10.0.0.1 ingress), then retry."
 	case action == "traefik.reconcile" && safeCode == "docker_external_network_missing":
 		return "traefik_network_required", "Docker rejected the Traefik deployment because its required external overlay network is missing.", "Open Gateway & ports, refresh Installation prerequisites, repair the missing resources, then retry."
 	case action == "traefik.reconcile" && safeCode == "docker_external_config_missing":
