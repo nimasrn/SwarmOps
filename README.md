@@ -820,13 +820,25 @@ Source deployment is a separate, default-off controller capability. Enable it
 only after the controller data key, provider-token revocation process, selected
 manager, platform manifest, registry, and build policy are ready.
 
-The console owns this setup: **Apps → Deploy → Set up source deployment** turns
-the boundary on, sets the registry namespace, seals a registry push credential,
-allows bounded builds, and allow-lists private provider hosts. Those settings
-are AES-256-GCM sealed in `source-settings.sealed` beside the provider tokens
-and take effect without restarting the controller; the registry password is
-write-only and is never returned to the browser. Per-host build permission is
-unaffected — each Docker host still enforces its own.
+The console owns this setup, and it is split by boundary rather than by
+storage. **Apps → Deploy → Set up source deployment** turns the provider
+boundary on and allow-lists private provider hosts; the provider token itself
+belongs to a connection and is entered on the Provider step afterwards.
+**Apps → Images & registries** owns where a built image GOES: the registry
+namespace, the sealed push credential, and bounded builds. Connecting a
+provider and scanning a repository need only the first; the registry is
+required at release time and is reported as such on the deploy screen.
+
+Both halves write one AES-256-GCM sealed record, `source-settings.sealed`,
+beside the provider tokens, and take effect without restarting the controller.
+The registry password is write-only and is never returned to the browser.
+Per-host build permission is unaffected — each Docker host still enforces its
+own.
+
+The pull-through mirror every machine fetches PUBLIC images through is a third,
+unrelated control: **Control → Registry mirror**. It writes only the mirror list
+into each host's Docker daemon configuration and reports what each daemon
+actually has, so a fleet that has drifted is visible.
 
 The variables below remain supported as startup defaults for hosts that are
 provisioned from configuration rather than the console:
@@ -1043,7 +1055,11 @@ replica profiles are considered protected.
 
 Traefik has three reviewed resolver names: `le`, `arvan`, and `http`. `le` uses
 Cloudflare DNS-01 when its versioned credential exists, and `arvan` does the
-same for ArvanCloud. A resolver whose usable DNS credential is absent is
+same for ArvanCloud. A Cloudflare credential carries two optional non-secret
+fields beside its sealed value: an account identifier, which scopes the zone
+lookup when the credential reaches more than one account, and an account email,
+which switches both SwarmOps and Traefik from a scoped API token to that
+account's Global API Key. A resolver whose usable DNS credential is absent is
 rendered as HTTP-01 on public port 80 instead, so neither DNS provider secret
 is an installation prerequisite. Wildcard certificates still require DNS-01;
 their preflight remains blocked until the selected resolver has a credential.

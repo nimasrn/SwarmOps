@@ -11,6 +11,54 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.15.0 — 2026-09-03
+
+Three unrelated things called "registry" stop sharing a screen, a Cloudflare
+Global API Key is a supported credential, and the source scanner reports what
+it read instead of a filename.
+
+- **Registry mirror is a Control page, and the push registry belongs to Images
+  & registries** — the console had piled three different questions onto two
+  screens. Where every machine pulls PUBLIC images from is a fleet-wide fact
+  that belongs to no cluster selection and no application, so it is now
+  **Control → Registry mirror**, beside the other fleet-wide software controls,
+  and it answers before the cluster gate rather than behind it. Where a built
+  image is PUSHED to — the registry namespace, the sealed push credential,
+  bounded builds — is now **Apps → Images & registries**, next to the images it
+  produces. **Apps → Deploy → Set up source deployment** keeps only the
+  provider boundary it is actually about. The three still write one sealed
+  record, so each screen saves from what was last read and changes only its own
+  fields rather than silently clearing another screen's.
+
+- **Cloudflare Global API Key, and account-scoped zone lookup** — a DNS
+  credential now carries two optional non-secret fields beside its sealed
+  value. An account email switches both SwarmOps and the rendered Traefik stack
+  from a scoped bearer token to that account's Global API Key — `X-Auth-Email`
+  and `X-Auth-Key` on the provider calls, `CF_API_EMAIL` and `CF_API_KEY_FILE`
+  in the stack — and is validated against the account it claims to belong to,
+  because a global key cannot be introspected the way a scoped token can. An
+  account identifier scopes the zone lookup, which is what an operator whose
+  credential reaches more than one account needs in order to get a single
+  unambiguous zone. Both are Cloudflare-only and rejected on any other
+  provider; the scoped token remains the default and the recommendation.
+
+- **The source scanner reads its evidence** (`swarmops-source-v2`) — it used to
+  check that a Dockerfile existed and stop there. Every Dockerfile is now
+  parsed once and its findings travel with whichever service builds it, so
+  "this image runs as root" appears beside that service rather than as an
+  unattached repository note, and a Compose service with no `ports:` inherits
+  the port its own `EXPOSE` already named. A managed database is mapped to the
+  environment variable NAMES the application actually reads, which is what
+  stops an application that reads `DATABASE_URL` from being handed
+  `POSTGRES_URL_FILE`, failing to connect, and restarting forever. Traefik
+  labels already in the repository are read as the proposed route instead of
+  being invented, declared replicas and CPU/memory limits are carried, and a
+  build context with no `.dockerignore` is reported before it uploads the
+  repository's history to the builder. The parser resolves no build argument,
+  follows no base image, and executes nothing. Route hostnames are the single
+  documented value the plan retains — a route cannot be approved without the
+  name it serves — and environment values are still classified and discarded.
+
 ## 0.14.1 — 2026-09-03
 
 The operator CIDR allowlist is optional in both directions: it can be left off

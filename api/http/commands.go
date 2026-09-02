@@ -767,7 +767,8 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(fmt.Errorf("DNS credential input is unavailable"))
 		}
 		defer artifact.Close()
-		_, err = target.Control.InstallDNSCredential(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Name, input.Provider, artifact)
+		identity := ops.DNSCredentialIdentity{AccountID: input.AccountID, Email: input.Email}
+		_, err = target.Control.InstallDNSCredential(ctx, record.Command.Actor, record.Command.RequestID, input.ID, input.Name, input.Provider, identity, artifact)
 		return classifyCommandError(err)
 	case commandTraefikDNSCredentialRemove:
 		var input traefikDNSCredentialRemoveCommand

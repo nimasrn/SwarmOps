@@ -23,6 +23,7 @@ type TraefikStackSettings struct {
 	ACMEEmail              string
 	ArvanDNSAvailable      bool
 	ArvanAPIKeySecret      string
+	CloudflareAPIEmail     string
 	CloudflareDNSAvailable bool
 	CFDNSTokenSecret       string
 	DashboardAuthSecret    string
@@ -103,6 +104,11 @@ func (s TraefikStackSettings) Validate() error {
 	} {
 		if !dockerReferenceName.MatchString(strings.TrimSpace(value)) {
 			return fmt.Errorf("%s name is invalid", name)
+		}
+	}
+	if email := strings.TrimSpace(s.CloudflareAPIEmail); email != "" {
+		if len(email) > 254 || !strings.Contains(email, "@") || strings.ContainsAny(email, "\r\n\x00 \t") {
+			return fmt.Errorf("Traefik Cloudflare account email is invalid")
 		}
 	}
 	if s.Control.Version != 0 {
@@ -203,8 +209,10 @@ func applyTraefikChallengeFallback(settings *TraefikStackSettings, routes []Rout
 	}
 	settings.CloudflareDNSAvailable = secretNames[settings.CFDNSTokenSecret]
 	settings.ArvanDNSAvailable = secretNames[settings.ArvanAPIKeySecret]
-	if value := latest[DNSProviderCloudflare].SecretName; value != "" {
-		settings.CFDNSTokenSecret = value
+	settings.CloudflareAPIEmail = ""
+	if credential := latest[DNSProviderCloudflare]; credential.SecretName != "" {
+		settings.CFDNSTokenSecret = credential.SecretName
+		settings.CloudflareAPIEmail = credential.Email
 		settings.CloudflareDNSAvailable = true
 	}
 	if value := latest[DNSProviderArvan].SecretName; value != "" {
@@ -571,7 +579,13 @@ func applyTypedTraefikStack(root map[string]any, settings TraefikStackSettings) 
 	delete(secrets, "traefik_cf_dns_token")
 	delete(secrets, "traefik_arvan_api_key")
 	if settings.CloudflareDNSAvailable {
-		environment["CF_DNS_API_TOKEN_FILE"] = "/run/secrets/traefik_cf_dns_token"
+		if settings.CloudflareAPIEmail != "" {
+			// A global API key is only accepted alongside the account email.
+			environment["CF_API_EMAIL"] = settings.CloudflareAPIEmail
+			environment["CF_API_KEY_FILE"] = "/run/secrets/traefik_cf_dns_token"
+		} else {
+			environment["CF_DNS_API_TOKEN_FILE"] = "/run/secrets/traefik_cf_dns_token"
+		}
 		serviceSecrets = append(serviceSecrets, map[string]any{"source": "traefik_cf_dns_token", "target": "traefik_cf_dns_token", "mode": 0o400})
 		secrets["traefik_cf_dns_token"] = map[string]any{"external": true, "name": settings.CFDNSTokenSecret}
 	}

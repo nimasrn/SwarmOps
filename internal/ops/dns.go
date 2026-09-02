@@ -50,13 +50,30 @@ func NewHTTPDNSProviderService(client *http.Client) *HTTPDNSProviderService {
 func (s *HTTPDNSProviderService) ValidateCredential(ctx context.Context, metadata DNSCredentialMetadata, secret string) error {
 	switch metadata.Provider {
 	case DNSProviderCloudflare:
+		if strings.TrimSpace(metadata.Email) != "" {
+			// A global API key cannot be introspected through the token
+			// endpoint; the account it belongs to is the only proof available.
+			var response struct {
+				Result struct {
+					Email string `json:"email"`
+				} `json:"result"`
+				Success bool `json:"success"`
+			}
+			if err := s.doJSON(ctx, http.MethodGet, s.cloudflareBase+"/user", cloudflareAuthorization(metadata, secret), nil, &response); err != nil {
+				return fmt.Errorf("validate Cloudflare global API key: %w", err)
+			}
+			if !response.Success || !strings.EqualFold(strings.TrimSpace(response.Result.Email), strings.TrimSpace(metadata.Email)) {
+				return fmt.Errorf("Cloudflare global API key does not belong to the stated account email")
+			}
+			return nil
+		}
 		var response struct {
 			Result struct {
 				Status string `json:"status"`
 			} `json:"result"`
 			Success bool `json:"success"`
 		}
-		if err := s.doJSON(ctx, http.MethodGet, s.cloudflareBase+"/user/tokens/verify", "Bearer "+secret, nil, &response); err != nil {
+		if err := s.doJSON(ctx, http.MethodGet, s.cloudflareBase+"/user/tokens/verify", cloudflareAuthorization(metadata, secret), nil, &response); err != nil {
 			return fmt.Errorf("validate Cloudflare DNS token: %w", err)
 		}
 		if !response.Success || !strings.EqualFold(response.Result.Status, "active") {
@@ -78,7 +95,7 @@ func (s *HTTPDNSProviderService) ValidateCredential(ctx context.Context, metadat
 func (s *HTTPDNSProviderService) FindRecord(ctx context.Context, metadata DNSCredentialMetadata, secret string, requested DNSRecordSpec) (*DNSProviderRecord, error) {
 	switch metadata.Provider {
 	case DNSProviderCloudflare:
-		zoneID, err := s.cloudflareZoneID(ctx, secret, requested.Zone)
+		zoneID, err := s.cloudflareZoneID(ctx, metadata, secret, requested.Zone)
 		if err != nil {
 			return nil, err
 		}
@@ -99,7 +116,7 @@ func (s *HTTPDNSProviderService) FindRecord(ctx context.Context, metadata DNSCre
 			Success bool `json:"success"`
 		}
 		endpoint := s.cloudflareBase + "/zones/" + url.PathEscape(zoneID) + "/dns_records?" + query.Encode()
-		if err := s.doJSON(ctx, http.MethodGet, endpoint, "Bearer "+secret, nil, &response); err != nil {
+		if err := s.doJSON(ctx, http.MethodGet, endpoint, cloudflareAuthorization(metadata, secret), nil, &response); err != nil {
 			return nil, fmt.Errorf("read Cloudflare DNS record: %w", err)
 		}
 		if !response.Success {
@@ -121,7 +138,7 @@ func (s *HTTPDNSProviderService) FindRecord(ctx context.Context, metadata DNSCre
 func (s *HTTPDNSProviderService) UpsertRecord(ctx context.Context, metadata DNSCredentialMetadata, secret string, requested DNSRecordSpec, existing *DNSProviderRecord) (DNSProviderRecord, error) {
 	switch metadata.Provider {
 	case DNSProviderCloudflare:
-		zoneID, err := s.cloudflareZoneID(ctx, secret, requested.Zone)
+		zoneID, err := s.cloudflareZoneID(ctx, metadata, secret, requested.Zone)
 		if err != nil {
 			return DNSProviderRecord{}, err
 		}
@@ -146,7 +163,7 @@ func (s *HTTPDNSProviderService) UpsertRecord(ctx context.Context, metadata DNSC
 			} `json:"result"`
 			Success bool `json:"success"`
 		}
-		if err := s.doJSON(ctx, method, endpoint, "Bearer "+secret, body, &response); err != nil {
+		if err := s.doJSON(ctx, method, endpoint, cloudflareAuthorization(metadata, secret), body, &response); err != nil {
 			return DNSProviderRecord{}, fmt.Errorf("write Cloudflare DNS record: %w", err)
 		}
 		if !response.Success || response.Result.ID == "" {
@@ -188,15 +205,16 @@ func (s *HTTPDNSProviderService) DeleteRecord(ctx context.Context, metadata DNSC
 	if requested.ProviderRecordID == "" {
 		return fmt.Errorf("tracked provider DNS record identifier is required")
 	}
-	var endpoint, authorization string
+	var endpoint string
+	var authorization http.Header
 	switch metadata.Provider {
 	case DNSProviderCloudflare:
-		zoneID, err := s.cloudflareZoneID(ctx, secret, requested.Zone)
+		zoneID, err := s.cloudflareZoneID(ctx, metadata, secret, requested.Zone)
 		if err != nil {
 			return err
 		}
 		endpoint = s.cloudflareBase + "/zones/" + url.PathEscape(zoneID) + "/dns_records/" + url.PathEscape(requested.ProviderRecordID)
-		authorization = "Bearer " + secret
+		authorization = cloudflareAuthorization(metadata, secret)
 	case DNSProviderArvan:
 		endpoint = s.arvanBase + "/cdn/4.0/domains/" + url.PathEscape(requested.Zone) + "/dns-records/" + url.PathEscape(requested.ProviderRecordID)
 		authorization = arvanAuthorization(secret)
@@ -210,11 +228,24 @@ func (s *HTTPDNSProviderService) DeleteRecord(ctx context.Context, metadata DNSC
 	return nil
 }
 
-func (s *HTTPDNSProviderService) cloudflareZoneID(ctx context.Context, secret, zone string) (string, error) {
+// cloudflareAuthorization picks the authentication Cloudflare expects for this
+// credential: a scoped bearer token, or the global API key paired with the
+// account email when one was stored with the credential.
+func cloudflareAuthorization(metadata DNSCredentialMetadata, secret string) http.Header {
+	if email := strings.TrimSpace(metadata.Email); email != "" {
+		return http.Header{"X-Auth-Email": []string{email}, "X-Auth-Key": []string{secret}}
+	}
+	return http.Header{"Authorization": []string{"Bearer " + secret}}
+}
+
+func (s *HTTPDNSProviderService) cloudflareZoneID(ctx context.Context, metadata DNSCredentialMetadata, secret, zone string) (string, error) {
 	query := url.Values{}
 	query.Set("name", zone)
 	query.Set("status", "active")
 	query.Set("per_page", "2")
+	if accountID := strings.TrimSpace(metadata.AccountID); accountID != "" {
+		query.Set("account.id", accountID)
+	}
 	var response struct {
 		Result []struct {
 			ID   string `json:"id"`
@@ -222,7 +253,7 @@ func (s *HTTPDNSProviderService) cloudflareZoneID(ctx context.Context, secret, z
 		} `json:"result"`
 		Success bool `json:"success"`
 	}
-	if err := s.doJSON(ctx, http.MethodGet, s.cloudflareBase+"/zones?"+query.Encode(), "Bearer "+secret, nil, &response); err != nil {
+	if err := s.doJSON(ctx, http.MethodGet, s.cloudflareBase+"/zones?"+query.Encode(), cloudflareAuthorization(metadata, secret), nil, &response); err != nil {
 		return "", fmt.Errorf("read Cloudflare DNS zone: %w", err)
 	}
 	if !response.Success || len(response.Result) != 1 || !strings.EqualFold(response.Result[0].Name, zone) || response.Result[0].ID == "" {
@@ -271,7 +302,7 @@ func (s *HTTPDNSProviderService) findArvanRecord(ctx context.Context, secret str
 	return nil, nil
 }
 
-func (s *HTTPDNSProviderService) doJSON(ctx context.Context, method, endpoint, authorization string, body, destination any) error {
+func (s *HTTPDNSProviderService) doJSON(ctx context.Context, method, endpoint string, auth http.Header, body, destination any) error {
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -285,7 +316,11 @@ func (s *HTTPDNSProviderService) doJSON(ctx context.Context, method, endpoint, a
 		return fmt.Errorf("build provider request")
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", authorization)
+	for name, values := range auth {
+		for _, value := range values {
+			request.Header.Set(name, value)
+		}
+	}
 	request.Header.Set("User-Agent", "SwarmOps/1")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -310,8 +345,8 @@ func (s *HTTPDNSProviderService) doJSON(ctx context.Context, method, endpoint, a
 	return nil
 }
 
-func arvanAuthorization(secret string) string {
-	return "Apikey " + strings.TrimSpace(strings.TrimPrefix(secret, "Apikey "))
+func arvanAuthorization(secret string) http.Header {
+	return http.Header{"Authorization": []string{"Apikey " + strings.TrimSpace(strings.TrimPrefix(secret, "Apikey "))}}
 }
 
 func arvanRecordBody(record DNSRecordSpec) (map[string]any, error) {

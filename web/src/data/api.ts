@@ -569,8 +569,10 @@ export class SwarmOpsAPI {
     return this.commandRequest<Command>('/api/v1/traefik/settings', { method: 'POST', body: JSON.stringify({ confirmation, settings }) })
   }
 
-  uploadDNSCredential(id: string, name: string, provider: 'cloudflare' | 'arvan', value: string) {
+  uploadDNSCredential(id: string, name: string, provider: 'cloudflare' | 'arvan', value: string, identity: { accountId?: string; email?: string } = {}) {
     const query = new URLSearchParams({ id, name, provider })
+    if (identity.accountId) query.set('accountId', identity.accountId)
+    if (identity.email) query.set('email', identity.email)
     const headers = new Headers({ 'Content-Type': 'text/plain' })
     return this.commandRequest<Command>(`/api/v1/traefik/dns/credentials?${query}`, { method: 'POST', body: value, headers })
   }

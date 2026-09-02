@@ -49,6 +49,7 @@ export type WorkspacePage =
   // Control — the controller itself and the software on every host.
   | 'core'
   | 'agents'
+  | 'registry-mirror'
 
 export type AreaKey = 'home' | 'apps' | 'machines' | 'traffic' | 'activity' | 'control'
 
@@ -156,6 +157,7 @@ export const AREAS: AreaEntry[] = [
     pages: [
       { icon: 'settings', key: 'core', label: 'Core', summary: 'Where the controller runs, what version it is, and how to move it.', keywords: 'controller authority quorum failover backup restore topology recovery update' },
       { icon: 'download', key: 'agents', label: 'Agents & updates', summary: 'Which version each machine runs, and how it gets the next one.', keywords: 'agent version rollout rollback upgrade policy' },
+      { icon: 'cloud', key: 'registry-mirror', label: 'Registry mirror', summary: 'Where every machine pulls public images from.', keywords: 'docker hub mirror pull-through cache rate limit daemon proxy offline' },
     ],
   },
 ]

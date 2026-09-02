@@ -445,7 +445,9 @@ export interface TraefikPrerequisiteRepairResponse {
 }
 
 export interface DNSCredentialMetadata {
+  accountId?: string
   createdAt: string
+  email?: string
   id: string
   name: string
   provider: DNSProvider

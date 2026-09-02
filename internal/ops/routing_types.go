@@ -173,7 +173,9 @@ type TraefikInstallPreflight struct {
 }
 
 type DNSCredentialMetadata struct {
+	AccountID   string      `json:"accountId,omitempty"`
 	CreatedAt   time.Time   `json:"createdAt"`
+	Email       string      `json:"email,omitempty"`
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
 	Provider    DNSProvider `json:"provider"`
@@ -181,6 +183,42 @@ type DNSCredentialMetadata struct {
 	State       string      `json:"state"`
 	ValidatedAt *time.Time  `json:"validatedAt,omitempty"`
 	Version     int         `json:"version"`
+}
+
+// DNSCredentialIdentity carries the non-secret account fields that accompany a
+// provider credential value. Cloudflare uses the account identifier to scope
+// zone lookups, and the account email selects global-API-key authentication
+// instead of a scoped bearer token. Arvan accepts neither.
+type DNSCredentialIdentity struct {
+	AccountID string `json:"accountId,omitempty"`
+	Email     string `json:"email,omitempty"`
+}
+
+var cloudflareAccountIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// Normalize lowercases the identity fields the provider treats as opaque and
+// trims the surrounding whitespace a paste usually carries.
+func (i DNSCredentialIdentity) Normalize() DNSCredentialIdentity {
+	i.AccountID = strings.ToLower(strings.TrimSpace(i.AccountID))
+	i.Email = strings.ToLower(strings.TrimSpace(i.Email))
+	return i
+}
+
+func (i DNSCredentialIdentity) Validate(provider DNSProvider) error {
+	i = i.Normalize()
+	if provider != DNSProviderCloudflare {
+		if i.AccountID != "" || i.Email != "" {
+			return fmt.Errorf("only Cloudflare credentials accept an account identifier or email")
+		}
+		return nil
+	}
+	if i.AccountID != "" && !cloudflareAccountIDPattern.MatchString(i.AccountID) {
+		return fmt.Errorf("Cloudflare account identifier must be 32 hexadecimal characters")
+	}
+	if i.Email != "" && (len(i.Email) > 254 || !strings.Contains(i.Email, "@") || strings.ContainsAny(i.Email, "\r\n\x00 \t")) {
+		return fmt.Errorf("Cloudflare account email is invalid")
+	}
+	return nil
 }
 
 type DNSRecordSpec struct {

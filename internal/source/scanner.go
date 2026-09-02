@@ -19,6 +19,12 @@ import (
 var (
 	appNameSanitizer  = regexp.MustCompile(`[^a-z0-9-]+`)
 	httpTargetPattern = regexp.MustCompile(`https?://[^/\s'\"]+(/[A-Za-z0-9._~/-]*)`)
+	// These two mirror the application policy in internal/ops. Checking a
+	// discovered hostname and path here means the plan proposes only values
+	// the deployment boundary will actually accept, instead of carrying a
+	// route the operator can select and then be refused for.
+	applicationHostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+	httpPathPattern        = regexp.MustCompile(`^/[A-Za-z0-9._~/-]{0,200}$`)
 )
 
 type scannedFile struct {
@@ -29,18 +35,27 @@ type scannedFile struct {
 type composeServiceEvidence struct {
 	build          *BuildPlan
 	classification Classification
+	cpus           float64
 	databases      []string
+	dbRequirements map[string]DatabaseRequirement
 	dependsOn      []string
+	dockerfile     *DockerfilePlan
 	environment    []string
 	findings       []Finding
 	healthPath     string
 	image          string
 	labels         []string
+	memoryMiB      int64
 	metrics        bool
+	metricsPath    string
+	metricsPort    uint16
 	name           string
 	port           uint16
+	replicas       uint64
+	route          *RoutePlan
 	sharedStacks   []string
 	tracing        bool
+	tracingEnv     []string
 }
 
 func scanRepository(ctx context.Context, provider provider, repository Repository, revision Revision, options Options) (Plan, error) {
@@ -76,13 +91,26 @@ func scanRepository(ctx context.Context, provider provider, repository Repositor
 		Revision:     revision,
 		Scanner:      ScannerVersion,
 	}
-	dockerSet := make(map[string]bool, len(dockerfiles))
+	// Every Dockerfile is parsed once, up front. Its findings travel with
+	// whichever service ends up building it, so an operator sees "this image
+	// runs as root" beside the service it belongs to rather than as an
+	// unattached repository note.
+	evidence := repositoryEvidence{
+		dockerfiles: make(map[string]DockerfilePlan, len(dockerfiles)),
+		findings:    make(map[string][]Finding, len(dockerfiles)),
+		tree:        make(map[string]bool, len(entries)),
+	}
+	for _, entry := range entries {
+		evidence.tree[entry.Path] = true
+	}
 	for _, file := range dockerfiles {
-		dockerSet[file.evidence.Path] = true
+		analyzed, findings := analyzeDockerfile(file.evidence.Path, file.content)
+		evidence.dockerfiles[file.evidence.Path] = analyzed
+		evidence.findings[file.evidence.Path] = findings
 	}
 	referencedDockerfiles := map[string]bool{}
 	for _, file := range composeFiles {
-		services, findings := scanCompose(file, repository, revision, dockerSet, options)
+		services, findings := scanCompose(file, repository, revision, evidence, options)
 		plan.Findings = append(plan.Findings, findings...)
 		for _, service := range services {
 			if service.Build != nil {
@@ -105,10 +133,23 @@ func scanRepository(ctx context.Context, provider provider, repository Repositor
 		if build.Image == "" {
 			findings = append(findings, Finding{Code: "build_registry_unavailable", Level: FindingBlocker, Message: "Source builds require a configured allow-listed image prefix.", Subject: file.evidence.Path})
 		}
-		plan.Services = append(plan.Services, ServicePlan{
-			Build: build, Classification: ClassificationApplication, ComposePath: "", Findings: findings,
-			HealthPath: "/healthz", Image: build.Image, Name: serviceName, Service: serviceName,
-		})
+		findings = append(findings, evidence.findings[file.evidence.Path]...)
+		findings = append(findings, evidence.dockerignoreFinding(contextPath)...)
+		analyzed := evidence.dockerfiles[file.evidence.Path]
+		service := ServicePlan{
+			Build: build, Classification: ClassificationApplication, ComposePath: "", Dockerfile: &analyzed,
+			Findings: findings, HealthPath: "/healthz", Image: build.Image, Name: serviceName, Service: serviceName,
+		}
+		// With no Compose beside it, the Dockerfile is the only evidence of
+		// how this image is meant to be reached.
+		if len(analyzed.ExposedPorts) > 0 {
+			service.Port = preferredPort(analyzed.ExposedPorts)
+		}
+		if analyzed.HealthPath != "" {
+			service.HealthPath = analyzed.HealthPath
+		}
+		service.Route = &RoutePlan{Source: "proposed", TargetPort: service.Port}
+		plan.Services = append(plan.Services, service)
 	}
 	if len(plan.ComposeFiles) == 0 {
 		plan.Findings = append(plan.Findings, Finding{Code: "compose_not_found", Level: FindingWarning, Message: "No Compose file was found; standalone Dockerfiles were inspected instead."})
@@ -152,7 +193,32 @@ func readEvidenceFiles(ctx context.Context, provider provider, repositoryID stri
 	return composeFiles, dockerfiles, nil
 }
 
-func scanCompose(file scannedFile, repository Repository, revision Revision, dockerfiles map[string]bool, options Options) ([]ServicePlan, []Finding) {
+// repositoryEvidence is everything the scanner learned from the repository
+// tree before it started reading Compose: which Dockerfiles exist and what
+// each one says, and which paths exist at all.
+type repositoryEvidence struct {
+	dockerfiles map[string]DockerfilePlan
+	findings    map[string][]Finding
+	tree        map[string]bool
+}
+
+func (e repositoryEvidence) has(filename string) bool { return e.tree[filename] }
+
+// dockerignoreFinding reports a build context with no .dockerignore. The
+// provider archive carries the repository's history, so a context without one
+// uploads it to the daemon on every build.
+func (e repositoryEvidence) dockerignoreFinding(contextPath string) []Finding {
+	if e.tree[dockerignorePath(contextPath)] {
+		return nil
+	}
+	subject := contextPath
+	if subject == "" {
+		subject = "."
+	}
+	return []Finding{{Code: "dockerignore_missing", Level: FindingInfo, Message: "The build context has no .dockerignore, so every file under it is sent to the builder.", Subject: subject}}
+}
+
+func scanCompose(file scannedFile, repository Repository, revision Revision, evidence repositoryEvidence, options Options) ([]ServicePlan, []Finding) {
 	var root map[string]any
 	if err := yaml.Unmarshal(file.content, &root); err != nil {
 		return nil, []Finding{{Code: "compose_parse", Level: FindingBlocker, Message: "Compose evidence could not be parsed.", Subject: file.evidence.Path}}
@@ -166,19 +232,19 @@ func scanCompose(file scannedFile, repository Repository, revision Revision, doc
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	evidence := make(map[string]composeServiceEvidence, len(names))
+	inspected := make(map[string]composeServiceEvidence, len(names))
 	for _, name := range names {
 		raw, ok := stringMap(services[name])
 		if !ok {
-			evidence[name] = composeServiceEvidence{name: name, classification: ClassificationUnsupported, findings: []Finding{{Code: "service_shape", Level: FindingBlocker, Message: "Compose service must be an object.", Subject: file.evidence.Path + "#" + name}}}
+			inspected[name] = composeServiceEvidence{name: name, classification: ClassificationUnsupported, findings: []Finding{{Code: "service_shape", Level: FindingBlocker, Message: "Compose service must be an object.", Subject: file.evidence.Path + "#" + name}}}
 			continue
 		}
-		evidence[name] = inspectComposeService(file.evidence.Path, name, raw, repository, revision, dockerfiles, options)
+		inspected[name] = inspectComposeService(file.evidence.Path, name, raw, repository, revision, evidence, options)
 	}
 	globalStacks := map[string]bool{}
 	dataServices := map[string]string{}
 	platformServices := map[string][]string{}
-	for name, item := range evidence {
+	for name, item := range inspected {
 		if item.classification == ClassificationManagedData && len(item.databases) > 0 {
 			dataServices[name] = item.databases[0]
 		}
@@ -189,13 +255,20 @@ func scanCompose(file scannedFile, repository Repository, revision Revision, doc
 			}
 		}
 	}
-	result := make([]ServicePlan, 0, len(evidence))
+	result := make([]ServicePlan, 0, len(inspected))
 	for _, name := range names {
-		item := evidence[name]
+		item := inspected[name]
 		if item.classification == ClassificationApplication {
 			for _, dependency := range item.dependsOn {
 				if engine := dataServices[dependency]; engine != "" {
 					item.databases = append(item.databases, engine)
+					// A depends_on edge proves the requirement even when the
+					// application reads its URI from a variable the scanner
+					// could not classify. Recording it with no variable names
+					// keeps the delivery on the SwarmOps default.
+					if _, known := item.dbRequirements[engine]; !known {
+						item.dbRequirements[engine] = DatabaseRequirement{Engine: engine, Source: "depends_on"}
+					}
 				}
 				for _, stack := range platformServices[dependency] {
 					item.sharedStacks = append(item.sharedStacks, stack)
@@ -210,29 +283,83 @@ func scanCompose(file scannedFile, repository Repository, revision Revision, doc
 				item.metrics = item.metrics || containsFold(item.environment, "PROMETHEUS_URL")
 				item.tracing = item.tracing || hasAnyFold(item.environment, "OTEL_EXPORTER_OTLP_ENDPOINT", "JAEGER_ENDPOINT", "JAEGER_AGENT_HOST")
 			}
+			item.findings = append(item.findings, capabilityFindings(item, file.evidence.Path+"#"+name)...)
 		}
 		result = append(result, ServicePlan{
 			Build: item.build, Classification: item.classification, ComposePath: file.evidence.Path,
-			Databases: item.databases, Findings: item.findings, HealthPath: item.healthPath,
-			Image: item.image, Metrics: item.metrics, Name: normalizeApplicationName(name), Port: item.port,
-			Service: name, SharedStacks: item.sharedStacks, Tracing: item.tracing,
+			CPUs: item.cpus, Databases: item.databases, DatabaseRequirements: databaseRequirements(item),
+			Dockerfile: item.dockerfile, Findings: item.findings, HealthPath: item.healthPath,
+			Image: item.image, MemoryMiB: item.memoryMiB, Metrics: item.metrics,
+			Name: normalizeApplicationName(name), Port: item.port, Replicas: item.replicas,
+			Route: item.route, Service: name, SharedStacks: item.sharedStacks,
+			Telemetry: TelemetryPlan{MetricsPath: item.metricsPath, MetricsPort: item.metricsPort, TracingEnvVars: item.tracingEnv},
+			Tracing:   item.tracing,
 		})
 	}
 	return result, nil
 }
 
-func inspectComposeService(composePath, name string, service map[string]any, repository Repository, revision Revision, dockerfiles map[string]bool, options Options) composeServiceEvidence {
+// databaseRequirements renders the per-engine mapping in a stable order, and
+// only for engines that survived classification into the managed catalogue.
+func databaseRequirements(item composeServiceEvidence) []DatabaseRequirement {
+	if len(item.dbRequirements) == 0 {
+		return nil
+	}
+	result := make([]DatabaseRequirement, 0, len(item.dbRequirements))
+	for _, engine := range item.databases {
+		if requirement, found := item.dbRequirements[engine]; found {
+			result = append(result, requirement)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].Engine < result[right].Engine })
+	return result
+}
+
+// capabilityFindings reports what SwarmOps concluded about the signals an
+// application declared, so the decision is reviewable rather than silent.
+func capabilityFindings(item composeServiceEvidence, subject string) []Finding {
+	var findings []Finding
+	if item.metrics && !contains(item.sharedStacks, "swarmops-observability") {
+		findings = append(findings, Finding{Code: "metrics_stack_required", Level: FindingInfo, Message: "This application exposes metrics, so the reviewed SwarmOps observability stack will be installed to scrape it.", Subject: subject})
+	}
+	if item.tracing && !contains(item.sharedStacks, "swarmops-observability") {
+		findings = append(findings, Finding{Code: "tracing_stack_required", Level: FindingInfo, Message: "This application exports traces, so the reviewed SwarmOps observability stack — Jaeger and its OTLP endpoint — will be installed to receive them.", Subject: subject})
+	}
+	if item.tracing && len(item.tracingEnv) > 0 {
+		findings = append(findings, Finding{Code: "tracing_endpoint_replaced", Level: FindingInfo, Message: "The OpenTelemetry endpoint in this Compose file is replaced by the managed Jaeger OTLP collector.", Subject: subject})
+	}
+	for _, requirement := range item.dbRequirements {
+		if len(requirement.EnvVars) == 0 {
+			continue
+		}
+		findings = append(findings, Finding{Code: "database_env_mapped", Level: FindingInfo, Message: "The managed " + requirement.Engine + " connection is delivered as " + strings.Join(requirement.EnvVars, ", ") + ", matching what this application reads.", Subject: subject})
+	}
+	return findings
+}
+
+func inspectComposeService(composePath, name string, service map[string]any, repository Repository, revision Revision, evidence repositoryEvidence, options Options) composeServiceEvidence {
 	subject := composePath + "#" + name
 	image, _ := service["image"].(string)
 	image = strings.TrimSpace(image)
 	classification, databases, stacks := classifyService(name, image)
+	environment := environmentPairs(service["environment"])
+	labels := environmentPairs(service["labels"])
 	result := composeServiceEvidence{
-		classification: classification, databases: databases, image: image, name: name,
-		sharedStacks: stacks, dependsOn: dependencyNames(service["depends_on"]),
-		environment: environmentKeys(service["environment"]), labels: labelKeys(service["labels"]),
+		classification: classification, databases: databases, dbRequirements: map[string]DatabaseRequirement{},
+		image: image, name: name, sharedStacks: stacks, dependsOn: dependencyNames(service["depends_on"]),
+		environment: mapKeys(environment), labels: mapKeys(labels),
 	}
-	result.metrics = hasAnyFold(result.environment, "METRICS_PORT", "PROMETHEUS_URL", "PROMETHEUS_ENDPOINT") || hasAnyPrefixFold(result.labels, "prometheus.io/")
+	scrape, promPort, promPath := prometheusFromLabels(labels)
+	result.metrics = scrape || hasAnyFold(result.environment, "METRICS_PORT", "PROMETHEUS_URL", "PROMETHEUS_ENDPOINT")
+	result.metricsPath = promPath
+	result.metricsPort = promPort
 	result.tracing = hasAnyPrefixFold(result.environment, "OTEL_", "JAEGER_")
+	for _, key := range result.environment {
+		if hasAnyPrefixFold([]string{key}, "OTEL_EXPORTER_OTLP_", "JAEGER_") {
+			result.tracingEnv = append(result.tracingEnv, key)
+		}
+	}
+	result.tracingEnv = sortedUnique(result.tracingEnv)
 	if classification == ClassificationManagedData {
 		result.findings = append(result.findings, Finding{Code: "managed_database", Level: FindingInfo, Message: "This source service will be replaced by the matching SwarmOps managed database.", Subject: subject})
 		return result
@@ -242,22 +369,33 @@ func inspectComposeService(composePath, name string, service map[string]any, rep
 		return result
 	}
 	if classification == ClassificationUnsupported {
-		result.findings = append(result.findings, Finding{Code: "unsupported_database", Level: FindingBlocker, Message: "This stateful service has no managed SwarmOps equivalent.", Subject: subject})
+		result.findings = append(result.findings, unsupportedFinding(name, image, subject))
 		return result
 	}
+
+	// Every managed engine this application names in its own environment is a
+	// requirement, whether or not the Compose file also runs that engine. An
+	// application that points DATABASE_URL at an external Postgres still needs
+	// a Postgres, and SwarmOps can supply the managed one.
+	for engine, keys := range databaseEnvironment(environment) {
+		result.databases = append(result.databases, engine)
+		result.dbRequirements[engine] = DatabaseRequirement{Engine: engine, EnvVars: keys, Source: "environment"}
+	}
+	result.databases = sortedUnique(result.databases)
+
 	composeDir := path.Dir(composePath)
 	if composeDir == "." {
 		composeDir = ""
 	}
 	buildIdentity := strings.TrimSuffix(composePath, path.Ext(composePath)) + "-" + name
-	build, buildFindings := composeBuildPlan(service["build"], composeDir, buildIdentity, repository, revision, dockerfiles, options)
+	build, buildFindings := composeBuildPlan(service["build"], composeDir, buildIdentity, repository, revision, evidence, options)
 	result.build = build
 	result.findings = append(result.findings, buildFindings...)
 	if build != nil {
 		result.image = build.Image
 	} else if image == "" {
 		defaultDockerfile := path.Join(composeDir, "Dockerfile")
-		if dockerfiles[defaultDockerfile] {
+		if evidence.has(defaultDockerfile) {
 			result.build = &BuildPlan{ContextPath: composeDir, DockerfilePath: "Dockerfile", Image: generatedImage(options.ImagePrefix, repository.Path, buildIdentity, revision.SHA), Required: true}
 			result.image = result.build.Image
 			if result.image == "" {
@@ -269,23 +407,128 @@ func inspectComposeService(composePath, name string, service map[string]any, rep
 	} else if !immutableImage(image) {
 		result.findings = append(result.findings, Finding{Code: "mutable_image", Level: FindingBlocker, Message: "Application image is mutable and no Dockerfile build pins it to this commit.", Subject: subject})
 	}
+	// The Dockerfile's own findings belong to whichever service builds it, and
+	// its EXPOSE and HEALTHCHECK are evidence the Compose file may not carry.
+	if result.build != nil {
+		physical := path.Join(result.build.ContextPath, result.build.DockerfilePath)
+		if analyzed, found := evidence.dockerfiles[physical]; found {
+			result.dockerfile = &analyzed
+			result.findings = append(result.findings, evidence.findings[physical]...)
+			result.findings = append(result.findings, evidence.dockerignoreFinding(result.build.ContextPath)...)
+		}
+	}
+
 	ports := containerPorts(service)
-	result.port, result.findings = choosePort(ports, subject, result.findings)
+	route, routeFindings := traefikRouteFromLabels(labels)
+	result.findings = append(result.findings, routeFindings...)
+	if route.port != 0 {
+		ports = append([]uint16{route.port}, ports...)
+	}
+	if len(ports) == 0 && result.dockerfile != nil {
+		ports = result.dockerfile.ExposedPorts
+		if len(ports) > 0 {
+			result.findings = append(result.findings, Finding{Code: "port_from_dockerfile", Level: FindingInfo, Message: "No Compose port was published; the Dockerfile's EXPOSE instruction supplied the container port.", Subject: subject})
+		}
+	}
+	result.port, result.findings = choosePort(ports, route.port, subject, result.findings)
+	result.route, result.findings = buildRoutePlan(route, result.port, subject, result.findings)
+	if result.metrics && result.metricsPort == 0 {
+		result.metricsPort = result.port
+	}
+
 	result.healthPath = healthPath(service["healthcheck"])
+	if result.healthPath == "" && result.dockerfile != nil {
+		result.healthPath = result.dockerfile.HealthPath
+		if result.healthPath != "" {
+			result.findings = append(result.findings, Finding{Code: "health_path_from_dockerfile", Level: FindingInfo, Message: "The HTTP health path was read from the Dockerfile's HEALTHCHECK instruction.", Subject: subject})
+		}
+	}
 	if result.healthPath == "" {
 		result.healthPath = "/healthz"
 		result.findings = append(result.findings, Finding{Code: "health_path_assumed", Level: FindingWarning, Message: "No HTTP health path was detected; /healthz is proposed for review.", Subject: subject})
 	}
-	if len(result.environment) > 0 {
-		result.findings = append(result.findings, Finding{Code: "environment_review", Level: FindingWarning, Message: "Source environment values are not imported; add required non-secret settings and Swarm secrets through reviewed SwarmOps inputs.", Subject: subject})
+
+	deploy, _ := service["deploy"].(map[string]any)
+	result.replicas, result.cpus, result.memoryMiB = composeResources(deploy)
+	if result.replicas > 0 || result.cpus > 0 || result.memoryMiB > 0 {
+		result.findings = append(result.findings, Finding{Code: "resources_imported", Level: FindingInfo, Message: "Replica count and resource ceilings were read from the Compose deploy block; review them before releasing.", Subject: subject})
+	}
+
+	result.findings = append(result.findings, unimportedFindings(service, len(environment) > 0, subject)...)
+	return result
+}
+
+// unimportedFindings names each part of a Compose service that SwarmOps
+// deliberately does not carry across. Every one of these is something an
+// operator would otherwise discover as a failed or wrong deployment.
+func unimportedFindings(service map[string]any, hasEnvironment bool, subject string) []Finding {
+	var findings []Finding
+	if hasEnvironment {
+		findings = append(findings, Finding{Code: "environment_review", Level: FindingWarning, Message: "Source environment values are not imported; add required non-secret settings and Swarm secrets through reviewed SwarmOps inputs.", Subject: subject})
+	}
+	if hasListEntries(service["env_file"]) {
+		findings = append(findings, Finding{Code: "env_file_ignored", Level: FindingWarning, Message: "An env_file is not read; the values it holds must be supplied as reviewed SwarmOps settings or a managed database.", Subject: subject})
+	}
+	if hasListEntries(service["volumes"]) {
+		findings = append(findings, Finding{Code: "volumes_ignored", Level: FindingBlocker, Message: "This service mounts volumes. A generated application is stateless; move its data to a managed database, or deploy it as a reviewed Git stack instead.", Subject: subject})
+	}
+	if hasListEntries(service["secrets"]) || hasListEntries(service["configs"]) {
+		findings = append(findings, Finding{Code: "secrets_ignored", Level: FindingWarning, Message: "Compose secrets and configs are not imported; attach a managed database or use a reviewed Git stack.", Subject: subject})
+	}
+	if hasListEntries(service["command"]) || hasListEntries(service["entrypoint"]) {
+		findings = append(findings, Finding{Code: "command_ignored", Level: FindingWarning, Message: "A Compose command or entrypoint override is not imported; the image must start correctly on its own.", Subject: subject})
+	}
+	if deploy, ok := service["deploy"].(map[string]any); ok {
+		if placement, ok := deploy["placement"].(map[string]any); ok && hasListEntries(placement["constraints"]) {
+			findings = append(findings, Finding{Code: "placement_ignored", Level: FindingWarning, Message: "Placement constraints are not imported; SwarmOps schedules generated applications through the reviewed platform manifest.", Subject: subject})
+		}
 	}
 	if privileged, _ := service["privileged"].(bool); privileged {
-		result.findings = append(result.findings, Finding{Code: "privileged_ignored", Level: FindingWarning, Message: "Privileged mode is not imported into the generated application.", Subject: subject})
+		findings = append(findings, Finding{Code: "privileged_ignored", Level: FindingWarning, Message: "Privileged mode is not imported into the generated application.", Subject: subject})
 	}
 	if networkMode, _ := service["network_mode"].(string); strings.TrimSpace(networkMode) != "" {
-		result.findings = append(result.findings, Finding{Code: "network_mode_ignored", Level: FindingWarning, Message: "Source network_mode is not imported; SwarmOps uses reviewed shared overlays.", Subject: subject})
+		findings = append(findings, Finding{Code: "network_mode_ignored", Level: FindingWarning, Message: "Source network_mode is not imported; SwarmOps uses reviewed shared overlays.", Subject: subject})
 	}
-	return result
+	return findings
+}
+
+// buildRoutePlan turns discovered Traefik labels into the route SwarmOps will
+// create. A repository that already declares a hostname gets that hostname
+// proposed; one that declares none gets an internal-only route, which is a
+// decision worth stating rather than a silent default.
+func buildRoutePlan(discovered composeRoute, port uint16, subject string, findings []Finding) (*RoutePlan, []Finding) {
+	plan := &RoutePlan{Source: "proposed", TargetPort: port}
+	if discovered.port != 0 {
+		plan.TargetPort = discovered.port
+	}
+	switch {
+	case discovered.disabled:
+		findings = append(findings, Finding{Code: "route_disabled_in_source", Level: FindingInfo, Message: "This service sets traefik.enable=false, so SwarmOps proposes an internal-only route with no public hostname.", Subject: subject})
+	case discovered.found:
+		plan.Hosts = discovered.hosts
+		plan.PathPrefix = discovered.pathPrefix
+		plan.Resolver = discovered.resolver
+		plan.Source = "traefik_labels"
+		plan.TLS = discovered.tls
+		findings = append(findings, Finding{Code: "route_discovered", Level: FindingInfo, Message: "A Traefik router was found in this Compose file; SwarmOps proposes the same hostname and will create the route if the cluster does not already have it.", Subject: subject})
+		if plan.Resolver == "" && plan.TLS {
+			findings = append(findings, Finding{Code: "route_resolver_required", Level: FindingWarning, Message: "The discovered router asks for TLS but names no certificate resolver; choose one from the reviewed slot before releasing.", Subject: subject})
+		}
+	default:
+		findings = append(findings, Finding{Code: "route_not_declared", Level: FindingInfo, Message: "No Traefik router was found; SwarmOps proposes an internal-only route. Assign a domain on the review step to publish it.", Subject: subject})
+	}
+	return plan, findings
+}
+
+// unsupportedFinding distinguishes a stateful engine SwarmOps has no managed
+// equivalent for from a platform component it simply does not replace. They
+// were one message, which told an operator that Grafana was an unsupported
+// database.
+func unsupportedFinding(name, image, subject string) Finding {
+	if containsWord(strings.ToLower(name+" "+image), "grafana") {
+		return Finding{Code: "unsupported_platform", Level: FindingBlocker, Message: "SwarmOps runs its own reviewed Grafana-free observability stack; remove this service from the selection and read metrics through the Observability page.", Subject: subject}
+	}
+	return Finding{Code: "unsupported_database", Level: FindingBlocker, Message: "This stateful service has no managed SwarmOps equivalent.", Subject: subject}
 }
 
 func classifyService(name, image string) (Classification, []string, []string) {
@@ -303,7 +546,9 @@ func classifyService(name, image string) (Classification, []string, []string) {
 		return ClassificationSharedPlatform, nil, []string{"swarmops-logs"}
 	case containsWord(value, "grafana"):
 		return ClassificationUnsupported, nil, nil
-	case containsWord(value, "prometheus"), containsWord(value, "jaeger"), containsWord(value, "alertmanager"):
+	case containsWord(value, "prometheus"), containsWord(value, "jaeger"), containsWord(value, "alertmanager"),
+		containsWord(value, "otel"), containsWord(value, "opentelemetry"), containsWord(value, "otelcol"),
+		containsWord(value, "tempo"), containsWord(value, "zipkin"):
 		return ClassificationSharedPlatform, nil, []string{"swarmops-observability"}
 	case containsWord(value, "node-exporter"), containsWord(value, "cadvisor"):
 		return ClassificationSharedPlatform, nil, []string{"swarmops-agent"}
@@ -312,7 +557,7 @@ func classifyService(name, image string) (Classification, []string, []string) {
 	}
 }
 
-func composeBuildPlan(raw any, composeDir, serviceName string, repository Repository, revision Revision, dockerfiles map[string]bool, options Options) (*BuildPlan, []Finding) {
+func composeBuildPlan(raw any, composeDir, serviceName string, repository Repository, revision Revision, evidence repositoryEvidence, options Options) (*BuildPlan, []Finding) {
 	if raw == nil {
 		return nil, nil
 	}
@@ -341,7 +586,7 @@ func composeBuildPlan(raw any, composeDir, serviceName string, repository Reposi
 	}
 	physical := path.Join(contextPath, dockerfilePath)
 	findings := []Finding{}
-	if !dockerfiles[physical] {
+	if !evidence.has(physical) {
 		findings = append(findings, Finding{Code: "dockerfile_missing", Level: FindingBlocker, Message: "The Dockerfile named by Compose was not found in the immutable repository tree.", Subject: physical})
 	}
 	image := generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA)
@@ -428,28 +673,6 @@ func dependencyNames(value any) []string {
 	return sortedUnique(result)
 }
 
-func environmentKeys(value any) []string {
-	var result []string
-	switch typed := value.(type) {
-	case []any:
-		for _, item := range typed {
-			if text, ok := item.(string); ok {
-				key, _, _ := strings.Cut(text, "=")
-				result = append(result, strings.TrimSpace(key))
-			}
-		}
-	case map[string]any:
-		for key := range typed {
-			result = append(result, key)
-		}
-	}
-	return sortedUnique(result)
-}
-
-func labelKeys(value any) []string {
-	return environmentKeys(value)
-}
-
 func containerPorts(service map[string]any) []uint16 {
 	var result []uint16
 	read := func(value any, targetKey string) {
@@ -491,19 +714,40 @@ func containerPorts(service map[string]any) []uint16 {
 	return values
 }
 
-func choosePort(ports []uint16, subject string, findings []Finding) (uint16, []Finding) {
-	if len(ports) == 0 {
+// choosePort prefers the port the repository's own Traefik label names, since
+// that is the port its author already decided traffic goes to. Otherwise it
+// falls back to the conventional application ports before guessing.
+func choosePort(ports []uint16, labelled uint16, subject string, findings []Finding) (uint16, []Finding) {
+	unique := sortedUniqueUint16(ports)
+	if len(unique) == 0 {
 		return 0, append(findings, Finding{Code: "port_needs_review", Level: FindingWarning, Message: "No container port was detected; choose the application port before deployment.", Subject: subject})
 	}
-	if len(ports) == 1 {
-		return ports[0], findings
+	if labelled != 0 && containsUint16(unique, labelled) {
+		if len(unique) > 1 {
+			findings = append(findings, Finding{Code: "port_from_route_label", Level: FindingInfo, Message: fmt.Sprintf("Several container ports were found; %d was taken from this service's own Traefik load-balancer label.", labelled), Subject: subject})
+		}
+		return labelled, findings
 	}
-	for _, preferred := range []uint16{8080, 8000, 3000, 80} {
-		if containsUint16(ports, preferred) {
-			return preferred, append(findings, Finding{Code: "multiple_ports", Level: FindingWarning, Message: fmt.Sprintf("Multiple container ports were found; %d is proposed for review.", preferred), Subject: subject})
+	if len(unique) == 1 {
+		return unique[0], findings
+	}
+	preferred := preferredPort(unique)
+	return preferred, append(findings, Finding{Code: "multiple_ports", Level: FindingWarning, Message: fmt.Sprintf("Multiple container ports were found; %d is proposed for review.", preferred), Subject: subject})
+}
+
+// preferredPort picks the conventional HTTP application port when a service
+// offers several, and otherwise the lowest.
+func preferredPort(ports []uint16) uint16 {
+	unique := sortedUniqueUint16(ports)
+	if len(unique) == 0 {
+		return 0
+	}
+	for _, candidate := range []uint16{8080, 8000, 3000, 80, 5000} {
+		if containsUint16(unique, candidate) {
+			return candidate
 		}
 	}
-	return ports[0], append(findings, Finding{Code: "multiple_ports", Level: FindingWarning, Message: fmt.Sprintf("Multiple container ports were found; %d is proposed for review.", ports[0]), Subject: subject})
+	return unique[0]
 }
 
 func healthPath(value any) string {

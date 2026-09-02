@@ -223,7 +223,7 @@ func (s *RoutingStore) RemoveBinding(clusterID, caller, target, name string) err
 // RotateCredential validates and seals a new provider secret while retaining
 // every prior immutable version. The caller separately creates the matching
 // Swarm secret before switching any resolver to it.
-func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNSProvider, secret []byte) (DNSCredentialMetadata, error) {
+func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNSProvider, identity DNSCredentialIdentity, secret []byte) (DNSCredentialMetadata, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	name = strings.TrimSpace(name)
 	if !providerIDPattern.MatchString(id) || name == "" || len(name) > 96 || strings.ContainsAny(name, "\r\n\x00") {
@@ -231,6 +231,10 @@ func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNS
 	}
 	if provider != DNSProviderCloudflare && provider != DNSProviderArvan {
 		return DNSCredentialMetadata{}, fmt.Errorf("DNS provider is unsupported")
+	}
+	identity = identity.Normalize()
+	if err := identity.Validate(provider); err != nil {
+		return DNSCredentialMetadata{}, err
 	}
 	value := strings.TrimSpace(string(secret))
 	if provider == DNSProviderArvan {
@@ -254,7 +258,9 @@ func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNS
 			return fmt.Errorf("generated Swarm secret name is invalid")
 		}
 		created = DNSCredentialMetadata{
+			AccountID:  identity.AccountID,
 			CreatedAt:  s.now().UTC(),
+			Email:      identity.Email,
 			ID:         id,
 			Name:       name,
 			Provider:   provider,

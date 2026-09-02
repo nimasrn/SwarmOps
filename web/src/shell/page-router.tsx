@@ -24,6 +24,7 @@ import { CommandCataloguePage } from '../screens/activity/catalog'
 import { AuditPage } from '../screens/activity/audit'
 import { CoreTopologyPage } from '../screens/control/core'
 import { AgentsPage } from '../screens/control/agents'
+import { RegistryMirrorPage } from '../screens/control/registry-mirror'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -114,6 +115,11 @@ export function PageRouter(props: PageRouterProps) {
       )
     case 'agents':
       return <AgentsPage onOpen={onOpen} onRefresh={onRefreshServers} servers={servers} toast={toast} />
+    // Where every host pulls PUBLIC images from is a fleet fact that belongs to
+    // no cluster selection and no application, so it answers before the cluster
+    // gate below rather than behind it.
+    case 'registry-mirror':
+      return <RegistryMirrorPage toast={toast} />
     case 'audit':
       return (
         <>
@@ -161,6 +167,7 @@ export function PageRouter(props: PageRouterProps) {
         <DeployPage
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
+          onOpenImages={() => onOpen('images')}
           onOpenWorkloads={() => onOpen('workloads')}
           toast={toast}
         />

@@ -5,7 +5,16 @@ package source
 
 import "time"
 
-const ScannerVersion = "swarmops-source-v1"
+const ScannerVersion = "swarmops-source-v2"
+
+// The managed engines a discovered data service can be mapped onto. They
+// mirror the reviewed catalogue in internal/ops; the scanner names them
+// without importing the control plane, which knows nothing about providers.
+const (
+	DatabaseMongo    = "mongo"
+	DatabasePostgres = "postgres"
+	DatabaseRedis    = "redis"
+)
 
 type ProviderKind string
 
@@ -113,22 +122,85 @@ type BuildPlan struct {
 	Required       bool   `json:"required"`
 }
 
+// DockerfilePlan is the validated summary of one Dockerfile: derived facts
+// only, never the file's own text, environment values, or build arguments.
+type DockerfilePlan struct {
+	BaseImages   []string `json:"baseImages,omitempty"`
+	Entrypoint   bool     `json:"entrypoint"`
+	ExposedPorts []uint16 `json:"exposedPorts,omitempty"`
+	HealthPath   string   `json:"healthPath,omitempty"`
+	Healthcheck  bool     `json:"healthcheck"`
+	Path         string   `json:"path"`
+	RunsAsRoot   bool     `json:"runsAsRoot"`
+	Stages       int      `json:"stages"`
+	WorkDir      string   `json:"workDir,omitempty"`
+}
+
+// RoutePlan is the public entry SwarmOps proposes for one service.
+//
+// Hostnames are the one label value the plan retains. A route cannot be
+// proposed without the name it serves, a hostname is not a credential, and the
+// operator has to see it to approve it. Source is how it was found, so the
+// console can say whether SwarmOps read the route or invented it.
+type RoutePlan struct {
+	Hosts      []string `json:"hosts,omitempty"`
+	PathPrefix string   `json:"pathPrefix,omitempty"`
+	Resolver   string   `json:"resolver,omitempty"`
+	// Source is "traefik_labels" when the repository already declared the
+	// route, and "proposed" when SwarmOps derived an internal-only one.
+	Source     string `json:"source"`
+	TargetPort uint16 `json:"targetPort,omitempty"`
+	TLS        bool   `json:"tls"`
+}
+
+// DatabaseRequirement maps one managed engine to the environment variable
+// NAMES the application reads its connection string from.
+//
+// This is what stops an application from starting against a database it cannot
+// find. SwarmOps used to inject POSTGRES_URL_FILE and hope; an application
+// that reads DATABASE_URL would start, fail to connect, and restart forever.
+// Now the managed URI is delivered under the names the repository actually
+// uses. Only key names are carried — values are classified and discarded.
+type DatabaseRequirement struct {
+	Engine  string   `json:"engine"`
+	EnvVars []string `json:"envVars,omitempty"`
+	// Source is "compose_service", "environment", or "depends_on".
+	Source string `json:"source"`
+}
+
+// TelemetryPlan is what the repository already says about its own signals.
+type TelemetryPlan struct {
+	MetricsPath string `json:"metricsPath,omitempty"`
+	MetricsPort uint16 `json:"metricsPort,omitempty"`
+	// TracingEnvVars names the OTLP or Jaeger variables the application reads,
+	// so SwarmOps can point exactly those at the managed collector.
+	TracingEnvVars []string `json:"tracingEnvVars,omitempty"`
+}
+
 // ServicePlan contains only evidence summaries and normalized intent. It does
-// not retain Compose, Dockerfile, environment, label, or secret values.
+// not retain Compose, Dockerfile, environment, label, or secret values; the
+// route hostnames are the single documented exception, explained on RoutePlan.
 type ServicePlan struct {
-	Build          *BuildPlan     `json:"build,omitempty"`
-	Classification Classification `json:"classification"`
-	ComposePath    string         `json:"composePath"`
-	Databases      []string       `json:"databases,omitempty"`
-	Findings       []Finding      `json:"findings,omitempty"`
-	HealthPath     string         `json:"healthPath,omitempty"`
-	Image          string         `json:"image,omitempty"`
-	Metrics        bool           `json:"metrics"`
-	Name           string         `json:"name"`
-	Port           uint16         `json:"port,omitempty"`
-	Service        string         `json:"service"`
-	SharedStacks   []string       `json:"sharedStacks,omitempty"`
-	Tracing        bool           `json:"tracing"`
+	Build                *BuildPlan            `json:"build,omitempty"`
+	Classification       Classification        `json:"classification"`
+	ComposePath          string                `json:"composePath"`
+	CPUs                 float64               `json:"cpus,omitempty"`
+	Databases            []string              `json:"databases,omitempty"`
+	DatabaseRequirements []DatabaseRequirement `json:"databaseRequirements,omitempty"`
+	Dockerfile           *DockerfilePlan       `json:"dockerfile,omitempty"`
+	Findings             []Finding             `json:"findings,omitempty"`
+	HealthPath           string                `json:"healthPath,omitempty"`
+	Image                string                `json:"image,omitempty"`
+	MemoryMiB            int64                 `json:"memoryMiB,omitempty"`
+	Metrics              bool                  `json:"metrics"`
+	Name                 string                `json:"name"`
+	Port                 uint16                `json:"port,omitempty"`
+	Replicas             uint64                `json:"replicas,omitempty"`
+	Route                *RoutePlan            `json:"route,omitempty"`
+	Service              string                `json:"service"`
+	SharedStacks         []string              `json:"sharedStacks,omitempty"`
+	Telemetry            TelemetryPlan         `json:"telemetry"`
+	Tracing              bool                  `json:"tracing"`
 }
 
 type Plan struct {

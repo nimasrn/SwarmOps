@@ -11,7 +11,7 @@ func domainTestStore(t *testing.T) *RoutingStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.RotateCredential("manager-1", "cf", "Cloudflare", DNSProviderCloudflare, []byte("token-value-0123456789abcdef")); err != nil {
+	if _, err := store.RotateCredential("manager-1", "cf", "Cloudflare", DNSProviderCloudflare, DNSCredentialIdentity{}, []byte("token-value-0123456789abcdef")); err != nil {
 		t.Fatal(err)
 	}
 	return store

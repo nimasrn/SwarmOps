@@ -48,8 +48,11 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
   const [credentialID, setCredentialID] = useState('')
   const [credentialName, setCredentialName] = useState('')
   const [provider, setProvider] = useState<'cloudflare' | 'arvan'>('cloudflare')
+  const [credentialAccountID, setCredentialAccountID] = useState('')
+  const [credentialEmail, setCredentialEmail] = useState('')
   const [credentialValue, setCredentialValue] = useState('')
   const latestCredentials = latestCredentialVersions(state.credentials)
+  const credentialIdentityValid = provider !== 'cloudflare' || (/^([0-9a-f]{32})?$/.test(credentialAccountID.trim().toLowerCase()) && (credentialEmail.trim() === '' || credentialEmail.trim().includes('@')))
   const [protocol, setProtocol] = useState<RouteProtocol>('http')
   const [record, setRecord] = useState<DNSRecordSpec>(() => emptyDNSRecord(latestCredentials[0]?.id ?? ''))
   const [preview, setPreview] = useState<DNSRecordPreview | null>(null)
@@ -78,7 +81,8 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
   const queueCredential = async () => {
     setPending('credential')
     try {
-      const command = await api.uploadDNSCredential(credentialID, credentialName, provider, credentialValue)
+      const identity = provider === 'cloudflare' ? { accountId: credentialAccountID.trim().toLowerCase(), email: credentialEmail.trim().toLowerCase() } : {}
+      const command = await api.uploadDNSCredential(credentialID, credentialName, provider, credentialValue, identity)
       queuedToast(toast, command, 'DNS credential rotation')
       setCredentialValue('')
       onQueued()
@@ -168,12 +172,13 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
         {scope === 'dns' ? <Panel eyebrow="Cloudflare and ArvanCloud" title="DNS providers & credentials">
           <Rows>
             <Banner tone="info">The value is written first to the encrypted durable command artifact, validated with the provider, sealed in controller state, then created as a new immutable Swarm secret. Responses, logs, commands, and audit records contain metadata only.</Banner>
-            <Select label="Provider" onChange={(event) => setProvider(event.target.value as 'cloudflare' | 'arvan')} options={[{ label: 'Cloudflare scoped DNS token', value: 'cloudflare' }, { label: 'ArvanCloud DNS API key', value: 'arvan' }]} value={provider} />
+            <Select label="Provider" onChange={(event) => setProvider(event.target.value as 'cloudflare' | 'arvan')} options={[{ label: 'Cloudflare API token or Global API Key', value: 'cloudflare' }, { label: 'ArvanCloud DNS API key', value: 'arvan' }]} value={provider} />
             <Input label="Credential ID" onChange={(event) => setCredentialID(event.target.value)} placeholder="production-dns" value={credentialID} />
             <Input label="Display name" onChange={(event) => setCredentialName(event.target.value)} placeholder="Production DNS" value={credentialName} />
-            <Input autoComplete="new-password" hint={provider === 'cloudflare' ? 'Use a token scoped to DNS read/write for the required zones.' : 'Paste the Arvan API key; an optional Apikey prefix is accepted.'} label="Credential value" onChange={(event) => setCredentialValue(event.target.value)} type="password" value={credentialValue} />
-            <Button disabled={Boolean(pending) || !credentialID || !credentialName || credentialValue.length < 16} loading={pending === 'credential'} onClick={() => void queueCredential()} variant="accent">Validate & rotate credential</Button>
-            <Rows gap="tight">{state.credentials.length ? state.credentials.map((credential) => <Inline key={`${credential.id}-${credential.version}`}><Mono>{credential.id}</Mono><Badge>{credential.provider}</Badge><Badge variant={credential.state === 'validated' ? 'success' : credential.state === 'removed' ? 'neutral' : 'warning'}>v{credential.version} · {credential.state}</Badge></Inline>) : <Body size="sm">No provider credential metadata is stored yet.</Body>}</Rows>
+            {provider === 'cloudflare' ? <Columns><Input hint="Optional. 32 hex characters from the Cloudflare dashboard; it scopes the zone lookup when the credential spans several accounts." label="Account ID" onChange={(event) => setCredentialAccountID(event.target.value)} placeholder="Optional" value={credentialAccountID} /><Input hint="Optional. Leave empty for a scoped API token. Fill it only for a legacy Global API Key, which is sent with this email." label="Account email" onChange={(event) => setCredentialEmail(event.target.value)} placeholder="Optional" value={credentialEmail} /></Columns> : null}
+            <Input autoComplete="new-password" hint={provider === 'cloudflare' ? (credentialEmail.trim() ? 'Paste the Global API Key for the account email above.' : 'Use a token scoped to DNS read/write for the required zones.') : 'Paste the Arvan API key; an optional Apikey prefix is accepted.'} label="Credential value" onChange={(event) => setCredentialValue(event.target.value)} type="password" value={credentialValue} />
+            <Button disabled={Boolean(pending) || !credentialID || !credentialName || credentialValue.length < 16 || !credentialIdentityValid} loading={pending === 'credential'} onClick={() => void queueCredential()} variant="accent">Validate & rotate credential</Button>
+            <Rows gap="tight">{state.credentials.length ? state.credentials.map((credential) => <Inline key={`${credential.id}-${credential.version}`}><Mono>{credential.id}</Mono><Badge>{credential.provider}</Badge>{credential.email ? <Badge>global key · {credential.email}</Badge> : null}{credential.accountId ? <Badge>account {credential.accountId.slice(0, 8)}</Badge> : null}<Badge variant={credential.state === 'validated' ? 'success' : credential.state === 'removed' ? 'neutral' : 'warning'}>v{credential.version} · {credential.state}</Badge></Inline>) : <Body size="sm">No provider credential metadata is stored yet.</Body>}</Rows>
             <Panel eyebrow="Rotate history" title="Removable old versions">
               {removableCredentials.length ? removableCredentials.map((credential) => <Inline key={`${credential.id}-${credential.version}`}><Mono>{credential.id}</Mono><Badge>{credential.provider}</Badge><Badge variant="warning">v{credential.version}</Badge><Button disabled={Boolean(pending)} size="sm" onClick={() => { setDeleteCredentialID(credential.id); setDeleteCredentialVersion(credential.version); setDeleteCredentialConfirmation('') }}>Prepare removal</Button></Inline>) : <Body size="sm">No removable older versions.</Body>}
               {deleteCredentialID ? <Rows><Banner title="Removing old immutable versions" tone="warning"><Mono>Removing a credential version cannot be undone.</Mono></Banner><Input hint={`Type ${credentialRemovalConfirmation(deleteCredentialID, deleteCredentialVersion)}.`} label="Removal confirmation" onChange={(event) => setDeleteCredentialConfirmation(event.target.value)} value={deleteCredentialConfirmation} /><Inline><Button disabled={Boolean(pending) || deleteCredentialConfirmation !== credentialRemovalConfirmation(deleteCredentialID, deleteCredentialVersion)} loading={pending === 'credential-delete'} onClick={() => void queueCredentialDelete()} variant="danger">Queue credential version removal</Button><Button disabled={Boolean(pending)} onClick={() => { setDeleteCredentialID(''); setDeleteCredentialVersion(0); setDeleteCredentialConfirmation('') }} variant="ghost">Cancel</Button></Inline></Rows> : null}

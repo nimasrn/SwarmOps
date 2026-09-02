@@ -162,7 +162,7 @@ export function SwarmPage({
     )
   }
 
-  const attention = nodes.filter((node) => node.state !== 'ready' || node.availability !== 'active' || !node.agent.healthy)
+  const attention = nodes.filter((node) => nodeHealth(node) !== 'healthy')
   const pending = commands.filter(isPending).slice(0, 6)
   const ready = nodes.filter((node) => nodeHealth(node) === 'healthy').length
 
@@ -190,7 +190,7 @@ export function SwarmPage({
         { hint: ready === nodes.length ? 'Every node is ready and active' : 'Ready, active, and answering their probe', icon: 'server', label: 'Healthy nodes', tone: nodes.length && ready === nodes.length ? 'success' : 'warning', value: `${ready} / ${nodes.length}` },
         { hint: overview.summary.managers > 1 ? 'A manager can be lost without losing quorum' : 'A single manager is a single point of failure', icon: 'shield', label: 'Managers', tone: overview.summary.managers > 1 ? 'success' : 'warning', value: String(overview.summary.managers) },
         { hint: 'Tasks Swarm currently reports as running', icon: 'layers', label: 'Running tasks', value: String(overview.summary.runningTasks) },
-        { hint: attention.length ? 'Not ready, not active, or not probing' : 'No node is drained, paused, or silent', icon: 'alert', label: 'Need review', onOpen: attention.length ? onDiagnostics : undefined, tone: attention.length ? 'danger' : 'success', value: String(attention.length) },
+        { hint: attention.length ? 'Not ready, not active, or its probe is failing' : 'No node is drained, paused, or silent', icon: 'alert', label: 'Need review', onOpen: attention.length ? onDiagnostics : undefined, tone: attention.length ? 'danger' : 'success', value: String(attention.length) },
       ]}
       page="swarm"
       width="full"
@@ -212,7 +212,7 @@ export function SwarmPage({
                     key={node.id}
                     leading={<StatusDot tone={node.state !== 'ready' ? 'danger' : 'warning'}>{node.hostname}</StatusDot>}
                     subtitle={node.agent.error ?? `${capitalize(node.state)} · ${capitalize(node.availability)}`}
-                    title={node.agent.healthy ? 'Node needs review' : 'Agent unreachable'}
+                    title={hostProbeHealth(node) === 'degraded' ? 'Agent unreachable' : 'Node needs review'}
                   />
                 ))}
               </List>

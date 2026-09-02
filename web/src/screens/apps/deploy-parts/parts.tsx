@@ -154,11 +154,26 @@ export const serviceColumns: TableColumn<SourceServicePlan>[] = [
   { header: 'Source location', key: 'location', render: (service) => <Mono>{service.composePath || 'standalone Dockerfile'}</Mono> },
   { header: 'Classification', key: 'classification', render: (service) => <ClassificationBadge classification={service.classification} /> },
   {
+    // A blocked row says WHY it is blocked, not that it is. An operator in the
+    // middle of a deployment should never have to leave discovery to read the
+    // one sentence that decides whether this service can ship.
     header: 'Action',
     key: 'action',
-    render: (service) => hasBlocker(service.findings)
-      ? <Inline gap="tight"><Icon name="danger" size="xs" tone="danger" /><Body size="sm">Resolve blocker</Body></Inline>
-      : <Body size="sm" tone="accent">{classificationAction(service.classification)}</Body>,
+    render: (service) => {
+      const blockers = blockerFindings(service.findings)
+      return blockers.length > 0
+        ? (
+          <Rows gap="tight">
+            {blockers.map((finding) => (
+              <Inline gap="tight" key={`${finding.code}/${finding.subject ?? ''}`}>
+                <Icon name="danger" size="xs" tone="danger" />
+                <Body size="sm">{finding.message}{finding.subject ? <> <Mono>{finding.subject}</Mono></> : null}</Body>
+              </Inline>
+            ))}
+          </Rows>
+        )
+        : <Body size="sm" tone="accent">{classificationAction(service.classification)}</Body>
+    },
   },
 ]
 
@@ -241,6 +256,8 @@ export function selectSlot(name: string, slots: ApprovedWorkload[], setSlotName:
 export function sourceServiceKey(service: SourceServicePlan) { return `${service.composePath}\u0000${service.service}` }
 export function sourceLocation(service: SourceServicePlan) { return service.composePath ? `${service.composePath} · ${service.service}` : service.service }
 export function hasBlocker(findings?: SourceFinding[]) { return Boolean(findings?.some((finding) => finding.level === 'blocker')) }
+
+export function blockerFindings(findings?: SourceFinding[]) { return (findings ?? []).filter((finding) => finding.level === 'blocker') }
 export function classificationAction(classification: SourceClassification) {
   switch (classification) {
     case 'application': return 'Deploy'

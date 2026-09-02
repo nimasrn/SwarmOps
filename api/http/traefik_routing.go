@@ -51,9 +51,11 @@ type traefikSettingsCommand struct {
 }
 
 type traefikDNSCredentialCommand struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"name"`
-	Provider ops.DNSProvider `json:"provider"`
+	AccountID string          `json:"accountId,omitempty"`
+	Email     string          `json:"email,omitempty"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Provider  ops.DNSProvider `json:"provider"`
 }
 
 type traefikDNSCredentialRemoveCommand struct {
@@ -199,12 +201,18 @@ func (s *Server) traefikSettingsApply(response http.ResponseWriter, request *htt
 
 func (s *Server) traefikDNSCredential(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	input := traefikDNSCredentialCommand{
-		ID:       strings.ToLower(strings.TrimSpace(request.URL.Query().Get("id"))),
-		Name:     strings.TrimSpace(request.URL.Query().Get("name")),
-		Provider: ops.DNSProvider(strings.ToLower(strings.TrimSpace(request.URL.Query().Get("provider")))),
+		AccountID: strings.ToLower(strings.TrimSpace(request.URL.Query().Get("accountId"))),
+		Email:     strings.ToLower(strings.TrimSpace(request.URL.Query().Get("email"))),
+		ID:        strings.ToLower(strings.TrimSpace(request.URL.Query().Get("id"))),
+		Name:      strings.TrimSpace(request.URL.Query().Get("name")),
+		Provider:  ops.DNSProvider(strings.ToLower(strings.TrimSpace(request.URL.Query().Get("provider")))),
 	}
 	if input.ID == "" || input.Name == "" || (input.Provider != ops.DNSProviderCloudflare && input.Provider != ops.DNSProviderArvan) {
 		writeError(response, http.StatusUnprocessableEntity, "DNS credential metadata is invalid")
+		return
+	}
+	if err := (ops.DNSCredentialIdentity{AccountID: input.AccountID, Email: input.Email}).Validate(input.Provider); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	serverID, idempotencyKey, ok := s.commandSubmissionContext(response, request)

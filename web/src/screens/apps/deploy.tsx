@@ -38,7 +38,8 @@ import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { DeploymentPlan } from './deploy-parts/plan'
-import { SOURCE_DOCS_URL, SourceSetupPanel } from './deploy-parts/setup'
+import { SourceSetupPanel } from './deploy-parts/setup'
+import { SOURCE_DOCS_URL } from './source-settings'
 import { KubernetesImportPanel } from './kubernetes-import'
 import {
   DiscoveryEvidence,
@@ -67,6 +68,9 @@ import {
 interface DeployPageProps {
   managerID: string
   managerName?: string
+  /** Where the push registry is configured, now that it is not part of the
+      source boundary. */
+  onOpenImages?: () => void
   /** Where the Kubernetes reader hands its generated Compose off to. */
   onOpenWorkloads?: () => void
   toast: ReturnType<typeof useToast>
@@ -92,12 +96,9 @@ const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
   { label: 'Gitea or Forgejo', value: 'gitea' },
 ]
 
-export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: DeployPageProps) {
+export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloads, toast }: DeployPageProps) {
   const [source, setSource] = useState<DeploySource>('repository')
   const [status, setStatus] = useState<SourceStatus | null>(null)
-  /* Setup stays reachable after the boundary is on, because the release half
-     of it can still be missing while the flow itself is usable. */
-  const [setupOpen, setSetupOpen] = useState(false)
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
   const [approved, setApproved] = useState<ApprovedWorkload[]>([])
@@ -479,14 +480,13 @@ export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: D
         <>
           {!releaseReady ? (
             <Banner
-              action={<Inline><Button onClick={() => setSetupOpen(true)} size="sm" variant="accent">Finish setup</Button><Button href={SOURCE_DOCS_URL} rel="noreferrer" size="sm" target="_blank" variant="ghost">Setup guide</Button></Inline>}
+              action={<Inline>{onOpenImages ? <Button onClick={onOpenImages} size="sm" variant="accent">Open registry settings</Button> : null}<Button href={SOURCE_DOCS_URL} rel="noreferrer" size="sm" target="_blank" variant="ghost">Setup guide</Button></Inline>}
               title="Provider and repository steps are open; release is not"
               tone="warning"
             >
-              You can connect a provider, list projects, and scan a repository now. Building an image from that source also needs a registry namespace, a sealed push credential, and bounded builds. A service that ships an already-pinned image deploys without them.
+              You can connect a provider, list projects, and scan a repository now. Building an image from that source needs a registry namespace, a sealed push credential, and bounded builds — a separate boundary, set under Apps → Images &amp; registries. A service that ships an already-pinned image deploys without them.
             </Banner>
           ) : null}
-          {setupOpen ? <SourceSetupPanel onApplied={() => { setSetupOpen(false); void loadSource() }} status={status} /> : null}
           <StageTrack label="Source deployment stages" stages={stages} />
 
           <DetailLayout

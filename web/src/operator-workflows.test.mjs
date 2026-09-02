@@ -34,7 +34,7 @@ test('the information architecture is one source, and every screen is reachable 
   // `agent-diagnostics` had both a label and a section for three releases and
   // could not be opened from navigation at all.
   const declared = [...nav.matchAll(/key: '([a-z-]+)', label:/g)].map((match) => match[1])
-  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'machines', 'overview', 'platform', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
+  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'machines', 'overview', 'platform', 'registry-mirror', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
     assert.ok(declared.includes(destination), `${destination} is routable but appears in no area`)
   }
 
@@ -191,7 +191,7 @@ test('gateway and source dead ends have explicit setup actions', async () => {
     source('screens/traffic/preflight.tsx'),
     source('screens/traffic/dns.tsx'),
     source('screens/apps/deploy.tsx'),
-    source('screens/apps/deploy-parts/registry.tsx'),
+    source('screens/apps/push-registry.tsx'),
     source('screens/apps/deploy-parts/setup.tsx'),
   ])
   assert.match(gateway, />Install gateway<\/Button>/)
@@ -210,13 +210,49 @@ test('gateway and source dead ends have explicit setup actions', async () => {
   assert.match(gateway, /!preflight\?\.ready/)
   assert.match(gateway, />Open run details<\/Button>/)
   assert.match(api, /JSON\.stringify\(\{ confirmation, dashboardHost \}\)/)
-  assert.match(setup, />Configure source deployment<\/Button>/)
+  assert.match(setup, />Set up source deployment<\/Button>/)
   assert.match(registry, />Configure registry<\/Button>/)
-  assert.match(setup, /Hosted GitHub \/ GitLab/)
 
   // A failed capability read must beat the spinner: this screen used to spin
   // forever with its own explanation rendered under a branch that never ran.
   assert.match(sourceDeploy, /Source deployment capability is unavailable/)
+})
+
+test('reading source, pushing an image, and pulling one are three separate screens', async () => {
+  const [nav, setup, registry, core, images, router] = await Promise.all([
+    source('navigation/navigation.ts'),
+    source('screens/apps/deploy-parts/setup.tsx'),
+    source('screens/apps/push-registry.tsx'),
+    source('screens/control/core.tsx'),
+    source('screens/apps/images.tsx'),
+    source('shell/page-router.tsx'),
+  ])
+
+  // One sheet used to hold all three, so connecting GitHub asked for a registry
+  // namespace and a push password before it would let you enter a provider
+  // token. Where source is READ FROM, where a built image is PUSHED TO, and
+  // where every host PULLS public images from are three different boundaries.
+  for (const registryField of [/label="Registry namespace"/, /label="Registry server"/, /label="Registry password or token"/, />Allow bounded image builds</]) {
+    assert.doesNotMatch(setup, registryField, 'the source boundary still collects registry settings')
+    assert.match(registry, registryField, 'the push registry screen does not collect its own settings')
+  }
+
+  // The push registry is editable where the builds are, not a read-only card
+  // pointing back at the deploy screen.
+  assert.match(images, /<PushRegistryPanel onApplied=/)
+  assert.match(registry, /api\.saveSourceSettings|useSourceSettings/)
+
+  // The pull-through mirror is fleet-wide and belongs to no application, so it
+  // is its own destination rather than a panel under controller identity.
+  assert.match(nav, /key: 'registry-mirror'/)
+  assert.match(router, /case 'registry-mirror':/)
+  assert.doesNotMatch(core, /RegistryMirror/, 'the fleet image mirror is still buried in the Core screen')
+
+  // Both halves write the same sealed record, and a half that sent only its own
+  // fields would clear the other half's.
+  const settings = await source('screens/apps/source-settings.ts')
+  assert.match(settings, /const base = current\.current/)
+  assert.match(settings, /\.\.\.patch,/)
 })
 
 test('gateway, routes, DNS, and certificates are separate operator destinations', async () => {

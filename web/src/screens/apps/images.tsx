@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Banner,
   Body,
@@ -17,7 +17,7 @@ import type { Command, SourceStatus } from '../../data/types'
 import { sentence, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
-import { RegistryBoundaryPanel } from './deploy-parts/registry'
+import { PushRegistryPanel } from './push-registry'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -31,7 +31,8 @@ type Toast = ReturnType<typeof useToast>
  */
 export function ImagesPage({ onDeployFromSource, toast }: { onDeployFromSource: () => void; toast: Toast }) {
   const [sourceStatus, setSourceStatus] = useState<SourceStatus | null>(null)
-  useEffect(() => { void api.sourceStatus().then(setSourceStatus).catch(() => setSourceStatus(null)) }, [])
+  const readSourceStatus = useCallback(() => { void api.sourceStatus().then(setSourceStatus).catch(() => setSourceStatus(null)) }, [])
+  useEffect(readSourceStatus, [readSourceStatus])
   const [archive, setArchive] = useState<File | null>(null)
   const [image, setImage] = useState('')
   const [dockerfile, setDockerfile] = useState('Dockerfile')
@@ -69,10 +70,11 @@ export function ImagesPage({ onDeployFromSource, toast }: { onDeployFromSource: 
       ]}
       page="images"
     >
-      {/* Where images GO is the same subject as what was built. The registry
-          boundary was its own destination behind the deploy screen, which is
-          not where anyone looks for "which registry do we push to". */}
-      {sourceStatus ? <RegistryBoundaryPanel status={sourceStatus} /> : null}
+      {/* Where images GO is the same subject as what was built. This was a
+          read-only summary pointing at the source-deployment sheet, which is
+          not where anyone looks for "which registry do we push to" — and it
+          made the registry look like a step in connecting a Git provider. */}
+      {sourceStatus ? <PushRegistryPanel onApplied={readSourceStatus} status={sourceStatus} /> : null}
 
       <Columns>
         <Panel eyebrow="Build request" title="Build and optionally push">

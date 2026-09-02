@@ -17,6 +17,7 @@ import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import type { RegistryMirrorMachine } from '../../data/types'
 import { messageOf } from '../../lib/errors'
+import { Screen } from '../../components/screen'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -28,8 +29,15 @@ type Toast = ReturnType<typeof useToast>
  * one that stalls when Hub is slow, blocked, or rate-limiting. So this is one
  * control over every enrolled agent, and the table below reports what each
  * DAEMON says — not what was once asked for — so drift is visible.
+ *
+ * It is its own destination because it belongs to no application and no
+ * provider. It was a panel inside the Core screen, under a heading about
+ * controller identity and authority handover, which is neither where it is
+ * looked for nor what it is about: this changes where every HOST pulls public
+ * images from, and it is unrelated both to the registry SwarmOps pushes builds
+ * to and to the Git provider it reads source from.
  */
-export function RegistryMirrorPanel({ toast }: { toast: Toast }) {
+export function RegistryMirrorPage({ toast }: { toast: Toast }) {
   const [machines, setMachines] = useState<RegistryMirrorMachine[] | null>(null)
   const [consistent, setConsistent] = useState(true)
   const [mirrors, setMirrors] = useState('')
@@ -53,6 +61,7 @@ export function RegistryMirrorPanel({ toast }: { toast: Toast }) {
   useEffect(() => { void read() }, [])
 
   const entries = mirrors.split('\n').map((line) => line.trim()).filter(Boolean)
+  const mirrored = machines?.filter((machine) => machine.mirrors?.length).length ?? 0
 
   const apply = async () => {
     const question = entries.length
@@ -95,36 +104,47 @@ export function RegistryMirrorPanel({ toast }: { toast: Toast }) {
   ]
 
   return (
-    <Panel title="Docker image mirror">
-      <Rows>
-        <Body size="sm">
-          One pull-through mirror for every enrolled machine. SwarmOps writes only the mirror list into each host&apos;s
-          Docker daemon configuration, keeps every other setting the host already had, and restarts Docker so the
-          change actually takes effect. Leave the box empty to go back to pulling from Docker Hub.
-        </Body>
-        {error ? <Banner title="The image mirror could not be read or changed" tone="danger">{error}</Banner> : null}
-        {machines && !consistent ? (
-          <Banner title="Machines disagree" tone="warning">
-            Enrolled machines are not using the same mirror. Applying below makes the whole fleet match this list.
-          </Banner>
-        ) : null}
-        <Input
-          hint="One registry URL per line, at most four, tried in order. A bare host becomes HTTPS."
-          label="Mirror URLs"
-          onChange={(event) => setMirrors(event.target.value)}
-          placeholder="https://mirror.example.com"
-          value={mirrors}
-        />
-        <Inline>
-          <Button disabled={Boolean(pending)} loading={pending === 'apply'} onClick={() => void apply()} variant="accent">
-            {entries.length ? 'Apply to every machine' : 'Remove mirror everywhere'}
-          </Button>
-          <Button disabled={Boolean(pending)} iconStart="refresh" loading={pending === 'read'} onClick={() => void read()} variant="secondary">Re-read machines</Button>
-        </Inline>
-        {!machines ? <Spinner label="Reading each machine's Docker configuration" /> : (
-          <Table columns={columns} rowKey={(machine) => machine.serverId} rows={machines} />
-        )}
-      </Rows>
-    </Panel>
+    <Screen
+      about="This is where every enrolled machine pulls PUBLIC images from. It is not the registry SwarmOps pushes its own builds to, and it has nothing to do with the Git provider source is read from — both of those are under Apps."
+      insights={[
+        { hint: entries.length ? 'Every enrolled machine is asked to pull through this' : 'Machines pull from Docker Hub directly', icon: 'cloud', label: 'Mirror in effect', tone: entries.length ? 'success' : 'neutral', value: entries[0] ?? 'Docker Hub' },
+        { hint: 'Machines whose Docker daemon reports a mirror right now', icon: 'server', label: 'Machines mirrored', unmeasured: !machines, value: machines ? `${mirrored}/${machines.length}` : '—' },
+        { hint: consistent ? 'Every reachable machine reports the same mirror' : 'At least one machine disagrees with the rest', icon: 'shield', label: 'Fleet agreement', tone: machines && !consistent ? 'warning' : 'success', unmeasured: !machines, value: machines ? (consistent ? 'Uniform' : 'Drifted') : '—' },
+      ]}
+      page="registry-mirror"
+      width="full"
+    >
+      <Panel title="Docker image mirror">
+        <Rows>
+          <Body size="sm">
+            One pull-through mirror for every enrolled machine. SwarmOps writes only the mirror list into each host&apos;s
+            Docker daemon configuration, keeps every other setting the host already had, and restarts Docker so the
+            change actually takes effect. Leave the box empty to go back to pulling from Docker Hub.
+          </Body>
+          {error ? <Banner title="The image mirror could not be read or changed" tone="danger">{error}</Banner> : null}
+          {machines && !consistent ? (
+            <Banner title="Machines disagree" tone="warning">
+              Enrolled machines are not using the same mirror. Applying below makes the whole fleet match this list.
+            </Banner>
+          ) : null}
+          <Input
+            hint="One registry URL per line, at most four, tried in order. A bare host becomes HTTPS."
+            label="Mirror URLs"
+            onChange={(event) => setMirrors(event.target.value)}
+            placeholder="https://mirror.example.com"
+            value={mirrors}
+          />
+          <Inline>
+            <Button disabled={Boolean(pending)} loading={pending === 'apply'} onClick={() => void apply()} variant="accent">
+              {entries.length ? 'Apply to every machine' : 'Remove mirror everywhere'}
+            </Button>
+            <Button disabled={Boolean(pending)} iconStart="refresh" loading={pending === 'read'} onClick={() => void read()} variant="secondary">Re-read machines</Button>
+          </Inline>
+          {!machines ? <Spinner label="Reading each machine's Docker configuration" /> : (
+            <Table columns={columns} rowKey={(machine) => machine.serverId} rows={machines} />
+          )}
+        </Rows>
+      </Panel>
+    </Screen>
   )
 }

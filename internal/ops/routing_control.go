@@ -463,7 +463,7 @@ func (c *ControlPlane) ApplyTraefikSettings(ctx context.Context, actor, requestI
 	return err
 }
 
-func (c *ControlPlane) InstallDNSCredential(ctx context.Context, actor, requestID, id, name string, provider DNSProvider, input io.Reader) (DNSCredentialMetadata, error) {
+func (c *ControlPlane) InstallDNSCredential(ctx context.Context, actor, requestID, id, name string, provider DNSProvider, identity DNSCredentialIdentity, input io.Reader) (DNSCredentialMetadata, error) {
 	if !c.Mutations {
 		return DNSCredentialMetadata{}, fmt.Errorf("cluster mutations are disabled")
 	}
@@ -477,6 +477,10 @@ func (c *ControlPlane) InstallDNSCredential(ctx context.Context, actor, requestI
 	name = strings.TrimSpace(name)
 	if !providerIDPattern.MatchString(id) || name == "" || len(name) > 96 || (provider != DNSProviderCloudflare && provider != DNSProviderArvan) {
 		return DNSCredentialMetadata{}, fmt.Errorf("DNS credential metadata is invalid")
+	}
+	identity = identity.Normalize()
+	if err := identity.Validate(provider); err != nil {
+		return DNSCredentialMetadata{}, err
 	}
 	value, err := io.ReadAll(io.LimitReader(input, 513))
 	if err != nil || len(value) > 512 {
@@ -500,7 +504,7 @@ func (c *ControlPlane) InstallDNSCredential(ctx context.Context, actor, requestI
 	if c.DNSProviders == nil {
 		return DNSCredentialMetadata{}, fmt.Errorf("DNS provider adapter is not configured")
 	}
-	probe := DNSCredentialMetadata{ID: id, Name: name, Provider: provider, Version: 1}
+	probe := DNSCredentialMetadata{AccountID: identity.AccountID, Email: identity.Email, ID: id, Name: name, Provider: provider, Version: 1}
 	err = c.DNSProviders.ValidateCredential(ctx, probe, secret)
 	if err != nil {
 		for index := range value {
@@ -510,7 +514,7 @@ func (c *ControlPlane) InstallDNSCredential(ctx context.Context, actor, requestI
 		c.record(actor, requestID, "traefik.dns-credential.rotate", "dns-credential/"+id, err, map[string]string{"provider": string(provider)})
 		return DNSCredentialMetadata{}, err
 	}
-	metadata, err := c.Routing.RotateCredential(c.ServerID, id, name, provider, []byte(secret))
+	metadata, err := c.Routing.RotateCredential(c.ServerID, id, name, provider, identity, []byte(secret))
 	for index := range value {
 		value[index] = 0
 	}
