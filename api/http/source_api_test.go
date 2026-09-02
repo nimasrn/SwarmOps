@@ -301,3 +301,124 @@ func TestApplicationDomainEndpointUsesSelectedManagerAndRequiresRemovalConfirmat
 		t.Fatalf("confirmed removal = %d %s", removed.Code, removed.Body.String())
 	}
 }
+
+// A controller that ships with the boundary off must still be turnable on from
+// the console: the whole point of sealed source settings is that an operator
+// with a browser and no shell can finish setup.
+func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
+	directory := t.TempDir()
+	key := bytes.Repeat([]byte{7}, 32)
+	hash, err := bcrypt.GenerateFromPassword([]byte("test-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditStore, err := audit.Open(directory, key, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(t.TempDir(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		AdminPasswordHash: hash,
+		AdminUsername:     "operator",
+		BuildMaxBytes:     1 << 20,
+		DataDir:           directory,
+		DataEncryptionKey: key,
+		MutationEnabled:   true,
+		SessionKey:        []byte("01234567890123456789012345678901"),
+		SessionTTL:        time.Hour,
+		SourceEnabled:     false,
+	}
+	api, err := New(cfg, TargetResolverFunc(func(string) (Target, error) { return Target{}, nil }), servers, auditStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectionStore, err := source.NewStore(directory, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceService, err := source.NewService(connectionStore, source.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsStore, err := source.NewSettingsStore(directory, key, source.Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.SetSourceService(sourceService)
+	api.SetSourceSettings(settingsStore)
+	handler := api.Handler()
+
+	login := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"username":"operator","password":"test-password"}`))
+	login.Header.Set("Content-Type", "application/json")
+	loginResponse := httptest.NewRecorder()
+	handler.ServeHTTP(loginResponse, login)
+	if loginResponse.Code != http.StatusOK {
+		t.Fatalf("login = %d %s", loginResponse.Code, loginResponse.Body.String())
+	}
+	var session struct {
+		CSRFToken string `json:"csrfToken"`
+	}
+	if err := json.NewDecoder(loginResponse.Body).Decode(&session); err != nil {
+		t.Fatal(err)
+	}
+	cookie := loginResponse.Result().Cookies()[0]
+
+	before := httptest.NewRequest(http.MethodGet, "/api/v1/sources/connections", nil)
+	before.AddCookie(cookie)
+	beforeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(beforeResponse, before)
+	if beforeResponse.Code != http.StatusServiceUnavailable {
+		t.Fatalf("connections before setup = %d %s", beforeResponse.Code, beforeResponse.Body.String())
+	}
+
+	password := "registry-push-secret"
+	apply := httptest.NewRequest(http.MethodPut, "/api/v1/sources/settings", bytes.NewBufferString(`{"buildEnabled":true,"enabled":true,"imagePrefix":"ghcr.io/acme","privateHosts":["git.example.com"],"registryPassword":"`+password+`","registryServer":"ghcr.io","registryUsername":"robot"}`))
+	apply.Header.Set("Content-Type", "application/json")
+	apply.Header.Set("X-CSRF-Token", session.CSRFToken)
+	apply.AddCookie(cookie)
+	applyResponse := httptest.NewRecorder()
+	handler.ServeHTTP(applyResponse, apply)
+	if applyResponse.Code != http.StatusOK {
+		t.Fatalf("apply = %d %s", applyResponse.Code, applyResponse.Body.String())
+	}
+	if strings.Contains(applyResponse.Body.String(), password) {
+		t.Fatalf("settings response leaked the registry password: %s", applyResponse.Body.String())
+	}
+
+	after := httptest.NewRequest(http.MethodGet, "/api/v1/sources/connections", nil)
+	after.AddCookie(cookie)
+	afterResponse := httptest.NewRecorder()
+	handler.ServeHTTP(afterResponse, after)
+	if afterResponse.Code != http.StatusOK {
+		t.Fatalf("connections after setup = %d %s", afterResponse.Code, afterResponse.Body.String())
+	}
+
+	statusRequest := httptest.NewRequest(http.MethodGet, "/api/v1/sources/status", nil)
+	statusRequest.AddCookie(cookie)
+	statusResponse := httptest.NewRecorder()
+	handler.ServeHTTP(statusResponse, statusRequest)
+	var status struct {
+		BuildEnabled          bool `json:"buildEnabled"`
+		Enabled               bool `json:"enabled"`
+		ImagePrefixConfigured bool `json:"imagePrefixConfigured"`
+	}
+	if err := json.NewDecoder(statusResponse.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	if !status.Enabled || !status.BuildEnabled || !status.ImagePrefixConfigured {
+		t.Fatalf("status did not reflect applied settings: %+v", status)
+	}
+	sealed, err := os.ReadFile(filepath.Join(directory, "source-settings.sealed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte(password)) {
+		t.Fatal("registry password was stored in plaintext")
+	}
+	if prefixes := api.sourceImagePrefixes(); len(prefixes) != 1 || prefixes[0] != "ghcr.io/acme/" {
+		t.Fatalf("push allow-list did not cover the configured namespace: %v", prefixes)
+	}
+}

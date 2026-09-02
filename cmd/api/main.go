@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.13.0"
+const version = "0.14.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -99,22 +100,56 @@ func main() {
 		logger.Error("load sealed Traefik routing state", "error", err)
 		os.Exit(1)
 	}
-	var sourceService *source.Service
-	if cfg.SourceEnabled {
-		sourceStore, sourceErr := source.NewStore(cfg.DataDir, cfg.DataEncryptionKey)
-		if sourceErr != nil {
-			logger.Error("load sealed source connections", "error", sourceErr)
-			os.Exit(1)
+	// The source boundary is always constructed, even when it starts disabled:
+	// an operator turns it on from the panel, and a service that only existed
+	// when an environment variable was already set could never be turned on
+	// without restarting the controller.
+	sourceStore, err := source.NewStore(cfg.DataDir, cfg.DataEncryptionKey)
+	if err != nil {
+		logger.Error("load sealed source connections", "error", err)
+		os.Exit(1)
+	}
+	sourceSettings, err := source.NewSettingsStore(cfg.DataDir, cfg.DataEncryptionKey, source.Settings{
+		BuildEnabled: cfg.BuildEnabled,
+		Enabled:      cfg.SourceEnabled,
+		ImagePrefix:  cfg.SourceImagePrefix,
+		PrivateHosts: cfg.SourceAllowedHosts,
+	})
+	if err != nil {
+		logger.Error("load sealed source settings", "error", err)
+		os.Exit(1)
+	}
+	sourceService, err := source.NewService(sourceStore, source.Options{
+		AllowedHosts:    append(append([]string{}, cfg.SourceAllowedHosts...), sourceSettings.Settings().PrivateHosts...),
+		ImagePrefix:     firstNonEmpty(sourceSettings.Settings().ImagePrefix, cfg.SourceImagePrefix),
+		MaxArchiveBytes: cfg.BuildMaxBytes,
+	})
+	if err != nil {
+		logger.Error("configure source deployment", "error", err)
+		os.Exit(1)
+	}
+	// Push settings are read per resolve, so a panel change reaches the next
+	// build without a restart.
+	buildEnabled := func() bool { return cfg.BuildEnabled || sourceSettings.Settings().BuildEnabled }
+	registryAuth := func() []byte {
+		if auth := sourceSettings.RegistryAuth(); len(auth) > 0 {
+			return auth
 		}
-		sourceService, sourceErr = source.NewService(sourceStore, source.Options{
-			AllowedHosts:    cfg.SourceAllowedHosts,
-			ImagePrefix:     cfg.SourceImagePrefix,
-			MaxArchiveBytes: cfg.BuildMaxBytes,
-		})
-		if sourceErr != nil {
-			logger.Error("configure source deployment", "error", sourceErr)
-			os.Exit(1)
+		return cfg.RegistryAuth
+	}
+	imagePrefixes := func() []string {
+		prefixes := append([]string{}, cfg.ImagePrefixes...)
+		prefix := strings.TrimSpace(firstNonEmpty(sourceSettings.Settings().ImagePrefix, cfg.SourceImagePrefix))
+		if prefix == "" {
+			return prefixes
 		}
+		prefix += "/"
+		for _, existing := range prefixes {
+			if existing == prefix {
+				return prefixes
+			}
+		}
+		return append(prefixes, prefix)
 	}
 	var agentReader ops.AgentReader
 	if len(cfg.AgentToken) > 0 {
@@ -210,11 +245,11 @@ func main() {
 		})
 		target.Build = build.Service{
 			Docker:        connection.Docker,
-			Enabled:       cfg.BuildEnabled,
-			ImagePrefixes: cfg.ImagePrefixes,
+			Enabled:       buildEnabled(),
+			ImagePrefixes: imagePrefixes(),
 			MaxCPUs:       cfg.BuildMaxCPUs,
 			MaxMemoryMiB:  cfg.BuildMaxMemoryMiB,
-			RegistryAuth:  cfg.RegistryAuth,
+			RegistryAuth:  registryAuth(),
 		}
 		target.Control = control
 		return target, nil
@@ -224,6 +259,7 @@ func main() {
 		api.SetVersion(version)
 		api.SetApplicationDiscovery(applications, admission.Namespace())
 		api.SetSourceService(sourceService)
+		api.SetSourceSettings(sourceSettings)
 	}
 	if err != nil {
 		logger.Error("create HTTP server", "error", err)
@@ -363,4 +399,15 @@ func (listener apiListener) serve() error {
 		return listener.server.ListenAndServeTLS(listener.tlsCertFile, listener.tlsKeyFile)
 	}
 	return listener.server.ListenAndServe()
+}
+
+// firstNonEmpty returns the first value that carries content, so a sealed
+// console setting takes precedence over the startup default it replaces.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

@@ -676,6 +676,33 @@ export interface SourceStatus {
   enabled: boolean
   imagePrefixConfigured: boolean
   privateHostsConfigured: boolean
+  /** False on a controller whose settings are pinned by startup configuration. */
+  settingsEditable?: boolean
+}
+
+// The console-owned half of the source boundary. The registry password is
+// write-only: it is accepted here and never returned.
+export interface SourceSettings {
+  buildEnabled: boolean
+  enabled: boolean
+  imagePrefix: string
+  privateHosts: string[] | null
+  registryConfigured: boolean
+  registryServer: string
+  registryUsername: string
+  settingsEditable: boolean
+  startupBuildEnabled: boolean
+  startupEnabled: boolean
+}
+
+export interface SourceSettingsInput {
+  buildEnabled: boolean
+  enabled: boolean
+  imagePrefix: string
+  privateHosts: string[]
+  registryPassword?: string
+  registryServer: string
+  registryUsername: string
 }
 
 // A source connection is intentionally metadata-only. Its provider token is

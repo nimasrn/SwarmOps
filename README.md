@@ -802,7 +802,18 @@ reviewed, non-secret manifest on this same control host and set
 
 Source deployment is a separate, default-off controller capability. Enable it
 only after the controller data key, provider-token revocation process, selected
-manager, platform manifest, registry, and build policy are ready:
+manager, platform manifest, registry, and build policy are ready.
+
+The console owns this setup: **Apps → Deploy → Set up source deployment** turns
+the boundary on, sets the registry namespace, seals a registry push credential,
+allows bounded builds, and allow-lists private provider hosts. Those settings
+are AES-256-GCM sealed in `source-settings.sealed` beside the provider tokens
+and take effect without restarting the controller; the registry password is
+write-only and is never returned to the browser. Per-host build permission is
+unaffected — each Docker host still enforces its own.
+
+The variables below remain supported as startup defaults for hosts that are
+provisioned from configuration rather than the console:
 
 ```bash
 SWARMOPS_SOURCE_ENABLED=true

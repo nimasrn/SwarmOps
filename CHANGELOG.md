@@ -11,6 +11,30 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.14.0 — 2026-09-02
+
+Source deployment is set up from the console, and setup no longer hides the
+flow it is a prerequisite for.
+
+- **Setup is a form, not a printout** — turning on source deployment, naming
+  the registry namespace, sealing a registry push credential, allowing bounded
+  builds, and allow-listing private provider hosts are all done in the console
+  and take effect without restarting the controller. The screen previously
+  could only print the environment variables it wanted, which is a dead end for
+  the one person most likely to be reading it: an operator in a browser with no
+  shell on the control host. The settings are AES-256-GCM sealed in
+  `source-settings.sealed` beside the provider tokens, the registry password is
+  write-only and never returned to the browser, and startup configuration
+  remains the floor those settings sit on. Per-host build permission is
+  untouched: each Docker host still enforces its own.
+- **A missing registry no longer hides the provider and repository steps** —
+  connecting GitHub, GitLab, Gitea, or Forgejo and scanning a repository need
+  only the source boundary itself, so those steps are now open as soon as it is
+  on. The build-time requirements are reported where they apply and enforced at
+  release, and a service that ships an already-pinned image deploys without
+  them. Deploy previously replaced its whole four-step flow with the settings
+  panel whenever any one requirement was unset.
+
 ## 0.13.0 — 2026-09-02
 
 A hostname is published in one order, the image mirror is a fleet-wide fact,

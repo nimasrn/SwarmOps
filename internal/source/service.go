@@ -6,13 +6,34 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 )
 
 // Service is the only source boundary used by the API. It owns both the
 // sealed connection store and the provider network policy.
 type Service struct {
+	mu      sync.RWMutex
 	options Options
 	store   *Store
+}
+
+// Reconfigure applies the console-owned parts of the boundary — the allowed
+// private provider hosts and the registry image prefix — without a restart.
+// Everything else in Options is a reviewed startup limit and is left alone.
+func (s *Service) Reconfigure(allowedHosts []string, imagePrefix string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.options.AllowedHosts = allowedHosts
+	s.options.ImagePrefix = imagePrefix
+}
+
+func (s *Service) currentOptions() Options {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.options
 }
 
 func NewService(store *Store, options Options) (*Service, error) {
@@ -34,11 +55,11 @@ func (s *Service) CreateConnection(ctx context.Context, input ConnectionInput) (
 	if s == nil {
 		return Connection{}, fmt.Errorf("source service is unavailable")
 	}
-	normalized, err := normalizeConnectionInput(input, s.options)
+	normalized, err := normalizeConnectionInput(input, s.currentOptions())
 	if err != nil {
 		return Connection{}, err
 	}
-	adapter, err := newProvider(storedConnection{Connection: Connection{BaseURL: normalized.BaseURL, Kind: normalized.Kind}, Token: normalized.Token}, s.options)
+	adapter, err := newProvider(storedConnection{Connection: Connection{BaseURL: normalized.BaseURL, Kind: normalized.Kind}, Token: normalized.Token}, s.currentOptions())
 	if err != nil {
 		return Connection{}, err
 	}
@@ -53,11 +74,11 @@ func (s *Service) UpdateConnection(ctx context.Context, id string, input Connect
 	if s == nil {
 		return Connection{}, fmt.Errorf("source service is unavailable")
 	}
-	normalized, err := normalizeConnectionInput(input, s.options)
+	normalized, err := normalizeConnectionInput(input, s.currentOptions())
 	if err != nil {
 		return Connection{}, err
 	}
-	adapter, err := newProvider(storedConnection{Connection: Connection{BaseURL: normalized.BaseURL, Kind: normalized.Kind}, Token: normalized.Token}, s.options)
+	adapter, err := newProvider(storedConnection{Connection: Connection{BaseURL: normalized.BaseURL, Kind: normalized.Kind}, Token: normalized.Token}, s.currentOptions())
 	if err != nil {
 		return Connection{}, err
 	}
@@ -100,7 +121,7 @@ func (s *Service) Discover(ctx context.Context, request DiscoverRequest) (Plan, 
 	if err != nil {
 		return Plan{}, err
 	}
-	return scanRepository(ctx, provider, repository, revision, s.options)
+	return scanRepository(ctx, provider, repository, revision, s.currentOptions())
 }
 
 // BuildContext re-discovers at the immutable revision and streams a sanitized
@@ -160,7 +181,7 @@ func (s *Service) PrepareDeployment(ctx context.Context, selection Selection) (P
 	if err != nil {
 		return Plan{}, ServicePlan{}, nil, err
 	}
-	contextReader, err := normalizeBuildArchive(archive, candidate.Build.ContextPath, s.options.MaxArchiveBytes)
+	contextReader, err := normalizeBuildArchive(archive, candidate.Build.ContextPath, s.currentOptions().MaxArchiveBytes)
 	if err != nil {
 		_ = archive.Close()
 		return Plan{}, ServicePlan{}, nil, err
@@ -176,5 +197,5 @@ func (s *Service) provider(connectionID string) (provider, error) {
 	if !found {
 		return nil, os.ErrNotExist
 	}
-	return newProvider(record, s.options)
+	return newProvider(record, s.currentOptions())
 }

@@ -205,11 +205,11 @@ func (s *Server) submitServiceAction(response http.ResponseWriter, request *http
 
 func (s *Server) submitBuild(response http.ResponseWriter, request *http.Request, claims auth.Claims, input build.Request) {
 	validation := build.Service{
-		Enabled:       s.config.BuildEnabled,
-		ImagePrefixes: s.config.ImagePrefixes,
+		Enabled:       s.effectiveSourceSettings().BuildEnabled,
+		ImagePrefixes: s.sourceImagePrefixes(),
 		MaxCPUs:       s.config.BuildMaxCPUs,
 		MaxMemoryMiB:  s.config.BuildMaxMemoryMiB,
-		RegistryAuth:  s.config.RegistryAuth,
+		RegistryAuth:  s.sourceRegistryAuth(),
 	}
 	normalized, err := validation.Validate(input)
 	if err != nil {
@@ -434,11 +434,11 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 	}
 	if candidate.Build != nil && candidate.Build.Required {
 		validation := build.Service{
-			Enabled:       s.config.BuildEnabled,
-			ImagePrefixes: s.config.ImagePrefixes,
+			Enabled:       s.effectiveSourceSettings().BuildEnabled,
+			ImagePrefixes: s.sourceImagePrefixes(),
 			MaxCPUs:       s.config.BuildMaxCPUs,
 			MaxMemoryMiB:  s.config.BuildMaxMemoryMiB,
-			RegistryAuth:  s.config.RegistryAuth,
+			RegistryAuth:  s.sourceRegistryAuth(),
 		}
 		buildRequest, err := validation.Validate(build.Request{
 			CPUs:       spec.CPUs,

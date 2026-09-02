@@ -38,7 +38,7 @@ import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { DeploymentPlan } from './deploy-parts/plan'
-import { SourceSetupPanel } from './deploy-parts/setup'
+import { SOURCE_DOCS_URL, SourceSetupPanel } from './deploy-parts/setup'
 import { KubernetesImportPanel } from './kubernetes-import'
 import {
   DiscoveryEvidence,
@@ -95,6 +95,9 @@ const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
 export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: DeployPageProps) {
   const [source, setSource] = useState<DeploySource>('repository')
   const [status, setStatus] = useState<SourceStatus | null>(null)
+  /* Setup stays reachable after the boundary is on, because the release half
+     of it can still be missing while the flow itself is usable. */
+  const [setupOpen, setSetupOpen] = useState(false)
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
   const [approved, setApproved] = useState<ApprovedWorkload[]>([])
@@ -437,13 +440,18 @@ export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: D
     { caption: 'Build and start first', id: 'release', label: 'Release', status: deployBlocks.length === 0 ? 'active' : 'pending' },
   ]
 
-  const ready = status.enabled && status.buildEnabled && status.imagePrefixConfigured
+  /* Connecting a provider and scanning a repository need only the source
+     boundary itself. Bounded builds and the registry prefix are release-time
+     requirements, so they are reported here and enforced by the deployment
+     blocks — not used to hide the whole flow behind a settings page. */
+  const ready = status.enabled
+  const releaseReady = status.buildEnabled && status.imagePrefixConfigured
 
   return (
     <Screen
       about="SwarmOps reads a repository, classifies what it finds, builds the one service you choose, and rolls it out through the same policy as everything else. You write no Compose, no route, and no connection string."
       insights={[
-        { hint: ready ? 'A repository can be scanned and deployed' : 'Complete the controller settings before deploying', icon: 'play', label: 'Source deployment', tone: ready ? 'success' : 'warning', value: ready ? 'Ready' : 'Setup required' },
+        { hint: !ready ? 'Enable the source boundary on the controller' : releaseReady ? 'A repository can be scanned and deployed' : 'Connect and scan now; configure the registry before release', icon: 'play', label: 'Source deployment', tone: ready && releaseReady ? 'success' : 'warning', value: ready ? (releaseReady ? 'Ready' : 'Release setup pending') : 'Setup required' },
         { hint: connections.length ? 'Verified providers this controller may read from' : 'No provider is connected yet', icon: 'link', label: 'Providers', tone: connections.length ? 'success' : 'neutral', value: String(connections.length) },
         { hint: plan ? `${plan.services.length} service${plan.services.length === 1 ? '' : 's'} found in the scanned tree` : 'Scan a repository to see what it holds', icon: 'layers', label: 'Discovered services', unmeasured: !plan, value: String(plan?.services.length ?? 0) },
         { hint: blockers.length ? 'Each one stops the deployment until it is resolved' : 'Nothing currently blocks a deployment', icon: 'alert', label: 'Blockers', tone: blockers.length ? 'danger' : 'success', value: String(blockers.length) },
@@ -465,10 +473,20 @@ export function DeployPage({ managerID, managerName, onOpenWorkloads, toast }: D
         <KubernetesImportPanel onOpenWorkloads={onOpenWorkloads ?? (() => undefined)} />
       ) : !ready ? (
         <>
-        <SourceSetupPanel status={status} />
+        <SourceSetupPanel onApplied={() => void loadSource()} status={status} />
         </>
       ) : (
         <>
+          {!releaseReady ? (
+            <Banner
+              action={<Inline><Button onClick={() => setSetupOpen(true)} size="sm" variant="accent">Finish setup</Button><Button href={SOURCE_DOCS_URL} rel="noreferrer" size="sm" target="_blank" variant="ghost">Setup guide</Button></Inline>}
+              title="Provider and repository steps are open; release is not"
+              tone="warning"
+            >
+              You can connect a provider, list projects, and scan a repository now. Building an image from that source also needs a registry namespace, a sealed push credential, and bounded builds. A service that ships an already-pinned image deploys without them.
+            </Banner>
+          ) : null}
+          {setupOpen ? <SourceSetupPanel onApplied={() => { setSetupOpen(false); void loadSource() }} status={status} /> : null}
           <StageTrack label="Source deployment stages" stages={stages} />
 
           <DetailLayout

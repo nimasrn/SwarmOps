@@ -47,6 +47,8 @@ import type {
   SourcePlan,
   SourceRepository,
   SourceSelection,
+  SourceSettings,
+  SourceSettingsInput,
   SourceStatus,
   Stack,
   Task,
@@ -447,6 +449,12 @@ export class SwarmOpsAPI {
   applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
   approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
   sourceStatus() { return this.request<SourceStatus>('/api/v1/sources/status') }
+  sourceSettings() { return this.request<SourceSettings>('/api/v1/sources/settings') }
+
+  saveSourceSettings(input: SourceSettingsInput) {
+    return this.request<SourceSettings>('/api/v1/sources/settings', { method: 'PUT', body: JSON.stringify(input) })
+  }
+
   sourceConnections() { return this.request<SourceConnection[]>('/api/v1/sources/connections') }
 
   createSourceConnection(input: SourceConnectionInput) {

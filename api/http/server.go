@@ -128,15 +128,16 @@ type Server struct {
 	machineSamples *machineMetricsCache
 	// What this process is and when it started. The controller could describe
 	// every machine and nothing about itself.
-	startedAt     time.Time
-	version       string
-	servers       *remote.Manager
-	sources       *source.Service
-	apps          *ops.ApplicationStore
-	agentBroker   *agentpull.Broker
-	agentRegistry *agentpull.Registry
-	namespace     string
-	targets       TargetResolver
+	startedAt      time.Time
+	version        string
+	servers        *remote.Manager
+	sources        *source.Service
+	sourceSettings *source.SettingsStore
+	apps           *ops.ApplicationStore
+	agentBroker    *agentpull.Broker
+	agentRegistry  *agentpull.Registry
+	namespace      string
+	targets        TargetResolver
 }
 
 func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, auditStore *audit.Store, logger *slog.Logger) (*Server, error) {
@@ -279,6 +280,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withActiveAuth(s.applicationRemove))
 	mux.HandleFunc("POST /api/v1/applications/{name}/domain", s.withActiveAuth(s.applicationDomain))
 	mux.HandleFunc("GET /api/v1/sources/status", s.withAuth(false, s.sourceStatus))
+	mux.HandleFunc("GET /api/v1/sources/settings", s.withAuth(false, s.sourceSettingsRead))
+	mux.HandleFunc("PUT /api/v1/sources/settings", s.withActiveAuth(s.sourceSettingsApply))
 	mux.HandleFunc("GET /api/v1/sources/connections", s.withAuth(false, s.sourceConnections))
 	mux.HandleFunc("POST /api/v1/sources/connections", s.withActiveAuth(s.sourceConnectionCreate))
 	mux.HandleFunc("PUT /api/v1/sources/connections/{id}", s.withActiveAuth(s.sourceConnectionUpdate))
@@ -934,12 +937,118 @@ func (s *Server) SetSourceService(service *source.Service) {
 	s.sources = service
 }
 
-func (s *Server) sourceStatus(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+// SetSourceSettings hands the server the sealed, console-owned source settings
+// so an operator can turn the boundary on, name a registry, and seal a push
+// credential from the panel instead of editing the controller environment and
+// restarting it. Startup configuration remains the initial value.
+func (s *Server) SetSourceSettings(store *source.SettingsStore) {
+	s.sourceSettings = store
+	s.applySourceSettings()
+}
+
+// effectiveSourceSettings overlays the sealed console settings on the startup
+// configuration. Startup values stay the floor: a controller shipped with the
+// boundary enabled cannot be silently weakened by a stale sealed file.
+func (s *Server) effectiveSourceSettings() source.Settings {
+	settings := source.Settings{
+		BuildEnabled: s.config.BuildEnabled,
+		Enabled:      s.config.SourceEnabled,
+		ImagePrefix:  strings.TrimSpace(s.config.SourceImagePrefix),
+		PrivateHosts: s.config.SourceAllowedHosts,
+	}
+	if s.sourceSettings == nil {
+		return settings
+	}
+	stored := s.sourceSettings.Settings()
+	settings.Enabled = settings.Enabled || stored.Enabled
+	settings.BuildEnabled = settings.BuildEnabled || stored.BuildEnabled
+	if stored.ImagePrefix != "" {
+		settings.ImagePrefix = stored.ImagePrefix
+	}
+	if len(stored.PrivateHosts) > 0 {
+		settings.PrivateHosts = append(append([]string{}, settings.PrivateHosts...), stored.PrivateHosts...)
+	}
+	settings.RegistryServer = stored.RegistryServer
+	settings.RegistryUsername = stored.RegistryUsername
+	return settings
+}
+
+// sourceRegistryAuth prefers the sealed console credential and falls back to
+// the protected registry file the controller was started with.
+func (s *Server) sourceRegistryAuth() []byte {
+	if auth := s.sourceSettings.RegistryAuth(); len(auth) > 0 {
+		return auth
+	}
+	return s.config.RegistryAuth
+}
+
+// sourceImagePrefixes is the push allow-list. The configured prefix is always
+// covered so a panel-set namespace does not need a second, separate list.
+func (s *Server) sourceImagePrefixes() []string {
+	prefixes := append([]string{}, s.config.ImagePrefixes...)
+	prefix := strings.TrimSpace(s.effectiveSourceSettings().ImagePrefix)
+	if prefix == "" {
+		return prefixes
+	}
+	prefix += "/"
+	for _, existing := range prefixes {
+		if existing == prefix {
+			return prefixes
+		}
+	}
+	return append(prefixes, prefix)
+}
+
+func (s *Server) applySourceSettings() {
+	settings := s.effectiveSourceSettings()
+	s.sources.Reconfigure(settings.PrivateHosts, settings.ImagePrefix)
+}
+
+func (s *Server) sourceSettingsRead(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	settings := s.effectiveSourceSettings()
 	writeJSON(response, http.StatusOK, map[string]any{
-		"buildEnabled":           s.config.BuildEnabled,
-		"enabled":                s.config.SourceEnabled && s.sources != nil,
-		"imagePrefixConfigured":  strings.TrimSpace(s.config.SourceImagePrefix) != "",
-		"privateHostsConfigured": len(s.config.SourceAllowedHosts) > 0,
+		"buildEnabled":        settings.BuildEnabled,
+		"enabled":             settings.Enabled,
+		"imagePrefix":         settings.ImagePrefix,
+		"privateHosts":        settings.PrivateHosts,
+		"registryConfigured":  len(s.sourceRegistryAuth()) > 0,
+		"registryServer":      settings.RegistryServer,
+		"registryUsername":    settings.RegistryUsername,
+		"startupEnabled":      s.config.SourceEnabled,
+		"startupBuildEnabled": s.config.BuildEnabled,
+		"settingsEditable":    s.sourceSettings != nil,
+	})
+}
+
+func (s *Server) sourceSettingsApply(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if s.sourceSettings == nil {
+		writeError(response, http.StatusServiceUnavailable, "Source settings cannot be changed on this controller")
+		return
+	}
+	var input source.SettingsInput
+	if !decodeJSON(response, request, &input) {
+		return
+	}
+	defer func() { input.RegistryPassword = "" }()
+	saved, err := s.sourceSettings.Save(input)
+	if err != nil {
+		s.record(claims.Username, requestID(request), "source.settings-applied", "source-settings/controller", err, nil)
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	s.applySourceSettings()
+	s.record(claims.Username, requestID(request), "source.settings-applied", "source-settings/controller", nil, map[string]string{"enabled": strconv.FormatBool(saved.Enabled), "build_enabled": strconv.FormatBool(saved.BuildEnabled)})
+	s.sourceSettingsRead(response, request, claims)
+}
+
+func (s *Server) sourceStatus(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	settings := s.effectiveSourceSettings()
+	writeJSON(response, http.StatusOK, map[string]any{
+		"buildEnabled":           settings.BuildEnabled && len(s.sourceRegistryAuth()) > 0,
+		"enabled":                settings.Enabled && s.sources != nil,
+		"imagePrefixConfigured":  strings.TrimSpace(settings.ImagePrefix) != "",
+		"privateHostsConfigured": len(settings.PrivateHosts) > 0,
+		"settingsEditable":       s.sourceSettings != nil,
 	})
 }
 
@@ -1043,7 +1152,7 @@ func (s *Server) sourceDeploy(response http.ResponseWriter, request *http.Reques
 }
 
 func (s *Server) requireSource(response http.ResponseWriter) bool {
-	if !s.config.SourceEnabled || s.sources == nil {
+	if !s.effectiveSourceSettings().Enabled || s.sources == nil {
 		writeError(response, http.StatusServiceUnavailable, "Source deployment is disabled; set SWARMOPS_SOURCE_ENABLED=true")
 		return false
 	}
