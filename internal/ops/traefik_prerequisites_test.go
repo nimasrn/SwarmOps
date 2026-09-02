@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
@@ -82,6 +83,9 @@ func TestTraefikPrerequisitesPlanAndRepairAreClosedAndComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCalls := [][]string{
+		// Ingress is repaired first: without it nothing can publish a port, so
+		// every later resource would be created only to fail at deploy time.
+		{"network", "create", "--driver", "overlay", "--ingress", "--subnet", "10.0.0.0/24", "--gateway", "10.0.0.1", "ingress"},
 		{"network", "create", "--driver", "overlay", "--attachable", "--opt", "encrypted=true", "traefik"},
 		{"node", "update", "--label-add", "nim.edge=true", "manager-a"},
 		{"config", "create", "nim_traefik_dynamic_v1", "-"},
@@ -90,7 +94,64 @@ func TestTraefikPrerequisitesPlanAndRepairAreClosedAndComplete(t *testing.T) {
 	if !reflect.DeepEqual(runner.calls, wantCalls) {
 		t.Fatalf("Docker calls = %#v", runner.calls)
 	}
-	if runner.inputs[2] != dynamic || runner.inputs[3] != plan.DashboardAuth {
+	if runner.inputs[3] != dynamic || runner.inputs[4] != plan.DashboardAuth {
 		t.Fatalf("reviewed inputs were not preserved: %#v", runner.inputs)
+	}
+}
+
+// An ingress network whose range overlaps an existing network is accepted by
+// Docker and then silently fails to route. Refusing the repair is the only
+// honest outcome: the operator has to free a range first.
+func TestEnsureIngressNetworkRefusesOverlappingRange(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/networks" {
+			_, _ = response.Write([]byte(`[{"Name":"existing","Driver":"overlay","IPAM":{"Config":[{"Subnet":"10.0.0.0/16"}]}}]`))
+			return
+		}
+		http.NotFound(response, request)
+	}))
+	t.Cleanup(server.Close)
+	docker, err := dockerapi.NewForURL(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &prerequisiteRunner{}
+	control := NewControlPlane(docker, DockerCLI{Runner: runner}, nil, ControlPlaneOptions{TraefikSettings: testTraefikSettings()})
+
+	err = control.ensureIngressNetwork(context.Background(), "10.0.0.0/24", "10.0.0.1")
+	if err == nil || !strings.Contains(err.Error(), "overlaps the existing network existing") {
+		t.Fatalf("ensureIngressNetwork error = %v, want an overlap refusal", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("refused repair still called Docker: %#v", runner.calls)
+	}
+}
+
+// A repair that reruns after an interruption must not attempt a second create.
+func TestEnsureIngressNetworkIsIdempotent(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/networks" {
+			_, _ = response.Write([]byte(`[{"Name":"ingress","Driver":"overlay","Ingress":true}]`))
+			return
+		}
+		http.NotFound(response, request)
+	}))
+	t.Cleanup(server.Close)
+	docker, err := dockerapi.NewForURL(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &prerequisiteRunner{}
+	control := NewControlPlane(docker, DockerCLI{Runner: runner}, nil, ControlPlaneOptions{TraefikSettings: testTraefikSettings()})
+
+	if err := control.ensureIngressNetwork(context.Background(), "10.0.0.0/24", "10.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("existing ingress network was recreated: %#v", runner.calls)
 	}
 }

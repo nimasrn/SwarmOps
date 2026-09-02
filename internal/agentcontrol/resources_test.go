@@ -25,6 +25,7 @@ func TestResourceVocabularyRoundTrips(t *testing.T) {
 		{"network create --driver overlay --attachable edge", Request{Attachable: true, Driver: "overlay", Name: "edge", Operation: OperationNetworkCreate}},
 		{"network create --driver overlay --attachable --opt encrypted=true traefik", Request{Attachable: true, Driver: "overlay", Encrypted: true, Name: "traefik", Operation: OperationNetworkCreate}},
 		{"network create --driver overlay --internal private", Request{Driver: "overlay", Internal: true, Name: "private", Operation: OperationNetworkCreate}},
+		{"network create --driver overlay --ingress --subnet 10.0.0.0/24 --gateway 10.0.0.1 ingress", Request{Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Operation: OperationNetworkCreate, Subnet: "10.0.0.0/24"}},
 		{"network rm edge", Request{Name: "edge", Operation: OperationNetworkRemove}},
 		{"network prune --force", Request{Operation: OperationNetworkPrune}},
 		{"volume create --driver local data", Request{Name: "data", Operation: OperationVolumeCreate}},
@@ -75,6 +76,19 @@ func TestResourceVocabularyRejectsUnsafeArguments(t *testing.T) {
 		{Operation: OperationNetworkCreate, Driver: "macvlan", Name: "edge"},
 		{Operation: OperationNetworkCreate, Driver: "overlay", Name: "../edge"},
 		{Operation: OperationNetworkCreate, Driver: "bridge", Encrypted: true, Name: "edge"},
+		// The ingress shape is a singleton: it may not be renamed, may not
+		// borrow the ordinary overlay options, and may not carry addressing
+		// that would produce an ingress network unable to route.
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "edge", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "bridge", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Attachable: true, Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Encrypted: true, Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.9.9.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.0.0.0", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.5/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/8"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "not-an-ip", Ingress: true, Name: "ingress", Subnet: "10.0.0.0/24"},
+		{Operation: OperationNetworkCreate, Driver: "overlay", Gateway: "10.0.0.1", Ingress: true, Name: "ingress", Subnet: "10.0.0.0"},
 		{Operation: OperationVolumeCreate, Name: "/etc/passwd"},
 		{Operation: OperationImagePull, Image: "app:latest\nrm"},
 		{Operation: OperationSwarmTokenRotate, Role: "admin"},

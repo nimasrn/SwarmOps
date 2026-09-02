@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
@@ -15,16 +16,19 @@ import (
 // secret name. DashboardAuth is stored only inside the encrypted command
 // payload and is never copied into public command or audit metadata.
 type TraefikPrerequisiteRepair struct {
-	CreateDashboardAuth bool   `json:"createDashboardAuth"`
-	CreateDynamicConfig bool   `json:"createDynamicConfig"`
-	CreateNetwork       bool   `json:"createNetwork"`
-	DashboardAuth       string `json:"dashboardAuth,omitempty"`
-	DynamicConfig       string `json:"dynamicConfig,omitempty"`
-	EdgeManagerID       string `json:"edgeManagerId,omitempty"`
+	CreateDashboardAuth  bool   `json:"createDashboardAuth"`
+	CreateDynamicConfig  bool   `json:"createDynamicConfig"`
+	CreateIngressNetwork bool   `json:"createIngressNetwork"`
+	CreateNetwork        bool   `json:"createNetwork"`
+	DashboardAuth        string `json:"dashboardAuth,omitempty"`
+	DynamicConfig        string `json:"dynamicConfig,omitempty"`
+	EdgeManagerID        string `json:"edgeManagerId,omitempty"`
+	IngressGateway       string `json:"ingressGateway,omitempty"`
+	IngressSubnet        string `json:"ingressSubnet,omitempty"`
 }
 
 func (r TraefikPrerequisiteRepair) HasChanges() bool {
-	return r.CreateDashboardAuth || r.CreateDynamicConfig || r.CreateNetwork || r.EdgeManagerID != ""
+	return r.CreateDashboardAuth || r.CreateDynamicConfig || r.CreateIngressNetwork || r.CreateNetwork || r.EdgeManagerID != ""
 }
 
 // PlanTraefikPrerequisiteRepair converts only the four known, reversible
@@ -56,6 +60,18 @@ func (c *ControlPlane) PlanTraefikPrerequisiteRepair(ctx context.Context) (Traef
 			continue
 		}
 		switch check.ID {
+		case "ingress-network":
+			networks, listErr := c.Docker.ListNetworks(ctx)
+			if listErr != nil {
+				return TraefikPrerequisiteRepair{}, fmt.Errorf("inspect ingress network before repair: %w", listErr)
+			}
+			subnet, gateway := c.ingressAddressCandidate(networks)
+			if subnet == "" {
+				return TraefikPrerequisiteRepair{}, fmt.Errorf("no reviewed ingress subnet is free on this cluster; free a range, then recreate the ingress network manually")
+			}
+			plan.CreateIngressNetwork = true
+			plan.IngressGateway = gateway
+			plan.IngressSubnet = subnet
 		case "edge-network":
 			plan.CreateNetwork = true
 		case "edge-placement":
@@ -123,7 +139,12 @@ func (c *ControlPlane) RepairTraefikPrerequisites(ctx context.Context, actor, re
 		return fmt.Errorf("Traefik prerequisite repair has no changes")
 	}
 	var err error
-	if repair.CreateNetwork {
+	// Ingress comes first: without it the swarm cannot publish a port, so
+	// every later step would be repaired only to fail at deploy time.
+	if repair.CreateIngressNetwork {
+		err = c.ensureIngressNetwork(ctx, repair.IngressSubnet, repair.IngressGateway)
+	}
+	if err == nil && repair.CreateNetwork {
 		err = c.ensureTraefikNetwork(ctx)
 	}
 	if err == nil && repair.EdgeManagerID != "" {
@@ -139,9 +160,42 @@ func (c *ControlPlane) RepairTraefikPrerequisites(ctx context.Context, actor, re
 		"dashboardAuth": fmt.Sprint(repair.CreateDashboardAuth),
 		"dynamicConfig": fmt.Sprint(repair.CreateDynamicConfig),
 		"edgePlacement": fmt.Sprint(repair.EdgeManagerID != ""),
+		"ingress":       fmt.Sprint(repair.CreateIngressNetwork),
 		"network":       fmt.Sprint(repair.CreateNetwork),
 	})
 	return err
+}
+
+// ensureIngressNetwork recreates the swarm ingress network that swarm init
+// normally provides. It re-reads the cluster first so an interrupted repair
+// does not attempt a second create, and it refuses a range that overlaps an
+// existing network rather than producing an ingress that cannot route.
+func (c *ControlPlane) ensureIngressNetwork(ctx context.Context, subnet, gateway string) error {
+	networks, err := c.Docker.ListNetworks(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect ingress network before repair: %w", err)
+	}
+	for _, network := range networks {
+		if network.Ingress || network.Name == "ingress" {
+			return nil
+		}
+	}
+	requested, err := netip.ParsePrefix(subnet)
+	if err != nil {
+		return fmt.Errorf("queued ingress subnet is not a CIDR block")
+	}
+	for _, network := range networks {
+		for _, entry := range network.IPAM.Config {
+			existing, parseErr := netip.ParsePrefix(entry.Subnet)
+			if parseErr == nil && existing.Overlaps(requested) {
+				return fmt.Errorf("queued ingress subnet %s overlaps the existing network %s; SwarmOps will not create an unroutable ingress", subnet, network.Name)
+			}
+		}
+	}
+	if _, err := c.CLI.Run(ctx, "network", "create", "--driver", "overlay", "--ingress", "--subnet", subnet, "--gateway", gateway, "ingress"); err != nil {
+		return fmt.Errorf("create swarm ingress network: %w", err)
+	}
+	return nil
 }
 
 func (c *ControlPlane) ensureTraefikNetwork(ctx context.Context) error {

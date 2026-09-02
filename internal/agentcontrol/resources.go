@@ -2,6 +2,7 @@ package agentcontrol
 
 import (
 	"fmt"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -91,6 +92,23 @@ func resourceArgs(request Request) ([]string, []byte, bool, error) {
 	case OperationNetworkCreate:
 		if !resourceNamePattern.MatchString(request.Name) || !oneOf(request.Driver, "overlay", "bridge") {
 			return nil, nil, true, fmt.Errorf("invalid network creation")
+		}
+		// The swarm ingress network is a distinct, singleton resource: it is
+		// always the overlay literally named "ingress", it carries an explicit
+		// subnet and gateway, and it is never attachable, internal, or
+		// encrypted. Keeping it a separate shape stops --ingress from widening
+		// the ordinary overlay path.
+		if request.Ingress {
+			if request.Driver != "overlay" || request.Name != "ingress" {
+				return nil, nil, true, fmt.Errorf("the swarm ingress network must be an overlay named ingress")
+			}
+			if request.Attachable || request.Internal || request.Encrypted {
+				return nil, nil, true, fmt.Errorf("the swarm ingress network does not accept attachable, internal, or encrypted options")
+			}
+			if err := validIngressAddressing(request.Subnet, request.Gateway); err != nil {
+				return nil, nil, true, err
+			}
+			return []string{"network", "create", "--driver", "overlay", "--ingress", "--subnet", request.Subnet, "--gateway", request.Gateway, "ingress"}, nil, true, nil
 		}
 		args := []string{"network", "create", "--driver", request.Driver}
 		if request.Attachable {
@@ -214,6 +232,20 @@ func resourceRequest(args []string, input []byte) (Request, bool, error) {
 			request := Request{Driver: args[3], Operation: OperationNetworkCreate}
 			for index := 4; index < len(args)-1; index++ {
 				switch args[index] {
+				case "--ingress":
+					request.Ingress = true
+				case "--subnet":
+					if index+1 >= len(args)-1 {
+						return Request{}, true, fmt.Errorf("network subnet requires a value")
+					}
+					request.Subnet = args[index+1]
+					index++
+				case "--gateway":
+					if index+1 >= len(args)-1 {
+						return Request{}, true, fmt.Errorf("network gateway requires a value")
+					}
+					request.Gateway = args[index+1]
+					index++
 				case "--attachable":
 					request.Attachable = true
 				case "--internal":
@@ -289,4 +321,32 @@ func resourceRequest(args []string, input []byte) (Request, bool, error) {
 		}
 	}
 	return Request{}, false, nil
+}
+
+// validIngressAddressing accepts only an explicit IPv4 subnet and a gateway
+// that genuinely sits inside it. Docker would otherwise accept a gateway from
+// an unrelated range and produce an ingress network that cannot route, which
+// is far harder to recognise after the fact than a rejected repair.
+func validIngressAddressing(subnet, gateway string) error {
+	prefix, err := netip.ParsePrefix(subnet)
+	if err != nil {
+		return fmt.Errorf("ingress subnet must be a CIDR block")
+	}
+	if !prefix.Addr().Is4() {
+		return fmt.Errorf("ingress subnet must be IPv4")
+	}
+	if prefix.Addr() != prefix.Masked().Addr() {
+		return fmt.Errorf("ingress subnet must be the network address of its block")
+	}
+	if prefix.Bits() < 16 || prefix.Bits() > 28 {
+		return fmt.Errorf("ingress subnet must be between /16 and /28")
+	}
+	address, err := netip.ParseAddr(gateway)
+	if err != nil || !address.Is4() {
+		return fmt.Errorf("ingress gateway must be an IPv4 address")
+	}
+	if !prefix.Contains(address) || address == prefix.Masked().Addr() {
+		return fmt.Errorf("ingress gateway must be a host address inside the ingress subnet")
+	}
+	return nil
 }

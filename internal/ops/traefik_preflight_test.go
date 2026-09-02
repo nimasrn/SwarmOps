@@ -37,6 +37,7 @@ func TestTraefikInstallPreflightExplainsRequiredAndAutomaticResources(t *testing
 	if preflight.Ready || preflight.Challenge != "http-01" {
 		t.Fatalf("preflight = %#v", preflight)
 	}
+	assertTraefikCheck(t, preflight, "ingress-network", "blocked", true)
 	assertTraefikCheck(t, preflight, "edge-network", "blocked", true)
 	assertTraefikCheck(t, preflight, "edge-placement", "blocked", true)
 	assertTraefikCheck(t, preflight, "dynamic-config", "blocked", true)
@@ -106,4 +107,75 @@ func assertTraefikCheck(t *testing.T, preflight TraefikInstallPreflight, id, sta
 		}
 	}
 	t.Fatalf("check %s was not returned", id)
+}
+
+// A cluster whose ingress network was removed after swarm init cannot publish
+// any port. The console has to name that as its own prerequisite: previously
+// it surfaced only at deploy time, as an opaque stack failure that was retried
+// to exhaustion.
+func TestTraefikInstallPreflightReportsMissingIngressNetwork(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name     string
+		networks string
+		state    string
+		fixable  bool
+	}{
+		{name: "present", networks: `[{"Name":"ingress","Driver":"overlay","Scope":"swarm","Ingress":true,"IPAM":{"Config":[{"Subnet":"10.0.0.0/24"}]}}]`, state: "ready", fixable: false},
+		{name: "missing", networks: `[]`, state: "blocked", fixable: true},
+		{name: "missing with default range taken", networks: `[{"Name":"other","Driver":"overlay","Scope":"swarm","IPAM":{"Config":[{"Subnet":"10.0.0.0/16"}]}}]`, state: "blocked", fixable: true},
+		{name: "missing with every candidate taken", networks: `[{"Name":"a","IPAM":{"Config":[{"Subnet":"10.0.0.0/8"}]}},{"Name":"b","IPAM":{"Config":[{"Subnet":"172.31.0.0/16"}]}}]`, state: "blocked", fixable: false},
+	} {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				switch request.URL.Path {
+				case "/networks":
+					_, _ = response.Write([]byte(testCase.networks))
+				case "/configs", "/secrets":
+					_, _ = response.Write([]byte("[]"))
+				case "/nodes":
+					_, _ = response.Write([]byte(`[{"ID":"manager-1","Spec":{"Availability":"active","Labels":{},"Role":"manager"},"Status":{"State":"ready"}}]`))
+				default:
+					http.NotFound(response, request)
+				}
+			}))
+			t.Cleanup(server.Close)
+			docker, err := dockerapi.NewForURL(server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			control := NewControlPlane(docker, DockerCLI{}, nil, ControlPlaneOptions{TraefikSettings: testTraefikSettings()})
+			preflight, err := control.TraefikInstallPreflight(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertTraefikCheck(t, preflight, "ingress-network", testCase.state, true)
+			for _, check := range preflight.Checks {
+				if check.ID == "ingress-network" && check.Fixable != testCase.fixable {
+					t.Fatalf("ingress-network fixable = %t, want %t (%s)", check.Fixable, testCase.fixable, check.Recovery)
+				}
+			}
+		})
+	}
+}
+
+func TestIngressAddressCandidateAvoidsOccupiedRanges(t *testing.T) {
+	t.Parallel()
+	control := NewControlPlane(nil, DockerCLI{}, nil, ControlPlaneOptions{TraefikSettings: testTraefikSettings()})
+	subnet, gateway := control.ingressAddressCandidate(nil)
+	if subnet != "10.0.0.0/24" || gateway != "10.0.0.1" {
+		t.Fatalf("empty cluster candidate = %s / %s, want Docker default", subnet, gateway)
+	}
+	taken := []dockerapi.Network{{Name: "existing"}}
+	taken[0].IPAM.Config = append(taken[0].IPAM.Config, struct {
+		Gateway string `json:"Gateway"`
+		Subnet  string `json:"Subnet"`
+	}{Subnet: "10.0.0.0/16"})
+	subnet, gateway = control.ingressAddressCandidate(taken)
+	if subnet != "10.255.0.0/24" || gateway != "10.255.0.1" {
+		t.Fatalf("candidate with default taken = %s / %s, want the first free alternate", subnet, gateway)
+	}
 }

@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 )
 
 // TraefikStackSettings contains only public settings and immutable Swarm
@@ -274,6 +277,28 @@ func (c *ControlPlane) TraefikInstallPreflight(ctx context.Context) (TraefikInst
 	if err != nil {
 		return TraefikInstallPreflight{}, fmt.Errorf("inspect Traefik secret prerequisites: %w", err)
 	}
+
+	// Swarm creates the ingress network during init, so an absent one means it
+	// was removed afterwards. Nothing downstream can publish a port without
+	// it: the daemon rejects service creation outright, which reads as an
+	// opaque deploy failure rather than a missing prerequisite.
+	ingressReady := false
+	for _, network := range networks {
+		if network.Ingress || network.Name == "ingress" {
+			ingressReady = true
+			break
+		}
+	}
+	ingressSubnet, _ := c.ingressAddressCandidate(networks)
+	appendTraefikCheck(&preflight, TraefikInstallCheck{
+		Detail:   choose(ingressReady, "The swarm ingress network is present.", "The swarm ingress network is missing, so no service can publish a port."),
+		Fixable:  !ingressReady && ingressSubnet != "",
+		ID:       "ingress-network",
+		Label:    "Swarm ingress network",
+		Recovery: choose(ingressReady, "", choose(ingressSubnet != "", "Recreate the swarm ingress network from Installation prerequisites.", "Every candidate ingress subnet overlaps an existing network. Free a range, then recreate the ingress network manually.")),
+		Required: true,
+		State:    choose(ingressReady, "ready", "blocked"),
+	})
 
 	networkReady := false
 	networkNameTaken := false
@@ -580,4 +605,42 @@ func safeHostname(value string) bool {
 		}
 	}
 	return true
+}
+
+// ingressAddressCandidate picks the first reviewed ingress range that does not
+// overlap a network the cluster already uses. Docker's own default is tried
+// first so a repaired cluster matches a freshly initialised one; the
+// alternates exist because reusing an occupied range would create an ingress
+// network that silently blackholes traffic. An empty subnet means every
+// candidate is taken, which the caller reports as not automatically fixable.
+func (c *ControlPlane) ingressAddressCandidate(networks []dockerapi.Network) (string, string) {
+	used := []netip.Prefix{}
+	for _, network := range networks {
+		for _, entry := range network.IPAM.Config {
+			if prefix, err := netip.ParsePrefix(entry.Subnet); err == nil {
+				used = append(used, prefix)
+			}
+		}
+	}
+	for _, candidate := range []struct{ subnet, gateway string }{
+		{subnet: "10.0.0.0/24", gateway: "10.0.0.1"},
+		{subnet: "10.255.0.0/24", gateway: "10.255.0.1"},
+		{subnet: "172.31.0.0/24", gateway: "172.31.0.1"},
+	} {
+		prefix, err := netip.ParsePrefix(candidate.subnet)
+		if err != nil {
+			continue
+		}
+		clash := false
+		for _, existing := range used {
+			if existing.Overlaps(prefix) {
+				clash = true
+				break
+			}
+		}
+		if !clash {
+			return candidate.subnet, candidate.gateway
+		}
+	}
+	return "", ""
 }

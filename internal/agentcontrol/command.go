@@ -101,7 +101,9 @@ type Request struct {
 	CPULimit            string `json:"cpuLimit,omitempty"`
 	Driver              string `json:"driver,omitempty"`
 	Encrypted           bool   `json:"encrypted,omitempty"`
+	Gateway             string `json:"gateway,omitempty"`
 	Image               string `json:"image,omitempty"`
+	Ingress             bool   `json:"ingress,omitempty"`
 	Internal            bool   `json:"internal,omitempty"`
 	Key                 string `json:"key,omitempty"`
 	Limit               uint64 `json:"limit,omitempty"`
@@ -116,6 +118,7 @@ type Request struct {
 	ResolveImageChanged bool   `json:"resolveImageChanged,omitempty"`
 	Secret              string `json:"secret,omitempty"`
 	ServiceID           string `json:"serviceId,omitempty"`
+	Subnet              string `json:"subnet,omitempty"`
 	Tail                uint64 `json:"tail,omitempty"`
 	WithRegistryAuth    bool   `json:"withRegistryAuth,omitempty"`
 }
