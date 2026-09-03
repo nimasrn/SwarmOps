@@ -239,11 +239,11 @@ export function connectionColumns(onEdit: (connection: SourceConnection) => void
   ]
 }
 
-export function deploymentBlocks({ blockers, managerID, selectedService, selectedSlot, status, unmanaged }: { blockers: SourceFinding[]; managerID: string; selectedService?: SourceServicePlan; selectedSlot?: ApprovedWorkload; status: SourceStatus; unmanaged?: boolean }) {
+export function deploymentBlocks({ blockers, managerID, selectedService, selectedSlot, slotCreatable, status }: { blockers: SourceFinding[]; managerID: string; selectedService?: SourceServicePlan; selectedSlot?: ApprovedWorkload; slotCreatable?: boolean; status: SourceStatus }) {
   const result: string[] = []
   if (!managerID) result.push('Select a connected Swarm manager before queuing a deployment.')
   if (!selectedService) result.push('Select one deployable source service.')
-  if (!selectedSlot) result.push(unmanaged ? 'Name the application this deployment becomes.' : 'Choose an approved application slot from the selected manager.')
+  if (!selectedSlot) result.push(slotCreatable ? 'Name the application this deployment becomes.' : 'Choose an approved application slot from the selected manager.')
   if (blockers.length) result.push('Resolve the selected service’s blocking discovery findings.')
   if (selectedService?.build?.required && !status.buildEnabled) result.push('Source builds are disabled on this controller.')
   return result
@@ -256,11 +256,17 @@ export function deploymentBlocks({ blockers, managerID, selectedService, selecte
 export function selectSlot(name: string, slots: ApprovedWorkload[], setSlotName: (name: string) => void, setDomain: (domain: string) => void, discovered?: string) {
   const slot = slots.find((candidate) => candidate.name === name)
   setSlotName(name)
-  if (slot?.domain) {
+  if (!slot) {
+    // A name no reviewed slot owns brings no domain policy to apply, and this
+    // runs on every keystroke of one: rewriting the domain here is how the
+    // hostname the operator just typed disappeared as they named the slot.
+    return
+  }
+  if (slot.domain) {
     setDomain(slot.domain)
     return
   }
-  const suffixes = slot?.domainSuffixes ?? []
+  const suffixes = slot.domainSuffixes ?? []
   const host = (discovered ?? '').trim().toLowerCase()
   setDomain(host && suffixes.some((suffix) => host === suffix || host.endsWith(`.${suffix}`)) ? host : '')
 }

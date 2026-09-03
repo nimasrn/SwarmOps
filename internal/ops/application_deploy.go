@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 )
@@ -17,6 +18,38 @@ func ApplicationRemovalConfirmation(name string) string {
 
 func ApplicationDomainRemovalConfirmation(name string) string {
 	return "REMOVE_DOMAIN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+}
+
+// EnsureApplicationSlot declares the slot a deployment names when the
+// console-owned platform definition does not have one yet. A repository being
+// deployed for the first time is the ordinary case, not an exception: the
+// operator has already chosen the name, the domain, and the ceiling on the
+// deployment screen, and requiring them to leave and retype all three into the
+// platform definition before the deployment is accepted taught nothing and
+// reviewed nothing.
+//
+// What the slot enforces stays enforced. The store writes it into the same
+// sealed manifest, refuses a slot the manifest cannot hold — a domain another
+// workload owns, a name that is not DNS-safe — and this deployment is then
+// admitted against it like any other.
+func (c *ControlPlane) EnsureApplicationSlot(actor, requestID string, spec ApplicationSpec) error {
+	if c == nil || c.Platform == nil {
+		return nil
+	}
+	spec = spec.Normalize()
+	created, err := c.Platform.EnsureApplicationSlot(actor, ApprovedWorkload{
+		CPUCores:  spec.CPUs,
+		Domain:    spec.Domain,
+		MemoryMiB: uint64(spec.MemoryMiB),
+		Name:      spec.Name,
+		Replicas:  int(spec.Replicas),
+		Resolver:  spec.Resolver,
+	}, time.Now())
+	if !created && err == nil {
+		return nil
+	}
+	c.record(actor, requestID, "platform.slot.created", "workload/"+spec.Name, err, map[string]string{"domain": spec.Domain})
+	return err
 }
 
 // DeployApplication renders, re-validates, and deploys one application.
@@ -36,6 +69,11 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 		return fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
 	spec = spec.Normalize()
+	// The slot the deployment names is declared before anything is rendered:
+	// admission below reads the definition this writes.
+	if err := c.EnsureApplicationSlot(actor, requestID, spec); err != nil {
+		return err
+	}
 	// Databases come first, and completely. Provisioning waits for each
 	// managed engine to pass its own healthcheck, creates this application's
 	// user, database, and grants, and seals the credential — so by the time

@@ -420,10 +420,6 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 		defer contextReader.Close()
 	}
 	spec, sharedStacks := sourceApplicationSpec(requested, candidate)
-	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
-		writeError(response, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
 	commandInput := sourceDeployCommand{
 		PlanID:       plan.ID,
 		RepositoryID: plan.Repository.ID,
@@ -452,6 +448,23 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 			return
 		}
 		commandInput.Build = &buildRequest
+	}
+	// A repository being deployed for the first time names a slot the platform
+	// definition does not have yet, and declaring it is what makes that
+	// deployable from this screen instead of refused with an instruction to go
+	// and author a workload. It comes after every check that can refuse this
+	// submission on its own evidence, so a build that was never going to run
+	// does not leave a slot — and a domain — declared behind it.
+	if err := target.Control.EnsureApplicationSlot(claims.Username, requestID(request), spec); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	// The plan is validated against the definition the line above may have
+	// just written, so the deployment is admitted by the same rules every
+	// later one into this slot will be.
+	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
 	}
 	payload, err := json.Marshal(commandInput)
 	if err != nil {

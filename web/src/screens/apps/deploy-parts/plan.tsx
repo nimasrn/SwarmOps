@@ -63,8 +63,8 @@ export function DeploymentPlan({
   plan,
   selectedService,
   selectedSlot,
+  slotCreatable,
   slotName,
-  unmanaged,
 }: {
   approved: ApprovedWorkload[]
   blocks: string[]
@@ -80,9 +80,10 @@ export function DeploymentPlan({
   plan: SourcePlan | null
   selectedService?: SourceServicePlan
   selectedSlot?: ApprovedWorkload
+  /** True when this controller can declare the slot itself, so a name that no
+      reviewed slot owns is a new slot rather than a refused deployment. */
+  slotCreatable?: boolean
   slotName: string
-  /** True when this install has no manifest, so the slot is typed, not picked. */
-  unmanaged?: boolean
 }) {
   const warnings = findings.filter((finding) => finding.level !== 'blocker')
   const blockers = findings.filter((finding) => finding.level === 'blocker')
@@ -117,9 +118,8 @@ export function DeploymentPlan({
               trailing={
                 <Inline gap="tight">
                   <Label>Slot</Label>
-                  {unmanaged
-                    ? <Input aria-label="Application name" onChange={(event) => onChooseSlot(event.target.value)} placeholder="Name" value={slotName} />
-                    : <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder="Slot" value={slotName} />}
+                  {approved.length > 0 ? <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder={slotCreatable ? 'Reviewed slot' : 'Slot'} value={approved.some((slot) => slot.name === slotName) ? slotName : ''} /> : null}
+                  {slotCreatable ? <Input aria-label="Application name" onChange={(event) => onChooseSlot(event.target.value)} placeholder="Name" value={slotName} /> : null}
                 </Inline>
               }
             />

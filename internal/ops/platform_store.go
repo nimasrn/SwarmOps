@@ -260,3 +260,117 @@ func CheckPlatformInput(input PlatformInput) preflight.Report {
 	}
 	return preflight.Report{Namespace: strings.ToLower(strings.TrimSpace(input.Namespace))}
 }
+
+// EnsureApplicationSlot declares the application slot a deployment names when
+// the stored manifest does not have one yet, so deploying a repository for the
+// first time does not dead-end in a screen that only tells the operator to go
+// and hand-author a workload.
+//
+// It is a declaration, not a bypass. The slot is written into the same sealed
+// manifest, the whole manifest is re-checked by the same preflight before it
+// is kept, and every deployment into that slot afterwards — including this one
+// — is admitted against exactly what was written here. A slot whose domain
+// collides with one another workload already owns is refused rather than
+// created, which is the check the manifest exists for.
+//
+// It changes nothing, and reports no error, when there is no definition this
+// controller may write: a mounted manifest file is the reviewed artifact and
+// the console never overrides it, a manifest-free install has no slot list to
+// add to, and an already-declared name is left exactly as it was reviewed.
+func (s *PlatformStore) EnsureApplicationSlot(actor string, slot ApprovedWorkload, now time.Time) (bool, error) {
+	if s == nil || s.file != nil {
+		return false, nil
+	}
+	name := strings.ToLower(strings.TrimSpace(slot.Name))
+	if name == "" {
+		return false, fmt.Errorf("an application slot needs a name")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Mode != PlatformModeManifest {
+		return false, nil
+	}
+	for _, workload := range s.state.Manifest.Workloads {
+		if strings.ToLower(strings.TrimSpace(workload.Name)) != name {
+			continue
+		}
+		if workload.Profile != "application" {
+			return false, fmt.Errorf("%q is already declared as a %q workload, which is deployed from its reviewed Git manifest rather than the browser", name, workload.Profile)
+		}
+		return false, nil
+	}
+	// The workloads are copied rather than appended to in place: the slice in
+	// force must not grow a slot that preflight is about to refuse.
+	workloads := make([]preflight.Workload, 0, len(s.state.Manifest.Workloads)+1)
+	workloads = append(workloads, s.state.Manifest.Workloads...)
+	candidate := s.state
+	candidate.Manifest.Workloads = append(workloads, applicationSlotWorkload(s.state.Manifest, name, slot))
+	candidate.UpdatedAt = now.UTC()
+	candidate.UpdatedBy = actor
+	// The findings are read here rather than left to NewPlatformAdmission
+	// because this refusal is shown to an operator mid-deployment: the code
+	// "domain-duplicate" names nothing they can act on, and the finding it
+	// stands for names the workload that already owns the hostname.
+	if report := preflight.Check(candidate.Manifest); !report.Valid() {
+		return false, slotDeclarationError(name, report)
+	}
+	admission, err := NewPlatformAdmission(candidate.Manifest)
+	if err != nil {
+		return false, fmt.Errorf("application slot %q cannot be added to this platform definition: %w", name, err)
+	}
+	previousState, previousAdmission := s.state, s.admission
+	s.state, s.admission = candidate, admission
+	if err := s.saveLocked(); err != nil {
+		s.state, s.admission = previousState, previousAdmission
+		return false, err
+	}
+	return true, nil
+}
+
+// applicationSlotWorkload is the workload an auto-declared slot becomes. A
+// deployment with no domain gets a slot that owns no hostname at all rather
+// than a wildcard: it can be given one later by editing the definition, and
+// until then it cannot claim a name another workload is entitled to.
+func applicationSlotWorkload(manifest preflight.Manifest, name string, slot ApprovedWorkload) preflight.Workload {
+	workload := preflight.Workload{
+		Domain:   strings.ToLower(strings.TrimSuffix(strings.TrimSpace(slot.Domain), ".")),
+		Name:     name,
+		Profile:  "application",
+		Replicas: max(slot.Replicas, 1),
+		Resolver: strings.TrimSpace(slot.Resolver),
+		Resources: preflight.Resources{
+			CPUCores:  slot.CPUCores,
+			MemoryMiB: slot.MemoryMiB,
+		},
+	}
+	if workload.Domain == "" {
+		workload.DomainOptional = true
+		workload.Resolver = ""
+		return workload
+	}
+	// A resolver the operator never named is only ever inferred when the
+	// definition leaves no choice: one declared resolver is the one this
+	// domain would have been issued through anyway, and two is a decision
+	// preflight should make the operator state.
+	if workload.Resolver == "" && len(manifest.DNS.Resolvers) == 1 {
+		workload.Resolver = manifest.DNS.Resolvers[0].Name
+	}
+	return workload
+}
+
+// slotDeclarationError explains a refused declaration in the terms of the slot
+// being declared, falling back to the whole report when the manifest was made
+// inadmissible by something other than this workload.
+func slotDeclarationError(name string, report preflight.Report) error {
+	subject := "workload/" + name
+	messages := make([]string, 0, 2)
+	for _, finding := range report.Findings {
+		if finding.Level == "error" && finding.Subject == subject {
+			messages = append(messages, finding.Message)
+		}
+	}
+	if len(messages) == 0 {
+		return fmt.Errorf("application slot %q cannot be added to this platform definition: %s", name, summarizeFindings(report))
+	}
+	return fmt.Errorf("application slot %q cannot be added to this platform definition: %s", name, strings.Join(messages, "; "))
+}

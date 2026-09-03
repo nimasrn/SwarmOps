@@ -149,24 +149,31 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     [deployableServices, serviceKey],
   )
   const unmanaged = Boolean(platform?.unmanaged)
+  // A repository nobody has deployed yet has no slot, and sending the operator
+  // away to author one before the first deployment is refused reviewed
+  // nothing. The controller declares the slot from what is chosen here, so the
+  // name is free-form wherever this controller owns its own definition.
+  const slotCreatable = unmanaged || Boolean(platform?.editable && platform?.mode === 'manifest')
+  const reviewedSlot = approved.find((slot) => slot.name === slotName)
   // Downstream, a slot is a slot: the review card, the blockers, and the
   // deployment all read the same shape whether a manifest approved it or the
   // operator just typed it.
-  const selectedSlot = unmanaged
-    ? (slotName.trim()
-      ? {
-        cpuCores: Number(freeCPU) || 0.25,
-        domainOptional: true,
-        memoryMiB: Number(freeMemory) || 256,
-        name: slotName.trim(),
-        replicas: Number(freeReplicas) || 1,
-        resolver: freeResolver.trim(),
-      } satisfies ApprovedWorkload
-      : undefined)
-    : approved.find((slot) => slot.name === slotName)
+  const selectedSlot = reviewedSlot ?? (slotCreatable && slotName.trim()
+    ? {
+      cpuCores: Number(freeCPU) || 0.25,
+      domainOptional: true,
+      memoryMiB: Number(freeMemory) || 256,
+      name: slotName.trim(),
+      replicas: Number(freeReplicas) || 1,
+      resolver: freeResolver.trim(),
+    } satisfies ApprovedWorkload
+    : undefined)
+  // The slot this deployment will bring into existence, as opposed to one a
+  // manifest already reviewed: it is the operator who states its ceiling.
+  const newSlot = Boolean(selectedSlot && !reviewedSlot)
   const selectedServiceFindings = selectedService?.findings ?? []
   const blockers = selectedServiceFindings.filter((finding) => finding.level === 'blocker')
-  const canEditDomain = unmanaged || Boolean(selectedSlot?.domainOptional || selectedSlot?.domainSuffixes?.length)
+  const canEditDomain = newSlot || Boolean(selectedSlot?.domainOptional || selectedSlot?.domainSuffixes?.length)
 
   const loadSource = useCallback(async () => {
     setError('')
@@ -217,6 +224,11 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
       const [slots, definition] = await Promise.all([api.approvedApplications(), api.platform()])
       setApproved(normalizeArray(slots))
       setPlatform(definition)
+      // A new slot has to name a resolver the definition actually declares, so
+      // the field starts on one instead of on a guess the operator would only
+      // find out was wrong when the deployment was refused.
+      const declared = normalizeArray(definition?.manifest?.dns?.resolvers)[0]?.name
+      if (declared) setFreeResolver(declared)
     } catch (reason) {
       setApproved([])
       setPlatform(null)
@@ -243,16 +255,20 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     if (!draft || draft.connectionID !== connectionID) setServiceKey('')
     void loadRepositories(connectionID, draft && draft.connectionID === connectionID ? { ref: draft.ref, repositoryID: draft.repositoryID } : undefined)
   }, [connectionID, loadRepositories, status?.enabled])
+  // The service names itself. A reviewed slot of the same name is what it maps
+  // to; otherwise the deployment proposes a new slot under that name rather
+  // than silently landing in whichever slot happens to sort first.
   useEffect(() => {
-    if (!selectedService || slotName || !unmanaged) return
+    if (!selectedService || slotName) return
+    const matching = approved.find((slot) => slot.name === selectedService.name)
+    if (matching) {
+      selectSlot(matching.name, approved, setSlotName, setDomain, selectedService.route?.hosts?.[0])
+      return
+    }
+    if (!slotCreatable) return
     setSlotName(selectedService.name)
     setDomain(selectedService.route?.hosts?.[0] ?? '')
-  }, [selectedService, slotName, unmanaged])
-  useEffect(() => {
-    if (!selectedService || slotName || approved.length === 0) return
-    const matching = approved.find((slot) => slot.name === selectedService.name) ?? approved[0]
-    if (matching) selectSlot(matching.name, approved, setSlotName, setDomain, selectedService.route?.hosts?.[0])
-  }, [approved, selectedService, slotName])
+  }, [approved, selectedService, slotCreatable, slotName])
 
   const chooseProvider = (next: SourceProviderKind) => {
     setProvider(next)
@@ -500,7 +516,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     selectedSlot,
     status,
     blockers,
-    unmanaged,
+    slotCreatable,
   })
   const discovered = Boolean(plan)
 
@@ -576,8 +592,8 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
                 pending={pending}
                 selectedService={selectedService}
                 selectedSlot={selectedSlot}
+                slotCreatable={slotCreatable}
                 slotName={slotName}
-                unmanaged={unmanaged}
               />
             }
           >
@@ -733,25 +749,26 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
               <Panel caption="Review and map services" marker="3" title="Review">
                 <Rows>
                   {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to load the reviewed application slots and queue a deployment.</Banner> : null}
-                  {managerID && !unmanaged && approved.length === 0 ? <Banner title="No application slots are approved" tone="warning">Add an application-profile workload in Platform → Platform definition, or mount a reviewed manifest on the controller, then reconnect the selected manager.</Banner> : null}
+                  {managerID && !slotCreatable && approved.length === 0 ? <Banner title="No application slots are approved" tone="warning">{platform?.fileManaged ? 'This controller loads its manifest from a file, so the slot has to be declared there. Add an application-profile workload to the mounted manifest, then reconnect the selected manager.' : 'This controller has no platform definition to declare a slot in. Choose one in Platform → Platform definition, then reconnect the selected manager.'}</Banner> : null}
+                  {managerID && !unmanaged && slotCreatable && !reviewedSlot && selectedSlot ? <Banner title="This deployment declares a new slot" tone="info">No reviewed slot is named <Mono>{selectedSlot.name}</Mono>, so releasing writes one into the platform definition with the domain and ceiling below. It is checked like any other: a hostname another workload owns is refused rather than taken.</Banner> : null}
                   {unmanaged ? <Banner title="This install has no platform manifest" tone="warning">Slot enforcement is off by declaration, so the name, domain, and reservation below are not checked against a reviewed list. Everything deploys inside the <Mono>{platform?.namespace}</Mono> namespace.</Banner> : null}
                   <Columns>
                     <Rows>
                       {selectedSlot ? <Facts columns={1} items={[
-                        { label: 'Reviewed slot', value: `${selectedSlot.name} · ${managerName ?? managerID}` },
+                        { label: newSlot ? 'New slot' : 'Reviewed slot', value: `${selectedSlot.name} · ${managerName ?? managerID}` },
                         { label: 'Resource ceiling', value: `${selectedSlot.replicas} replica${selectedSlot.replicas === 1 ? '' : 's'} · ${selectedSlot.cpuCores} vCPU · ${selectedSlot.memoryMiB} MiB` },
                         { label: 'Certificate resolver', value: selectedSlot.resolver || 'None configured' },
                         { label: 'Domain policy', value: sourceDomainPolicy(selectedSlot) },
-                      ]} /> : <Banner title={unmanaged ? 'Name the application' : 'Map the service to a slot'} tone="info">{unmanaged ? 'Type the name this deployment takes in the deployment plan beside this page.' : 'Choose an approved application slot in the deployment plan beside this page.'}</Banner>}
-                      {unmanaged && selectedSlot ? (
+                      ]} /> : <Banner title={slotCreatable ? 'Name the application' : 'Map the service to a slot'} tone="info">{slotCreatable ? 'Name this deployment in the deployment plan beside this page. An existing slot is reused; any other name becomes a new one.' : 'Choose an approved application slot in the deployment plan beside this page.'}</Banner>}
+                      {newSlot ? (
                         <Columns>
-                          <Input hint="Nothing reviews this ceiling; the cluster's own capacity decides whether Swarm can schedule it." label="Replicas" min="1" onChange={(event) => setFreeReplicas(event.target.value)} type="number" value={freeReplicas} />
+                          <Input hint={unmanaged ? "Nothing reviews this ceiling; the cluster's own capacity decides whether Swarm can schedule it." : 'This becomes the new slot’s reviewed ceiling, and every later deployment into it is held to exactly this.'} label="Replicas" min="1" onChange={(event) => setFreeReplicas(event.target.value)} type="number" value={freeReplicas} />
                           <Input label="vCPU per replica" min="0.1" onChange={(event) => setFreeCPU(event.target.value)} step="0.1" type="number" value={freeCPU} />
                           <Input label="Memory (MiB)" min="64" onChange={(event) => setFreeMemory(event.target.value)} type="number" value={freeMemory} />
                           <Input hint="The Traefik certificate resolver a public domain is issued through." label="Certificate resolver" onChange={(event) => setFreeResolver(event.target.value)} value={freeResolver} />
                         </Columns>
                       ) : null}
-                      {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={unmanaged ? 'Any hostname. Nothing checks it against a reviewed list on this install.' : canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
+                      {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={unmanaged ? 'Any hostname. Nothing checks it against a reviewed list on this install.' : newSlot ? 'The hostname the new slot will own. Leave it empty to deploy with no public route.' : canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
                       <Columns>
                         <Input label="Container port" min="1" onChange={(event) => setPort(event.target.value)} type="number" value={port} />
                         <Input label="Health path" onChange={(event) => setHealthPath(event.target.value)} value={healthPath} />

@@ -11,6 +11,43 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.18.0 — 2026-09-03
+
+Deploying a repository for the first time no longer stops at a screen that
+tells the operator to go somewhere else and write a workload down first.
+
+- **A first deployment declares the slot it names** — where the controller owns
+  its platform definition, releasing an application no reviewed slot is named
+  after writes that slot into the sealed manifest: the name, domain,
+  certificate resolver, replicas and CPU/memory ceiling chosen on the
+  deployment screen, as an `application`-profile workload. A repository nobody
+  has deployed yet is the ordinary case, not an exception, and requiring three
+  values to be retyped into Platform → Platform definition before the
+  deployment was accepted reviewed nothing.
+- **It is a declaration, not a bypass** — the whole manifest goes back through
+  the same `preflight.Check` before the new slot is kept, so a hostname another
+  workload already owns is refused rather than taken, and the refusal names
+  that workload instead of printing a finding code. A name already held by a
+  stateful workload is refused too: those deploy from their reviewed Git
+  manifest. The declaration is sealed, audited as `platform.slot.created`, and
+  the deployment that caused it is then admitted against it exactly like every
+  later deployment into that slot. A certificate resolver is inferred only when
+  the definition declares precisely one; a deployment with no domain gets a
+  slot that owns no hostname at all.
+- **A mounted manifest is still the reviewed artifact** — nothing is written to
+  `SWARMOPS_PLATFORM_MANIFEST_FILE`, and a deployment naming a slot that file
+  does not declare is refused as before. An install that declared itself
+  manifest-free has no slot list to add to and is unchanged. The slot is
+  declared only after every check that can refuse the submission on its own
+  evidence, so a build that was never going to run leaves no slot — and no
+  domain — declared behind it.
+- **Deploy names the application instead of only picking one** — the review
+  step states whether the release will reuse a reviewed slot or declare a new
+  one, and the ceiling it will be held to afterwards. The discovered service
+  proposes its own name rather than landing in whichever approved slot sorted
+  first, and naming a slot no longer wiped the hostname the operator had
+  already typed beside it.
+
 ## 0.17.0 — 2026-09-03
 
 A controller can now be set up entirely from the console: the platform

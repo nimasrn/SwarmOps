@@ -118,9 +118,15 @@ managed database attachments:
 
 The application slot — its name, public domain, certificate resolver, and
 resource ceiling — comes from the reviewed platform manifest, so an operator
-picks from approved domains rather than claiming an arbitrary one. Everything
-else is generated: no Compose, no Traefik label, and no connection string is
-written by hand. See
+picks from approved domains rather than claiming an arbitrary one. A repository
+being deployed for the first time has no slot yet, and where the controller
+owns its own definition it declares one from the deployment itself: the name,
+domain, resolver, and ceiling chosen on the screen are written into the sealed
+manifest before the deployment is admitted against them. That is a
+declaration, not a bypass — a hostname another workload already owns is
+refused rather than taken, and a mounted manifest file is never written to.
+Everything else is generated: no Compose, no Traefik label, and no connection
+string is written by hand. See
 [applications.example.json](deploy/swarmops/applications.example.json)
 for two worked specs.
 
@@ -926,8 +932,8 @@ The guided flow is deterministic:
    managed attachments. Prometheus, Alertmanager, Jaeger, Fluentd,
    node-exporter, and cAdvisor map to reviewed global stacks. Unsupported
    stateful engines and unsafe/ambiguous build evidence stop the candidate.
-5. Select an approved application slot and, when its manifest permits it, an
-   exact domain or hostname inside one reviewed suffix.
+5. Select an approved application slot, or name the new one this deployment
+   declares, and with it an exact domain or hostname the definition permits.
 6. Queue one `source.deploy` command. It reconciles required managed/global
    stacks, builds and pushes the pinned regular-file-only context when needed,
    and deploys SwarmOps' generated Compose. The command has one automatic
