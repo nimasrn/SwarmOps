@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { metricSeries } from './lib/metric-series.ts'
 
 const range = { from: '2026-09-03T00:00:00Z', to: '2026-09-03T00:03:00Z', stepSeconds: 60, points: [], scope: 'machine', series: 'cpu', source: 'prometheus', unit: 'ratio' }
+test('chart data and tooltips keep exact timestamps; only axis labels are shortened', () => {
+  const source = readFileSync(new URL('./components/metric-chart.tsx', import.meta.url), 'utf8')
+  assert.match(source, /categories=\{points\.map\(\(point\) => point\.at\)\}/)
+  assert.match(source, /formatCategory=/)
+})
 test('missing intervals remain named gaps, including an absent latest sample', () => {
   const result = metricSeries({...range, points: [{at: range.from, value: 0}, {at: '2026-09-03T00:02:00Z', value: 0.4}]})
   assert.deepEqual(result.map(point => point.value), [0, null, 0.4, null])

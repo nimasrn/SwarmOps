@@ -59,7 +59,7 @@ export function MetricChart({ height = 200, note, query, refreshMs, title }: Met
   const latest = points.at(-1)?.value
   return <Panel>
     <Chart
-      categories={points.map((point) => new Date(point.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}
+      categories={points.map((point) => point.at)}
       dataTableLabel="View data table"
       description={object}
       format={format}
