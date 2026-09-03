@@ -23,7 +23,7 @@ import { api } from '../../data/api'
 import type { MachineMetrics, Server } from '../../data/types'
 import { messageOf } from '../../lib/errors'
 import { capitalize, formatBytes, formatDateTime, shortID } from '../../lib/format'
-import { MetricChart } from '../../components/metric-chart'
+import { MetricChartGrid } from '../../components/metric-chart'
 import { InsightRow } from '../../components/screen'
 import { pageEntry, type WorkspacePage } from '../../navigation/navigation'
 import { useRecordView } from '../../navigation/use-workspace'
@@ -157,34 +157,16 @@ export function MachineDetailView({ onBack, onOpen, onRefreshServers, server, se
           ) : null}
           {loading && !metrics ? <Panel title="Reading the machine"><Spinner label="Asking the agent for a sample" /></Panel> : null}
 
-          <Columns>
-            <MetricChart
-              note="Busy time, excluding waits on storage"
-              query={{ machine: server.id, scope: 'machine', series: 'cpu' }}
-              refreshMs={30_000}
-              title="CPU"
-            />
-            <MetricChart
-              note="In use, excluding reclaimable cache"
-              query={{ machine: server.id, scope: 'machine', series: 'memory' }}
-              refreshMs={30_000}
-              title="Memory"
-            />
-          </Columns>
-          <Columns>
-            <MetricChart
-              note="Received across every real interface"
-              query={{ machine: server.id, scope: 'machine', series: 'network-rx' }}
-              refreshMs={30_000}
-              title="Network in"
-            />
-            <MetricChart
-              note="Written to every whole disk"
-              query={{ machine: server.id, scope: 'machine', series: 'disk-write' }}
-              refreshMs={30_000}
-              title="Disk write"
-            />
-          </Columns>
+          {/* Every reading the controller will answer for this machine, in the
+              order they are reached for. Four of the ten were named here by
+              hand and the other six — `load` and `cpu-iowait` among them, the
+              two that separate a busy host from a stuck one — were measured,
+              stored, and never drawn. */}
+          <MetricChartGrid
+            lead={['cpu', 'memory', 'load', 'cpu-iowait', 'disk-write', 'disk-read', 'network-rx', 'network-tx']}
+            query={{ machine: server.id, scope: 'machine' }}
+            refreshMs={30_000}
+          />
 
           {host?.filesystems?.length ? (
             <Panel
@@ -228,20 +210,11 @@ export function MachineDetailView({ onBack, onOpen, onRefreshServers, server, se
               description={containerLabel(containers, openContainer)}
               title="Container"
             >
-              <Columns>
-                <MetricChart
-                  note="Share of this whole machine's capacity"
-                  query={{ container: openContainer, machine: server.id, scope: 'container', series: 'cpu' }}
-                  refreshMs={30_000}
-                  title="CPU"
-                />
-                <MetricChart
-                  note="In use, excluding reclaimable cache"
-                  query={{ container: openContainer, machine: server.id, scope: 'container', series: 'memory' }}
-                  refreshMs={30_000}
-                  title="Memory"
-                />
-              </Columns>
+              <MetricChartGrid
+                lead={['cpu', 'memory', 'memory-limit', 'network-rx', 'network-tx', 'block-read', 'block-write']}
+                query={{ container: openContainer, machine: server.id, scope: 'container' }}
+                refreshMs={30_000}
+              />
             </Panel>
           ) : null}
           <Panel

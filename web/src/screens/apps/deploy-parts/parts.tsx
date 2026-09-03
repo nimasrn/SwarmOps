@@ -247,10 +247,20 @@ export function deploymentBlocks({ blockers, managerID, selectedService, selecte
   return result
 }
 
-export function selectSlot(name: string, slots: ApprovedWorkload[], setSlotName: (name: string) => void, setDomain: (domain: string) => void) {
+// A slot with one fixed hostname owns it outright. When the slot instead
+// permits a hostname under reviewed suffixes, the host the repository already
+// routes itself on is a better proposal than an empty field: the operator
+// still reviews it, and platform admission still checks it against the slot.
+export function selectSlot(name: string, slots: ApprovedWorkload[], setSlotName: (name: string) => void, setDomain: (domain: string) => void, discovered?: string) {
   const slot = slots.find((candidate) => candidate.name === name)
   setSlotName(name)
-  setDomain(slot?.domain ?? '')
+  if (slot?.domain) {
+    setDomain(slot.domain)
+    return
+  }
+  const suffixes = slot?.domainSuffixes ?? []
+  const host = (discovered ?? '').trim().toLowerCase()
+  setDomain(host && suffixes.some((suffix) => host === suffix || host.endsWith(`.${suffix}`)) ? host : '')
 }
 
 export function sourceServiceKey(service: SourceServicePlan) { return `${service.composePath}\u0000${service.service}` }

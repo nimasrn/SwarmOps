@@ -23,10 +23,15 @@ import { messageOf } from '../../lib/errors'
 const metricTone = { caution: 'warning', good: 'success', neutral: 'neutral' } as const
 
 export function ChangePreviewPanel({
+  applying,
   currentImage,
   onApply,
   serviceID,
 }: {
+  /** Applying is in flight on the owning screen. The button has to say so:
+      a preview whose Apply looks idle while a rolling update is already
+      queued invites a second one. */
+  applying?: boolean
   currentImage?: string
   /** Applying is the owning screen's job. This panel exists so the decision
    *  can be made, and handing the action outward keeps it from becoming a
@@ -115,7 +120,7 @@ export function ChangePreviewPanel({
 
             <DecideBar note="This preview is recorded whether or not you apply it.">
               <Button onClick={() => setPreview(null)} variant="secondary">Discard</Button>
-              <Button onClick={() => onApply?.(image)} variant="accent">
+              <Button disabled={applying} loading={applying} onClick={() => onApply?.(image)} variant="accent">
                 Apply — {preview.consequences.find((c) => c.label === 'Tasks replaced')?.value ?? ''} tasks
               </Button>
             </DecideBar>

@@ -761,21 +761,70 @@ export interface SourceBuildPlan {
   required: boolean
 }
 
+// SourceDockerfilePlan is what the scanner read out of a Dockerfile: derived
+// facts only, never the file's own text or build arguments.
+export interface SourceDockerfilePlan {
+  baseImages?: string[]
+  entrypoint: boolean
+  exposedPorts?: number[]
+  healthPath?: string
+  healthcheck: boolean
+  path: string
+  runsAsRoot: boolean
+  stages: number
+  workDir?: string
+}
+
+// SourceRoutePlan is the public entry SwarmOps proposes. `source` is
+// "traefik_labels" when the repository already declared the route and
+// "proposed" when SwarmOps derived an internal-only one. Hostnames are the one
+// label value the plan carries — a route cannot be reviewed without its name.
+export interface SourceRoutePlan {
+  hosts?: string[]
+  pathPrefix?: string
+  resolver?: string
+  source: string
+  targetPort?: number
+  tls: boolean
+}
+
+// SourceDatabaseRequirement maps a managed engine to the environment variable
+// names this application reads its connection string from. Only names are
+// carried; the values they held were classified and discarded.
+export interface SourceDatabaseRequirement {
+  engine: string
+  envVars?: string[]
+  source: string
+}
+
+export interface SourceTelemetryPlan {
+  metricsPath?: string
+  metricsPort?: number
+  tracingEnvVars?: string[]
+}
+
 // SourceServicePlan is a safe evidence summary. It never contains source
 // bodies, labels, environment values, or provider credentials.
 export interface SourceServicePlan {
   build?: SourceBuildPlan
   classification: SourceClassification
   composePath: string
+  cpus?: number
+  databaseRequirements?: SourceDatabaseRequirement[]
   databases?: string[]
+  dockerfile?: SourceDockerfilePlan
   findings?: SourceFinding[]
   healthPath?: string
   image?: string
+  memoryMiB?: number
   metrics: boolean
   name: string
   port?: number
+  replicas?: number
+  route?: SourceRoutePlan
   service: string
   sharedStacks?: string[]
+  telemetry: SourceTelemetryPlan
   tracing: boolean
 }
 
@@ -1222,6 +1271,14 @@ export interface MetricQuery {
   windowSeconds?: number
 }
 
+/** The series the controller will answer for one scope. Served by
+    `GET /api/v1/metrics/series`; the console charts what this lists rather
+    than a hand-kept copy of it. */
+export interface MetricSeriesVocabulary {
+  scope: string
+  series: string[]
+}
+
 export interface MetricPoint {
   at: string
   value: number
@@ -1310,4 +1367,48 @@ export interface CoreSelf {
   }
   uptimeSeconds: number
   version: string
+}
+
+/** Where the console itself is published, and what it could be published
+    under. The zones are the gateway's accepted domains, so the screen offers
+    a choice the publication order already permits rather than a free-text
+    hostname nobody validated. */
+export interface CoreConsoleStatus {
+  address?: string
+  blocked?: string
+  confirmation?: string
+  credentials: { id: string; name: string; provider: 'arvan' | 'cloudflare' }[]
+  host?: string
+  label: string
+  published: boolean
+  resolver?: string
+  serviceKey?: string
+  url?: string
+  version: number
+  zones: string[]
+}
+
+/** The read before the write: the exact record and route publishing creates,
+    including that it replaces the controller's own task. */
+export interface CoreConsolePlan {
+  address: string
+  confirmation: string
+  host: string
+  record: DNSRecordSpec
+  recordAction: string
+  resolver: string
+  restartsController: boolean
+  route: RouteSpec
+  url: string
+  version: number
+  warnings: string[]
+}
+
+export interface CoreConsoleRequest {
+  address?: string
+  adopt: boolean
+  confirmation: string
+  credentialId: string
+  label: string
+  zone: string
 }

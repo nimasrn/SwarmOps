@@ -77,17 +77,47 @@ export function SwarmPage({
     return () => { live = false }
   }, [selected?.id])
 
-  const updateAvailability = async (availability: string) => {
-    if (!selected) return
+  // Every membership change is the same shape: queue one audited command,
+  // name it in a toast with its id, and let the cluster poll report the
+  // result. Writing that four times is how three of the four ended up
+  // unwritten, so it is written once.
+  const queueNodeChange = async (description: string, run: () => Promise<Command>) => {
     setBusy(true)
     try {
-      const command = await api.setNodeAvailability(selected.id, availability)
-      toast({ message: `${selected.hostname}: queued ${availability} (${shortID(command.id)})`, tone: 'success' })
+      const command = await run()
+      toast({ message: `${selected?.hostname ?? 'Node'}: ${description} queued (${shortID(command.id)})`, tone: 'success' })
     } catch (reason) {
       toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
+      throw reason
     } finally {
       setBusy(false)
     }
+  }
+
+  const updateAvailability = (availability: string) => {
+    if (!selected) return
+    void queueNodeChange(availability, () => api.setNodeAvailability(selected.id, availability)).catch(() => {})
+  }
+
+  const updateRole = (role: 'demote' | 'promote') => {
+    if (!selected) return
+    void queueNodeChange(role, () => api.setNodeRole(selected.id, role)).catch(() => {})
+  }
+
+  // An empty value removes the key: that is the control plane's own contract
+  // for `node update --label-rm`, so the console names it rather than adding
+  // a second button that means the same thing.
+  const updateLabel = (key: string, value: string) => {
+    if (!selected) return
+    void queueNodeChange(value ? `label ${key}=${value}` : `label ${key} removal`, () => api.setNodeLabel(selected.id, key, value)).catch(() => {})
+  }
+
+  const removeNode = async (confirmation: string) => {
+    if (!selected) return
+    await queueNodeChange('removal', () => api.removeNode(selected.id, confirmation))
+    // The node is gone from the cluster; keeping its detail page open would
+    // show a record the next snapshot no longer contains.
+    setSelectedID('')
   }
 
   const inspectContainer = async (container: ContainerSummary) => {
@@ -151,11 +181,15 @@ export function SwarmPage({
         containerColumns={containerColumns}
         containerError={containerError}
         containers={containers}
+        managers={nodes.filter((node) => node.role === 'manager').length}
         node={selected}
-        onAvailability={(availability) => void updateAvailability(availability)}
+        onAvailability={updateAvailability}
         onBack={() => setSelectedID('')}
         onDiagnostics={onDiagnostics}
+        onLabel={updateLabel}
         onReadiness={onReadiness}
+        onRemove={removeNode}
+        onRole={updateRole}
         taskError={taskError}
         tasks={tasks}
       />

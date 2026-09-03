@@ -54,6 +54,9 @@ import type {
   Task,
   TraefikStatus,
   CertificateStatus,
+  CoreConsolePlan,
+  CoreConsoleRequest,
+  CoreConsoleStatus,
   CoreReplicaInput,
   CoreTopology,
   CutoverPlan,
@@ -78,6 +81,7 @@ import type {
   CoreSelf,
   MachineMetrics,
   MetricRange,
+  MetricSeriesVocabulary,
 } from './types'
 
 export class APIError extends Error {
@@ -281,6 +285,23 @@ export class SwarmOpsAPI {
   /** What the controller knows about itself. */
   coreSelf() { return this.request<CoreSelf>('/api/v1/core/self') }
 
+  /** Where the console is published today, and the accepted zones it could be
+      published under. A cluster read: the gateway that serves it belongs to
+      the selected cluster, not to the controller. */
+  coreConsole() { return this.request<CoreConsoleStatus>('/api/v1/core/console') }
+
+  /** The read before the write. Contacts the DNS provider once and reports the
+      record and route publishing would create; writes nothing. */
+  planCoreConsole(input: CoreConsoleRequest) {
+    return this.request<CoreConsolePlan>('/api/v1/core/console/plan', { method: 'POST', body: JSON.stringify(input) })
+  }
+
+  /** Queue the publication: the record, its propagation proof, then the route.
+      Returns the queued command, exactly like every other write. */
+  publishCoreConsole(input: CoreConsoleRequest) {
+    return this.commandRequest<Command>('/api/v1/core/console', { method: 'POST', body: JSON.stringify(input) })
+  }
+
   /** Ask the LOCAL updater to check for a release. The controller does not
       download, verify or restart itself — a process cannot supervise its own
       replacement. */
@@ -319,6 +340,14 @@ export class SwarmOpsAPI {
     if (input.container) parameters.set('container', input.container)
     if (input.machine) parameters.set('machine', input.machine)
     return this.request<MetricRange>(`/api/v1/metrics/range?${parameters.toString()}`)
+  }
+
+  /** What a scope may be ASKED for. The controller owns the vocabulary, so a
+      screen that charts "everything measured about a machine" gets the list
+      from here rather than repeating it in JSX — which is how six of the ten
+      machine series ended up measured, served, and never drawn. */
+  metricSeries(scope: string) {
+    return this.request<MetricSeriesVocabulary>(`/api/v1/metrics/series?scope=${encodeURIComponent(scope)}`)
   }
 
   // runCatalogued executes one catalogue entry from the values an operator

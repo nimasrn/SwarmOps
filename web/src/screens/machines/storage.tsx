@@ -1,12 +1,12 @@
-import { useState } from 'react'
-import { Body, Columns, Label, Panel, Segmented, Select, Stack as Rows, Switch, useToast } from '@nim.zone/ui'
+import { useEffect, useState } from 'react'
+import { Banner, Body, Chart, Columns, Label, Panel, Segmented, Select, Spinner, Stack as Rows, Switch, useToast } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import { formatBytes, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { useResource } from '../../data/hooks'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { Screen } from '../../components/screen'
-import type { DiskUsage, PruneResource } from '../../data/types'
+import type { DiskUsage, Insights, PruneResource } from '../../data/types'
 import { ImagesTab } from './resources/images'
 import { NetworksTab } from './resources/networks'
 import { SwarmObjectsTab } from './resources/swarm-objects'
@@ -74,6 +74,66 @@ function PruneControls({ toast, usage }: { toast: Toast; usage: DiskUsage | null
 }
 
 
+/**
+ * Where the disk actually went, and how much of it a prune would return.
+ *
+ * `docker system df` already fed the four figures at the top of this screen;
+ * the split between what is IN USE and what is RECLAIMABLE was computed by the
+ * controller and drawn only on the unreachable Insights screen. It belongs
+ * here, immediately above the control that acts on it — a prune is decided on
+ * the size of the reclaimable bar, not on a total.
+ */
+function DiskBreakdown() {
+  const [insights, setInsights] = useState<Insights | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let live = true
+    void api.insights()
+      .then((value) => { if (live) setInsights(value) })
+      .catch((reason) => { if (live) setError(messageOf(reason)) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [])
+
+  if (loading) return <Spinner label="Reading the disk breakdown" />
+  if (error) return <Banner tone="warning" title="The disk breakdown is unavailable">{error}</Banner>
+  if (!insights) return null
+
+  const { storage } = insights
+  return (
+    <Chart
+      categories={['Images', 'Volumes', 'Containers', 'Build cache']}
+      format={formatBytes}
+      height={200}
+      kind="bar"
+      legend
+      note="Reclaimable is the part Docker would delete on a prune of that resource. A container's writable layer is never reclaimable while it exists."
+      series={[
+        {
+          label: 'In use',
+          values: [
+            storage.imageBytes - storage.reclaimableImageBytes,
+            storage.volumeBytes - storage.reclaimableVolumeBytes,
+            storage.containerWritableBytes,
+            storage.buildCacheBytes - storage.reclaimableBuildCacheBytes,
+          ],
+        },
+        {
+          label: 'Reclaimable',
+          values: [
+            storage.reclaimableImageBytes,
+            storage.reclaimableVolumeBytes,
+            0,
+            storage.reclaimableBuildCacheBytes,
+          ],
+        },
+      ]}
+      title="Disk by resource"
+    />
+  )
+}
 
 /**
  * What a host is holding, and what can safely be let go.
@@ -145,6 +205,7 @@ export function StoragePage({ toast }: { toast: Toast }) {
       {tab === 'configs' ? <SwarmObjectsTab kind="configs" toast={toast} /> : null}
 
       <Panel description="Docker decides what counts as unused. SwarmOps only asks, and only after the exact phrase is typed." title="Reclaim space">
+        <DiskBreakdown />
         <PruneControls toast={toast} usage={usage.data} />
       </Panel>
     </Screen>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Banner, Body, Button, Chart, Panel, Spinner, Stack as Rows } from '@nim.zone/ui'
+import { Banner, Body, Button, Chart, Columns, Panel, Spinner, Stack as Rows } from '@nim.zone/ui'
 import { api } from '../data/api'
 import type { MetricQuery, MetricRange } from '../data/types'
 import { messageOf } from '../lib/errors'
@@ -86,4 +86,102 @@ function formatterFor(unit: string): (value: number) => string {
     case 'seconds': return (value) => value < 1 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`
     default: return (value) => Number.isInteger(value) ? String(value) : value.toFixed(1)
   }
+}
+
+/**
+ * What each series NAME means, in the words an operator uses.
+ *
+ * The controller owns the vocabulary; this owns only its English. A series the
+ * controller adds and this record does not know still charts — under its own
+ * name — so a new reading appears in the console the moment it is served
+ * rather than the next time someone remembers to edit a screen.
+ */
+const SERIES_LABELS: Record<string, string> = {
+  'block-read': 'Block read',
+  'block-write': 'Block write',
+  'cpu-iowait': 'CPU waiting on I/O',
+  'disk-read': 'Disk read',
+  'disk-write': 'Disk write',
+  'latency-p95': 'Latency (p95)',
+  'memory-limit': 'Memory limit',
+  'memory-total': 'Memory installed',
+  'network-rx': 'Network in',
+  'network-tx': 'Network out',
+  containers: 'Containers',
+  cpu: 'CPU',
+  errors: 'Failing requests',
+  load: 'Load average',
+  machines: 'Machines reporting',
+  memory: 'Memory used',
+  requests: 'Requests',
+}
+
+export function seriesLabel(series: string): string {
+  return SERIES_LABELS[series] ?? series.replace(/-/g, ' ').replace(/^./, (letter) => letter.toUpperCase())
+}
+
+export interface MetricChartGridProps {
+  /** Everything except `series` — which is the whole point: the grid asks the
+      controller which series this scope has and charts each one. */
+  query: Omit<MetricQuery, 'series'>
+  refreshMs?: number
+  /** Drawn first, in this order. Anything the controller also serves follows
+      alphabetically, so the reading an operator opens the page for is at the
+      top and nothing measured is silently dropped. */
+  lead?: readonly string[]
+}
+
+/**
+ * Every reading the controller will answer for one object.
+ *
+ * Screens used to name their series in JSX, which meant the console charted
+ * four of the ten readings a machine actually reports and six were measured,
+ * stored, and never drawn — including `load` and `cpu-iowait`, the two that
+ * distinguish a busy host from a stuck one. `GET /api/v1/metrics/series` exists
+ * to answer exactly this, and its own comment says so.
+ */
+export function MetricChartGrid({ lead = [], query, refreshMs }: MetricChartGridProps) {
+  const { scope } = query
+  const [names, setNames] = useState<{ scope: string; series?: string[]; error?: string }>()
+  const current = names?.scope === scope ? names : undefined
+
+  useEffect(() => {
+    let live = true
+    setNames(undefined)
+    void api.metricSeries(scope)
+      .then((value) => { if (live) setNames({ scope, series: value.series ?? [] }) })
+      .catch((reason) => { if (live) setNames({ error: messageOf(reason), scope }) })
+    return () => { live = false }
+  }, [scope])
+
+  if (!current) return <Panel><Spinner label={`Reading what a ${scope} can be asked for`} /></Panel>
+  if (current.error) return <Panel><Banner tone="warning" title="The reading vocabulary is unavailable">{current.error}</Banner></Panel>
+
+  const served = current.series ?? []
+  const ordered = [
+    ...lead.filter((name) => served.includes(name)),
+    ...served.filter((name) => !lead.includes(name)).sort(),
+  ]
+  if (!ordered.length) {
+    return <Panel><Body size="sm" tone="muted">The controller reports no series for this {scope}. No measurement is implied either way.</Body></Panel>
+  }
+
+  return (
+    <Rows gap="md">
+      {pairs(ordered).map(([left, right]) => (
+        <Columns key={left}>
+          <MetricChart query={{ ...query, series: left }} refreshMs={refreshMs} title={seriesLabel(left)} />
+          {right ? <MetricChart query={{ ...query, series: right }} refreshMs={refreshMs} title={seriesLabel(right)} /> : null}
+        </Columns>
+      ))}
+    </Rows>
+  )
+}
+
+/** Two charts to a row. A grid component that reflowed to one column per
+    reading made a machine's ten series a ten-screen scroll. */
+function pairs(values: string[]): [string, string | undefined][] {
+  const rows: [string, string | undefined][] = []
+  for (let index = 0; index < values.length; index += 2) rows.push([values[index], values[index + 1]])
+  return rows
 }

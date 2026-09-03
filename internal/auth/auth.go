@@ -57,14 +57,40 @@ func (s *Service) Login(username, password string) (string, Claims, error) {
 		return "", Claims{}, fmt.Errorf("generate csrf token: %w", err)
 	}
 	claims := Claims{CSRF: csrf, Expires: now.Add(s.ttl).Unix(), IssuedAt: now.Unix(), Username: s.username}
+	token, err := s.sign(claims)
+	if err != nil {
+		return "", Claims{}, err
+	}
+	return token, claims, nil
+}
+
+// Renew keeps a session that is still in active use from expiring underneath
+// the operator. The token is stateless, so "still signed in" can only mean
+// "re-issued while it was valid": once a verified session is past the halfway
+// point of its lifetime, the next authenticated request mints a fresh one.
+// The CSRF token is carried over so the console's cached value keeps working.
+func (s *Service) Renew(claims Claims) (string, Claims, bool) {
+	now := s.now().UTC()
+	if now.Unix() < claims.IssuedAt+int64(s.ttl.Seconds())/2 {
+		return "", claims, false
+	}
+	renewed := Claims{CSRF: claims.CSRF, Expires: now.Add(s.ttl).Unix(), IssuedAt: now.Unix(), Username: claims.Username}
+	token, err := s.sign(renewed)
+	if err != nil {
+		return "", claims, false
+	}
+	return token, renewed, true
+}
+
+func (s *Service) sign(claims Claims) (string, error) {
 	payload, err := json.Marshal(claims)
 	if err != nil {
-		return "", Claims{}, fmt.Errorf("encode session: %w", err)
+		return "", fmt.Errorf("encode session: %w", err)
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(payload)
 	mac := hmac.New(sha256.New, s.key)
 	_, _ = mac.Write([]byte(encoded))
-	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), claims, nil
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
 func (s *Service) Verify(token string) (Claims, error) {

@@ -422,3 +422,79 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 		t.Fatalf("push allow-list did not cover the configured namespace: %v", prefixes)
 	}
 }
+
+// The wizard's job is to turn what the scanner found into the spec that is
+// actually deployed. Each of these used to be something an operator had to
+// re-enter by hand for a repository that already stated it.
+func TestSourceApplicationSpecCarriesDiscoveryIntoTheDeployedSpec(t *testing.T) {
+	candidate := source.ServicePlan{
+		Classification: source.ClassificationApplication,
+		CPUs:           1.5,
+		Databases:      []string{"postgres", "redis"},
+		DatabaseRequirements: []source.DatabaseRequirement{
+			{Engine: "postgres", EnvVars: []string{"DATABASE_URL"}, Source: "environment"},
+			{Engine: "redis", Source: "depends_on"},
+		},
+		HealthPath: "/livez",
+		Image:      "ghcr.io/acme/api:abc123def456",
+		MemoryMiB:  768,
+		Metrics:    true,
+		Name:       "api",
+		Port:       9000,
+		Replicas:   3,
+		Route:      &source.RoutePlan{Hosts: []string{"api.example.com"}, Resolver: "letsencrypt", Source: "traefik_labels", TLS: true},
+		Telemetry:  source.TelemetryPlan{MetricsPath: "/internal/metrics", MetricsPort: 9000},
+		Tracing:    true,
+	}
+	spec, stacks := sourceApplicationSpec(ops.ApplicationSpec{}, candidate)
+	if spec.Domain != "api.example.com" || spec.Resolver != "letsencrypt" {
+		t.Fatalf("the discovered route must become the deployed route: %q %q", spec.Domain, spec.Resolver)
+	}
+	if spec.Port != 9000 || spec.HealthPath != "/livez" || spec.MetricsPath != "/internal/metrics" {
+		t.Fatalf("discovered endpoints = %#v", spec)
+	}
+	if spec.Replicas != 3 || spec.CPUs != 1.5 || spec.MemoryMiB != 768 {
+		t.Fatalf("discovered resources = %d %v %d", spec.Replicas, spec.CPUs, spec.MemoryMiB)
+	}
+	// A managed URI in a file the application never opens is not a working
+	// deployment, so a discovered variable name switches delivery to env.
+	if spec.DatabaseDelivery != ops.DeliveryEnv {
+		t.Fatalf("delivery = %q", spec.DatabaseDelivery)
+	}
+	if strings.Join(spec.DatabaseEnv["postgres"], ",") != "DATABASE_URL" {
+		t.Fatalf("database variables = %#v", spec.DatabaseEnv)
+	}
+	if _, mapped := spec.DatabaseEnv["redis"]; mapped {
+		t.Fatalf("an engine found only through depends_on names no variables: %#v", spec.DatabaseEnv)
+	}
+	if strings.Join(stacks, ",") != "swarmops-observability" {
+		t.Fatalf("shared stacks = %#v", stacks)
+	}
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("the merged spec must satisfy application policy: %v", err)
+	}
+}
+
+func TestSourceApplicationSpecKeepsWhatTheOperatorChose(t *testing.T) {
+	candidate := source.ServicePlan{
+		Classification: source.ClassificationApplication,
+		CPUs:           1.5,
+		Image:          "ghcr.io/acme/api:abc123def456",
+		Name:           "api",
+		Port:           9000,
+		Replicas:       3,
+		Route:          &source.RoutePlan{Hosts: []string{"api.example.com"}, Resolver: "letsencrypt", Source: "traefik_labels"},
+	}
+	requested := ops.ApplicationSpec{CPUs: 0.25, Domain: "chosen.example.com", Name: "reviewed-slot", Replicas: 1, Resolver: "internal"}
+	spec, _ := sourceApplicationSpec(requested, candidate)
+	if spec.Domain != "chosen.example.com" || spec.Resolver != "internal" {
+		t.Fatalf("the operator's own route must win: %q %q", spec.Domain, spec.Resolver)
+	}
+	if spec.Name != "reviewed-slot" || spec.Replicas != 1 || spec.CPUs != 0.25 {
+		t.Fatalf("the operator's own choices must win: %#v", spec)
+	}
+	// No discovered variable names, so the URI stays in a mounted secret.
+	if spec.DatabaseDelivery != ops.DeliverySecret {
+		t.Fatalf("delivery = %q", spec.DatabaseDelivery)
+	}
+}

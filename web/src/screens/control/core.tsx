@@ -25,6 +25,7 @@ import { api } from '../../data/api'
 import type { CoreMember, CoreTopology, Server } from '../../data/types'
 import { Screen } from '../../components/screen'
 import { CoreIdentityPanels } from './core-identity'
+import { CoreConsoleDomainPanel } from './core-domain'
 import { formatDateTime } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 
@@ -153,6 +154,11 @@ export function CoreTopologyPage({ servers, toast }: CoreTopologyPageProps) {
           thing you do once a year; the version, the host and the disk are the
           things you came to look at. */}
       <CoreIdentityPanels toast={toast} />
+
+      {/* How this controller is REACHED comes next. It is the second question
+          an operator has about the process serving the page they are on, and
+          until now it was the one the console could not answer. */}
+      <CoreConsoleDomainPanel toast={toast} />
 
       {!topology ? <Panel><Spinner label="Reading control-plane topology" /></Panel> : (
         <>

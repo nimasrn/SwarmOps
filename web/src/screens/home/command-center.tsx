@@ -26,6 +26,7 @@ import { commandTone, isInFlight, isServerConnected } from '../../lib/health'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { Screen } from '../../components/screen'
 import { EvidenceLedger } from './evidence-ledger'
+import { ProductionTrend } from './production-trend'
 
 interface CommandCenterProps {
   cluster?: DashboardData
@@ -279,6 +280,12 @@ export function CommandCenter({ cluster, commands, core, onOpen, servers }: Comm
           />
         </MetricGrid>
       </Panel>
+
+      {/* What production has been doing, not only what it is doing. These
+          readings were served by the controller and drawn on no reachable
+          screen; a cluster-wide reading belongs on the screen about the
+          cluster, which is this one. */}
+      {cluster ? <ProductionTrend /> : null}
 
       <Panel actions={<Button onClick={() => onOpen('runs')} size="sm" variant="ghost">View all runs</Button>} flush title="Recent operations">
         {commands.length

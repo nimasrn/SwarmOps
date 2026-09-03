@@ -64,6 +64,12 @@ func isPlaintextHTTPRequest(request *http.Request) bool {
 	return plaintext
 }
 
+// newSessionCookie is the single place that decides the shape of the session
+// cookie, so the login, renewal, and logout paths cannot drift apart.
+func (s *Server) newSessionCookie(request *http.Request, value string, maxAge int) *http.Cookie {
+	return &http.Cookie{Name: sessionCookieName(request), Value: value, Path: "/", MaxAge: maxAge, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies && !isPlaintextHTTPRequest(request)}
+}
+
 func sessionCookieName(request *http.Request) string {
 	if isPlaintextHTTPRequest(request) {
 		return plaintextSessionCookie
@@ -208,6 +214,9 @@ func (s *Server) Handler() http.Handler {
 	// The controller describing itself: version, host, storage, releases.
 	mux.HandleFunc("GET /api/v1/core/self", s.withAuth(false, s.coreSelf))
 	mux.HandleFunc("POST /api/v1/core/update", s.withActiveAuth(s.coreUpdate))
+	mux.HandleFunc("GET /api/v1/core/console", s.withAuth(false, s.coreConsoleStatus))
+	mux.HandleFunc("POST /api/v1/core/console/plan", s.withActiveAuth(s.coreConsolePlan))
+	mux.HandleFunc("POST /api/v1/core/console", s.withActiveAuth(s.coreConsolePublish))
 	mux.HandleFunc("GET /api/v1/core/registry-mirror", s.withAuth(false, s.coreRegistryMirrors))
 	mux.HandleFunc("POST /api/v1/core/registry-mirror", s.withActiveAuth(s.coreRegistryMirrorApply))
 	mux.HandleFunc("POST /api/v1/core/replicas", s.withActiveAuth(s.coreReplicaAdd))
@@ -394,7 +403,7 @@ func (s *Server) login(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	s.loginLimiter.Success(key)
-	http.SetCookie(response, &http.Cookie{Name: sessionCookieName(request), Value: token, Path: "/", MaxAge: int(s.config.SessionTTL.Seconds()), HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies && !isPlaintextHTTPRequest(request)})
+	http.SetCookie(response, s.newSessionCookie(request, token, int(s.config.SessionTTL.Seconds())))
 	s.record(claims.Username, requestID(request), "auth.login", "session", nil, nil)
 	writeJSON(response, http.StatusOK, map[string]any{"csrfToken": claims.CSRF, "user": map[string]string{"username": claims.Username}})
 }
@@ -404,7 +413,7 @@ func (s *Server) me(response http.ResponseWriter, request *http.Request, claims 
 }
 
 func (s *Server) logout(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
-	http.SetCookie(response, &http.Cookie{Name: sessionCookieName(request), Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.config.SecureCookies && !isPlaintextHTTPRequest(request)})
+	http.SetCookie(response, s.newSessionCookie(request, "", -1))
 	s.record(claims.Username, requestID(request), "auth.logout", "session", nil, nil)
 	response.WriteHeader(http.StatusNoContent)
 }
@@ -1374,6 +1383,13 @@ func (s *Server) withAuth(csrf bool, handler protectedHandler) http.HandlerFunc 
 		if csrf && !s.auth.VerifyCSRF(claims, request.Header.Get("X-CSRF-Token")) {
 			writeError(response, http.StatusForbidden, "Invalid request token")
 			return
+		}
+		// An operator who keeps using the console stays signed in: the cookie
+		// is re-issued once the session passes the halfway point of its TTL,
+		// rather than expiring on a fixed clock started at login.
+		if renewed, renewedClaims, ok := s.auth.Renew(claims); ok {
+			http.SetCookie(response, s.newSessionCookie(request, renewed, int(s.config.SessionTTL.Seconds())))
+			claims = renewedClaims
 		}
 		handler(response, request, claims)
 	}

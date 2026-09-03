@@ -69,6 +69,19 @@ export const FIXTURES: Record<string, unknown> = {
   // have and no `connectionType`, so every screen read the profile as a legacy
   // SSH server and rendered "undefined:undefined" for its endpoint — a defect
   // in the harness that looked exactly like a defect in the product.
+  // The console's own domain: a gateway that can publish it, one accepted zone
+  // and one validated credential, and nothing published yet — which is the
+  // state the panel has to be legible in.
+  '/api/v1/core/console': {
+    address: '203.0.113.10',
+    confirmation: 'PUBLISH_SWARMOPS_API',
+    credentials: [{ id: 'production-dns', name: 'Production DNS', provider: 'cloudflare' }],
+    label: 'swarmops',
+    published: false,
+    serviceKey: 'swarmops_api',
+    version: 1,
+    zones: ['nim.zone'],
+  },
   '/api/v1/servers': [
     {
       agentHealth: { agentVersion: 'v0.11.0', checkedAt: ago(4), protocolVersion: 2, state: 'healthy', summary: 'Outbound poll received 4s ago', uptimeSeconds: 1036800 },

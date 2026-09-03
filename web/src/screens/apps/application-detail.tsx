@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Body, Button, Columns, DetailHeader, DetailLayout, Facts, IconButton, Inline, List, ListRow, Mono, Page, Panel, Select, Stack as Rows, StatusDot, Tabs } from '@nim.zone/ui'
+import { Body, Button, DetailHeader, DetailLayout, Facts, IconButton, Inline, List, ListRow, Mono, Page, Panel, Select, Stack as Rows, StatusDot, Tabs } from '@nim.zone/ui'
 import type { ApplicationStatus, Command } from '../../data/types'
-import { MetricChart } from '../../components/metric-chart'
+import { MetricChartGrid } from '../../components/metric-chart'
 import { StatusBadge, CommandStateBadge } from '../../components/badges'
 import { capitalize } from '../../lib/format'
 import { pageEntry, workspaceHash } from '../../navigation/navigation'
@@ -60,10 +60,11 @@ export function ApplicationDetailView({ onBack, onDeploy, onOpenRoutes, status, 
       </Rows> : undefined}>
         {tab === 'overview' || tab === 'traffic' ? <Rows>
           <Panel variant="plain" title="Traffic performance" actions={<Select aria-label="Metric time range" options={[{ label: '1 hour', value: '3600' }, { label: '6 hours', value: '21600' }, { label: '24 hours', value: '86400' }]} value={String(windowSeconds)} onChange={event => setWindowSeconds(Number(event.target.value))} />}>
-            <Columns>
-              <MetricChart query={{ application: status.spec.name, scope: 'application', series: 'requests', windowSeconds }} refreshMs={30_000} title="Requests" />
-              <MetricChart query={{ application: status.spec.name, scope: 'application', series: 'errors', windowSeconds }} refreshMs={30_000} title="Failing requests" />
-            </Columns>
+            <MetricChartGrid
+              lead={['requests', 'errors', 'latency-p95']}
+              query={{ application: status.spec.name, scope: 'application', windowSeconds }}
+              refreshMs={30_000}
+            />
           </Panel>
           {tab === 'overview' ? <Panel variant="plain" title="Current release" actions={relatedRuns[0] ? <Button href={workspaceHash('runs', relatedRuns[0].id)} variant="ghost" size="sm">Inspect run</Button> : undefined}>
             <Inline><Mono>{status.spec.image}</Mono><StatusDot tone={healthy ? 'success' : 'warning'}>{status.deployed ? `${status.runningTasks} of ${status.spec.replicas} tasks running` : 'Not deployed'}</StatusDot></Inline>

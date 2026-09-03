@@ -12,6 +12,7 @@ import {
   List,
   ListRow,
   Panel,
+  Segmented,
   Sheet,
   Spinner,
   Stack as Rows,
@@ -19,6 +20,38 @@ import {
 } from '@nim.zone/ui'
 import type { SourceStatus } from '../../data/types'
 import { SOURCE_DOCS_URL, useSourceSettings } from './source-settings'
+
+/**
+ * The two registries an operator is most likely to already have an account on,
+ * plus the escape hatch. Choosing one fills in the host and the credential
+ * server, so the only thing left to type is the account the images go under —
+ * an operator without a private registry no longer has to know that a
+ * namespace is a host and a path glued together.
+ */
+type RegistryProvider = 'custom' | 'dockerhub' | 'ghcr'
+
+const REGISTRIES: Record<Exclude<RegistryProvider, 'custom'>, { host: string; namespaceHint: string; namespaceLabel: string; tokenHint: string; usernameLabel: string }> = {
+  dockerhub: {
+    host: 'docker.io',
+    namespaceHint: 'Your Docker Hub account or organisation. Images are pushed as docker.io/<name>/<app>.',
+    namespaceLabel: 'Docker Hub account',
+    tokenHint: 'A Docker Hub access token with read and write access.',
+    usernameLabel: 'Docker Hub username',
+  },
+  ghcr: {
+    host: 'ghcr.io',
+    namespaceHint: 'Your GitHub user or organisation. Images are pushed as ghcr.io/<name>/<app>.',
+    namespaceLabel: 'GitHub user or organisation',
+    tokenHint: 'A GitHub personal access token with the write:packages scope.',
+    usernameLabel: 'GitHub username',
+  },
+}
+
+function providerForPrefix(prefix: string): RegistryProvider {
+  if (prefix.startsWith('ghcr.io/')) return 'ghcr'
+  if (prefix.startsWith('docker.io/')) return 'dockerhub'
+  return prefix === '' ? 'ghcr' : 'custom'
+}
 
 /**
  * Where images this controller builds are pushed.
@@ -38,6 +71,8 @@ export function PushRegistryPanel({ onApplied, status }: { onApplied?: () => voi
   const { error, load, loading, save, saved, saving, settings } = useSourceSettings()
 
   const [buildEnabled, setBuildEnabled] = useState(false)
+  const [provider, setProvider] = useState<RegistryProvider>('ghcr')
+  const [namespace, setNamespace] = useState('')
   const [imagePrefix, setImagePrefix] = useState('')
   const [registryServer, setRegistryServer] = useState('')
   const [registryUsername, setRegistryUsername] = useState('')
@@ -47,18 +82,29 @@ export function PushRegistryPanel({ onApplied, status }: { onApplied?: () => voi
   useEffect(() => {
     if (!settings) return
     setBuildEnabled(settings.buildEnabled)
+    const detected = providerForPrefix(settings.imagePrefix)
+    setProvider(detected)
+    setNamespace(detected === 'custom' ? '' : settings.imagePrefix.split('/').slice(1).join('/'))
     setImagePrefix(settings.imagePrefix)
     setRegistryServer(settings.registryServer)
     setRegistryUsername(settings.registryUsername)
     setRegistryPassword('')
   }, [settings])
 
+  // The chosen registry decides the prefix and the credential server, so a
+  // hosted choice cannot end up with an image namespace on one registry and a
+  // password for another.
+  const chosen = provider === 'custom' ? null : REGISTRIES[provider]
+  const account = namespace.trim().replace(/^\/+|\/+$/g, '').toLowerCase()
+  const effectivePrefix = chosen ? (account === '' ? '' : `${chosen.host}/${account}`) : imagePrefix.trim()
+  const effectiveServer = chosen ? chosen.host : registryServer.trim()
+
   async function apply() {
     const applied = await save({
       buildEnabled,
-      imagePrefix: imagePrefix.trim(),
+      imagePrefix: effectivePrefix,
       registryPassword: registryPassword || undefined,
-      registryServer: registryServer.trim(),
+      registryServer: effectiveServer,
       registryUsername: registryUsername.trim(),
     })
     if (applied) onApplied?.()
@@ -91,10 +137,20 @@ export function PushRegistryPanel({ onApplied, status }: { onApplied?: () => voi
             {pinned ? <Banner title="Pinned by this controller" tone="warning">This controller was started with its registry settings fixed, so they cannot be changed from the console. Ask whoever runs the host, or follow the setup guide.</Banner> : null}
             <Body size="sm">One reviewed registry namespace, one sealed push credential. This is where images SwarmOps builds are pushed; it is not the mirror your machines pull public images through, and it is not related to which provider source is read from.</Body>
 
-            <Input disabled={pinned} hint="Registry host and namespace SwarmOps may push generated images to, such as ghcr.io/your-org." label="Registry namespace" onChange={(event) => setImagePrefix(event.target.value)} placeholder="ghcr.io/your-org" value={imagePrefix} />
-            <Input autoComplete="off" disabled={pinned} label="Registry server" onChange={(event) => setRegistryServer(event.target.value)} placeholder="ghcr.io" value={registryServer} />
-            <Input autoComplete="off" disabled={pinned} label="Registry username" onChange={(event) => setRegistryUsername(event.target.value)} value={registryUsername} />
-            <Input autoComplete="off" disabled={pinned} hint={settings?.registryConfigured ? 'Leave blank to keep the sealed credential.' : 'Sealed with the same key as provider tokens and never shown again.'} label="Registry password or token" onChange={(event) => setRegistryPassword(event.target.value)} type="password" value={registryPassword} />
+            <Segmented label="Registry" onChange={(value) => setProvider(value)} options={[{ disabled: pinned, label: 'GitHub Container Registry', value: 'ghcr' }, { disabled: pinned, label: 'Docker Hub', value: 'dockerhub' }, { disabled: pinned, label: 'Other registry', value: 'custom' }]} value={provider} />
+
+            {chosen ? (
+              <Input disabled={pinned} hint={chosen.namespaceHint} label={chosen.namespaceLabel} onChange={(event) => setNamespace(event.target.value)} placeholder={provider === 'ghcr' ? 'your-org' : 'your-account'} value={namespace} />
+            ) : (
+              <>
+                <Input disabled={pinned} hint="Registry host and namespace SwarmOps may push generated images to, such as ghcr.io/your-org." label="Registry namespace" onChange={(event) => setImagePrefix(event.target.value)} placeholder="ghcr.io/your-org" value={imagePrefix} />
+                <Input autoComplete="off" disabled={pinned} label="Registry server" onChange={(event) => setRegistryServer(event.target.value)} placeholder="ghcr.io" value={registryServer} />
+              </>
+            )}
+            <Input autoComplete="off" disabled={pinned} label={chosen ? chosen.usernameLabel : 'Registry username'} onChange={(event) => setRegistryUsername(event.target.value)} value={registryUsername} />
+            <Input autoComplete="off" disabled={pinned} hint={settings?.registryConfigured ? 'Leave blank to keep the sealed credential.' : chosen ? chosen.tokenHint : 'Sealed with the same key as provider tokens and never shown again.'} label="Registry password or token" onChange={(event) => setRegistryPassword(event.target.value)} type="password" value={registryPassword} />
+
+            {effectivePrefix ? <Body size="sm">Images will be pushed as <code>{effectivePrefix}/&lt;app&gt;:&lt;commit&gt;</code>.</Body> : null}
 
             <Checkbox checked={buildEnabled} description="Needs the namespace and credential above. Each Docker host still enforces its own build permission." disabled={pinned} onChange={(event) => setBuildEnabled(event.target.checked)}>Allow bounded image builds</Checkbox>
 

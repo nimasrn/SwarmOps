@@ -11,6 +11,54 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.16.1 — 2026-09-03
+
+A scanned repository now reaches production on a cluster that was not already
+prepared for it, and what a deployed application may read is narrower than the
+engine it reads from.
+
+- **Every application gets its own database account** — a user, a logical
+  database, and exactly the grants that user needs, provisioned by a one-shot
+  Swarm job that runs a reviewed, checked-in script on the managed engine's own
+  image. Applications no longer receive the engine superuser URI, so a leaked
+  connection string is a leak of one application's data rather than the whole
+  engine. The URI is delivered under the variable names the repository actually
+  reads, and a later deployment of the same application is handed the
+  credential it already owns instead of having one rotated underneath it.
+- **The console can publish itself** — choose an accepted zone and a label
+  under it on Control → Core, and the A record, the resolver, the DNS proof and
+  the public route are derived from state that already exists. It is the same
+  publication order and the same `RouteSpec` every other service gets, so the
+  published console appears in Traffic → Routes and is withdrawn the same way.
+  A controller that is not a Swarm service on the selected cluster says so
+  instead of offering the control.
+- **A deployment installs the routing edge it needs** — a first deployment on a
+  cluster without Traefik repairs only what the install preflight already
+  treats as automatically repairable, rather than failing with "Traefik
+  singleton service was not found" after the image was built and pushed.
+  Anything that needs a human decision — the dashboard credential above all —
+  still stops the deployment with the preflight's own recovery text.
+- **A push registry is chosen, not spelled out** — GitHub Container Registry,
+  Docker Hub, or another registry. Picking a hosted one asks for the account
+  name alone and fills in both the image namespace and the credential server,
+  so images can no longer be namespaced on one registry and authenticated
+  against another. "Other registry" keeps the two free-text fields.
+- **More of the repository is read, and shown before it is applied** — the
+  deployment plan reports Dockerfile stages, base images, whether the container
+  drops root, its start command and its declared ports, and names the variables
+  each database attachment will be delivered under. Replicas, the resource
+  ceiling and a declared route are taken from Compose when the operator did not
+  state them; platform admission still checks them against the reviewed slot,
+  so importing them can widen nothing.
+- **Chart evidence keeps exact timestamps** — expandable data tables retain the
+  full sample time while only visible ticks are thinned.
+
+The sealed database credential record moves to version 2 to hold
+per-application URIs; a version 1 file is read unchanged and simply has no
+application credentials yet. This release adds no new remote command shape
+beyond console publication and per-application database provisioning, and no
+automatic infrastructure upgrade.
+
 ## 0.16.0 — 2026-09-03
 
 The console adopts the next nim-ui console layer, with durable object routes,

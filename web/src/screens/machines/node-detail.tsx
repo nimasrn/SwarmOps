@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  Badge,
   Banner,
   Body,
   Button,
@@ -9,6 +10,8 @@ import {
   EmptyState,
   Facts,
   Inline,
+  Input,
+  Label,
   Metric,
   MetricGrid,
   Mono,
@@ -23,14 +26,24 @@ import type { Command, ContainerSummary, Node, Task } from '../../data/types'
 import { capitalize, formatBytes, formatDateTime, formatDuration, formatNumber, sentence, shortID } from '../../lib/format'
 import { hostProbeHealth, nodeHealth } from '../../lib/health'
 import { StatusBadge } from '../../components/badges'
+import { ConfirmPhrase } from '../../components/confirm-phrase'
 
 /**
- * One machine: what it is made of, what it is running, and the only three
- * changes this console will make to it.
+ * One machine: what it is made of, what it is running, and the changes this
+ * console will make to its membership.
  *
- * Availability is the whole mutation surface — active, pause, drain — because
- * everything else worth doing to a host is a reviewed readiness fix rather than
- * a button here. `Drain` carries the danger variant: it moves running work.
+ * Availability was for a long time the whole mutation surface here, on the
+ * argument that everything else worth doing to a host is a reviewed readiness
+ * fix. That was true of the HOST and wrong about the NODE: promotion, labels
+ * and removal are Swarm membership, the controller has always queued all three
+ * as audited commands, and the navigation entry has always promised "roles,
+ * labels, and placement". Only availability was wired, so the other three were
+ * reachable solely through the generic Action catalogue — a form with a node ID
+ * field, opened from a different area, for a decision made while looking at
+ * this page.
+ *
+ * `Drain` and `Remove` carry the danger variant: one moves running work, the
+ * other ends membership.
  */
 export function NodeDetailView({
   busy,
@@ -38,11 +51,15 @@ export function NodeDetailView({
   containerColumns,
   containerError,
   containers,
+  managers,
   node,
   onAvailability,
   onBack,
   onDiagnostics,
+  onLabel,
   onReadiness,
+  onRemove,
+  onRole,
   taskError,
   tasks,
 }: {
@@ -51,11 +68,18 @@ export function NodeDetailView({
   containerColumns: TableColumn<ContainerSummary>[]
   containerError: string
   containers: ContainerSummary[]
+  /** How many managers the cluster has. Demoting the last one loses the
+      cluster, so the count is the reason the control is disabled rather than
+      an error the operator discovers from Docker after the fact. */
+  managers: number
   node: Node
   onAvailability: (availability: string) => void
   onBack: () => void
   onDiagnostics: () => void
+  onLabel: (key: string, value: string) => void
   onReadiness: () => void
+  onRemove: (confirmation: string) => Promise<void>
+  onRole: (role: 'demote' | 'promote') => void
   taskError: string
   tasks: Task[]
 }) {
@@ -91,6 +115,7 @@ export function NodeDetailView({
           { label: `Containers (${containers.length})`, value: 'containers' },
           { label: `Tasks (${tasks.length})`, value: 'tasks' },
           { label: 'Network', value: 'network' },
+          { label: 'Placement', value: 'placement' },
           { label: 'Packages', value: 'packages' },
           { label: 'Activity', value: 'activity' },
         ]}
@@ -142,20 +167,8 @@ export function NodeDetailView({
                   { label: 'Last inventory', value: node.agent.collectedAt ? formatDateTime(node.agent.collectedAt) : 'no probe' },
                   { label: 'Swarm membership', value: `${capitalize(node.role)} · ${capitalize(node.availability)}` },
                 ]} />
-                <Inline>
-                  {['active', 'pause', 'drain'].map((availability) => (
-                    <Button
-                      disabled={busy || node.availability === availability}
-                      key={availability}
-                      loading={busy && node.availability !== availability}
-                      onClick={() => onAvailability(availability)}
-                      size="sm"
-                      variant={availability === 'drain' ? 'danger' : 'secondary'}
-                    >
-                      {capitalize(availability)}
-                    </Button>
-                  ))}
-                </Inline>
+                <AvailabilityControls busy={busy} node={node} onAvailability={onAvailability} />
+                <Button onClick={() => setTab('placement')} size="sm" variant="ghost">Role, labels and removal</Button>
               </Panel>
             </Rows>
           </Columns>
@@ -179,6 +192,16 @@ export function NodeDetailView({
             { label: 'Control path', value: 'Outbound pinned HTTPS' },
           ]} />
         </Panel>
+      ) : tab === 'placement' ? (
+        <NodePlacement
+          busy={busy}
+          managers={managers}
+          node={node}
+          onAvailability={onAvailability}
+          onLabel={onLabel}
+          onRemove={onRemove}
+          onRole={onRole}
+        />
       ) : tab === 'packages' ? (
         <Panel actions={<Button onClick={onReadiness} variant="secondary">Open host setup</Button>} title="Packages">
           <Body size="sm">Package and Docker maintenance are fixed, audited server-readiness operations. SwarmOps does not expose arbitrary package names or a remote shell.</Body>
@@ -191,6 +214,185 @@ export function NodeDetailView({
         </Panel>
       )}
     </Page>
+  )
+}
+
+/** Active, pause, drain — the three states Swarm will schedule against. */
+function AvailabilityControls({ busy, node, onAvailability }: {
+  busy: boolean
+  node: Node
+  onAvailability: (availability: string) => void
+}) {
+  return (
+    <Inline>
+      {['active', 'pause', 'drain'].map((availability) => (
+        <Button
+          disabled={busy || node.availability === availability}
+          key={availability}
+          loading={busy && node.availability !== availability}
+          onClick={() => onAvailability(availability)}
+          size="sm"
+          variant={availability === 'drain' ? 'danger' : 'secondary'}
+        >
+          {capitalize(availability)}
+        </Button>
+      ))}
+    </Inline>
+  )
+}
+
+/**
+ * Swarm membership: what this node IS to the cluster, rather than what it is
+ * made of.
+ *
+ * Four changes, in the order they are reached for and separated by how much
+ * they cost to undo. Availability is a scheduling hint and reverses in a
+ * click; a label is a placement fact and reverses by typing the key again;
+ * role is a quorum change; removal ends membership and is the only one behind
+ * a typed phrase.
+ */
+function NodePlacement({ busy, managers, node, onAvailability, onLabel, onRemove, onRole }: {
+  busy: boolean
+  managers: number
+  node: Node
+  onAvailability: (availability: string) => void
+  onLabel: (key: string, value: string) => void
+  onRemove: (confirmation: string) => Promise<void>
+  onRole: (role: 'demote' | 'promote') => void
+}) {
+  const [key, setKey] = useState('')
+  const [value, setValue] = useState('')
+  const labels = Object.entries(node.labels ?? {})
+  const manager = node.role === 'manager'
+  // Demoting the last manager leaves the cluster with nobody to schedule it,
+  // and Docker will refuse — but an operator should be told that before they
+  // click, not by an error in the run ledger afterwards.
+  const lastManager = manager && managers <= 1
+  const draining = node.availability === 'drain'
+
+  return (
+    <Rows gap="md">
+      <Columns template="aside">
+        <Rows gap="md">
+          <Panel
+            description="A label is how a stack says where it must run. Adding one changes nothing on its own; it changes where the NEXT placement decision can put a task."
+            title="Placement labels"
+          >
+            <Rows gap="tight">
+              {labels.length ? (
+                <Inline>
+                  {labels.map(([name, held]) => (
+                    <Badge key={name}>{held ? `${name}=${held}` : name}</Badge>
+                  ))}
+                </Inline>
+              ) : (
+                <Body size="sm" tone="muted">This node carries no labels, so only unconstrained tasks can be placed on it.</Body>
+              )}
+              <Columns>
+                <Input
+                  hint="For example, storage or zone."
+                  label="Label key"
+                  onChange={(event) => setKey(event.target.value)}
+                  placeholder="zone"
+                  value={key}
+                />
+                <Input
+                  hint="Leave empty to REMOVE this key from the node."
+                  label="Label value"
+                  onChange={(event) => setValue(event.target.value)}
+                  placeholder="eu-west-1a"
+                  value={value}
+                />
+              </Columns>
+              <Inline>
+                <Button
+                  disabled={busy || !key.trim()}
+                  loading={busy}
+                  onClick={() => { onLabel(key.trim(), value.trim()); setKey(''); setValue('') }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {value.trim() ? 'Set label' : 'Remove label'}
+                </Button>
+              </Inline>
+            </Rows>
+          </Panel>
+
+          <Panel
+            description="Draining moves running tasks off this node; pausing only stops new ones from arriving. Neither removes it from the cluster."
+            title="Availability"
+          >
+            <Facts columns={1} items={[
+              { label: 'Current', value: `${capitalize(node.availability)} · ${capitalize(node.state)}` },
+              { label: 'Tasks placed here', value: draining ? 'Being moved off' : node.availability === 'pause' ? 'Existing tasks stay; no new ones arrive' : 'Scheduled normally' },
+            ]} />
+            <AvailabilityControls busy={busy} node={node} onAvailability={onAvailability} />
+          </Panel>
+        </Rows>
+
+        <Rows gap="md">
+          <Panel
+            description="A manager holds a copy of cluster state and votes in quorum. A worker only runs tasks."
+            title="Role"
+          >
+            <Facts columns={1} items={[
+              { label: 'Role', value: `${capitalize(node.role)}${node.manager?.leader ? ' · leader' : ''}` },
+              { label: 'Managers in cluster', value: String(managers) },
+              { label: 'Reachability', value: node.manager?.reachability ?? 'Not a manager' },
+            ]} />
+            {lastManager ? (
+              <Banner tone="warning" title="This is the only manager">
+                Demoting it would leave the cluster with nothing to schedule it and no way to promote a replacement. Add and
+                promote a second manager first.
+              </Banner>
+            ) : null}
+            {manager && managers === 2 ? (
+              <Banner tone="warning" title="Two managers is not a quorum">
+                A two-manager cluster loses quorum when either one goes away. Three is the smallest number that survives
+                losing one.
+              </Banner>
+            ) : null}
+            <Inline>
+              <Button
+                disabled={busy || (manager ? lastManager : false)}
+                loading={busy}
+                onClick={() => onRole(manager ? 'demote' : 'promote')}
+                size="sm"
+                variant="secondary"
+              >
+                {manager ? 'Demote to worker' : 'Promote to manager'}
+              </Button>
+            </Inline>
+          </Panel>
+
+          <Panel
+            description="Removal ends this node's membership of the cluster. The host itself, its agent, and its local Docker are untouched — it can be prepared and joined again."
+            title="Remove from the cluster"
+          >
+            {!draining ? (
+              <Banner tone="warning" title="Drain this node first">
+                Tasks running here are not moved by a removal. Set availability to Drain, wait for its task count to reach
+                zero, and remove it then.
+              </Banner>
+            ) : null}
+            {node.state === 'ready' && manager ? (
+              <Banner tone="warning" title="This node is a reachable manager">
+                Demote it to a worker before removing it, so the cluster is not asked to give up a quorum member and a
+                scheduler in one step.
+              </Banner>
+            ) : null}
+            <ConfirmPhrase
+              action="Remove node"
+              busy={busy}
+              consequence={<>Removes <strong>{node.hostname}</strong> from this Swarm. Any task still placed here stops. The machine stays enrolled and can rejoin.</>}
+              disabled={busy}
+              onConfirm={onRemove}
+              phrase={`REMOVE_NODE_${node.id.toUpperCase()}`}
+            />
+          </Panel>
+        </Rows>
+      </Columns>
+    </Rows>
   )
 }
 

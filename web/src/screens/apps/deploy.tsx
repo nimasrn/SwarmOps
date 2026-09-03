@@ -207,7 +207,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
   useEffect(() => {
     if (!selectedService || slotName || approved.length === 0) return
     const matching = approved.find((slot) => slot.name === selectedService.name) ?? approved[0]
-    if (matching) selectSlot(matching.name, approved, setSlotName, setDomain)
+    if (matching) selectSlot(matching.name, approved, setSlotName, setDomain, selectedService.route?.hosts?.[0])
   }, [approved, selectedService, slotName])
 
   const chooseProvider = (next: SourceProviderKind) => {
@@ -324,13 +324,13 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     setServiceKey(nextKey)
     setSlotName('')
     if (service) {
-      setPort(String(service.port || 8080))
+      setPort(String(service.route?.targetPort || service.port || 8080))
       setHealthPath(service.healthPath || '/healthz')
       setMetricsEnabled(Boolean(service.metrics))
     }
   }
 
-  const chooseSlotName = (next: string) => selectSlot(next, approved, setSlotName, setDomain)
+  const chooseSlotName = (next: string) => selectSlot(next, approved, setSlotName, setDomain, selectedService?.route?.hosts?.[0])
 
   // A draft is the selection, never the evidence: no path, digest, finding, or
   // provider response is written to browser storage, so a saved draft cannot

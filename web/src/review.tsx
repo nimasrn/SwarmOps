@@ -119,6 +119,33 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     })
   }
 
+  // The console-domain preview is a READ that happens to be a POST, so it has
+  // to answer before the generic mutation echo below: a queued command in
+  // place of a plan is a shape the panel would try to render.
+  if (path === '/api/v1/core/console/plan') {
+    const record = { adopted: false, content: '203.0.113.10', credentialId: 'production-dns', id: 'swarmops-console', managed: true, name: 'swarmops.nim.zone', proxied: false, ttl: 300, type: 'A', version: 1, zone: 'nim.zone' }
+    return json({
+      address: '203.0.113.10',
+      confirmation: 'PUBLISH_SWARMOPS_API',
+      host: 'swarmops.nim.zone',
+      record,
+      recordAction: 'create',
+      resolver: 'le',
+      restartsController: true,
+      route: {
+        accessLogs: true, dnsReference: 'swarmops-console', enabled: true,
+        health: { kind: 'response', path: '/healthz', timeoutSeconds: 5 },
+        key: 'swarmops-console', managed: true,
+        match: { hosts: ['swarmops.nim.zone'], pathPrefix: '/' },
+        metrics: true, protocol: 'http', publicAllow: true, resolver: 'le',
+        scope: 'public', sensitive: true, serviceKey: 'swarmops_api',
+        targetPort: 8084, tls: 'terminate', version: 1,
+      },
+      url: 'https://swarmops.nim.zone/',
+      version: 1,
+      warnings: ['Applying this replaces the controller task so it receives the route labels; the console is briefly unavailable and reconnects on the new name.'],
+    })
+  }
 
   if (path === '/api/v1/applications/plan' && init?.method === 'POST') {
     const spec = JSON.parse(String(init.body)) as {name: string; image: string; replicas: number}

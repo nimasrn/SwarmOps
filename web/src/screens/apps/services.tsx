@@ -23,18 +23,24 @@ import type { Service } from '../../data/types'
 import { formatDateTime, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { StatusBadge } from '../../components/badges'
+import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { ChangePreviewPanel } from './change-preview'
 import { ServiceDiagnosis, useServiceDiagnosis } from './service-diagnosis'
 
 type Toast = ReturnType<typeof useToast>
 
 /**
- * The processes Swarm is keeping alive, and the four things an operator does
- * to one: read it, scale it, restart it, put it back.
+ * The processes Swarm is keeping alive, and what an operator does to one.
  *
  * A degraded service is the only reason anyone opens this screen in a hurry, so
  * the diagnosis is FETCHED for the selected service rather than hidden behind a
  * button — the question "why" is already the reason they are here.
+ *
+ * Read, scale, restart and roll back were wired; rolling out a new image,
+ * changing limits, and removing the service were not, although the controller
+ * queues all three as audited commands. The gap was most visible in the change
+ * preview at the bottom of this screen, which computed exactly what a new image
+ * would do and then answered Apply with a toast saying it was not wired.
  */
 export function ServicesTab({
   onDiagnosisAction,
@@ -53,6 +59,9 @@ export function ServicesTab({
   const [busy, setBusy] = useState('')
   const [replicas, setReplicas] = useState(String(services[0]?.desiredTasks ?? 0))
   const [scaleError, setScaleError] = useState('')
+  const [cpus, setCpus] = useState('')
+  const [memory, setMemory] = useState('')
+  const [limitsError, setLimitsError] = useState('')
 
   const selected = services.find((service) => service.id === selectedID) ?? services[0]
   const degraded = selected ? selected.runningTasks < selected.desiredTasks : false
@@ -92,6 +101,42 @@ export function ServicesTab({
     } finally {
       setBusy('')
     }
+  }
+
+  // One shape for the three changes the preview and the forms below queue, so
+  // each is a call and a sentence rather than its own copy of this block.
+  const queue = async (kind: string, description: string, run: () => Promise<{ id: string }>) => {
+    if (!selected) return
+    setBusy(kind)
+    try {
+      const command = await run()
+      toast({ message: `${selected.name}: ${description} queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
+      throw reason
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const rollOut = (image: string) => {
+    void queue('image', `roll out ${image}`, () => api.updateServiceImage(selected.id, image)).catch(() => {})
+  }
+
+  const applyLimits = () => {
+    // The control plane accepts cores such as 1.5 and memory such as 512M or
+    // 2G, and refuses anything else. Saying so here means the operator is
+    // corrected while typing rather than by a failed run.
+    if (!/^\d{1,2}(\.\d{1,2})?$/.test(cpus.trim())) {
+      setLimitsError('CPU is a core count such as 1 or 1.5, up to 99.')
+      return
+    }
+    if (!/^[1-9]\d{0,5}[MG]$/.test(memory.trim())) {
+      setLimitsError('Memory is a whole number with an M or G suffix, such as 512M or 2G.')
+      return
+    }
+    setLimitsError('')
+    void queue('limits', `limits ${cpus.trim()} CPU / ${memory.trim()}`, () => api.updateServiceLimits(selected.id, cpus.trim(), memory.trim())).catch(() => {})
   }
 
 
@@ -207,10 +252,56 @@ export function ServicesTab({
       </Columns>
 
       <ChangePreviewPanel
+        applying={busy === 'image'}
         currentImage={selected.image}
-        onApply={() => toast({ message: 'Applying from the preview is not wired yet — deploy from the source screen.', tone: 'neutral' })}
+        onApply={rollOut}
         serviceID={selected.id}
       />
+
+      <Columns>
+        <Panel
+          description="Applied to every task of this service as a rolling update. Swarm replaces tasks one at a time and stops if a replacement will not start."
+          title="Resource limits"
+        >
+          <Rows gap="tight">
+            <Body size="sm">
+              A limit is a ceiling, not a reservation. Setting one below what the process actually uses gets it killed by the
+              kernel rather than throttled, so raise it in one step and lower it in several.
+            </Body>
+            <Columns>
+              <Input hint="Cores, such as 1 or 1.5." label="CPU limit" onChange={(event) => setCpus(event.target.value)} placeholder="1.5" value={cpus} />
+              <Input hint="A whole number with M or G, such as 512M." label="Memory limit" onChange={(event) => setMemory(event.target.value)} placeholder="512M" value={memory} />
+            </Columns>
+            {limitsError ? <Banner tone="warning">{limitsError}</Banner> : null}
+            <Inline>
+              <Button disabled={busy !== '' || !cpus.trim() || !memory.trim()} loading={busy === 'limits'} onClick={applyLimits} variant="secondary">Apply limits</Button>
+            </Inline>
+          </Rows>
+        </Panel>
+
+        <Panel
+          description="Removing a service stops every task it runs and deletes its definition. A service that belongs to a stack is recreated by the next deployment of that stack."
+          title="Remove this service"
+        >
+          {selected.stack ? (
+            <Banner tone="warning" title={`This service belongs to ${selected.stack}`}>
+              Removing it here leaves the stack believing it exists. Redeploying the stack will recreate it; to remove it
+              for good, remove it from the Compose file the stack is deployed from.
+            </Banner>
+          ) : null}
+          <ConfirmPhrase
+            action="Remove service"
+            busy={busy === 'remove'}
+            consequence={<>Stops all {selected.runningTasks} running task{selected.runningTasks === 1 ? '' : 's'} of <strong>{selected.name}</strong> and deletes the service. Volumes and their data are not touched.</>}
+            disabled={busy !== ''}
+            onConfirm={async (confirmation) => {
+              await queue('remove', 'removal', () => api.removeService(selected.id, confirmation))
+              setSelectedID('')
+            }}
+            phrase={`REMOVE_SERVICE_${selected.id.toUpperCase()}`}
+          />
+        </Panel>
+      </Columns>
     </>
   )
 }

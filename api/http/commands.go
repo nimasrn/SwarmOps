@@ -502,6 +502,12 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 	writeJSON(response, http.StatusAccepted, submission.Command)
 }
 
+// sourceApplicationSpec merges what the operator reviewed with what the
+// scanner found. The operator's own choices — the slot, the domain, the
+// resolver — always win; everything the operator did not state is taken from
+// the repository rather than from a default, because a default that
+// contradicts the repository is how an application reaches production with the
+// wrong port, no metrics, and a database it cannot read.
 func sourceApplicationSpec(requested ops.ApplicationSpec, candidate source.ServicePlan) (ops.ApplicationSpec, []string) {
 	spec := requested
 	if spec.Name == "" {
@@ -517,6 +523,44 @@ func sourceApplicationSpec(requested ops.ApplicationSpec, candidate source.Servi
 	}
 	if spec.HealthPath == "" {
 		spec.HealthPath = candidate.HealthPath
+	}
+	if spec.MetricsPath == "" {
+		spec.MetricsPath = candidate.Telemetry.MetricsPath
+	}
+	// Replicas and the resource ceiling are read from the Compose deploy block
+	// when the operator did not choose them. Platform admission still checks
+	// them against the reviewed slot, so importing them can widen nothing.
+	if spec.Replicas == 0 && candidate.Replicas > 0 {
+		spec.Replicas = candidate.Replicas
+	}
+	if spec.CPUs == 0 && candidate.CPUs > 0 {
+		spec.CPUs = candidate.CPUs
+	}
+	if spec.MemoryMiB == 0 && candidate.MemoryMiB > 0 {
+		spec.MemoryMiB = candidate.MemoryMiB
+	}
+	// The route the repository already declares becomes the route SwarmOps
+	// creates, unless the operator named a domain themselves.
+	if spec.Domain == "" && candidate.Route != nil && len(candidate.Route.Hosts) > 0 {
+		spec.Domain = candidate.Route.Hosts[0]
+		if spec.Resolver == "" {
+			spec.Resolver = candidate.Route.Resolver
+		}
+	}
+	// Delivering the connection URI under the names the application actually
+	// reads is the whole point of discovering them, and a mounted file is not
+	// something an application that reads DATABASE_URL will ever look at. The
+	// credential is this application's own least-privilege account, so putting
+	// it in the service environment exposes that account and nothing else.
+	spec.DatabaseEnv = map[string][]string{}
+	for _, requirement := range candidate.DatabaseRequirements {
+		if len(requirement.EnvVars) > 0 {
+			spec.DatabaseEnv[requirement.Engine] = append([]string(nil), requirement.EnvVars...)
+			spec.DatabaseDelivery = ops.DeliveryEnv
+		}
+	}
+	if len(spec.DatabaseEnv) == 0 {
+		spec.DatabaseEnv = nil
 	}
 	spec = spec.Normalize()
 	sharedStacks := append([]string(nil), candidate.SharedStacks...)
@@ -808,6 +852,12 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		}
 		_, err := target.Control.RetryCertificate(ctx, record.Command.Actor, record.Command.RequestID, input.RouteKey)
 		return classifyCommandError(err)
+	case commandCoreConsolePublish:
+		var input coreConsoleCommand
+		if err := decodeCommandPayload(record.Payload, &input); err != nil {
+			return queue.PermanentError(err)
+		}
+		return classifyCommandError(target.Control.PublishCoreConsole(ctx, record.Command.Actor, record.Command.RequestID, input.Request))
 	case commandTraefikCutover:
 		var input traefikCutoverCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
@@ -968,6 +1018,13 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		var input sourceDeployCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
 			return queue.PermanentError(err)
+		}
+		// The routing edge comes first. Every generated application joins its
+		// own encrypted route overlay, which only exists once Traefik does, so
+		// a cluster without it used to fail this deployment after the image
+		// had already been built and pushed.
+		if err := target.Control.EnsureTraefikInstalled(ctx, record.Command.Actor, record.Command.RequestID); err != nil {
+			return classifyCommandError(err)
 		}
 		for _, engine := range input.Spec.Databases {
 			if err := target.Control.SetDatabase(ctx, record.Command.Actor, record.Command.RequestID, engine, true, ""); err != nil {

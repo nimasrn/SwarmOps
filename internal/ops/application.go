@@ -30,6 +30,7 @@ const (
 	defaultHealthPath  = "/healthz"
 	defaultMetricsPath = "/metrics"
 	maxApplicationEnv  = 50
+	maxDatabaseEnvKeys = 8
 )
 
 var (
@@ -52,8 +53,15 @@ type ApplicationSpec struct {
 	// delivered as chosen by DatabaseDelivery.
 	Databases        []string `json:"databases,omitempty"`
 	DatabaseDelivery string   `json:"databaseDelivery,omitempty"`
-	Domain           string   `json:"domain,omitempty"`
-	Env              map[string]string
+	// DatabaseEnv names, per engine, the environment variables this
+	// application actually reads its connection string from. SwarmOps used to
+	// deliver only POSTGRES_URL and hope; an application that reads
+	// DATABASE_URL would start, fail to connect, and restart forever. The
+	// discovery step reads these names out of the source Compose file, and
+	// delivering the URI under them is what makes the attachment work.
+	DatabaseEnv map[string][]string `json:"databaseEnv,omitempty"`
+	Domain      string              `json:"domain,omitempty"`
+	Env         map[string]string
 	// HealthCommand overrides the rendered probe for an image without a shell.
 	HealthCommand []string `json:"healthCommand,omitempty"`
 	HealthPath    string   `json:"healthPath,omitempty"`
@@ -124,6 +132,33 @@ func (s ApplicationSpec) Normalize() ApplicationSpec {
 	}
 	sort.Strings(databases)
 	s.Databases = databases
+	if len(s.DatabaseEnv) > 0 {
+		normalized := make(map[string][]string, len(s.DatabaseEnv))
+		for engine, keys := range s.DatabaseEnv {
+			engine = strings.ToLower(strings.TrimSpace(engine))
+			if !seen[engine] {
+				continue
+			}
+			unique := map[string]bool{}
+			cleaned := make([]string, 0, len(keys))
+			for _, key := range keys {
+				key = strings.TrimSpace(key)
+				if key == "" || unique[key] {
+					continue
+				}
+				unique[key] = true
+				cleaned = append(cleaned, key)
+			}
+			if len(cleaned) > 0 {
+				sort.Strings(cleaned)
+				normalized[engine] = cleaned
+			}
+		}
+		s.DatabaseEnv = normalized
+		if len(normalized) == 0 {
+			s.DatabaseEnv = nil
+		}
+	}
 	return s
 }
 
@@ -180,6 +215,22 @@ func (s ApplicationSpec) Validate() error {
 	for _, engine := range s.Databases {
 		if _, err := DatabaseDefinitionFor(engine); err != nil {
 			return err
+		}
+	}
+	for engine, keys := range s.DatabaseEnv {
+		if _, err := DatabaseDefinitionFor(engine); err != nil {
+			return err
+		}
+		if len(keys) > maxDatabaseEnvKeys {
+			return fmt.Errorf("a managed database may be delivered under at most %d environment variables", maxDatabaseEnvKeys)
+		}
+		for _, key := range keys {
+			if !environmentKeyPattern.MatchString(key) {
+				return fmt.Errorf("database environment variable %q has an invalid name", key)
+			}
+			if _, taken := s.Env[key]; taken {
+				return fmt.Errorf("environment variable %q is set both directly and by a managed database", key)
+			}
 		}
 	}
 	if s.Backend != "" && !applicationNamePattern.MatchString(s.Backend) {
@@ -268,9 +319,14 @@ func RenderApplication(input ApplicationRenderInput) ([]byte, error) {
 		if !found || strings.TrimSpace(uri) == "" {
 			return nil, fmt.Errorf("managed %s is not deployed; deploy it before attaching it to %q", definition.DisplayName, spec.Name)
 		}
-		variable := strings.ToUpper(engine) + "_URL"
+		// The canonical name is always delivered, and every name the discovery
+		// step found this application actually reading is delivered beside it.
+		// A repository that reads DATABASE_URL now receives DATABASE_URL.
+		variables := append([]string{strings.ToUpper(engine) + "_URL"}, spec.DatabaseEnv[engine]...)
 		if spec.DatabaseDelivery == DeliveryEnv {
-			environment[variable] = uri
+			for _, variable := range variables {
+				environment[variable] = uri
+			}
 			continue
 		}
 		// The URI is copied into a stack-scoped secret so the application can
@@ -282,7 +338,9 @@ func RenderApplication(input ApplicationRenderInput) ([]byte, error) {
 		// Compose reads `mode` as a plain integer, so this marshals as 292 —
 		// the same value a hand-written `0444` produces once YAML parses it.
 		serviceSecrets = append(serviceSecrets, map[string]any{"source": logical, "target": logical, "mode": 0o444})
-		environment[variable+"_FILE"] = "/run/secrets/" + logical
+		for _, variable := range variables {
+			environment[variable+"_FILE"] = "/run/secrets/" + logical
+		}
 	}
 
 	if spec.Backend != "" {

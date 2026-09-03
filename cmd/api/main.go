@@ -27,7 +27,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.16.0"
+const version = "0.16.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -219,19 +219,23 @@ func main() {
 			Apps:        applications,
 			Credentials: credentials,
 			DatabaseSettings: ops.DatabaseSettings{
-				MongoImage:             cfg.MongoImage,
-				MongoPasswordSecret:    cfg.MongoPasswordSecret,
-				MongoStackFile:         cfg.MongoStackFile,
-				PostgresImage:          cfg.PostgresImage,
-				PostgresPasswordSecret: cfg.PostgresPasswordSecret,
-				PostgresStackFile:      cfg.PostgresStackFile,
-				RedisImage:             cfg.RedisImage,
-				RedisPasswordSecret:    cfg.RedisPasswordSecret,
-				RedisStackFile:         cfg.RedisStackFile,
+				MongoImage:               cfg.MongoImage,
+				MongoPasswordSecret:      cfg.MongoPasswordSecret,
+				MongoAppBootstrapFile:    cfg.MongoAppBootstrapFile,
+				MongoStackFile:           cfg.MongoStackFile,
+				PostgresImage:            cfg.PostgresImage,
+				PostgresPasswordSecret:   cfg.PostgresPasswordSecret,
+				PostgresAppBootstrapFile: cfg.PostgresAppBootstrapFile,
+				PostgresStackFile:        cfg.PostgresStackFile,
+				RedisImage:               cfg.RedisImage,
+				RedisPasswordSecret:      cfg.RedisPasswordSecret,
+				RedisAppBootstrapFile:    cfg.RedisAppBootstrapFile,
+				RedisStackFile:           cfg.RedisStackFile,
 			},
 			Agent:                    agentReader,
 			AgentService:             cfg.AgentService,
 			AgentStackFile:           cfg.AgentStackFile,
+			CoreService:              cfg.CoreService,
 			DataDir:                  cfg.DataDir,
 			LogsStackFile:            cfg.LogsStackFile,
 			Mutations:                cfg.MutationEnabled,

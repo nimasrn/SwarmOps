@@ -5,6 +5,7 @@ import { formatBytes } from '../../lib/format'
 import { Screen } from '../../components/screen'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { ContainersTab } from './resources/containers'
+import { EngineActivityPanel } from './engine-activity'
 import { useSelectedRecord } from '../../navigation/use-workspace'
 
 type Toast = ReturnType<typeof useToast>
@@ -73,6 +74,7 @@ export function ContainersPage({ onOpen, toast }: { onOpen: (page: WorkspacePage
       width="full"
     >
       <ContainersTab toast={toast} />
+      <EngineActivityPanel />
     </Screen>
   )
 }

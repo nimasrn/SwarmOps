@@ -34,6 +34,10 @@ services:
       SWARMOPS_CORE_ID: ${SWARMOPS_CORE_ID:-core-local}
       SWARMOPS_CORE_MODE: ${SWARMOPS_CORE_MODE:-active}
       SWARMOPS_CORE_NAME: ${SWARMOPS_CORE_NAME:-SwarmOps-control-plane}
+      # The service this API runs as. It is what Control → Core publishes a
+      # domain onto; a controller deployed under a different stack name sets
+      # this so the console routes to itself rather than to nothing.
+      SWARMOPS_CORE_SERVICE: ${SWARMOPS_CORE_SERVICE:-swarmops_api}
       SWARMOPS_DATA_ENCRYPTION_KEY_FILE: /run/secrets/swarmops_data_encryption_key
       SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-ghcr.io/nimasrn/}
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
@@ -113,6 +117,15 @@ services:
         mode: 0444
       - source: swarmops_redis_stack
         target: /opt/swarmops/redis.yml
+      # Per-application database provisioning. Each is run unchanged inside a
+      # one-shot job on the managed engine's own image; the console never
+      # authors, edits, or parameterizes them beyond the application name.
+      - source: swarmops_postgres_app_bootstrap
+        target: /opt/swarmops/postgres-app-bootstrap.sh
+      - source: swarmops_mongo_app_bootstrap
+        target: /opt/swarmops/mongo-app-bootstrap.js
+      - source: swarmops_redis_app_bootstrap
+        target: /opt/swarmops/redis-app-bootstrap.sh
         mode: 0444
     secrets:
       - source: swarmops_admin_password_hash
@@ -239,6 +252,15 @@ configs:
   swarmops_redis_stack:
     file: ./swarmops-redis.yml
     name: ${SWARMOPS_REDIS_STACK_CONFIG_NAME:-swarmops_redis_stack_v1}
+  swarmops_postgres_app_bootstrap:
+    file: ../stateful/postgres-app-bootstrap.sh
+    name: ${SWARMOPS_POSTGRES_APP_BOOTSTRAP_CONFIG_NAME:-swarmops_postgres_app_bootstrap_v1}
+  swarmops_mongo_app_bootstrap:
+    file: ../stateful/mongo-app-bootstrap.js
+    name: ${SWARMOPS_MONGO_APP_BOOTSTRAP_CONFIG_NAME:-swarmops_mongo_app_bootstrap_v1}
+  swarmops_redis_app_bootstrap:
+    file: ../stateful/redis-app-bootstrap.sh
+    name: ${SWARMOPS_REDIS_APP_BOOTSTRAP_CONFIG_NAME:-swarmops_redis_app_bootstrap_v1}
   # A real environment creates this immutable non-secret config after running
   # swarmops-preflight. Its namespace and capacity claims gate custom browser
   # deployments; the sample manifest is intentionally not mounted here.

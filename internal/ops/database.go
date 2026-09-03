@@ -83,15 +83,21 @@ type DatabaseDefinition struct {
 // environment stops a remote manager from resolving these templates with its
 // own shell environment.
 type DatabaseSettings struct {
-	MongoImage             string
-	MongoPasswordSecret    string
-	MongoStackFile         string
-	PostgresImage          string
-	PostgresPasswordSecret string
-	PostgresStackFile      string
-	RedisImage             string
-	RedisPasswordSecret    string
-	RedisStackFile         string
+	// The AppBootstrap files are the reviewed per-application provisioning
+	// scripts. They are read by the controller and shipped to the cluster as
+	// an immutable Docker config, never referenced as a path on a manager.
+	MongoAppBootstrapFile    string
+	MongoImage               string
+	MongoPasswordSecret      string
+	MongoStackFile           string
+	PostgresAppBootstrapFile string
+	PostgresImage            string
+	PostgresPasswordSecret   string
+	PostgresStackFile        string
+	RedisAppBootstrapFile    string
+	RedisImage               string
+	RedisPasswordSecret      string
+	RedisStackFile           string
 }
 
 func (s DatabaseSettings) forEngine(engine string) (file, image, secret string, err error) {
@@ -104,6 +110,19 @@ func (s DatabaseSettings) forEngine(engine string) (file, image, secret string, 
 		return s.RedisStackFile, s.RedisImage, s.RedisPasswordSecret, nil
 	default:
 		return "", "", "", fmt.Errorf("unsupported managed database %q", engine)
+	}
+}
+
+func (s DatabaseSettings) bootstrapFile(engine string) (string, error) {
+	switch engine {
+	case DatabaseMongo:
+		return s.MongoAppBootstrapFile, nil
+	case DatabasePostgres:
+		return s.PostgresAppBootstrapFile, nil
+	case DatabaseRedis:
+		return s.RedisAppBootstrapFile, nil
+	default:
+		return "", fmt.Errorf("unsupported managed database %q", engine)
 	}
 }
 

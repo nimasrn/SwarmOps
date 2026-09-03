@@ -54,6 +54,7 @@ type Config struct {
 	CoreEndpoint string
 	CoreID       string
 	CoreMode     string
+	CoreService  string
 	CoreName     string
 	DataDir      string
 	// What the installer told this process about its own releases. Empty in a
@@ -72,14 +73,17 @@ type Config struct {
 	LogsStackFile                 string
 	MongoImage                    string
 	MongoPasswordSecret           string
+	MongoAppBootstrapFile         string
 	MongoStackFile                string
 	MutationEnabled               bool
 	ObservabilityStackFile        string
 	PostgresImage                 string
 	PostgresPasswordSecret        string
+	PostgresAppBootstrapFile      string
 	PostgresStackFile             string
 	RedisImage                    string
 	RedisPasswordSecret           string
+	RedisAppBootstrapFile         string
 	RedisStackFile                string
 	RetainMachineKeys             bool
 	PlatformManifestFile          string
@@ -133,41 +137,48 @@ type DevMachineAPI struct {
 func Load() (Config, error) {
 	assetDir := env("SWARMOPS_ASSET_DIR", "/opt/swarmops")
 	c := Config{
-		AdminUsername:          env("SWARMOPS_ADMIN_USERNAME", productionDefaultAdminUsername),
-		AgentService:           env("SWARMOPS_AGENT_SERVICE", "swarmops-agent_agent"),
-		AgentStackFile:         env("SWARMOPS_AGENT_STACK_FILE", filepath.Join(assetDir, "agent.yml")),
-		AuditMaxEvents:         int(envInt64("SWARMOPS_AUDIT_MAX_EVENTS", DefaultAuditMaxEvents)),
-		BuildEnabled:           envBool("SWARMOPS_BUILD_ENABLED", false),
-		BuildMaxBytes:          envInt64("SWARMOPS_BUILD_MAX_BYTES", 512<<20),
-		BuildMaxCPUs:           envFloat("SWARMOPS_BUILD_MAX_CPUS", 2),
-		BuildMaxMemoryMiB:      envInt64("SWARMOPS_BUILD_MAX_MEMORY_MIB", 2048),
-		CommandHistoryLimit:    int(envInt64("SWARMOPS_COMMAND_HISTORY_LIMIT", DefaultCommandHistoryLimit)),
-		CoreEndpoint:           env("SWARMOPS_CORE_ENDPOINT", ""),
-		CoreID:                 env("SWARMOPS_CORE_ID", "core-local"),
-		CoreMode:               env("SWARMOPS_CORE_MODE", "active"),
-		CoreName:               env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
-		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
-		CoreReleaseDir:         env("SWARMOPS_CORE_RELEASE_DIR", ""),
-		CoreUpdateRequestFile:  env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
-		CoreUpdateStatusFile:   env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
-		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
-		HTTPAllowRemote:        envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
-		HTTPEnabled:            envBool("SWARMOPS_HTTP_ENABLED", false),
-		HTTPListenAddr:         env("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:8085"),
-		InsecureDevAuth:        envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
-		ListenAddr:             env("SWARMOPS_LISTEN_ADDR", ":8084"),
-		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
-		MongoImage:             env("MONGO_IMAGE", "mongo:8.2.3"),
-		MongoPasswordSecret:    env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
-		MongoStackFile:         env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
-		MutationEnabled:        envBool("SWARMOPS_MUTATIONS_ENABLED", false),
-		ObservabilityStackFile: env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
-		PostgresImage:          env("POSTGRES_IMAGE", "postgres:18.2-alpine"),
-		PostgresPasswordSecret: env("SWARMOPS_POSTGRES_PASSWORD_SECRET", "swarmops_postgres_password_v1"),
-		PostgresStackFile:      env("SWARMOPS_POSTGRES_STACK_FILE", filepath.Join(assetDir, "postgres.yml")),
-		RedisImage:             env("REDIS_IMAGE", "redis:8.4-alpine"),
-		RedisPasswordSecret:    env("SWARMOPS_REDIS_PASSWORD_SECRET", "swarmops_redis_password_v1"),
-		RedisStackFile:         env("SWARMOPS_REDIS_STACK_FILE", filepath.Join(assetDir, "redis.yml")),
+		AdminUsername:       env("SWARMOPS_ADMIN_USERNAME", productionDefaultAdminUsername),
+		AgentService:        env("SWARMOPS_AGENT_SERVICE", "swarmops-agent_agent"),
+		AgentStackFile:      env("SWARMOPS_AGENT_STACK_FILE", filepath.Join(assetDir, "agent.yml")),
+		AuditMaxEvents:      int(envInt64("SWARMOPS_AUDIT_MAX_EVENTS", DefaultAuditMaxEvents)),
+		BuildEnabled:        envBool("SWARMOPS_BUILD_ENABLED", false),
+		BuildMaxBytes:       envInt64("SWARMOPS_BUILD_MAX_BYTES", 512<<20),
+		BuildMaxCPUs:        envFloat("SWARMOPS_BUILD_MAX_CPUS", 2),
+		BuildMaxMemoryMiB:   envInt64("SWARMOPS_BUILD_MAX_MEMORY_MIB", 2048),
+		CommandHistoryLimit: int(envInt64("SWARMOPS_COMMAND_HISTORY_LIMIT", DefaultCommandHistoryLimit)),
+		CoreEndpoint:        env("SWARMOPS_CORE_ENDPOINT", ""),
+		CoreID:              env("SWARMOPS_CORE_ID", "core-local"),
+		CoreMode:            env("SWARMOPS_CORE_MODE", "active"),
+		// The Swarm service this controller runs as, when it runs in the
+		// cluster at all. It is what the console publishes a domain onto; a
+		// host-native controller has none and is told so rather than guessed at.
+		CoreService:              env("SWARMOPS_CORE_SERVICE", "swarmops_api"),
+		CoreName:                 env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
+		DataDir:                  env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
+		CoreReleaseDir:           env("SWARMOPS_CORE_RELEASE_DIR", ""),
+		CoreUpdateRequestFile:    env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
+		CoreUpdateStatusFile:     env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
+		ImagePrefixes:            csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
+		HTTPAllowRemote:          envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
+		HTTPEnabled:              envBool("SWARMOPS_HTTP_ENABLED", false),
+		HTTPListenAddr:           env("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:8085"),
+		InsecureDevAuth:          envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
+		ListenAddr:               env("SWARMOPS_LISTEN_ADDR", ":8084"),
+		LogsStackFile:            env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
+		MongoImage:               env("MONGO_IMAGE", "mongo:8.2.3"),
+		MongoPasswordSecret:      env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
+		MongoAppBootstrapFile:    env("SWARMOPS_MONGO_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "mongo-app-bootstrap.js")),
+		MongoStackFile:           env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
+		MutationEnabled:          envBool("SWARMOPS_MUTATIONS_ENABLED", false),
+		ObservabilityStackFile:   env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
+		PostgresImage:            env("POSTGRES_IMAGE", "postgres:18.2-alpine"),
+		PostgresPasswordSecret:   env("SWARMOPS_POSTGRES_PASSWORD_SECRET", "swarmops_postgres_password_v1"),
+		PostgresAppBootstrapFile: env("SWARMOPS_POSTGRES_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "postgres-app-bootstrap.sh")),
+		PostgresStackFile:        env("SWARMOPS_POSTGRES_STACK_FILE", filepath.Join(assetDir, "postgres.yml")),
+		RedisImage:               env("REDIS_IMAGE", "redis:8.4-alpine"),
+		RedisPasswordSecret:      env("SWARMOPS_REDIS_PASSWORD_SECRET", "swarmops_redis_password_v1"),
+		RedisAppBootstrapFile:    env("SWARMOPS_REDIS_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "redis-app-bootstrap.sh")),
+		RedisStackFile:           env("SWARMOPS_REDIS_STACK_FILE", filepath.Join(assetDir, "redis.yml")),
 		// Enrollment never shows the operator a machine API key, so the sealed
 		// copy is what lets a restarted controller reconnect. Set this to false
 		// to restore the memory-only posture and reconnect each host by hand.

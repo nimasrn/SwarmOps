@@ -8,7 +8,14 @@ services:
     image: ${REDIS_IMAGE:-redis:8.4-alpine}
     # requirepass is read from the mounted secret rather than an environment
     # variable so the password never appears in the service specification.
-    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$(cat /run/secrets/redis_password)\""]
+    #
+    # The ACL file lives on the data volume so that the per-application users
+    # SwarmOps provisions survive a restart. Redis refuses to start when the
+    # file named by --aclfile does not exist, hence the touch; and once the
+    # file has been written by ACL SAVE it, rather than requirepass, defines
+    # the default user's password. SwarmOps never rotates that secret, so the
+    # two stay in agreement.
+    command: ["sh", "-c", "touch /data/users.acl && exec redis-server --appendonly yes --aclfile /data/users.acl --requirepass \"$$(cat /run/secrets/redis_password)\""]
     secrets:
       - source: redis_password
         target: redis_password

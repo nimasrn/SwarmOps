@@ -23,6 +23,7 @@ type ControlPlane struct {
 	Apps                     *ApplicationStore
 	Audit                    *audit.Store
 	CLI                      DockerCLI
+	CoreService              string
 	Credentials              *CredentialStore
 	DatabaseSettings         DatabaseSettings
 	DNSProviders             DNSProviderService
@@ -48,6 +49,7 @@ type ControlPlaneOptions struct {
 	AgentStackFile           string
 	Admission                *PlatformAdmission
 	Apps                     *ApplicationStore
+	CoreService              string
 	Credentials              *CredentialStore
 	DatabaseSettings         DatabaseSettings
 	DataDir                  string
@@ -86,6 +88,7 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		Apps:                     options.Apps,
 		Audit:                    auditStore,
 		CLI:                      cli,
+		CoreService:              options.CoreService,
 		Credentials:              options.Credentials,
 		DatabaseSettings:         options.DatabaseSettings,
 		DNSProviders:             dnsProviders,

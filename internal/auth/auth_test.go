@@ -58,3 +58,41 @@ func TestLoginLimiterBlocksAndResets(t *testing.T) {
 		t.Fatal("successful login should clear attempts")
 	}
 }
+
+func TestRenewExtendsOnlyAfterHalfLife(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct horse"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := New("operator", hash, []byte("01234567890123456789012345678901"), 12*time.Hour)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	base := time.Now().UTC()
+	service.now = func() time.Time { return base }
+	_, claims, err := service.Login("operator", "correct horse")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	service.now = func() time.Time { return base.Add(5 * time.Hour) }
+	if _, _, ok := service.Renew(claims); ok {
+		t.Fatalf("renewed a session that is not yet halfway through its lifetime")
+	}
+
+	service.now = func() time.Time { return base.Add(11 * time.Hour) }
+	token, renewed, ok := service.Renew(claims)
+	if !ok {
+		t.Fatalf("expected renewal past the half-life")
+	}
+	if renewed.CSRF != claims.CSRF {
+		t.Fatalf("renewal changed the csrf token")
+	}
+	if renewed.Expires <= claims.Expires {
+		t.Fatalf("renewal did not extend expiry: %d <= %d", renewed.Expires, claims.Expires)
+	}
+	service.now = func() time.Time { return base.Add(13 * time.Hour) }
+	if _, err := service.Verify(token); err != nil {
+		t.Fatalf("renewed token rejected past the original expiry: %v", err)
+	}
+}
