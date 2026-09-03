@@ -23,7 +23,8 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { ApplicationSpec, ApplicationStatus, ApprovedWorkload, DatabaseStatus } from '../../data/types'
+import type { ApplicationSpec, ApplicationStatus, ApprovedWorkload, Command, DatabaseStatus } from '../../data/types'
+import { useSelectedRecord } from '../../navigation/use-workspace'
 import { shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
@@ -49,7 +50,8 @@ const domainRemovalPhrase = (name: string) => `REMOVE_DOMAIN_${name.toUpperCase(
  * cheapest real automation in the product: rolling a service after a base-image
  * or secret change previously meant retyping the whole spec from memory.
  */
-export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
+export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, toast }: {
+  commands: Command[]
   onDeployFromSource: () => void
   onOpenRoutes: () => void
   toast: Toast
@@ -60,7 +62,13 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
   const [preview, setPreview] = useState('')
-  const [inspected, setInspected] = useState('')
+  const [previewSpec, setPreviewSpec] = useState('')
+  const [revisionSpec, setRevisionSpec] = useState<ApplicationSpec | null>(null)
+  const [inspected, setInspected] = useSelectedRecord()
+  const [query, setQuery] = useState('')
+  const [stateFilter, setStateFilter] = useState('all')
+  const [redeployFor, setRedeployFor] = useState<ApplicationStatus | null>(null)
+  const [removeFor, setRemoveFor] = useState<ApplicationStatus | null>(null)
   const [composing, setComposing] = useState(false)
   const [domainFor, setDomainFor] = useState<ApplicationStatus | null>(null)
   const [domainValue, setDomainValue] = useState('')
@@ -94,11 +102,12 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
   const runningDatabases = databases.filter((database) => database.installed)
 
   const specOf = (): ApplicationSpec => ({
+    ...(revisionSpec?.name === selected ? revisionSpec : {}),
     backend: backend || undefined,
     cpus: Number(cpus),
     databaseDelivery: delivery,
     databases: attached,
-    domain: slot?.domain,
+    domain: revisionSpec?.name === selected ? revisionSpec.domain : slot?.domain,
     healthPath,
     image: image.trim(),
     memoryMiB: Number(memoryMiB),
@@ -107,7 +116,7 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
     name: selected,
     port: Number(port),
     replicas: Number(replicas),
-    resolver: slot?.resolver,
+    resolver: revisionSpec?.name === selected ? revisionSpec.resolver : slot?.resolver,
     tracing,
   })
 
@@ -115,7 +124,10 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
     setPending(true)
     setError('')
     try {
-      setPreview((await api.planApplication(specOf())).compose)
+      const proposed = specOf()
+      const result = await api.planApplication(proposed)
+      setPreview(result.compose)
+      setPreviewSpec(JSON.stringify(proposed))
     } catch (reason) {
       setError(messageOf(reason))
     } finally {
@@ -142,6 +154,7 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
     setPending(true)
     try {
       const command = await api.deployApplication(status.spec)
+      setRedeployFor(null)
       toast({ message: `${status.spec.name} redeploy queued (${shortID(command.id)})`, tone: 'success' })
       await refresh()
     } catch (reason) {
@@ -155,6 +168,7 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
     setPending(true)
     try {
       const command = await api.removeApplication(status.spec.name, removalPhrase(status.spec.name))
+      setRemoveFor(null)
       toast({ message: `${status.spec.name} removal queued (${shortID(command.id)})`, tone: 'success' })
       await refresh()
     } catch (reason) {
@@ -194,7 +208,7 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
   if (!applications) {
     return (
       <Screen page="applications">
-        <Panel><Spinner label="Reading applications" /></Panel>
+        <Panel>{error ? <Banner tone="danger" title="Applications are unavailable" action={<Button onClick={() => { setError(''); void refresh().catch((reason) => setError(messageOf(reason))) }}>Try again</Button>}>{error}</Banner> : <Spinner label="Reading applications" />}</Panel>
       </Screen>
     )
   }
@@ -203,13 +217,23 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
   if (inspectedStatus) {
     return (
       <ApplicationDetailView
+        commands={commands}
         onBack={() => setInspected('')}
-        onDeploy={() => { setInspected(''); setSelected(inspectedStatus.spec.name); setImage(inspectedStatus.spec.image); setComposing(true) }}
+        onDeploy={() => {
+          const spec = inspectedStatus.spec
+          setRevisionSpec(spec)
+          setInspected(''); setSelected(spec.name); setImage(spec.image)
+          setPort(String(spec.port)); setHealthPath(spec.healthPath ?? ''); setReplicas(String(spec.replicas))
+          setCPUs(String(spec.cpus)); setMemoryMiB(String(spec.memoryMiB)); setAttached(spec.databases ?? [])
+          setDelivery(spec.databaseDelivery ?? 'secret'); setMetrics(spec.metrics); setMetricsPath(spec.metricsPath ?? '/metrics')
+          setTracing(spec.tracing ?? false); setBackend(spec.backend ?? ''); setPreview(''); setComposing(true)
+        }}
         onOpenRoutes={onOpenRoutes}
         status={inspectedStatus}
       />
     )
   }
+  if (inspected) return <Screen page="applications"><EmptyState title="Application not found" description={`No application named ${inspected} is present in this cluster snapshot.`} actions={<Button onClick={() => setInspected('')}>Back to applications</Button>} /></Screen>
 
   const serving = applications.filter((status) => status.deployed && status.runningTasks > 0)
   const degraded = applications.filter((status) => status.deployed && status.runningTasks === 0)
@@ -230,11 +254,12 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
       key: 'action',
       render: (status) => (
         <Inline gap="tight">
-          <Button disabled={pending} onClick={() => void redeploy(status)} size="sm" variant="secondary">Redeploy</Button>
+          <Button disabled={pending} onClick={() => setRedeployFor(status)} size="sm" variant="secondary">Redeploy…</Button>
           {editableDomain(status)
             ? <Button onClick={() => { setDomainFor(status); setDomainValue(status.spec.domain ?? '') }} size="sm" variant="ghost">Domain</Button>
             : null}
           <Button onClick={() => setInspected(status.spec.name)} size="sm" variant="ghost">Open</Button>
+          <Button disabled={pending} onClick={() => setRemoveFor(status)} size="sm" variant="ghost">Remove…</Button>
         </Inline>
       ),
     },
@@ -264,32 +289,27 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
         </Banner>
       ) : null}
 
-      <Panel caption={`${applications.length} deployed`} flush title="Applications">
+      {error && !composing ? <Banner tone="danger" title="Application data could not be refreshed">{error}</Banner> : null}
+      <Inline>
+        <Input label="Find an application" placeholder="Name, image, or domain" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <Select label="Application state" value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} options={[{label: 'All states', value: 'all'}, {label: 'Serving', value: 'serving'}, {label: 'Needs attention', value: 'attention'}]} />
+      </Inline>
+      <Panel caption={`${applications.length} applications in this cluster`} flush title="Applications" variant="plain">
         <DataTable
           caption="Rendered applications"
           columns={columns}
-          empty={<EmptyState actions={<Button onClick={onDeployFromSource} variant="accent">Deploy from source</Button>} description="Point SwarmOps at a repository and it will build, render, route, and roll out the result." icon="layers" title="No applications yet" />}
+          empty={applications.length ? <EmptyState title="No matching applications" description="Try another name or clear the state filter." actions={<Button onClick={() => { setQuery(''); setStateFilter('all') }}>Clear filters</Button>} /> : <EmptyState actions={<Button onClick={onDeployFromSource} variant="accent">Deploy from source</Button>} description="Point SwarmOps at a repository and it will build, render, route, and roll out the result." icon="layers" title="No applications yet" />}
           rowKey={(status) => status.spec.name}
-          rows={applications}
+          rows={applications.filter((status) => `${status.spec.name} ${status.spec.image} ${status.spec.domain ?? ''}`.toLowerCase().includes(query.toLowerCase()) && (stateFilter === 'all' || (stateFilter === 'serving' ? status.deployed && status.runningTasks >= status.spec.replicas : !status.deployed || status.runningTasks < status.spec.replicas)))}
         />
       </Panel>
 
-      {applications.length ? (
-        <Panel description="Removal stops the only process serving this application. The rendered stack and its route are withdrawn; named volumes are left in place." title="Remove an application">
-          <Columns>
-            {applications.map((status) => (
-              <ConfirmPhrase
-                action={`Remove ${status.spec.name}`}
-                consequence={`${status.spec.name} stops serving${status.spec.domain ? ` and ${status.spec.domain} stops resolving to it` : ''}. Its rendered stack is withdrawn from Swarm.`}
-                key={status.spec.name}
-                busy={pending}
-                onConfirm={() => void remove(status)}
-                phrase={removalPhrase(status.spec.name)}
-              />
-            ))}
-          </Columns>
-        </Panel>
-      ) : null}
+      <Sheet open={Boolean(redeployFor)} onClose={() => { if (!pending) setRedeployFor(null) }} title="Review redeployment">
+        {redeployFor ? <Rows><Body>This queues a rolling deployment of {redeployFor.spec.name} using its current specification. Tasks may restart; the request does not prove the rollout succeeded.</Body><Facts items={[{label: 'Application', value: redeployFor.spec.name}, {label: 'Image', value: <Mono>{redeployFor.spec.image}</Mono>}, {label: 'Desired replicas', value: redeployFor.spec.replicas}]} /><Button loading={pending} disabled={pending} onClick={() => void redeploy(redeployFor)} variant="accent">Queue redeployment</Button></Rows> : null}
+      </Sheet>
+      <Sheet open={Boolean(removeFor)} onClose={() => { if (!pending) setRemoveFor(null) }} title="Remove application">
+        {removeFor ? <ConfirmPhrase action={`Remove ${removeFor.spec.name}`} consequence={`${removeFor.spec.name} stops serving. Its stack and route are withdrawn; named volumes are retained.`} busy={pending} onConfirm={() => void remove(removeFor)} phrase={removalPhrase(removeFor.spec.name)} /> : null}
+      </Sheet>
 
       {/* Deploying a pushed image is the manual path. It is a sheet because it
           is a task with a beginning and an end, not a permanent part of the
@@ -369,9 +389,9 @@ export function ApplicationsPage({ onDeployFromSource, onOpenRoutes, toast }: {
           {error ? <Banner tone="danger" title="This application cannot be deployed">{error}</Banner> : null}
           <Inline>
             <Button disabled={pending || !selected || !image} loading={pending} onClick={() => void plan()} variant="secondary">Preview the rendered Compose</Button>
-            <Button disabled={pending || !selected || !image} loading={pending} onClick={() => void deploy()} variant="accent">Deploy application</Button>
+            <Button disabled={pending || !selected || !image || !preview || previewSpec !== JSON.stringify(specOf())} loading={pending} onClick={() => void deploy()} variant="accent">Deploy reviewed application</Button>
           </Inline>
-          {preview ? <CodeBlock label="Exactly what will be deployed" wrap>{preview}</CodeBlock> : null}
+          {preview && previewSpec === JSON.stringify(specOf()) ? <CodeBlock label="Reviewed Compose for the current fields" wrap>{preview}</CodeBlock> : <Body size="sm" tone="muted">Preview the current configuration before deploying. Changing a field requires a new preview.</Body>}
         </Rows>
       </Sheet>
 

@@ -17,6 +17,8 @@ export interface PageProps extends HTMLAttributes<HTMLDivElement> {
  */
 export declare function Page({ children, className, width, ...props }: PageProps): import("react").JSX.Element;
 export interface PanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+    /** Open sections keep hierarchy without drawing a card around each one. */
+    variant?: 'framed' | 'plain';
     /** Buttons for this section — not for the record. Record-level actions
         belong in `DetailHeader`, where they are found without scrolling. */
     actions?: ReactNode;
@@ -49,7 +51,7 @@ export interface PanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
  * `h1` are why these screens read as a stack of unrelated documents to a
  * screen reader.
  */
-export declare function Panel({ actions, caption, children, className, description, eyebrow, flush, footer, marker, title, ...props }: PanelProps): import("react").JSX.Element;
+export declare function Panel({ actions, caption, children, className, description, eyebrow, flush, footer, marker, title, variant, ...props }: PanelProps): import("react").JSX.Element;
 export interface ToolbarProps extends HTMLAttributes<HTMLDivElement> {
     /** Pushed to the trailing edge. The primary action of the screen lives
         here, in the same place on every screen. */
@@ -107,6 +109,8 @@ export interface MetricProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onCli
 export declare function Metric({ className, delta, deltaDirection, deltaIntent, hint, source, unmeasured, icon, label, layout, onClick, tone, value, ...props }: MetricProps): import("react").JSX.Element;
 export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
     children: ReactNode;
+    /** A flat strip of readings and decisions, rather than separate tiles. */
+    presentation?: 'tiles' | 'insights';
     /** For a row of chip-form tiles (`Metric layout="inline"`). A chip stays
         legible at roughly half the width a counter tile needs, so it holds its
         column count much further down before stepping — without this the
@@ -118,7 +122,7 @@ export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
         a row of tiles on a narrow screen. */
     columns?: 2 | 3 | 4 | 5 | 6;
 }
-export declare function MetricGrid({ children, className, columns, dense, ...props }: MetricGridProps): import("react").JSX.Element;
+export declare function MetricGrid({ children, className, columns, dense, presentation, ...props }: MetricGridProps): import("react").JSX.Element;
 export interface Fact {
     /** Machine-shaped values — ids, hashes, hosts, durations — set in the mono
         face so they can be compared and copied without being misread. */

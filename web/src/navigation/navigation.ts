@@ -62,6 +62,8 @@ export interface PageEntry {
       name of a screen included, so a rename never makes it unreachable by the
       name the operator still types. */
   keywords?: string
+  /** Addressable object views. Empty means an object has no peer tabs. */
+  views?: readonly string[]
   /** One line: what decision this screen serves. Drawn beside the destination
       in the palette and under the section heading, so the second tier of
       navigation teaches rather than merely lists. */
@@ -101,7 +103,7 @@ export const AREAS: AreaEntry[] = [
     label: 'Apps',
     summary: 'What you ship, and the shared services it runs against.',
     pages: [
-      { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product service' },
+      { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product service', views: ['overview', 'releases', 'resources', 'traffic'] },
       { icon: 'play', key: 'deploy', label: 'Deploy', summary: 'Build a repository, archive, or image and roll it out.', keywords: 'ship release rollout git build source kubernetes import' },
       { icon: 'database', key: 'platform', label: 'Platform services', summary: 'One database, one Prometheus, one Jaeger — shared by every app.', keywords: 'postgres mongo redis prometheus jaeger observability collectors databases' },
       { icon: 'package', key: 'images', label: 'Images & registries', summary: 'What was built, and where it is pushed and pulled from.', keywords: 'docker image tag digest builds ghcr registry credentials' },
@@ -115,9 +117,9 @@ export const AREAS: AreaEntry[] = [
     label: 'Machines',
     summary: 'The hosts, their agents, and the cluster they form.',
     pages: [
-      { icon: 'server', key: 'machines', label: 'Machines', summary: 'Every host under management, and how hard it is working.', keywords: 'hosts servers agent enroll connect add setup provisioning diagnostics' },
+      { icon: 'server', key: 'machines', label: 'Machines', summary: 'Every host under management, and how hard it is working.', keywords: 'hosts servers agent enroll connect add setup provisioning diagnostics', views: ['overview', 'containers', 'setup', 'agent'] },
       { icon: 'users', key: 'swarm', label: 'Swarm', summary: 'Cluster membership, roles, labels, and placement.', keywords: 'nodes cluster manager worker quorum drain infrastructure' },
-      { icon: 'layers', key: 'containers', label: 'Containers', summary: 'Everything running, on every host, with what it is using.', keywords: 'docker ps container task metrics' },
+      { icon: 'layers', key: 'containers', label: 'Containers', summary: 'Everything running, on every host, with what it is using.', keywords: 'docker ps container task metrics', views: ['overview', 'metrics', 'logs', 'network', 'inspect', 'activity'] },
       { icon: 'package', key: 'storage', label: 'Storage & networks', summary: 'Volumes, networks, images on disk, and what can be reclaimed.', keywords: 'volumes networks prune disk secrets configs resources' },
     ],
   },
@@ -142,7 +144,7 @@ export const AREAS: AreaEntry[] = [
     label: 'Activity',
     summary: 'Everything this console did, and everything it may do.',
     pages: [
-      { icon: 'activity', key: 'runs', label: 'Runs', summary: 'Durable operations: queued, running, failed, recovered.', keywords: 'queue commands jobs operations history retry' },
+      { icon: 'activity', key: 'runs', label: 'Runs', summary: 'Durable operations: queued, running, failed, recovered.', keywords: 'queue commands jobs operations history retry', views: [] },
       { icon: 'document', key: 'logs', label: 'Logs', summary: 'Container and service output, live and searchable.', keywords: 'output stdout stderr tail fluentd' },
       { icon: 'shield', key: 'audit', label: 'Audit', summary: 'Who did what, when, and against which host.', keywords: 'log security compliance events who' },
       { icon: 'terminal', key: 'catalog', label: 'Action catalog', summary: 'The fixed set of operations that may be queued.', keywords: 'actions catalogue run command available vocabulary' },
@@ -184,6 +186,36 @@ export function landingPage(area: AreaEntry): WorkspacePage {
 
 export function isWorkspacePage(value: string): value is WorkspacePage {
   return PAGE_INDEX.has(value as WorkspacePage)
+}
+
+export interface WorkspaceRoute {
+  page: WorkspacePage
+  record: string
+  view: string
+  valid: boolean
+}
+
+/** Decode each segment once. Invalid addresses stay invalid, never silently
+ * become a different object or an operational screen with a default target. */
+export function parseWorkspaceRoute(hash: string): WorkspaceRoute {
+  const invalid: WorkspaceRoute = { page: 'overview', record: '', view: '', valid: false }
+  const raw = hash.replace(/^#/, '')
+  if (!raw) return { ...invalid, valid: true }
+  if (raw.length > 1024) return invalid
+  let parts: string[]
+  try { parts = raw.split('/').map(decodeURIComponent) } catch { return invalid }
+  if (parts.length > 3 || parts.some(part => !part || !/^[A-Za-z0-9._-]+$/.test(part))) return invalid
+  const page = isWorkspacePage(parts[0]) ? parts[0] : LEGACY_ROUTES[parts[0]]
+  if (!page) return invalid
+  const entry = pageEntry(page)
+  const record = parts[1] ?? ''
+  const view = parts[2] ?? (record ? entry.views?.[0] ?? '' : '')
+  if (record && !entry.views || view && !entry.views?.includes(view)) return { ...invalid, page }
+  return { page, record, view, valid: true }
+}
+
+export function workspaceHash(page: WorkspacePage, record = '', view = ''): string {
+  return `#${[page, ...(record ? [encodeURIComponent(record)] : []), ...(record && view ? [encodeURIComponent(view)] : [])].join('/')}`
 }
 
 /**

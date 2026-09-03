@@ -89,7 +89,7 @@ export function Screen({ about, actions, children, insights, meta, page, status,
 export function InsightRow({ insights, label }: { insights: Insight[]; label: string }) {
   const shown = insights.slice(0, 4)
   return (
-    <MetricGrid aria-label={label} columns={shown.length === 3 ? 3 : shown.length === 2 ? 2 : 4} dense>
+    <MetricGrid aria-label={label} columns={shown.length === 3 ? 3 : shown.length === 2 ? 2 : 4} dense presentation="insights">
       {shown.map((insight) => (
         <Metric
           hint={insight.hint}

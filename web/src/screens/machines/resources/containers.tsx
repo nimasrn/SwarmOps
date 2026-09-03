@@ -20,6 +20,7 @@ import {
   RailSection,
   RecordLink,
   Select,
+  Sheet,
   Spinner,
   Stack as Rows,
   StatusDot,
@@ -33,9 +34,12 @@ import type {
   ContainerStats,
   ContainerSummary,
 } from '../../../data/types'
-import { formatBytes, formatDateTime, shortID } from '../../../lib/format'
+import { capitalize, formatBytes, formatDateTime, shortID } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
 import { useResource } from '../../../data/hooks'
+import { useRecordView, useSelectedRecord } from '../../../navigation/use-workspace'
+import { pageEntry } from '../../../navigation/navigation'
+import { ConfirmPhrase } from '../../../components/confirm-phrase'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -44,31 +48,31 @@ export function ContainersTab({ toast }: { toast: Toast }) {
   const [query, setQuery] = useState('')
   const [stateFilter, setStateFilter] = useState('all')
   const [selected, setSelected] = useState<ContainerDetail | null>(null)
+  const [loadedRecord, setLoadedRecord] = useState('')
   const [stats, setStats] = useState<ContainerStats | null>(null)
   const [detailError, setDetailError] = useState('')
   const [pending, setPending] = useState('')
-  const [detailTab, setDetailTab] = useState('overview')
-  const [autoOpened, setAutoOpened] = useState(false)
-
-  const inspect = async (id: string) => {
-    setDetailError('')
-    setStats(null)
-    try {
-      setSelected(await api.container(id))
-      setStats(await api.containerStats(id))
-    } catch (reason) { setDetailError(messageOf(reason)) }
-  }
+  const [detailTab, setDetailTab] = useRecordView()
+  const [record, inspect] = useSelectedRecord()
+  const [reviewAction, setReviewAction] = useState<'restart' | 'stop' | null>(null)
 
   useEffect(() => {
-    if (autoOpened || !data?.length) return
-    setAutoOpened(true)
-    void inspect(data[0].Id)
-  }, [autoOpened, data])
+    let live = true
+    setSelected(null); setLoadedRecord(''); setStats(null); setDetailError(''); setReviewAction(null)
+    if (record) void api.container(record).then((next) => {
+      if (!live) return
+      setSelected(next)
+      setLoadedRecord(record)
+      return api.containerStats(record).then((sample) => { if (live) setStats(sample) })
+    }).catch((reason) => { if (live) setDetailError(messageOf(reason)) })
+    return () => { live = false }
+  }, [record])
 
   const act = async (id: string, action: 'remove' | 'restart' | 'start' | 'stop', confirmation?: string) => {
     setPending(action)
     try {
       const command = await api.containerAction(id, action, confirmation)
+      setReviewAction(null)
       toast({ message: `Container ${action} queued (${shortID(command.id)})`, tone: 'success' })
       await api.waitForCommand(command.id)
       await reload()
@@ -90,7 +94,8 @@ export function ContainersTab({ toast }: { toast: Toast }) {
     const matchesQuery = !query || `${containerName(container)} ${container.Image} ${container.Id}`.toLowerCase().includes(query.toLowerCase())
     return matchesQuery && (stateFilter === 'all' || container.State === stateFilter)
   })
-  if (selected) {
+  if (record && (!selected || loadedRecord !== record)) return <Rows><Button onClick={() => inspect('')}>Back to containers</Button>{detailError ? <Banner title="Container is unavailable" tone="danger">{detailError}</Banner> : <Spinner label="Reading container" />}</Rows>
+  if (record && selected) {
     const name = selected.Name.replace(/^\//, '')
     const environmentCount = selected.Config.EnvNames?.length ?? 0
     const labelCount = Object.keys(selected.Config.Labels ?? {}).length
@@ -98,20 +103,17 @@ export function ContainersTab({ toast }: { toast: Toast }) {
     return (
       <Rows>
         <DetailHeader
-          actions={<Inline><Button disabled={pending !== ''} loading={pending === 'restart'} onClick={() => void act(selected.Id, 'restart')} variant="secondary">Restart container</Button><Button disabled={pending !== ''} loading={pending === 'stop'} onClick={() => void act(selected.Id, 'stop')} variant="danger">Stop container</Button></Inline>}
-          back={{ label: 'Containers', onClick: () => { setSelected(null); setStats(null) } }}
+          actions={<Inline><Button disabled={pending !== ''} onClick={() => setReviewAction('restart')} variant="secondary">Restart container…</Button><Button disabled={pending !== ''} onClick={() => setReviewAction('stop')} variant="danger">Stop container…</Button></Inline>}
+          back={{ label: 'Containers', onClick: () => inspect('') }}
           meta={<Inline><Mono>{shortID(selected.Id)}</Mono><StatusDot tone={selected.State.Running ? 'success' : 'warning'}>{selected.State.Status}</StatusDot><span>Image <Mono>{selected.Config.Image ?? selected.Image}</Mono></span></Inline>}
           subtitle={`Created ${formatDateTime(selected.Created)} · started ${formatDateTime(selected.State.StartedAt)}`}
           title={name}
         />
-        <Tabs label="Container views" onChange={setDetailTab} options={[
-          { label: 'Overview', value: 'overview' },
-          { label: 'Metrics', value: 'metrics' },
-          { label: 'Logs', value: 'logs' },
-          { label: 'Network', value: 'network' },
-          { label: 'Inspect', value: 'inspect' },
-          { label: 'Activity', value: 'activity' },
-        ]} value={detailTab} />
+        <Sheet open={Boolean(reviewAction)} onClose={() => { if (!pending) setReviewAction(null) }} title={`Review container ${reviewAction ?? 'action'}`}>
+          {reviewAction ? <ConfirmPhrase action={`${reviewAction === 'stop' ? 'Stop' : 'Restart'} ${name}`} consequence={`${name} on the selected manager will ${reviewAction === 'stop' ? 'stop serving until started again' : 'restart and briefly stop serving'}. Swarm-managed tasks may be replaced by the scheduler.`} phrase={`${reviewAction.toUpperCase()}_${selected.Id}`} busy={Boolean(pending)} onConfirm={() => void act(selected.Id, reviewAction)} /> : null}
+        </Sheet>
+        <Tabs panelId="container-view" label="Container views" onChange={setDetailTab} options={pageEntry('containers').views!.map(value => ({value, label: capitalize(value)}))} value={detailTab} />
+        <div id="container-view" role="tabpanel" aria-labelledby={`container-view-tab-${detailTab}`}>
         {detailError ? <Banner tone="danger">{detailError}</Banner> : null}
         {detailTab === 'overview' || detailTab === 'metrics' ? <>
           <MetricGrid columns={4}>
@@ -161,6 +163,7 @@ export function ContainersTab({ toast }: { toast: Toast }) {
             </Panel>
           </DetailLayout>
         </> : detailTab === 'logs' ? <Panel title="Logs"><Banner tone="info">This manager does not expose raw container log streaming through the fixed command surface. Open Monitoring → Logs for collected records.</Banner></Panel> : detailTab === 'network' ? <Panel title="Network"><Facts items={[{ label: 'Network mode', mono: true, value: selected.HostConfig.NetworkMode || 'Not set' }, { label: 'Ingress sample', source: stats ? 'docker stats' : undefined, unmeasured: !stats, value: stats ? formatBytes(stats.networkRxBytes) : 'no sample', why: stats ? undefined : 'no stats sample has been taken' }, { label: 'Egress sample', source: stats ? 'docker stats' : undefined, unmeasured: !stats, value: stats ? formatBytes(stats.networkTxBytes) : 'no sample', why: stats ? undefined : 'no stats sample has been taken' }]} /></Panel> : detailTab === 'inspect' ? <Panel title="Inspect"><Facts items={[{ label: 'Container ID', mono: true, value: selected.Id }, { label: 'Image', mono: true, value: selected.Image }, { label: 'Command', mono: true, value: [selected.Path, ...(selected.Args ?? [])].filter(Boolean).join(' ') || '—' }, { label: 'Environment names', value: selected.Config.EnvNames?.join(', ') || 'None' }, { label: 'Privileged', value: selected.HostConfig.Privileged ? 'Yes' : 'No' }]} /></Panel> : <Panel title="Activity"><Facts items={[{ label: 'Created', value: formatDateTime(selected.Created) }, { label: 'Started', value: formatDateTime(selected.State.StartedAt) }, { label: 'Finished', value: formatDateTime(selected.State.FinishedAt) }, { label: 'OOM killed', value: selected.State.OOMKilled ? 'Yes' : 'No' }, { label: 'Restarts', value: String(selected.RestartCount) }]} /></Panel>}
+        </div>
       </Rows>
     )
   }

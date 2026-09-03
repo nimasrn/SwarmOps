@@ -1,30 +1,31 @@
-import { Banner } from '@nim.zone/ui'
+import { lazy, Suspense } from 'react'
+import { Banner, Button, EmptyState } from '@nim.zone/ui'
 import type { useToast } from '@nim.zone/ui'
 import type { AuditEvent, Command, CoreTopology, Server } from '../data/types'
 import type { DashboardData } from '../data/dashboard'
 import { CLUSTER_PAGES, type WorkspacePage } from '../navigation/navigation'
 import { WorkspaceLoading } from '../components/loading-screen'
 
-import { CommandCenter } from '../screens/home/command-center'
-import { DeployPage } from '../screens/apps/deploy'
-import { ApplicationsPage } from '../screens/apps/applications'
-import { ImagesPage } from '../screens/apps/images'
-import { PlatformServicesPage } from '../screens/apps/platform'
-import { WorkloadsPage } from '../screens/apps/workloads'
-import { MachinesPage } from '../screens/machines/machines'
-import { MachineDetailView } from '../screens/machines/machine-detail'
-import { SwarmPage } from '../screens/machines/swarm'
-import { ContainersPage } from '../screens/machines/containers'
-import { StoragePage } from '../screens/machines/storage'
-import { ClusterRequiredPage } from '../screens/machines/cluster-required'
-import { TraefikControlPage } from '../screens/traffic/gateway'
-import { LogsPage } from '../screens/activity/logs'
-import { RunsPage } from '../screens/activity/runs'
-import { CommandCataloguePage } from '../screens/activity/catalog'
-import { AuditPage } from '../screens/activity/audit'
-import { CoreTopologyPage } from '../screens/control/core'
-import { AgentsPage } from '../screens/control/agents'
-import { RegistryMirrorPage } from '../screens/control/registry-mirror'
+const CommandCenter = lazy(() => import('../screens/home/command-center').then(module => ({ default: module.CommandCenter })))
+const DeployPage = lazy(() => import('../screens/apps/deploy').then(module => ({ default: module.DeployPage })))
+const ApplicationsPage = lazy(() => import('../screens/apps/applications').then(module => ({ default: module.ApplicationsPage })))
+const ImagesPage = lazy(() => import('../screens/apps/images').then(module => ({ default: module.ImagesPage })))
+const PlatformServicesPage = lazy(() => import('../screens/apps/platform').then(module => ({ default: module.PlatformServicesPage })))
+const WorkloadsPage = lazy(() => import('../screens/apps/workloads').then(module => ({ default: module.WorkloadsPage })))
+const MachinesPage = lazy(() => import('../screens/machines/machines').then(module => ({ default: module.MachinesPage })))
+const MachineDetailView = lazy(() => import('../screens/machines/machine-detail').then(module => ({ default: module.MachineDetailView })))
+const SwarmPage = lazy(() => import('../screens/machines/swarm').then(module => ({ default: module.SwarmPage })))
+const ContainersPage = lazy(() => import('../screens/machines/containers').then(module => ({ default: module.ContainersPage })))
+const StoragePage = lazy(() => import('../screens/machines/storage').then(module => ({ default: module.StoragePage })))
+const ClusterRequiredPage = lazy(() => import('../screens/machines/cluster-required').then(module => ({ default: module.ClusterRequiredPage })))
+const TraefikControlPage = lazy(() => import('../screens/traffic/gateway').then(module => ({ default: module.TraefikControlPage })))
+const LogsPage = lazy(() => import('../screens/activity/logs').then(module => ({ default: module.LogsPage })))
+const RunsPage = lazy(() => import('../screens/activity/runs').then(module => ({ default: module.RunsPage })))
+const CommandCataloguePage = lazy(() => import('../screens/activity/catalog').then(module => ({ default: module.CommandCataloguePage })))
+const AuditPage = lazy(() => import('../screens/activity/audit').then(module => ({ default: module.AuditPage })))
+const CoreTopologyPage = lazy(() => import('../screens/control/core').then(module => ({ default: module.CoreTopologyPage })))
+const AgentsPage = lazy(() => import('../screens/control/agents').then(module => ({ default: module.AgentsPage })))
+const RegistryMirrorPage = lazy(() => import('../screens/control/registry-mirror').then(module => ({ default: module.RegistryMirrorPage })))
 
 type Toast = ReturnType<typeof useToast>
 
@@ -40,7 +41,6 @@ export interface PageRouterProps {
   core: CoreTopology | null
   coreError: string
   data: DashboardData | null
-  highlightedCommandID: string
   onConnected: (server: Server) => Promise<void>
   onHighlightCommand: (id: string) => void
   onOpen: (page: WorkspacePage) => void
@@ -67,9 +67,13 @@ export interface PageRouterProps {
  * and rendered nothing.
  */
 export function PageRouter(props: PageRouterProps) {
+  return <Suspense fallback={<WorkspaceLoading label="Opening workspace" />}><PageRouterContent {...props} /></Suspense>
+}
+
+function PageRouterContent(props: PageRouterProps) {
   const {
     activeServer, auditError, auditEvents, auditInitialLoading, clusterError, commands, commandsError,
-    commandsInitialLoading, core, coreError, data, highlightedCommandID, onConnected, onHighlightCommand,
+    commandsInitialLoading, core, coreError, data, onConnected, onHighlightCommand,
     onOpen, onRefreshCommands, onRefreshServers, onSelectMachine, onSelectServer, selectedMachineID, servers,
     serversLoading, toast, workspace,
   } = props
@@ -82,9 +86,11 @@ export function PageRouter(props: PageRouterProps) {
       // its charts, its containers, its setup and its agent — is on its own
       // page, so the list's job is to get you there.
       const machine = servers.find((server) => server.id === selectedMachineID)
+      if (selectedMachineID && serversLoading && !servers.length) return <WorkspaceLoading label="Reading machine profiles" />
       if (machine) {
         return (
           <MachineDetailView
+            key={machine.id}
             onBack={() => onSelectMachine('')}
             onOpen={onOpen}
             onRefreshServers={onRefreshServers}
@@ -94,6 +100,7 @@ export function PageRouter(props: PageRouterProps) {
           />
         )
       }
+      if (selectedMachineID) return <EmptyState title="Machine not found" description="This machine is not present in the current server profiles." actions={<Button onClick={() => onSelectMachine('')}>Back to machines</Button>} />
       return (
         <MachinesPage
           activeServerID={activeServer?.id ?? ''}
@@ -137,7 +144,6 @@ export function PageRouter(props: PageRouterProps) {
               <RunsPage
                 commands={commands}
                 dashboard={data}
-                highlightedID={highlightedCommandID}
                 onOpenDiagnostics={() => onOpen('machines')}
                 onOpenGateway={() => onOpen('gateway')}
                 onOpenSwarm={() => onOpen('swarm')}
@@ -152,7 +158,7 @@ export function PageRouter(props: PageRouterProps) {
       return (
         <CommandCataloguePage
           activeServerID={activeServer?.id ?? ''}
-          onQueued={(commandID) => { onHighlightCommand(commandID); onOpen('runs') }}
+          onQueued={onHighlightCommand}
           servers={servers}
           toast={toast}
         />
@@ -206,14 +212,15 @@ export function PageRouter(props: PageRouterProps) {
   return (
     <>
       {clusterError ? <Banner title="Cluster snapshot unavailable" tone="danger">{clusterError}</Banner> : null}
-      <ClusterScreen commands={commands} data={data} onOpen={onOpen} toast={toast} workspace={workspace} />
+      <ClusterScreen commands={commands} data={data} onOpen={onOpen} serverID={activeServer?.id ?? ''} toast={toast} workspace={workspace} />
     </>
   )
 }
 
-function ClusterScreen({ commands, data, onOpen, toast, workspace }: {
+function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
   commands: Command[]
   data: DashboardData
+  serverID: string
   onOpen: (page: WorkspacePage) => void
   toast: Toast
   workspace: WorkspacePage
@@ -245,7 +252,7 @@ function ClusterScreen({ commands, data, onOpen, toast, workspace }: {
         />
       )
     case 'applications':
-      return <ApplicationsPage onDeployFromSource={() => onOpen('deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
+      return <ApplicationsPage commands={commands.filter(command => command.serverId === serverID)} onDeployFromSource={() => onOpen('deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
     case 'images':
       return <ImagesPage onDeployFromSource={() => onOpen('deploy')} toast={toast} />
     case 'gateway':

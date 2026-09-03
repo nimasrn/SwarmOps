@@ -31,8 +31,22 @@ export interface ChartProps {
     title?: string;
     /** Extra note under the title — units, a period, a caveat. */
     note?: ReactNode;
+    /** Object or cohort this series describes, below its title. */
+    description?: ReactNode;
+    /** Already-formatted latest reading; computation belongs to the caller. */
+    value?: ReactNode;
+    /** Provenance, units and period rendered below the plot. */
+    footer?: ReactNode;
     /** Drawing height in px. The width is always the container's. */
     height?: number;
+    /** Thin only the visible axis; every category remains in the tooltip/table. */
+    maxXLabels?: number;
+    /** Short visual ticks without shortening tooltip or table labels. */
+    formatCategory?: (category: string, index: number) => string;
+    /** Opt into a visible, expandable data table. Otherwise it stays screen-reader-only. */
+    dataTableLabel?: string;
+    hideDataTableLabel?: string;
+    noSampleLabel?: string;
 }
 /**
  * A chart drawn from the token contract: no plotting library, no canvas, no
@@ -48,7 +62,7 @@ export interface ChartProps {
  * meaning — a chart that paints a series red because it is falling has taken a
  * judgement that belongs to the product.
  */
-export declare function Chart({ categories, className, format, height, kind, legend, locale, max, min, note, series, title, }: ChartProps): import("react").JSX.Element;
+export declare function Chart({ categories, className, dataTableLabel, hideDataTableLabel, noSampleLabel, description, footer, format, formatCategory, height, kind, legend, locale, max, maxXLabels, min, note, series, title, value, }: ChartProps): import("react").JSX.Element;
 export interface SparklineProps {
     className?: string;
     /** Accessible name. A sparkline with no name is decoration and should be

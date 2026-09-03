@@ -119,6 +119,12 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     })
   }
 
+
+  if (path === '/api/v1/applications/plan' && init?.method === 'POST') {
+    const spec = JSON.parse(String(init.body)) as {name: string; image: string; replicas: number}
+    return json({ compose: `# Local review fixture only\nservices:\n  ${spec.name}:\n    image: ${spec.image}\n    deploy:\n      replicas: ${spec.replicas}\n` })
+  }
+
   // Any other mutation is accepted and echoed as a queued command rather than
   // refused: the point is to walk the console, and a dead button teaches
   // nothing about the design.
@@ -137,7 +143,17 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   // reads to decide whether it may draw at all.
   if (path === '/api/v1/metrics/range') {
     const parameters = new URL(url, 'http://local').searchParams
-    return json(sampleRange(parameters.get('scope') ?? 'machine', parameters.get('series') ?? 'cpu'))
+    return json(sampleRange(parameters.get('scope') ?? 'machine', parameters.get('series') ?? 'cpu', parameters.get('from'), parameters.get('to')))
+  }
+
+  const containerRead = path.match(/^\/api\/v1\/containers\/([^/]+)(\/stats)?$/)
+  if (containerRead) {
+    const id = containerRead[1]
+    const containers = FIXTURES['/api/v1/containers'] as { Id: string; Names: string[]; Image: string }[]
+    const container = containers.find(item => item.Id === id)
+    if (!container) return json({ error: 'Container not found in review fixture' }, 404)
+    if (containerRead[2]) return json({ id, sampledAt: new Date().toISOString(), cpuPercent: 18.4, memoryUsedBytes: 310e6, memoryLimitBytes: 512e6, memoryPercent: 60.5, networkRxBytes: 4e6, networkTxBytes: 2e6, blockReadBytes: 0, blockWriteBytes: 0, pidsCurrent: 8 })
+    return json({ Id: id, Name: container.Names[0], Image: container.Image, Config: { Image: container.Image, EnvNames: ['PORT'], Labels: {} }, Created: new Date(Date.now() - 86400000).toISOString(), HostConfig: { NetworkMode: 'production', RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 } }, RestartCount: 0, State: { Running: true, Status: 'running', ExitCode: 0, StartedAt: new Date(Date.now() - 3600000).toISOString() }, Mounts: [] })
   }
 
   const since = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString()
@@ -199,21 +215,24 @@ function sampleMachineMetrics(id: string) {
   }
 }
 
-function sampleRange(scope: string, series: string) {
+function sampleRange(scope: string, series: string, start: string | null, end: string | null) {
   const unit = series === 'cpu' ? 'ratio'
     : series.startsWith('network') || series.startsWith('disk') || series.startsWith('block') ? 'bytes/s'
       : series === 'requests' || series === 'errors' ? 'req/s'
         : series === 'latency-p95' ? 'seconds' : 'bytes'
-  const base = unit === 'ratio' ? 0.55 : unit === 'bytes/s' ? 4.2e7 : unit === 'req/s' ? 410 : unit === 'seconds' ? 0.18 : 22e9
-  const to = new Date()
-  const from = new Date(to.getTime() - 6 * 3600 * 1000)
+  // Synthetic review values, never an operational measurement. Keep failures
+  // distinct from total requests so the preview does not suggest 100% failure.
+  const base = series === 'errors' ? 0.4 : unit === 'ratio' ? 0.55 : unit === 'bytes/s' ? 4.2e7 : unit === 'req/s' ? 410 : unit === 'seconds' ? 0.18 : 22e9
+  const to = end ? new Date(end) : new Date()
+  const from = start ? new Date(start) : new Date(to.getTime() - 6 * 3600 * 1000)
+  const stepSeconds = (to.getTime() - from.getTime()) / 1000 / 71
   let seed = 0x5eed
   const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
   const points = Array.from({ length: 72 }, (_, index) => ({
-    at: new Date(from.getTime() + index * 300 * 1000).toISOString(),
+    at: new Date(from.getTime() + index * stepSeconds * 1000).toISOString(),
     value: Math.max(0, base * (0.8 + random() * 0.4)),
   }))
-  return { from: from.toISOString(), points, scope, series, source: 'prometheus', stepSeconds: 300, to: to.toISOString(), unit }
+  return { from: from.toISOString(), points, scope, series, source: 'prometheus', stepSeconds, to: to.toISOString(), unit }
 }
 
 createRoot(document.getElementById('root')!).render(

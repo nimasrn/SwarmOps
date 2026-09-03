@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { readLocalJSON, writeLocalJSON } from '../lib/storage'
-import { LEGACY_ROUTES, isWorkspacePage, type WorkspacePage } from './navigation'
+import { isWorkspacePage, parseWorkspaceRoute, workspaceHash, type WorkspacePage } from './navigation'
 
 const RECENTS_KEY = 'swarmops:recent-screens'
 const PINNED_KEY = 'swarmops:pinned-screens'
@@ -15,21 +15,25 @@ const RECENTS_LIMIT = 6
  * for and a bookmark should not pay for that.
  */
 export function useWorkspace(): [WorkspacePage, (page: WorkspacePage) => void] {
-  const [page, setPage] = useState<WorkspacePage>(() => readWorkspace())
-  useEffect(() => {
-    const update = () => setPage(readWorkspace())
-    window.addEventListener('hashchange', update)
-    return () => window.removeEventListener('hashchange', update)
-  }, [])
-  return [page, useCallback((next: WorkspacePage) => { window.location.hash = next; setPage(next) }, [])]
+  const route = useWorkspaceRoute()
+  return [route.page, useCallback((next: WorkspacePage) => { window.location.hash = workspaceHash(next) }, [])]
 }
 
-function readWorkspace(): WorkspacePage {
-  const value = window.location.hash.slice(1)
-  const [screen] = value.split('/')
-  if (isWorkspacePage(value)) return value
-  if (screen && isWorkspacePage(screen)) return screen
-  return LEGACY_ROUTES[value] ?? LEGACY_ROUTES[screen ?? ''] ?? 'overview'
+const subscribeRoute = (notify: () => void) => {
+  window.addEventListener('hashchange', notify)
+  return () => window.removeEventListener('hashchange', notify)
+}
+const readHash = () => window.location.hash
+export function useWorkspaceRoute() {
+  return parseWorkspaceRoute(useSyncExternalStore(subscribeRoute, readHash, () => ''))
+}
+
+export function useRecordView(fallback = 'overview'): [string, (view: string) => void] {
+  const route = useWorkspaceRoute()
+  return [route.view || fallback, useCallback((view: string) => {
+    const current = parseWorkspaceRoute(window.location.hash)
+    if (current.valid && current.record) window.location.hash = workspaceHash(current.page, current.record, view)
+  }, [])]
 }
 
 /**
@@ -43,22 +47,12 @@ function readWorkspace(): WorkspacePage {
  * unchanged.
  */
 export function useSelectedRecord(): [string, (id: string) => void] {
-  const read = () => {
-    const parts = window.location.hash.slice(1).split('/')
-    return parts.length > 1 ? decodeURIComponent(parts.slice(1).join('/')) : ''
-  }
-  const [id, setID] = useState(read)
-  useEffect(() => {
-    const update = () => setID(read())
-    window.addEventListener('hashchange', update)
-    return () => window.removeEventListener('hashchange', update)
-  }, [])
+  const route = useWorkspaceRoute()
   const select = useCallback((next: string) => {
-    const [screen] = window.location.hash.slice(1).split('/')
-    window.location.hash = next ? `${screen}/${encodeURIComponent(next)}` : screen ?? ''
-    setID(next)
+    const current = parseWorkspaceRoute(window.location.hash)
+    window.location.hash = workspaceHash(current.page, next)
   }, [])
-  return [id, select]
+  return [route.record, select]
 }
 
 /**

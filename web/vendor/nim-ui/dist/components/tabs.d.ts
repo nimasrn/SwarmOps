@@ -7,6 +7,8 @@ export interface TabOption<T extends string> {
     value: T;
 }
 export interface TabsProps<T extends string> extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange'> {
+    /** ID of the region switched by these tabs. */
+    panelId?: string;
     label: string;
     onChange: (value: T) => void;
     options: TabOption<T>[];
@@ -20,4 +22,4 @@ export interface TabsProps<T extends string> extends Omit<HTMLAttributes<HTMLDiv
  * Arrow keys move between tabs and select as they go — the pattern a tablist
  * is expected to follow when its panels are cheap to render.
  */
-export declare function Tabs<T extends string>({ className, label, onChange, options, value, ...props }: TabsProps<T>): import("react").JSX.Element;
+export declare function Tabs<T extends string>({ className, label, onChange, options, panelId, value, ...props }: TabsProps<T>): import("react").JSX.Element;

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from '@/components/icon'
 import { IconButton } from '@/components/icon-button'
@@ -31,6 +31,8 @@ export interface AdminShellProps {
   /** Under the nav: session state, build version — the things an operator
       checks before believing a screen. */
   sidebarFooter?: ReactNode
+  /** Search or another workspace-wide control above navigation. */
+  sidebarHeader?: ReactNode
   /** Optional second-level navigation for section-based consoles. It stays
       visible beside the workspace on wide containers and becomes a compact
       horizontal strip on smaller ones. */
@@ -47,8 +49,13 @@ export interface AdminShellProps {
       shallow control-plane shell: brand, scope, and actions share the
       masthead while primary destinations form a horizontal section bar.
       `rail` keeps primary areas as an icon-only first tier beside the
-      contextual destination sidebar. Rail items must provide an icon. */
-  navigation?: 'rail' | 'sections' | 'sidebar'
+      contextual destination sidebar. Rail items must provide an icon.
+      `nested` expands the current area's contextual items inside one sidebar. */
+  navigation?: 'nested' | 'rail' | 'sections' | 'sidebar'
+  /** Consumer route identity; closes the mobile drawer on external navigation. */
+  locationKey?: string
+  /** Own the viewport and scroll only the workspace. Omit when embedded. */
+  viewport?: boolean
   /** `key` of the active item. */
   value: string
   /** Search field, status pills, the signed-in operator. */
@@ -91,18 +98,46 @@ export function AdminShell({
   groups,
   labels,
   navigation = 'sidebar',
+  locationKey,
   sidebarFooter,
+  sidebarHeader,
   title,
   toolbar,
   value,
   titleRole = 'page',
+  viewport = false,
 }: AdminShellProps) {
   const text = { ...DEFAULT_LABELS, ...labels }
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const drawerRef = useRef<HTMLDialogElement>(null)
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const drawerId = useId()
+  const closeDrawer = useCallback(() => setOpen(false), [])
   const Title = titleRole === 'scope' ? 'div' : 'h1'
+  useEffect(closeDrawer, [closeDrawer, contextualValue, locationKey, value])
 
-  const renderNav = (items: AdminNavGroup[], activeValue: string, ariaLabel: string) => (
+  useEffect(() => {
+    const drawer = drawerRef.current
+    if (!drawer) return
+    if (open && !drawer.open) drawer.showModal()
+    if (!open && drawer.open) drawer.close()
+    if (!open) return
+    const menu = menuRef.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const observer = new ResizeObserver(() => {
+      if (menu && getComputedStyle(menu).display === 'none') setOpen(false)
+    })
+    if (menu?.parentElement) observer.observe(menu.parentElement)
+    return () => {
+      observer.disconnect()
+      document.body.style.overflow = previousOverflow
+      menu?.focus()
+    }
+  }, [open])
+
+  const renderNav = (items: AdminNavGroup[], activeValue: string, ariaLabel: string): ReactNode => (
     <nav aria-label={ariaLabel} className="nim-admin__nav">
       {items.map((group) => (
         <div className="nim-admin__group" key={group.key}>
@@ -119,7 +154,7 @@ export function AdminShell({
               </>
             )
             const props = {
-              'aria-current': active ? ('page' as const) : undefined,
+              'aria-current': active ? (navigation === 'nested' && items === groups ? 'location' as const : 'page' as const) : undefined,
               className: 'nim-admin__link',
               'data-active': active ? 'true' : undefined,
               onClick: () => {
@@ -131,22 +166,23 @@ export function AdminShell({
               // not a second string that can drift away from it.
               title: typeof item.label === 'string' ? item.label : undefined,
             }
-            return item.href ? (
-              <a href={item.href} key={item.key} {...props}>
+            const link = item.href ? (
+              <a href={item.href} {...props}>
                 {content}
               </a>
             ) : (
-              <button key={item.key} type="button" {...props}>
+              <button type="button" {...props}>
                 {content}
               </button>
             )
+            return <div key={item.key} className="nim-admin__nav-item">{link}{navigation === 'nested' && items === groups && active && contextualGroups?.length ? <div className="nim-admin__nested">{renderNav(contextualGroups, contextualValue ?? value, `${text.nav} · current section`)}</div> : null}</div>
           })}
         </div>
       ))}
     </nav>
   )
   const nav = renderNav(groups, value, text.nav)
-  const contextualNav = contextualGroups?.length
+  const contextualNav = navigation !== 'nested' && contextualGroups?.length
     ? renderNav(contextualGroups, contextualValue ?? value, `${text.nav} · current section`)
     : null
 
@@ -156,6 +192,7 @@ export function AdminShell({
       data-collapsed={collapsible && collapsed ? 'true' : undefined}
       data-drawer={open ? 'open' : undefined}
       data-navigation={navigation}
+      data-viewport={viewport ? 'true' : undefined}
     >
       {navigation !== 'sections' ? <aside className="nim-admin__sidebar">
         {brand || collapsible ? (
@@ -163,6 +200,7 @@ export function AdminShell({
             {brand}
           </div>
         ) : null}
+        {sidebarHeader ? <div className="nim-admin__sidebar-head">{sidebarHeader}</div> : null}
         {nav}
         {sidebarFooter ? <div className="nim-admin__sidebar-foot">{sidebarFooter}</div> : null}
         {collapsible ? (
@@ -181,25 +219,28 @@ export function AdminShell({
 
       {/* The drawer is the sidebar again, not a second navigation: one source
           for the items, so the two cannot disagree. */}
-      <div className="nim-admin__drawer" hidden={!open}>
-        <div className="nim-admin__scrim" onClick={() => setOpen(false)} />
+      <dialog aria-label={text.nav} className="nim-admin__drawer" id={drawerId} onCancel={closeDrawer} onClose={closeDrawer} onClick={event => { if (event.target === event.currentTarget) closeDrawer() }} ref={drawerRef}>
         <div className="nim-admin__drawer-panel">
           <div className="nim-admin__drawer-head">
             {brand}
             <IconButton label={text.close} name="close" onClick={() => setOpen(false)} size="sm" />
           </div>
+          {sidebarHeader ? <div className="nim-admin__sidebar-head">{sidebarHeader}</div> : null}
           {nav}
+          {sidebarFooter ? <div className="nim-admin__sidebar-foot">{sidebarFooter}</div> : null}
         </div>
-      </div>
+      </dialog>
 
       <div className="nim-admin__workspace">
         <header className="nim-admin__topbar">
           <IconButton
             aria-expanded={open}
+            aria-controls={drawerId}
             className="nim-admin__menu"
             label={text.menu}
             name="menu"
             onClick={() => setOpen(true)}
+            ref={menuRef}
             size="sm"
           />
           {navigation === 'sections' && brand ? <div className="nim-admin__masthead-brand">{brand}</div> : null}

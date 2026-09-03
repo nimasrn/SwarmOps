@@ -44,6 +44,7 @@ jobs:
         run: |
           npm ci
           npm run typecheck
+          npm test
           npm run build
           npm audit --omit=dev --audit-level=high
 

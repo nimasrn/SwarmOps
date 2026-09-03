@@ -11,6 +11,43 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.16.0 — 2026-09-03
+
+The console adopts the next nim-ui console layer, with durable object routes,
+readable operational charts, and explicit review before changing workloads.
+
+- **One nested workspace** — all 22 destinations remain in the canonical
+  six-area registry. The sidebar, breadcrumb, command palette and keyboard
+  navigation share it. Application, machine, container and run URLs retain
+  object selection; supported detail tabs survive reloads and browser history.
+  Invalid addresses explain how to recover, and changing cluster scope clears
+  loaded object state.
+- **A shared console kit** — system typography, quiet bordered surfaces, flat
+  insight strips, optional inspectors and responsive navigation are supplied
+  by the vendored nim-ui layer, not duplicated in application CSS. The narrow
+  sidebar is a native modal dialog with focus containment, Escape dismissal
+  and focus return. Light, dark and RTL layouts keep health explicit in words.
+- **Charts show evidence, not placeholders** — plots identify their object,
+  period, source and unit; expandable data tables preserve complete timestamps.
+  Missing samples break the line, unavailable sources draw nothing, and a new
+  object or range cannot briefly display the previous reading. Refreshes are
+  serialized and failures have a retry path.
+- **Reviewed workload actions** — redeployment and container restart/stop open
+  a review first. Application removal requires the shared typed confirmation.
+  Deploying a pushed image requires a Compose preview matching the current
+  fields, and editing the fields invalidates that preview. A new version starts
+  from the current full specification rather than silently resetting limits.
+  Release activity is limited to retained matching commands, not invented
+  deployment history or per-replica health.
+- **Smaller initial load** — screen modules load on navigation rather than all
+  arriving in the initial bundle. Route, metric-grid, keyboard, focus and
+  shared-component regressions have explicit coverage.
+
+This release changes the console and its embedded assets. It does not add a
+backend endpoint, database migration, new remote command shape, or automatic
+infrastructure upgrade. The local review entry uses fixtures and is excluded
+from production builds.
+
 ## 0.15.0 — 2026-09-03
 
 Three unrelated things called "registry" stop sharing a screen, a Cloudflare

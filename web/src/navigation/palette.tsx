@@ -1,5 +1,5 @@
 import type { PaletteCommand } from '@nim.zone/ui'
-import { AREAS, pageEntry, type WorkspacePage } from './navigation'
+import { AREAS, pageEntry, workspaceHash, type WorkspacePage } from './navigation'
 import type { Server, Service, Stack } from '../data/types'
 
 export interface PaletteEntity {
@@ -115,7 +115,10 @@ export function paletteCommands(context: PaletteContext): PaletteCommand[] {
     id: `entity-${entity.kind}-${entity.id}`,
     keywords: `${KIND_LABEL[entity.kind]} ${entity.kind}`,
     label: entity.name,
-    onRun: () => open(entity.page),
+    onRun: () => {
+      if (entity.kind === 'server') window.location.hash = workspaceHash('machines', entity.id)
+      else open(entity.page)
+    },
   }))
 
   const destinations: PaletteCommand[] = AREAS.flatMap((area) =>

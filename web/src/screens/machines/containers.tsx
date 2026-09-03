@@ -1,10 +1,11 @@
-import { useToast } from '@nim.zone/ui'
+import { Page, useToast } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import { useResource } from '../../data/hooks'
 import { formatBytes } from '../../lib/format'
 import { Screen } from '../../components/screen'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { ContainersTab } from './resources/containers'
+import { useSelectedRecord } from '../../navigation/use-workspace'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -20,6 +21,7 @@ type Toast = ReturnType<typeof useToast>
  */
 export function ContainersPage({ onOpen, toast }: { onOpen: (page: WorkspacePage) => void; toast: Toast }) {
   const usage = useResource(() => api.diskUsage(), [])
+  const [record] = useSelectedRecord()
   const containers = usage.data?.Containers ?? []
   const running = containers.filter((container) => container.State === 'running').length
   const stopped = containers.length - running
@@ -27,6 +29,7 @@ export function ContainersPage({ onOpen, toast }: { onOpen: (page: WorkspacePage
     .filter((container) => container.State !== 'running')
     .reduce((total, container) => total + (container.SizeRw ?? 0), 0)
 
+  if (record) return <Page width="full"><ContainersTab toast={toast} /></Page>
   return (
     <Screen
       about="A container's environment is reduced to variable names on the way out of the controller. SwarmOps can tell you what a container was given; it will not read a value back out of Docker for a browser."

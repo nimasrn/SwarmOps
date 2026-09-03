@@ -25,6 +25,8 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose }, [onClose])
 
   useEffect(() => {
     if (!open) return
@@ -35,7 +37,7 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
     panelRef.current?.focus()
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
       const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -47,7 +49,7 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
       }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) {
         event.preventDefault()
         last.focus()
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -62,7 +64,7 @@ export function Sheet({ children, className, closeLabel = 'Close', footer, onClo
       window.removeEventListener('keydown', onKeyDown)
       restoreRef.current?.focus?.()
     }
-  }, [onClose, open])
+  }, [open])
 
   if (!open || typeof document === 'undefined') return null
 

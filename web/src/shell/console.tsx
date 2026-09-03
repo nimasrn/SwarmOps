@@ -6,6 +6,7 @@ import {
   Button,
   CommandPalette,
   ErrorBoundary,
+  EmptyState,
   IconButton,
   Inline,
   Label,
@@ -22,8 +23,8 @@ import { attentionItems } from '../lib/attention'
 import { formatClock } from '../lib/format'
 import { serverCanManage } from '../lib/health'
 import { readSession, writeSession } from '../lib/storage'
-import { AREAS, areaOf, landingPage, pageEntry } from '../navigation/navigation'
-import { useScreenMemory, useSelectedRecord, useWorkspace } from '../navigation/use-workspace'
+import { AREAS, areaOf, landingPage, pageEntry, workspaceHash } from '../navigation/navigation'
+import { useScreenMemory, useSelectedRecord, useWorkspace, useWorkspaceRoute } from '../navigation/use-workspace'
 import { useShortcuts } from '../navigation/shortcuts'
 import { paletteCommands, paletteEntities } from '../navigation/palette'
 import { Brand } from '../components/brand'
@@ -45,6 +46,7 @@ const SELECTED_SERVER_KEY = 'swarmops:selected-server'
  */
 export function Console({ onLogout, session }: { onLogout: () => void; session: Session }) {
   const [workspace, setWorkspace] = useWorkspace()
+  const route = useWorkspaceRoute()
   const [selectedRecordID, setSelectedRecordID] = useSelectedRecord()
   const toast = useToast()
   const toggleScheme = useSchemeToggle()
@@ -58,7 +60,6 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
   )
   const { core, error: coreError, refresh: refreshCore } = useCoreTopology(onLogout)
 
-  const [highlightedCommandID, setHighlightedCommandID] = useState('')
   const [activeServerID, setActiveServerID] = useState(() => readSession(SELECTED_SERVER_KEY) ?? '')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -217,7 +218,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
   return (
     <AdminShell
       brand={<Brand subtitle="" />}
-      contextualFooter={
+      sidebarFooter={
         <>
           {/* Observed scope only: what this console currently has authority
               over and how fresh the last read of it is. An assurance claim
@@ -226,6 +227,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
           <StatusDot tone={!core ? 'neutral' : core.controlEnabled ? 'success' : 'warning'}>
             {!core ? 'Controller checking' : core.controlEnabled ? 'Controller holds authority' : 'Controller on standby'}
           </StatusDot>
+          {core ? <span>Authority epoch {core.authorityEpoch}</span> : null}
           <span>
             {activeServer
               ? data
@@ -236,24 +238,24 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
         </>
       }
       contextualGroups={contextualGroups}
-      contextualHeader={
-        // The eyebrow is the area and the heading is the screen — except where
-        // an area opens a screen of the same name, and printing "Machines"
-        // twice in two type sizes tells a reader nothing they did not have.
-        <>
-          {area.label === page.label ? null : <Label>{area.label}</Label>}
-          <strong>{page.label}</strong>
-          <span>{area.summary}</span>
-        </>
-      }
+      sidebarHeader={<Button iconStart="search" onClick={() => setPaletteOpen(true)} size="sm" variant="secondary">Search anything · ⌘K</Button>}
       contextualValue={workspace}
       groups={areaGroups}
-      navigation="rail"
-      title={
+      navigation="nested"
+      viewport
+      locationKey={`${workspace}/${selectedRecordID}/${route.view}`}
+      title={<Breadcrumb items={[
+        ...(area.label === page.label ? [] : [{ href: `#${landingPage(area)}`, label: area.label }]),
+        { href: selectedRecordID ? `#${workspace}` : undefined, label: page.label },
+        ...(selectedRecordID ? [{ label: selectedRecordID }] : []),
+      ]} />}
+      titleRole="scope"
+      toolbar={
         // The target and the evidence that it is reachable belong in the same
         // control. Before this the selector sat in the masthead and its
         // connection state sat in the sidebar footer, which asked the operator
         // to look in two places to answer one question.
+        <>
         <Inline gap="tight" wrap={false}>
           <Label>Cluster</Label>
           {managers.length ? (
@@ -271,14 +273,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
             <Button iconStart="plus" onClick={() => setWorkspace('machines')} size="sm" variant="secondary">Connect a server</Button>
           )}
         </Inline>
-      }
-      titleRole="scope"
-      toolbar={
-        <>
           <AttentionMenu items={attention} onOpen={setWorkspace} />
-          <Button iconStart="search" onClick={() => setPaletteOpen(true)} size="sm" variant="secondary">
-            Search or run…  ⌘K
-          </Button>
           <IconButton disabled={refreshLoading} label={refreshLabel} name="refresh" onClick={() => void refreshAction()} size="sm" variant="ghost" />
           <Menu
             items={[
@@ -319,13 +314,6 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
           An area and its landing screen can share a name — Machines the area
           opens Machines the screen — and repeating it teaches nobody anything,
           so the crumb names both only when they are different things. */}
-      {workspace === 'overview' ? null : (
-        <Breadcrumb
-          items={area.label === page.label
-            ? [{ label: page.label }]
-            : [{ href: `#${landingPage(area)}`, label: area.label }, { label: page.label }]}
-        />
-      )}
       {serversError ? <Banner title="Server list unavailable" tone="danger">{serversError}</Banner> : null}
 
       {/* The workspace, not the shell. React unmounts from the root when a
@@ -336,8 +324,9 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
 
           resetKey is the workspace, so navigating away clears the wreckage
           rather than stranding the reader on it. */}
-      <ErrorBoundary resetKey={workspace}>
-        <PageRouter
+      <ErrorBoundary resetKey={`${workspace}/${selectedRecordID}/${route.view}`}>
+        {!route.valid ? <EmptyState icon="search" title="This address is not available" description="The screen, object, or view is not recognized. No operation was performed." actions={<Button onClick={() => setWorkspace('overview')}>Open Overview</Button>} /> : <PageRouter
+          key={activeServerID}
           activeServer={activeServer}
           auditError={auditError}
           auditEvents={auditEvents}
@@ -349,9 +338,8 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
           core={core}
           coreError={coreError}
           data={data}
-          highlightedCommandID={highlightedCommandID}
           onConnected={connected}
-          onHighlightCommand={setHighlightedCommandID}
+          onHighlightCommand={(id) => { window.location.hash = workspaceHash('runs', id) }}
           onOpen={setWorkspace}
           onRefreshCommands={refreshCommands}
           onRefreshServers={refreshServers}
@@ -362,7 +350,7 @@ export function Console({ onLogout, session }: { onLogout: () => void; session: 
           servers={servers}
           toast={toast}
           workspace={workspace}
-        />
+        />}
       </ErrorBoundary>
     </AdminShell>
   )

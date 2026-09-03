@@ -1,146 +1,89 @@
 import { useEffect, useState } from 'react'
-import { Banner, Body, Chart, Panel, Spinner, Stack as Rows } from '@nim.zone/ui'
+import { Banner, Body, Button, Chart, Panel, Spinner, Stack as Rows } from '@nim.zone/ui'
 import { api } from '../data/api'
 import type { MetricQuery, MetricRange } from '../data/types'
 import { messageOf } from '../lib/errors'
-import { formatBytes } from '../lib/format'
+import { formatBytes, formatDateTime } from '../lib/format'
+import { metricSeries } from '../lib/metric-series'
 
-/**
- * Every chart in this console is this component.
- *
- * It exists because a chart makes four claims at once — what was measured,
- * about which object, over what period, and by whom — and only the first was
- * ever on screen. A reading with no scope beside it is the thing that made an
- * operator ask "for which node?", which is where this whole rebuild started.
- *
- * So the source is not decoration here. A range that came back `unavailable`
- * draws NOTHING and says why: a cluster with no Prometheus has no history, and
- * an empty plot area reads as an idle machine.
- */
 export interface MetricChartProps {
-  /** Height of the plot. The width is always the container's. */
   height?: number
-  /** What the reading means, in one line. */
   note?: string
   query: MetricQuery
-  /** How often to re-read. Omit for a chart that is read once. */
   refreshMs?: number
   title: string
 }
 
-export function MetricChart({ height = 140, note, query, refreshMs, title }: MetricChartProps) {
-  const [range, setRange] = useState<MetricRange | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-
-  // The query is an object literal at every call site, so its identity changes
-  // on every render. Depending on the VALUES rather than the object is what
-  // keeps this from re-reading forever.
-  const { application, container, machine, scope, series, windowSeconds } = query
+/** One chart contract: measurement, object, period and source. No source means no plot. */
+export function MetricChart({ height = 200, note, query, refreshMs, title }: MetricChartProps) {
+  const { application, container, machine, scope, series, windowSeconds = 21_600 } = query
+  const key = JSON.stringify([application, container, machine, scope, series, windowSeconds])
+  const [snapshot, setSnapshot] = useState<{ key: string; range?: MetricRange; error?: string }>()
+  const [revision, setRevision] = useState(0)
+  // Identity is checked during render, not only in an effect: old-object data
+  // must never appear for even one paint under a new object's heading.
+  const current = snapshot?.key === key ? snapshot : undefined
+  const range = current?.range
+  const points = range ? metricSeries(range) : null
+  const object = [scope, application || container || machine || 'selected cluster', container && machine ? `on ${machine}` : ''].filter(Boolean).join(' · ')
+  const period = range ? `${formatDateTime(range.from)} – ${formatDateTime(range.to)}` : `Last ${windowSeconds / 3600} hours`
 
   useEffect(() => {
     let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
     const read = async () => {
       try {
         const to = new Date()
-        const from = new Date(to.getTime() - (windowSeconds ?? 21_600) * 1000)
+        const from = new Date(to.getTime() - windowSeconds * 1000)
         const result = await api.metricRange({ application, container, from, machine, scope, series, to })
-        if (live) { setRange(result); setError('') }
+        if (live) setSnapshot({ key, range: result })
       } catch (reason) {
-        if (live) setError(messageOf(reason))
+        if (live) setSnapshot({ key, error: messageOf(reason) })
       } finally {
-        if (live) setLoading(false)
+        // Schedule after completion: a slow source cannot reorder overlapping polls.
+        if (live && refreshMs) timer = setTimeout(() => void read(), refreshMs)
       }
     }
+    setSnapshot(undefined)
     void read()
-    if (!refreshMs) return () => { live = false }
-    const timer = setInterval(() => void read(), refreshMs)
-    return () => { live = false; clearInterval(timer) }
-  }, [application, container, machine, refreshMs, scope, series, windowSeconds])
+    return () => { live = false; if (timer) clearTimeout(timer) }
+  }, [application, container, key, machine, refreshMs, revision, scope, series, windowSeconds])
 
-  if (loading && !range) {
-    return <Panel title={title}><Spinner label={`Reading ${title.toLowerCase()}`} /></Panel>
+  const provenance = `${object} · ${period}`
+  if (!current) return <Panel title={title} description={provenance}><Spinner label={`Reading ${title.toLowerCase()}`} /></Panel>
+  if (current.error) return <Panel title={title} description={provenance}><Banner tone="danger" title="This reading could not be taken">{current.error}</Banner><Button onClick={() => setRevision((value) => value + 1)} variant="secondary">Try again</Button></Panel>
+  if (!range || range.source !== 'prometheus' || !points || !points.some((point) => point.value !== null)) {
+    return <Panel title={title} description={provenance}><Rows gap="tight"><Body size="sm" tone="muted">{range?.note || (range?.source === 'prometheus' && !points ? 'The source returned an invalid time grid. This reading cannot be plotted.' : 'No history is available for this reading.')}</Body><Body size="sm" tone="muted">Source: {range?.source === 'prometheus' ? points ? 'Prometheus, no measured samples' : 'Prometheus, invalid time grid' : 'unavailable'}. No measured value is implied.</Body></Rows></Panel>
   }
-  if (error) {
-    return (
-      <Panel title={title}>
-        <Banner tone="danger" title="This reading could not be taken">{error}</Banner>
-      </Panel>
-    )
-  }
-  if (!range || range.source === 'unavailable' || range.points.length === 0) {
-    return (
-      <Panel title={title}>
-        <Rows gap="tight">
-          <Body size="sm" tone="muted">
-            {range?.note ?? 'No history is available for this reading.'}
-          </Body>
-          <Body size="sm" tone="muted">
-            Nothing is drawn rather than a flat line: an empty plot and an idle machine look identical, and only one
-            of them is a measurement.
-          </Body>
-        </Rows>
-      </Panel>
-    )
-  }
-
   const format = formatterFor(range.unit)
-  return (
+  const latest = points.at(-1)?.value
+  return <Panel>
     <Chart
-      categories={axisLabels(range)}
+      categories={points.map((point) => new Date(point.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}
+      dataTableLabel="View data table"
+      description={object}
       format={format}
+      formatCategory={(_, index) => new Date(points[index].at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
       height={height}
-      kind="area"
+      kind="line"
+      maxXLabels={3}
       min={range.unit === 'ratio' ? 0 : undefined}
       max={range.unit === 'ratio' ? 1 : undefined}
-      note={`${note ? `${note} · ` : ''}${sourceNote(range)}`}
-      series={[{ label: title, values: range.points.map((point) => point.value) }]}
+      footer={`${note ? `${note} · ` : ''}${period} · Prometheus · ${range.unit}${latest == null ? ' · Latest sample unavailable' : ''}`}
+      series={[{ label: title, values: points.map((point) => point.value) }]}
       title={title}
+      value={latest != null && Number.isFinite(latest) ? format(latest) : '—'}
     />
-  )
-}
-
-/**
- * One label per point is what the kit asks for and is not what a reader can
- * use: seventy-two timestamps in a half-width column overlap into a grey
- * smear. Every point keeps its slot — the tooltip and the table still name
- * each one — and only about six of them are drawn on the axis.
- */
-function axisLabels(range: MetricRange): string[] {
-  const stride = Math.max(1, Math.ceil(range.points.length / 6))
-  return range.points.map((point, index) => (index % stride === 0
-    ? new Date(point.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : ''))
-}
-
-/**
- * The provenance line under every chart.
- *
- * A reading from fifteen days of Prometheus and a reading from a four-hour
- * in-memory ring are different claims, and the console says which one it is
- * making rather than leaving the reader to assume the stronger one.
- */
-function sourceNote(range: MetricRange): string {
-  const minutes = Math.round((new Date(range.to).getTime() - new Date(range.from).getTime()) / 60_000)
-  const window = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minutes`
-  return range.source === 'prometheus'
-    ? `Last ${window}, from the cluster's Prometheus`
-    : `Last ${window}, source unstated`
+  </Panel>
 }
 
 function formatterFor(unit: string): (value: number) => string {
   switch (unit) {
-    case 'ratio':
-      return (value) => `${Math.round(value * 100)}%`
-    case 'bytes':
-      return (value) => formatBytes(value)
-    case 'bytes/s':
-      return (value) => `${formatBytes(value)}/s`
-    case 'req/s':
-      return (value) => `${value.toFixed(value < 10 ? 1 : 0)}/s`
-    case 'seconds':
-      return (value) => (value < 1 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`)
-    default:
-      return (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1))
+    case 'ratio': return (value) => `${Math.round(value * 100)}%`
+    case 'bytes': return formatBytes
+    case 'bytes/s': return (value) => `${formatBytes(value)}/s`
+    case 'req/s': return (value) => `${value.toFixed(value < 10 ? 1 : 0)}/s`
+    case 'seconds': return (value) => value < 1 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`
+    default: return (value) => Number.isInteger(value) ? String(value) : value.toFixed(1)
   }
 }

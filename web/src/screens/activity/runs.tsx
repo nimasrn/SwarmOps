@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   ActivityFeed,
   Banner,
@@ -31,6 +31,7 @@ import { isInFlight, isStalled, serverHealth } from '../../lib/health'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { CommandStateBadge } from '../../components/badges'
+import { useSelectedRecord } from '../../navigation/use-workspace'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -47,7 +48,6 @@ type Toast = ReturnType<typeof useToast>
 export function RunsPage({
   commands,
   dashboard,
-  highlightedID,
   onOpenDiagnostics,
   onOpenGateway,
   onOpenSwarm,
@@ -57,7 +57,6 @@ export function RunsPage({
 }: {
   commands: Command[]
   dashboard: DashboardData | null
-  highlightedID: string
   onOpenDiagnostics: () => void
   onOpenGateway: () => void
   onOpenSwarm: () => void
@@ -66,16 +65,12 @@ export function RunsPage({
   toast: Toast
 }) {
   const [retrying, setRetrying] = useState('')
-  const [selectedID, setSelectedID] = useState(() => commands.find(isStalled)?.id ?? commands[0]?.id ?? '')
+  const [selectedID, setSelectedID] = useSelectedRecord()
   const [query, setQuery] = useState('')
   const [stateFilter, setStateFilter] = useState('all')
   const [targetFilter, setTargetFilter] = useState('all')
   const [actionFilter, setActionFilter] = useState('all')
   const [timeFilter, setTimeFilter] = useState('all')
-
-  useEffect(() => {
-    if (highlightedID && commands.some((command) => command.id === highlightedID)) setSelectedID(highlightedID)
-  }, [commands, highlightedID])
 
   const retry = async (command: Command) => {
     setRetrying(command.id)
@@ -130,6 +125,7 @@ export function RunsPage({
       status={attention.length ? <StatusDot tone="danger">{attention.length} need attention</StatusDot> : <StatusDot tone="success">No attention required</StatusDot>}
       width="full"
     >
+      {selectedID && !selected ? <Banner title="Run not found in the retained window" tone="warning" action={<Button onClick={() => setSelectedID('')}>Clear selection</Button>}>The requested run is not in this snapshot. No outcome is inferred.</Banner> : null}
       <DetailLayout
         aside={selected ? (
           <Panel

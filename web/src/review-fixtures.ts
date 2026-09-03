@@ -105,7 +105,7 @@ export const FIXTURES: Record<string, unknown> = {
   // chain on `state` only, so an absent `settings` white-screens the whole
   // area. Supplied in full here; the missing guard is noted for the owner.
   '/api/v1/traefik/state': {
-    bindings: [], certificates: [], credentials: [], declarations: [], dnsRecords: [],
+    bindings: [], certificates: [], credentials: [], declarations: [], dnsRecords: [], domains: [],
     routes: [], runtime: [], version: 1,
     settings: {
       acmeEmail: 'ops@nim.zone', accessLogs: true, dashboardHost: 'traefik.nim.zone',
@@ -141,7 +141,14 @@ export const FIXTURES: Record<string, unknown> = {
   '/api/v1/insights': null,
   '/api/v1/commands/catalogue': [],
   '/api/v1/databases': [],
-  '/api/v1/applications': [],
+  '/api/v1/applications': [
+    { deployed: true, runningTasks: 3, service: 'production_checkout-api', stack: 'production', url: 'https://checkout.example.test', spec: { name: 'checkout-api', image: 'ghcr.io/example/checkout:1.8.4', cpus: 0.5, memoryMiB: 512, port: 8080, replicas: 3, healthPath: '/healthz', domain: 'checkout.example.test', resolver: 'le', metrics: true, metricsPath: '/metrics', tracing: false, databases: ['postgres'], databaseDelivery: 'secret' } },
+    { deployed: true, runningTasks: 1, service: 'production_api-gateway', stack: 'production', spec: { name: 'api-gateway', image: 'ghcr.io/example/gateway:2.1.0', cpus: 1, memoryMiB: 1024, port: 8080, replicas: 2, healthPath: '/healthz', metrics: false } },
+  ],
+  '/api/v1/applications/approved': [
+    { name: 'checkout-api', profile: 'application', domain: 'checkout.example.test', resolver: 'le', cpuCores: 2, memoryMiB: 4096 },
+    { name: 'api-gateway', profile: 'application', domainOptional: true, cpuCores: 2, memoryMiB: 4096 },
+  ],
   // Without this the deploy screen reports a failed capability read — which is
   // correct behaviour and exactly what it did before this fixture existed.
   '/api/v1/sources/status': { buildEnabled: true, enabled: true, imagePrefixConfigured: true, privateHostsConfigured: false },

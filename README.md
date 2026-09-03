@@ -155,6 +155,30 @@ version is deployed.
 
 ## Console information architecture
 
+The console-next implementation introduced in v0.16.0 lives in the shared
+nim-ui kit and its vendored build: nested sidebar navigation, open sections, flat insight
+strips, record inspectors, and source-labelled charts. No application-local
+layout stylesheet duplicates those primitives.
+
+Object routes preserve selection and view across reloads and browser history:
+`#applications/<name>/<view>`, `#machines/<id>/<view>`,
+`#containers/<id>/<view>`, and `#runs/<id>`. Their allowed views live in the
+same navigation registry. Invalid addresses show an explicit recovery state.
+The selected cluster remains an independent operational scope; changing it
+remounts the workspace so another cluster cannot inherit loaded object data.
+
+Application redeployment and container restart/stop open a review first.
+Application removal uses the shared typed confirmation. Pushed-image deployment
+requires a Compose preview matching the current fields. Release activity is
+limited to retained deployment commands for that application and selected
+server; it is not presented as a complete release history.
+
+Charts keep complete timestamps in their tooltips and expandable tables while
+thinning only visible ticks. A change of object or time range hides the prior
+reading immediately; refreshes are serialized and unavailable sources draw no
+plot. The local `web/review.html` entry runs the real UI against fixture data,
+not a live controller. It is excluded from the production build.
+
 The console uses a two-level operator hierarchy, and both levels are built
 from one file — `web/src/navigation/navigation.ts`, which holds the areas, the
 screens, their icons, their keyboard chords, the one line each screen exists to

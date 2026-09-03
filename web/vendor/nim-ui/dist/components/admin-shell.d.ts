@@ -25,6 +25,8 @@ export interface AdminShellProps {
     /** Under the nav: session state, build version — the things an operator
         checks before believing a screen. */
     sidebarFooter?: ReactNode;
+    /** Search or another workspace-wide control above navigation. */
+    sidebarHeader?: ReactNode;
     /** Optional second-level navigation for section-based consoles. It stays
         visible beside the workspace on wide containers and becomes a compact
         horizontal strip on smaller ones. */
@@ -47,8 +49,13 @@ export interface AdminShellProps {
         shallow control-plane shell: brand, scope, and actions share the
         masthead while primary destinations form a horizontal section bar.
         `rail` keeps primary areas as an icon-only first tier beside the
-        contextual destination sidebar. Rail items must provide an icon. */
-    navigation?: 'rail' | 'sections' | 'sidebar';
+        contextual destination sidebar. Rail items must provide an icon.
+        `nested` expands the current area's contextual items inside one sidebar. */
+    navigation?: 'nested' | 'rail' | 'sections' | 'sidebar';
+    /** Consumer route identity; closes the mobile drawer on external navigation. */
+    locationKey?: string;
+    /** Own the viewport and scroll only the workspace. Omit when embedded. */
+    viewport?: boolean;
     /** `key` of the active item. */
     value: string;
     /** Search field, status pills, the signed-in operator. */
@@ -70,7 +77,7 @@ export interface AdminShellProps {
  * Below the layout's breakpoint the same sidebar becomes a drawer — the same
  * markup, not a second nav to keep in sync, which is how the two drift apart.
  */
-export declare function AdminShell({ brand, children, className, collapsible, contextualFooter, contextualGroups, contextualHeader, contextualValue, groups, labels, navigation, sidebarFooter, title, toolbar, value, titleRole, }: AdminShellProps): import("react").JSX.Element;
+export declare function AdminShell({ brand, children, className, collapsible, contextualFooter, contextualGroups, contextualHeader, contextualValue, groups, labels, navigation, locationKey, sidebarFooter, sidebarHeader, title, toolbar, value, titleRole, viewport, }: AdminShellProps): import("react").JSX.Element;
 export interface DetailHeaderProps {
     /** Buttons for this record: approve, retry, export. */
     actions?: ReactNode;

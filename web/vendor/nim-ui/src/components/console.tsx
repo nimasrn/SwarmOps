@@ -45,6 +45,8 @@ export function Page({ children, className, width = 'wide', ...props }: PageProp
 }
 
 export interface PanelProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  /** Open sections keep hierarchy without drawing a card around each one. */
+  variant?: 'framed' | 'plain'
   /** Buttons for this section — not for the record. Record-level actions
       belong in `DetailHeader`, where they are found without scrolling. */
   actions?: ReactNode
@@ -89,12 +91,13 @@ export function Panel({
   footer,
   marker,
   title,
+  variant = 'framed',
   ...props
 }: PanelProps) {
   const head = title || caption || description || eyebrow || actions
 
   return (
-    <section className={cn('nim-panel', className)} {...props}>
+    <section className={cn('nim-panel', className)} data-variant={variant} {...props}>
       {head ? (
         <header className="nim-panel__head">
           {marker ? (
@@ -251,6 +254,8 @@ export function Metric({
 
 export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
+  /** A flat strip of readings and decisions, rather than separate tiles. */
+  presentation?: 'tiles' | 'insights'
   /** For a row of chip-form tiles (`Metric layout="inline"`). A chip stays
       legible at roughly half the width a counter tile needs, so it holds its
       column count much further down before stepping — without this the
@@ -263,12 +268,13 @@ export interface MetricGridProps extends HTMLAttributes<HTMLDivElement> {
   columns?: 2 | 3 | 4 | 5 | 6
 }
 
-export function MetricGrid({ children, className, columns = 4, dense = false, ...props }: MetricGridProps) {
+export function MetricGrid({ children, className, columns = 4, dense = false, presentation = 'tiles', ...props }: MetricGridProps) {
   return (
     <div
       className={cn('nim-metric-grid', className)}
       data-columns={columns}
       data-dense={dense ? 'true' : undefined}
+      data-presentation={presentation}
       {...props}
     >
       {children}
@@ -325,7 +331,7 @@ export function Facts({ className, columns = 2, items, ...props }: FactsProps) {
             ) : null}
           </dt>
           <dd className="nim-facts__value" data-mono={fact.mono ? 'true' : undefined}>
-            {fact.value}
+            {fact.mono ? <bdi dir="ltr">{fact.value}</bdi> : fact.value}
           </dd>
         </div>
       ))}
@@ -479,7 +485,7 @@ export interface MonoProps extends HTMLAttributes<HTMLElement> {
  */
 export function Mono({ children, className, size = 'sm', ...props }: MonoProps) {
   return (
-    <code className={cn('nim-mono', className)} data-size={size} {...props}>
+    <code className={cn('nim-mono', className)} data-size={size} dir="ltr" {...props}>
       {children}
     </code>
   )

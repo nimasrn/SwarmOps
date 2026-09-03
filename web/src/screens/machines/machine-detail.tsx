@@ -11,7 +11,7 @@ import {
   Mono,
   Page,
   Panel,
-  Segmented,
+  Tabs,
   Spinner,
   Stack as Rows,
   StatusDot,
@@ -22,17 +22,16 @@ import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import type { MachineMetrics, Server } from '../../data/types'
 import { messageOf } from '../../lib/errors'
-import { formatBytes, formatDateTime, shortID } from '../../lib/format'
+import { capitalize, formatBytes, formatDateTime, shortID } from '../../lib/format'
 import { MetricChart } from '../../components/metric-chart'
 import { InsightRow } from '../../components/screen'
-import type { WorkspacePage } from '../../navigation/navigation'
+import { pageEntry, type WorkspacePage } from '../../navigation/navigation'
+import { useRecordView } from '../../navigation/use-workspace'
 import { serverConnectionLabel } from '../../data/server-connection'
 import { AgentTab } from './agent'
 import { SetupTab } from './setup'
 
 type Toast = ReturnType<typeof useToast>
-
-type MachineTab = 'agent' | 'containers' | 'overview' | 'setup'
 
 /**
  * One machine, and everything about it.
@@ -55,7 +54,7 @@ export function MachineDetailView({ onBack, onOpen, onRefreshServers, server, se
   servers: Server[]
   toast: Toast
 }) {
-  const [tab, setTab] = useState<MachineTab>('overview')
+  const [tab, setTab] = useRecordView()
   const [openContainer, setOpenContainer] = useState('')
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null)
   const [metricsError, setMetricsError] = useState('')
@@ -142,18 +141,15 @@ export function MachineDetailView({ onBack, onOpen, onRefreshServers, server, se
         label={`What ${server.name} currently reports`}
       />
 
-      <Segmented
+      <Tabs
+        panelId="machine-view"
         label="Machine view"
-        onChange={(value: string) => setTab(value as MachineTab)}
-        options={[
-          { label: 'Overview', value: 'overview' },
-          { label: `Containers · ${containers.length}`, value: 'containers' },
-          { label: 'Setup', value: 'setup' },
-          { label: 'Agent', value: 'agent' },
-        ]}
+        onChange={setTab}
+        options={pageEntry('machines').views!.map(value => ({ value, label: value === 'containers' ? `Containers · ${containers.length}` : capitalize(value) }))}
         value={tab}
       />
 
+      <div id="machine-view" role="tabpanel" aria-labelledby={`machine-view-tab-${tab}`}>
       {tab === 'overview' ? (
         <Rows gap="md">
           {metricsError ? (
@@ -267,6 +263,7 @@ export function MachineDetailView({ onBack, onOpen, onRefreshServers, server, se
 
       {tab === 'setup' ? <SetupTab serverID={server.id} servers={servers} toast={toast} /> : null}
       {tab === 'agent' ? <AgentTab onRefreshServers={onRefreshServers} serverID={server.id} servers={servers} toast={toast} /> : null}
+      </div>
     </Page>
   )
 }

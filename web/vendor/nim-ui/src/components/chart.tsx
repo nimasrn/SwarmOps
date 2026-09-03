@@ -36,8 +36,22 @@ export interface ChartProps {
   title?: string
   /** Extra note under the title — units, a period, a caveat. */
   note?: ReactNode
+  /** Object or cohort this series describes, below its title. */
+  description?: ReactNode
+  /** Already-formatted latest reading; computation belongs to the caller. */
+  value?: ReactNode
+  /** Provenance, units and period rendered below the plot. */
+  footer?: ReactNode
   /** Drawing height in px. The width is always the container's. */
   height?: number
+  /** Thin only the visible axis; every category remains in the tooltip/table. */
+  maxXLabels?: number
+  /** Short visual ticks without shortening tooltip or table labels. */
+  formatCategory?: (category: string, index: number) => string
+  /** Opt into a visible, expandable data table. Otherwise it stays screen-reader-only. */
+  dataTableLabel?: string
+  hideDataTableLabel?: string
+  noSampleLabel?: string
 }
 
 /** The plot is drawn in a fixed user space and scaled by the SVG's viewBox, so
@@ -70,19 +84,30 @@ const niceStep = (span: number, target: number): number => {
 export function Chart({
   categories,
   className,
+  dataTableLabel,
+  hideDataTableLabel = 'Hide data table',
+  noSampleLabel = 'No sample',
+  description,
+  footer,
   format,
+  formatCategory,
   height = 220,
   kind = 'line',
   legend,
   locale,
   max,
+  maxXLabels,
   min,
   note,
   series,
   title,
+  value,
 }: ChartProps) {
   const titleId = useId()
   const [hover, setHover] = useState<number | null>(null)
+  const [focus, setFocus] = useState(0)
+  const [showData, setShowData] = useState(false)
+  const tableId = useId()
 
   const number = useMemo(
     () => format ?? ((value: number) => new Intl.NumberFormat(locale).format(value)),
@@ -90,7 +115,7 @@ export function Chart({
   )
 
   const scale = useMemo(() => {
-    const all = series.flatMap((line) => line.values).filter((value): value is number => value !== null)
+    const all = series.flatMap((line) => line.values).filter((value): value is number => value !== null && Number.isFinite(value))
     const rawLow = min ?? Math.min(...all, 0)
     const rawHigh = max ?? Math.max(...all, 0)
     // A bar states a ratio by its length, so its baseline is zero whatever the
@@ -115,23 +140,27 @@ export function Chart({
 
   const path = (values: (number | null)[], close: boolean) => {
     let d = ''
-    let open = false
+    let first: number | null = null
+    let last = 0
+    const finish = () => {
+      if (close && first !== null) d += `L${x(last).toFixed(2)} ${y(scale.bottom).toFixed(2)}L${x(first).toFixed(2)} ${y(scale.bottom).toFixed(2)}Z`
+      first = null
+    }
     values.forEach((value, index) => {
-      if (value === null) {
-        open = false
+      if (value === null || !Number.isFinite(value)) {
+        finish()
         return
       }
-      d += `${open ? 'L' : 'M'}${x(index).toFixed(2)} ${y(value).toFixed(2)}`
-      open = true
+      d += `${first === null ? 'M' : 'L'}${x(index).toFixed(2)} ${y(value).toFixed(2)}`
+      first ??= index
+      last = index
     })
-    if (!close || !d) return d
-    const drawn = values
-      .map((value, index) => (value === null ? null : index))
-      .filter((index): index is number => index !== null)
-    const first = drawn[0]
-    const last = drawn[drawn.length - 1]
-    return `${d}L${x(last).toFixed(2)} ${y(scale.bottom).toFixed(2)}L${x(first).toFixed(2)} ${y(scale.bottom).toFixed(2)}Z`
+    finish()
+    return d
   }
+
+  const labelCount = Math.min(categories.length, Math.max(2, Math.floor(maxXLabels ?? categories.length)))
+  const visibleLabels = Array.from({ length: labelCount }, (_, index) => Math.round(index * (categories.length - 1) / Math.max(1, labelCount - 1)))
 
   const barWidth = (slot * 0.62) / series.length
 
@@ -141,7 +170,7 @@ export function Chart({
       className={cn('nim-chart', className)}
       data-kind={kind}
     >
-      {title || note ? (
+      {title || note || description || value ? (
         <figcaption className="nim-chart__head">
           {title ? (
             <span className="nim-chart__title" id={titleId}>
@@ -149,14 +178,16 @@ export function Chart({
             </span>
           ) : null}
           {note ? <span className="nim-chart__note">{note}</span> : null}
+          {description ? <span className="nim-chart__description">{description}</span> : null}
+          {value ? <span className="nim-chart__value"><bdi>{value}</bdi></span> : null}
         </figcaption>
       ) : null}
 
       <div className="nim-chart__frame">
-        <div aria-hidden="true" className="nim-chart__axis">
+        <div aria-hidden="true" className="nim-chart__axis" style={{ blockSize: `${height}px` }}>
           {[...scale.ticks].reverse().map((tick) => (
             <span className="nim-chart__tick" key={tick}>
-              {number(tick)}
+              <bdi>{number(tick)}</bdi>
             </span>
           ))}
         </div>
@@ -186,7 +217,7 @@ export function Chart({
                 return (
                   <g key={line.label}>
                     {line.values.map((value, index) =>
-                      value === null ? null : (
+                      value === null || !Number.isFinite(value) ? null : (
                         <rect
                           className="nim-chart__bar"
                           fill={tone}
@@ -208,7 +239,7 @@ export function Chart({
                   ) : null}
                   <path className="nim-chart__line" d={path(line.values, false)} stroke={tone} />
                   {line.values.map((value, index) =>
-                    value === null ? null : (
+                    value === null || !Number.isFinite(value) ? null : (
                       <circle
                         className="nim-chart__dot"
                         cx={x(index)}
@@ -237,13 +268,22 @@ export function Chart({
                 // one name — so the slot's position is its identity, not its
                 // label.
                 key={index}
+                tabIndex={index === Math.min(focus, categories.length - 1) ? 0 : -1}
                 onBlur={() => setHover(null)}
-                onFocus={() => setHover(index)}
+                onFocus={() => { setHover(index); setFocus(index) }}
+                onKeyDown={(event) => {
+                  const rtl = getComputedStyle(event.currentTarget).direction === 'rtl'
+                  const step = event.key === 'ArrowRight' ? (rtl ? -1 : 1) : event.key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0
+                  if (!step && event.key !== 'Home' && event.key !== 'End') return
+                  event.preventDefault()
+                  const next = event.key === 'Home' ? 0 : event.key === 'End' ? categories.length - 1 : Math.max(0, Math.min(categories.length - 1, index + step))
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('.nim-chart__hit')[next]?.focus()
+                }}
                 onMouseEnter={() => setHover(index)}
                 onMouseLeave={() => setHover(null)}
                 type="button"
               >
-                <span className="nim-visually-hidden">{category}</span>
+                <span className="nim-visually-hidden">{category}{series.map((line) => `, ${line.label}: ${line.values[index] == null || !Number.isFinite(line.values[index]) ? noSampleLabel : number(line.values[index] as number)}`).join('')}</span>
               </button>
             ))}
             {hover !== null ? (
@@ -257,7 +297,7 @@ export function Chart({
                     <i style={{ background: `var(--nim-series-${line.series ?? ((lineIndex % 6) + 1)})` }} />
                     <span className="nim-chart__tip-name">{line.label}</span>
                     <span className="nim-chart__tip-value">
-                      {line.values[hover] === null ? '—' : number(line.values[hover] as number)}
+                      <bdi>{line.values[hover] == null || !Number.isFinite(line.values[hover]) ? '—' : number(line.values[hover] as number)}</bdi>
                     </span>
                   </span>
                 ))}
@@ -265,10 +305,10 @@ export function Chart({
             ) : null}
           </div>
 
-          <div aria-hidden="true" className="nim-chart__categories">
-            {categories.map((category, index) => (
-              <span className="nim-chart__category" key={index}>
-                {category}
+          <div aria-hidden="true" className="nim-chart__categories" data-sparse={maxXLabels ? 'true' : undefined}>
+            {visibleLabels.map((index) => (
+              <span className="nim-chart__category" key={index} style={maxXLabels ? { insetInlineStart: `${((index + 0.5) / Math.max(1, categories.length)) * 100}%` } : undefined}>
+                {formatCategory ? formatCategory(categories[index], index) : categories[index]}
               </span>
             ))}
           </div>
@@ -287,7 +327,10 @@ export function Chart({
       ) : null}
 
       {/* The numbers themselves, for anyone the picture does not reach. */}
-      <table className="nim-visually-hidden">
+      {footer ? <div className="nim-chart__note">{footer}</div> : null}
+      {dataTableLabel ? <button type="button" className="nim-chart__data-toggle" aria-controls={tableId} aria-expanded={showData} onClick={() => setShowData(!showData)}>{showData ? hideDataTableLabel : dataTableLabel}</button> : null}
+      <div className={showData ? 'nim-chart__data' : 'nim-visually-hidden'} id={tableId}>
+      <table>
         {title ? <caption>{title}</caption> : null}
         <thead>
           <tr>
@@ -305,13 +348,14 @@ export function Chart({
               <th scope="row">{category}</th>
               {series.map((line) => (
                 <td key={line.label}>
-                  {line.values[index] === null ? '—' : number(line.values[index] as number)}
+                  <bdi>{line.values[index] == null || !Number.isFinite(line.values[index]) ? '—' : number(line.values[index] as number)}</bdi>
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   )
 }

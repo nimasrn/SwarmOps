@@ -50,7 +50,7 @@ test('the information architecture is one source, and every screen is reachable 
   // contextual sidebar, the palette, and now every screen heading read it.
   assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 6, 'each page needs a summary and each of the 6 areas needs one too')
 
-  assert.match(console_, /navigation="rail"/)
+  assert.match(console_, /navigation="nested"/)
   assert.match(console_, /contextualGroups=\{contextualGroups\}/)
   assert.match(console_, /groups=\{areaGroups\}/)
   // Both tiers are built from AREAS, so they cannot disagree.
@@ -458,7 +458,7 @@ test('a screen that fails does not take the navigation with it', async () => {
   // Six crashes in this console did exactly that: the workspace went blank AND
   // the rail disappeared, leaving an operator with no way back and no sign
   // that anything had failed rather than finished loading.
-  assert.match(console_, /<ErrorBoundary resetKey=\{workspace\}>/)
+  assert.match(console_, /<ErrorBoundary resetKey=\{`\$\{workspace\}\/\$\{selectedRecordID\}\/\$\{route\.view\}`\}>/)
 
   // Around the workspace, never the shell. The chrome that lets someone leave
   // a broken screen has to outlive it, so a boundary wrapping AdminShell would
