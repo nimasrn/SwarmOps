@@ -17,13 +17,15 @@ import {
   StatusDot,
   Switch,
   Toolbar,
+  useToast,
 } from '@nim.zone/ui'
 import type { StatusTone } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { LogPage, LogStatus } from '../../data/types'
+import type { LogPage, LogStatus, ObservabilityStatus } from '../../data/types'
 import { formatBytes, formatDateTime } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
+import { shortID } from '../../lib/format'
 
 const SOURCE_OPTIONS = ['', 'container', 'host', 'docker', 'traefik', 'core', 'agent', 'fluentd']
   .map((value) => ({ label: value || 'All sources', value }))
@@ -55,9 +57,13 @@ const LEVEL_TONE: Record<string, StatusTone> = {
  * retention, or the bounded query route, and a screen that conflated them
  * would report "no logs" for a cluster that is simply not collecting any.
  */
-export function LogsPage() {
+export function LogsPage({ observability, toast }: {
+  observability: ObservabilityStatus | null
+  toast: ReturnType<typeof useToast>
+}) {
   const [page, setPage] = useState<LogPage>()
   const [status, setStatus] = useState<LogStatus>()
+  const [deploying, setDeploying] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
@@ -92,6 +98,22 @@ export function LogsPage() {
     return () => window.clearInterval(timer)
   }, [live, load])
 
+  // The banner used to name the stack an operator had to go and deploy from
+  // another screen. Deploying it is one queued command with no confirmation
+  // gate — it installs a collector, it does not remove one — so the screen
+  // that reports the gap also closes it.
+  const deployCollection = async () => {
+    setDeploying(true)
+    try {
+      const command = await api.logsCollection(true, '')
+      toast({ message: `Log collection deployment queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
+    } finally {
+      setDeploying(false)
+    }
+  }
+
   const update = (key: keyof typeof filters, value: string) => setFilters((current) => ({ ...current, [key]: value }))
   const records = page?.records ?? []
   const coverage = status ? `${status.forwarders} / ${status.expectedNodes || '?'}` : '—'
@@ -118,7 +140,21 @@ export function LogsPage() {
     >
       {error ? (
         <Banner title="Logs are unavailable; agent connectivity is evaluated separately" tone="danger">
-          {error}. This failure belongs to the bounded log route or collector pipeline; it does not by itself mean the outbound agent is disconnected. Check the connection indicator, then repair or install the reviewed SwarmOps Logs stack.
+          <Rows gap="tight">
+            <Body size="sm">
+              {error}. This failure belongs to the bounded log route or collector pipeline; it does not by itself
+              mean the outbound agent is disconnected.
+            </Body>
+            {observability && !observability.logsEnabled ? (
+              <Body size="sm">The reviewed SwarmOps Logs stack is not deployed on this cluster, which is enough on its own to explain it.</Body>
+            ) : null}
+            <Inline gap="tight">
+              <Button disabled={deploying} loading={deploying} onClick={() => void deployCollection()} variant="accent">
+                {observability && !observability.logsEnabled ? 'Install log collection' : 'Redeploy log collection'}
+              </Button>
+              <Button disabled={loading} onClick={() => void load()} variant="secondary">Try the query again</Button>
+            </Inline>
+          </Rows>
         </Banner>
       ) : null}
       {status?.warnings?.length

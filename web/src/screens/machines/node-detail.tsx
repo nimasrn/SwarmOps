@@ -23,7 +23,7 @@ import {
 import type { TableColumn } from '@nim.zone/ui'
 import type { Command, ContainerSummary, Node, Task } from '../../data/types'
 import { capitalize, formatBytes, formatDateTime, formatDuration, formatNumber, sentence, shortID } from '../../lib/format'
-import { hostProbeHealth, nodeHealth } from '../../lib/health'
+import { capacityMeasured, hostProbeHealth, nodeHealth } from '../../lib/health'
 import { StatusBadge } from '../../components/badges'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 
@@ -154,15 +154,15 @@ export function NodeDetailView({
                   { label: 'Kernel', mono: true, source: 'host probe', unmeasured: !node.kernel, value: node.kernel ?? 'not reported', why: 'the agent did not report a kernel version' },
                   { label: 'CPU', value: `${formatNumber(node.cpu.capacity)} cores` },
                   { label: 'Memory', value: formatBytes(node.memory.capacity) },
-                  { label: 'Storage', value: formatBytes(node.disk.capacity) },
+                  { label: 'Storage', source: 'host probe', unmeasured: !capacityMeasured(node.disk), value: capacityMeasured(node.disk) ? formatBytes(node.disk.capacity) : 'not measured', why: 'only the host probe reads the host filesystem' },
                   { label: 'Architecture', source: 'host probe', unmeasured: !node.platform.architecture, value: node.platform.architecture ?? 'not reported', why: 'the agent did not report an architecture' },
                   { label: 'Storage driver', source: 'docker info', unmeasured: !node.engine.driver, value: node.engine.driver ?? 'not reported', why: 'the Engine did not report a storage driver' },
                   { label: 'cgroup driver', source: 'docker info', unmeasured: !node.engine.cgroupDriver, value: node.engine.cgroupDriver ?? 'not reported', why: 'the Engine did not report a cgroup driver' },
                   { label: 'Uptime', value: formatDuration(node.uptimeSeconds) },
                 ]} />
               </Panel>
-              <Panel description="Draining moves running tasks off this node; pausing only stops new ones from arriving." title="Agent health and placement">
-                <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? 'Connected' : node.agent.error ?? 'Not configured'} />
+              <Panel description="Draining moves running tasks off this node; pausing only stops new ones from arriving." title="Host probe and placement">
+                <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? 'Reporting' : node.agent.error ?? 'Not installed'} />
                 <Facts columns={1} items={[
                   { label: 'Address', mono: true, value: node.agent.address ?? node.address ?? 'None advertised' },
                   { label: 'Version', mono: true, source: 'agent', unmeasured: !node.agent.version, value: node.agent.version ?? 'not reported', why: 'the agent has not reported a version' },

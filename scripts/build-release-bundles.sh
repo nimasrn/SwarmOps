@@ -121,5 +121,6 @@ fi
 install -m 0755 scripts/install-swarmops-agent.sh "$output_dir/install-swarmops-agent.sh"
 install -m 0755 scripts/bootstrap-swarmops-control-plane.sh "$output_dir/install-swarmops-core.sh"
 install -m 0755 scripts/repair-swarmops-core-updater.sh "$output_dir/repair-swarmops-core-updater.sh"
+install -m 0755 scripts/repair-swarmops-core-update-wiring.sh "$output_dir/repair-swarmops-core-update-wiring.sh"
 
 printf 'Built SwarmOps %s native release assets in %s\n' "$release_version" "$output_dir"

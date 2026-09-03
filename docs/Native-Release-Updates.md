@@ -121,6 +121,25 @@ delay:
 sudo systemctl start swarmops-core-warden.service
 ```
 
+The console can also ask for that check from Core settings. The controller
+writes a marker at `/var/lib/swarmops/update.request` and nothing else — it
+never downloads, verifies or restarts itself — and `swarmops-core-warden.path`
+runs the same Warden unit as soon as the marker appears. Warden consumes the
+marker and writes `/var/lib/swarmops/update-status.json`, which is what the
+console reads back as the last check, the available release, and the policy.
+
+Installs created before that wiring shipped have no request marker and no
+status file, so the console reports "This controller has no updater" and offers
+no button. The Core installer refuses to touch an existing controller, so those
+hosts are repaired with:
+
+```bash
+curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/repair-swarmops-core-update-wiring.sh | sudo bash
+```
+
+It writes the environment keys, installs the path unit, and restarts the
+controller; the console is briefly unavailable while it does.
+
 For a Core update, Warden downloads and checksum-verifies the candidate before it
 stops the local service. It atomically changes only the `current` symlink in
 the release directory, starts the fixed service, and waits for the local

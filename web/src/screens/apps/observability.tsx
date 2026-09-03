@@ -18,6 +18,7 @@ import type { Node, ObservabilityStatus, TraefikStatus } from '../../data/types'
 import { shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
+import { AssignStatefulPlacement, statefulPlacementReady } from '../../components/stateful-placement'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -42,7 +43,7 @@ export function TelemetryTab({ nodes, onOpenGateway, onOpenSwarm, status, toast,
   const [logRemovalRequested, setLogRemovalRequested] = useState(false)
 
   const gatewayInstalled = Boolean(traefik.service)
-  const statefulNodeReady = nodes.some((node) => node.state === 'ready' && node.availability === 'active' && node.labels?.['nim.stateful'] === 'true')
+  const statefulNodeReady = statefulPlacementReady(nodes)
   const coreBlockers = [
     ...(!gatewayInstalled ? ['Install the SwarmOps-managed Traefik gateway so private monitoring routes can be created.'] : []),
     ...(!statefulNodeReady ? ['Assign nim.stateful=true to at least one ready, active Swarm node for Prometheus, Alertmanager, and Jaeger placement.'] : []),
@@ -71,10 +72,12 @@ export function TelemetryTab({ nodes, onOpenGateway, onOpenSwarm, status, toast,
                 <List plain>
                   {coreBlockers.map((blocker) => <ListRow key={blocker} subtitle={blocker} title="Required before deployment" />)}
                 </List>
-                <Inline>
-                  <Button onClick={onOpenGateway} size="sm" variant="secondary">Open gateway setup</Button>
-                  <Button onClick={onOpenSwarm} size="sm" variant="secondary">Open Swarm placement</Button>
-                </Inline>
+                {!statefulNodeReady ? <AssignStatefulPlacement nodes={nodes} onOpenSwarm={onOpenSwarm} toast={toast} /> : null}
+                {!gatewayInstalled ? (
+                  <Inline>
+                    <Button onClick={onOpenGateway} size="sm" variant="secondary">Open gateway setup</Button>
+                  </Inline>
+                ) : null}
               </Rows>
             </Banner>
           ) : null}

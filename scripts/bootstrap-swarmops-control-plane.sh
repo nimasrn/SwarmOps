@@ -13,6 +13,13 @@ service_name="swarmops-control-plane.service"
 service_user="swarmops"
 warden_service_name="swarmops-core-warden.service"
 warden_timer_name="swarmops-core-warden.timer"
+warden_path_name="swarmops-core-warden.path"
+# The console asks for an update by writing a marker; Warden consumes it. Both
+# files live in the state directory the controller already owns, so asking for
+# an update needs no extra write path and no privilege the controller lacks.
+update_request_file="$state_dir/update.request"
+update_status_file="$state_dir/update-status.json"
+update_busy_file="$state_dir/update.busy"
 github_repository="nimasrn/SwarmOps"
 release_version="latest"
 install_dependencies=false
@@ -520,6 +527,9 @@ write_environment_file() {
       "SWARMOPS_ALLOWED_CLIENT_CIDRS=$all_cidrs" \
       "SWARMOPS_DATA_DIR=$state_dir" \
       "SWARMOPS_ASSET_DIR=$release_dir/current/assets" \
+      "SWARMOPS_CORE_RELEASE_DIR=$release_dir" \
+      "SWARMOPS_CORE_UPDATE_REQUEST_FILE=$update_request_file" \
+      "SWARMOPS_CORE_UPDATE_STATUS_FILE=$update_status_file" \
       'SWARMOPS_MUTATIONS_ENABLED=false' \
       'SWARMOPS_BUILD_ENABLED=false' \
       'SWARMOPS_INSECURE_DEV_AUTH=false' \
@@ -598,6 +608,9 @@ write_warden_service() {
       "SWARMOPS_WARDEN_RELEASE_DIR=$release_dir" \
       "SWARMOPS_WARDEN_HEALTH_URL=$health_url" \
       "SWARMOPS_WARDEN_SERVICE=$service_name" \
+      "SWARMOPS_WARDEN_BUSY_FILE=$update_busy_file" \
+      "SWARMOPS_WARDEN_REQUEST_FILE=$update_request_file" \
+      "SWARMOPS_WARDEN_STATUS_FILE=$update_status_file" \
       'SWARMOPS_WARDEN_HEALTH_TIMEOUT=45s' \
       'SWARMOPS_WARDEN_HEALTH_INTERVAL=1s'
   } >"$temporary"
@@ -619,7 +632,7 @@ write_warden_service() {
       'PrivateTmp=yes' \
       'ProtectHome=yes' \
       'ProtectSystem=full' \
-      "ReadWritePaths=$release_dir" \
+      "ReadWritePaths=$release_dir $state_dir" \
       'UMask=0077'
   } | install -o root -g root -m 0644 /dev/stdin "/etc/systemd/system/$warden_service_name"
 
@@ -637,6 +650,22 @@ write_warden_service() {
       '[Install]' \
       'WantedBy=timers.target'
   } | install -o root -g root -m 0644 /dev/stdin "/etc/systemd/system/$warden_timer_name"
+
+  # Without this unit the console's "Check for an update" button would write a
+  # marker that nothing reads until the twelve-hour timer next fires, which is
+  # indistinguishable from a button that does nothing.
+  {
+    printf '%s\n' \
+      '[Unit]' \
+      'Description=Run the SwarmOps Core update check requested from the console' \
+      '' \
+      '[Path]' \
+      "PathExists=$update_request_file" \
+      "Unit=$warden_service_name" \
+      '' \
+      '[Install]' \
+      'WantedBy=multi-user.target'
+  } | install -o root -g root -m 0644 /dev/stdin "/etc/systemd/system/$warden_path_name"
 }
 
 wait_for_service() {
@@ -769,6 +798,7 @@ write_warden_service "$port"
 systemctl daemon-reload
 systemctl enable --now "$service_name"
 systemctl enable --now "$warden_timer_name"
+systemctl enable --now "$warden_path_name"
 bootstrap_phase='waiting for Core readiness'
 info 'Waiting for the local Core readiness check.'
 wait_for_service

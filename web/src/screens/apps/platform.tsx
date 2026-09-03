@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Banner, Segmented, useToast } from '@nim.zone/ui'
+import { Banner, Body, Segmented, Stack as Rows, useToast } from '@nim.zone/ui'
 import type { Node, ObservabilityStatus, TraefikStatus } from '../../data/types'
 import { Screen } from '../../components/screen'
+import { AssignStatefulPlacement } from '../../components/stateful-placement'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { DatabasesTab } from './databases'
 import { TelemetryTab } from './observability'
@@ -83,8 +84,13 @@ export function PlatformServicesPage({ nodes, onOpen, status, toast, traefik }: 
     >
       {stateful.length === 0 ? (
         <Banner title="No node can hold data yet" tone="warning">
-          A managed database is pinned to a node labelled <code>nim.stateful=true</code>, so that its volume and its
-          scheduler agree on where the data lives. Label a node in Swarm before deploying one.
+          <Rows gap="tight">
+            <Body size="sm">
+              A managed database is pinned to a node labelled <code>nim.stateful=true</code>, so that its volume and
+              its scheduler agree on where the data lives.
+            </Body>
+            <AssignStatefulPlacement nodes={nodes} onOpenSwarm={() => onOpen('swarm')} toast={toast} />
+          </Rows>
         </Banner>
       ) : null}
 

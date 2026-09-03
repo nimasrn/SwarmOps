@@ -11,17 +11,19 @@ import {
   Mono,
   Panel,
   RecordLink,
+  Stack as Rows,
   StatusDot,
   useToast,
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { Command, ContainerDetail, ContainerStats, ContainerSummary, Node, Overview, Task } from '../../data/types'
+import type { Command, ContainerDetail, ContainerStats, ContainerSummary, Node, ObservabilityStatus, Overview, Task } from '../../data/types'
 import { capitalize, formatBytes, formatDateTime, formatNumber, sentence, shortID } from '../../lib/format'
-import { hostProbeHealth, isPending, nodeHealth } from '../../lib/health'
+import { capacityMeasured, hostProbeHealth, hostProbeLabel, isPending, nodeHealth } from '../../lib/health'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { StatusBadge } from '../../components/badges'
+import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { ClusterTopologyPanel } from './cluster-topology'
 import { ContainerDetailView } from './container-detail'
 import { NodeDetailView } from './node-detail'
@@ -43,6 +45,7 @@ export function SwarmPage({
   nodes,
   onAddNode,
   onDiagnostics,
+  observability,
   onOpenLogs,
   onReadiness,
   overview,
@@ -50,6 +53,7 @@ export function SwarmPage({
 }: {
   commands: Command[]
   nodes: Node[]
+  observability: ObservabilityStatus | null
   onAddNode: () => void
   onDiagnostics: () => void
   onOpenLogs: () => void
@@ -220,6 +224,23 @@ export function SwarmPage({
   }
 
   const attention = nodes.filter((node) => nodeHealth(node) !== 'healthy')
+  const unprobed = nodes.filter((node) => hostProbeHealth(node) === 'unknown')
+
+  // The stack this installs is the one the Platform screen owns; the button is
+  // repeated here because this is the screen that shows the gap it explains,
+  // and sending an operator to another screen to type the same phrase is not a
+  // different decision.
+  const installHostProbe = async () => {
+    setBusy(true)
+    try {
+      const command = await api.nodeAgentCollection(true, 'INSTALL_NODE_AGENT')
+      toast({ message: `Node inventory agent installation queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
+    } finally {
+      setBusy(false)
+    }
+  }
   const pending = commands.filter(isPending).slice(0, 6)
   const ready = nodes.filter((node) => nodeHealth(node) === 'healthy').length
 
@@ -227,11 +248,11 @@ export function SwarmPage({
     { header: 'Name / IP', key: 'node', render: (node) => <RecordLink meta={node.address ?? shortID(node.id)} onClick={() => setSelectedID(node.id)} title={node.hostname} /> },
     { header: 'Role', key: 'role', render: (node) => <span>{node.role}{node.manager?.leader ? ' · leader' : ''}</span> },
     { header: 'Availability', key: 'availability', render: (node) => capitalize(node.availability) },
-    { header: 'Agent', key: 'agent', render: (node) => <StatusBadge health={hostProbeHealth(node)} label={node.agent.healthy ? node.agent.version || 'Online' : node.agent.error ? 'Unavailable' : 'Not configured'} /> },
+    { header: 'Host probe', key: 'agent', render: (node) => <StatusBadge health={hostProbeHealth(node)} label={hostProbeLabel(node)} /> },
     { header: 'Docker', key: 'docker', render: (node) => <Mono>{node.engine.version ?? node.dockerVersion ?? 'not reported'}</Mono> },
     { header: 'CPU', key: 'cpu', numeric: true, render: (node) => `${formatNumber(node.cpu.capacity)} cores` },
-    { header: 'Memory', key: 'memory', render: (node) => `${formatBytes(node.memory.used)} / ${formatBytes(node.memory.capacity)}` },
-    { header: 'Disk', key: 'disk', render: (node) => `${formatBytes(node.disk.used)} / ${formatBytes(node.disk.capacity)}` },
+    { header: 'Memory', key: 'memory', render: (node) => capacityMeasured(node.memory) ? `${formatBytes(node.memory.used)} / ${formatBytes(node.memory.capacity)}` : `${formatBytes(node.memory.capacity)} capacity · usage unmeasured` },
+    { header: 'Disk', key: 'disk', render: (node) => capacityMeasured(node.disk) ? `${formatBytes(node.disk.used)} / ${formatBytes(node.disk.capacity)}` : 'Unmeasured' },
     { header: 'Last seen', key: 'seen', render: (node) => node.agent.collectedAt ? formatDateTime(node.agent.collectedAt) : 'no probe' },
   ]
 
@@ -269,12 +290,29 @@ export function SwarmPage({
                     key={node.id}
                     leading={<StatusDot tone={node.state !== 'ready' ? 'danger' : 'warning'}>{node.hostname}</StatusDot>}
                     subtitle={node.agent.error ?? `${capitalize(node.state)} · ${capitalize(node.availability)}`}
-                    title={hostProbeHealth(node) === 'degraded' ? 'Agent unreachable' : 'Node needs review'}
+                    title={hostProbeHealth(node) === 'degraded' ? 'Host probe unreachable' : 'Node needs review'}
                   />
                 ))}
               </List>
             )
             : <StatusDot tone="success">No node needs attention</StatusDot>}
+          {unprobed.length > 0 && observability && !observability.agentInstalled ? (
+            <Rows gap="tight">
+              <Body size="sm">
+                {unprobed.length} of {nodes.length} nodes report no host probe, so memory usage and disk are
+                unmeasured here. That is separate from the enrolled agent's connection, which the header states on
+                its own.
+              </Body>
+              <ConfirmPhrase
+                action="Install host probe"
+                busy={busy}
+                consequence="A read-only agent is installed on every node with a read-only Docker socket and a host-root mount. It reads; it never writes."
+                onConfirm={() => void installHostProbe()}
+                phrase="INSTALL_NODE_AGENT"
+                variant="accent"
+              />
+            </Rows>
+          ) : null}
           <Inline>
             <Button onClick={onDiagnostics} size="sm" variant="secondary">Diagnostics</Button>
             <Button onClick={onReadiness} size="sm" variant="ghost">Host setup</Button>

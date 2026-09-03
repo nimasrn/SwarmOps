@@ -120,6 +120,11 @@ export function DeploymentPlan({
                   <Label>Slot</Label>
                   {approved.length > 0 ? <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder={slotCreatable ? 'Reviewed slot' : 'Slot'} value={approved.some((slot) => slot.name === slotName) ? slotName : ''} /> : null}
                   {slotCreatable ? <Input aria-label="Application name" onChange={(event) => onChooseSlot(event.target.value)} placeholder="Name" value={slotName} /> : null}
+                  {/* Neither control renders when no slot is approved and none
+                      may be declared. A bare "Slot" label there reads as a
+                      control that failed to load, and the review step used to
+                      send the operator here to use it. */}
+                  {approved.length === 0 && !slotCreatable ? <Body size="sm">None to choose — see Review</Body> : null}
                 </Inline>
               }
             />

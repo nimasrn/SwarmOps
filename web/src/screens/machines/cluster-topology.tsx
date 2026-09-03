@@ -1,7 +1,7 @@
 import { Body, Facts, Icon, Metric, MetricGrid, Mono, Panel, StatusDot } from '@nim.zone/ui'
 import type { Node, Overview } from '../../data/types'
 import { formatBytes, formatNumber, shortID } from '../../lib/format'
-import { nodeHealth } from '../../lib/health'
+import { capacityMeasured, hostProbeHealth, nodeHealth } from '../../lib/health'
 
 /**
  * The cluster drawn as the path a scheduling decision takes: the manager, the
@@ -17,9 +17,13 @@ import { nodeHealth } from '../../lib/health'
 export function ClusterTopologyPanel({ nodes, overview }: { nodes: Node[]; overview: Overview }) {
   const manager = nodes.find((node) => node.manager?.leader) ?? nodes.find((node) => node.role === 'manager')
   const workers = nodes.filter((node) => node.id !== manager?.id)
+  // The enrolled agent's connection is stated in the shell header. This dot is
+  // the host probe, which can be absent on a cluster whose agent is connected,
+  // so it says which of the two it is naming.
+  const probe = manager ? hostProbeHealth(manager) : 'unknown'
 
   return (
-    <Panel description="Read left to right: the manager, the agent answering for it, the quorum that authorises a change, and the workers it can place onto." flush title="Cluster topology">
+    <Panel description="Read left to right: the manager, the host probe reporting for it, the quorum that authorises a change, and the workers it can place onto." flush title="Cluster topology">
       <div className="nim-cluster-topology__body">
         <div className="nim-cluster-topology__flow">
           <div className="nim-cluster-topology__node">
@@ -31,7 +35,9 @@ export function ClusterTopologyPanel({ nodes, overview }: { nodes: Node[]; overv
           </div>
           <span aria-hidden="true" className="nim-cluster-topology__connector" />
           <div className="nim-cluster-topology__state">
-            <StatusDot tone={manager?.agent.healthy ? 'success' : 'warning'}>{manager?.agent.healthy ? 'Agent connected' : 'Agent unavailable'}</StatusDot>
+            <StatusDot tone={probe === 'healthy' ? 'success' : probe === 'degraded' ? 'warning' : 'neutral'}>
+              {probe === 'healthy' ? 'Host probe reporting' : probe === 'degraded' ? 'Host probe unreachable' : 'Host probe not installed'}
+            </StatusDot>
           </div>
           <span aria-hidden="true" className="nim-cluster-topology__connector" />
           <div className="nim-cluster-topology__state">
@@ -64,7 +70,7 @@ export function ClusterTopologyPanel({ nodes, overview }: { nodes: Node[]; overv
         <MetricGrid columns={6} dense>
           <Metric label="CPU cores" value={formatNumber(overview.summary.totalCpu.capacity)} />
           <Metric label="Memory" value={formatBytes(overview.summary.totalMemory.capacity)} />
-          <Metric label="Disk" value={formatBytes(overview.summary.totalDisk.capacity)} />
+          <Metric label="Disk" value={capacityMeasured(overview.summary.totalDisk) ? formatBytes(overview.summary.totalDisk.capacity) : 'Unmeasured'} />
           <Metric label="Nodes" value={String(overview.summary.nodes)} />
           <Metric label="Services" value={String(overview.summary.services)} />
           <Metric label="Running tasks" value={String(overview.summary.runningTasks)} />

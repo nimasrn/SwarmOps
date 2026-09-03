@@ -117,3 +117,57 @@ func TestCoreReleaseCarriesEveryCollectorConfig(t *testing.T) {
 		}
 	}
 }
+
+// The console hides the update button unless the controller was told where its
+// updater's request marker lives, and Warden ignores that marker unless it was
+// told the same path. Both halves plus the path unit that runs the check
+// immediately are one contract: any of them missing is an update button that
+// does nothing.
+func TestCoreInstallerWiresTheConsoleUpdateButton(t *testing.T) {
+	data, err := os.ReadFile("bootstrap-swarmops-control-plane.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		`SWARMOPS_CORE_RELEASE_DIR=$release_dir`,
+		`SWARMOPS_CORE_UPDATE_REQUEST_FILE=$update_request_file`,
+		`SWARMOPS_CORE_UPDATE_STATUS_FILE=$update_status_file`,
+		`SWARMOPS_WARDEN_REQUEST_FILE=$update_request_file`,
+		`SWARMOPS_WARDEN_STATUS_FILE=$update_status_file`,
+		`PathExists=$update_request_file`,
+		`ReadWritePaths=$release_dir $state_dir`,
+		`systemctl enable --now "$warden_path_name"`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Core installer is missing update-wiring contract %q", required)
+		}
+	}
+}
+
+// Installs made before that wiring existed cannot be repaired by re-running the
+// installer: it refuses to touch an existing controller. The repair script is
+// the only path for them, so it has to carry the same keys.
+func TestCoreUpdateWiringRepairCarriesTheSameContract(t *testing.T) {
+	data, err := os.ReadFile("repair-swarmops-core-update-wiring.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		`SWARMOPS_CORE_UPDATE_REQUEST_FILE`,
+		`SWARMOPS_CORE_UPDATE_STATUS_FILE`,
+		`SWARMOPS_WARDEN_REQUEST_FILE`,
+		`SWARMOPS_WARDEN_STATUS_FILE`,
+		`PathExists=$update_request_file`,
+		`systemctl enable --now "$warden_path_name"`,
+		`systemctl restart "$service_name"`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Core update wiring repair is missing contract %q", required)
+		}
+	}
+	if output, err := exec.Command("bash", "-n", "repair-swarmops-core-update-wiring.sh").CombinedOutput(); err != nil {
+		t.Fatalf("Core update wiring repair is not valid Bash: %v\n%s", err, output)
+	}
+}

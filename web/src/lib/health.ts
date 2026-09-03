@@ -1,5 +1,5 @@
 import type { StatusTone } from '@nim.zone/ui'
-import type { Command, Health, Node, Server } from '../data/types'
+import type { Capacity, Command, Health, Node, Server } from '../data/types'
 
 /**
  * The rules that turn raw state into the words this console is allowed to say.
@@ -23,6 +23,30 @@ export function nodeHealth(node: Node): 'healthy' | 'degraded' | 'unhealthy' {
 export function hostProbeHealth(node: Node): 'healthy' | 'degraded' | 'unknown' {
   if (node.agent.healthy) return 'healthy'
   return node.agent.address || node.agent.error ? 'degraded' : 'unknown'
+}
+
+/**
+ * What the host probe's state is called, everywhere it is named.
+ *
+ * "Agent" is already the word for the enrolled outbound agent, which is a
+ * different thing that can be connected while this one is absent — the state
+ * this cluster is in. The probe is therefore named the host probe, and its
+ * absence is called "not installed" rather than "not configured": there is no
+ * configuration an operator is missing, there is a stack that was never
+ * deployed.
+ */
+export function hostProbeLabel(node: Node) {
+  if (node.agent.healthy) return node.agent.version || 'Online'
+  return node.agent.error ? 'Unreachable' : 'Not installed'
+}
+
+/**
+ * Docker reports a node's CPU and memory capacity; only the host probe reports
+ * what is used, and disk at all. A zero from an absent probe is not a
+ * measurement, and printing it as `0 B` states a reading that was never taken.
+ */
+export function capacityMeasured(value: Capacity) {
+  return value.used > 0 || value.available > 0
 }
 
 export function serverHealth(server: Server): Health {

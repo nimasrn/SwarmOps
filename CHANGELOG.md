@@ -11,6 +11,57 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.0 — 2026-09-04
+
+Four screens named a prerequisite and then sent the operator somewhere else to
+satisfy it. Each one now satisfies it where it is stated, and the one that
+could not — because the controller was never wired to update itself — is
+wired.
+
+- **A blocker carries its own fix** — the telemetry screen's "assign
+  `nim.stateful=true` to a ready, active node" is a button that labels one.
+  The candidate is chosen the way the reference topology chooses it: a node
+  already carrying `nim.control`, then `nim.edge`, then the most free disk,
+  with the hostname breaking the tie so the same cluster always suggests the
+  same node. Choosing a different node is still one click away, and a cluster
+  with no ready, active node says that instead of offering a button that would
+  fail. The Platform screen's "no node can hold data yet" banner carries the
+  same button, and the Logs screen's failure banner installs or redeploys the
+  reviewed Fluentd stack rather than naming it.
+- **The host probe is no longer called the agent** — the enrolled outbound
+  agent can be connected on a cluster where the optional host probe was never
+  installed, and both were labelled "Agent", so the console contradicted itself
+  on two screens at once. The probe is now named as itself everywhere, its
+  absence reads "Not installed" rather than "Not configured", and the Swarm
+  screen's attention panel installs it under the existing
+  `INSTALL_NODE_AGENT` confirmation.
+- **An unmeasured figure is not printed as zero** — Docker reports a node's CPU
+  and memory capacity; only the host probe reports usage, and disk at all. A
+  cluster without the probe showed `0 B / 0 B` of disk and `0 B` of memory used,
+  which are readings that were never taken. They now say so, in the node table,
+  the fleet capacity strip, and the node's own facts.
+- **Core can be updated from Core settings** — the control-plane installer
+  wired Warden to a repository, a release directory and a health URL, but never
+  to a request marker or a status file, and never told the controller where
+  either lives. The console reads exactly that to decide whether an updater
+  exists, so it reported "no updater" on every installed controller and hid the
+  button. The installer now sets both halves, widens Warden's write path to the
+  state directory, and installs `swarmops-core-warden.path` so a requested
+  check runs immediately instead of waiting for the twelve-hour timer.
+- **Existing controllers have a repair** — the installer refuses to overwrite
+  an existing controller, so `repair-swarmops-core-update-wiring.sh` ships as a
+  release asset for hosts installed before that wiring. It writes the
+  environment keys, installs the path unit, and restarts the controller. The
+  console's dead-end banner names that command instead of suggesting an
+  installer run that would be refused.
+- **A deployment cannot be mapped to a slot that cannot exist** — a controller
+  with no platform definition rendered a review step reading "choose an approved
+  application slot in the deployment plan beside this page" next to a plan that
+  had no slot control at all, because there was nothing to list and nothing the
+  operator was allowed to name. The review step now states that, and opens the
+  platform definition; the plan says why the control is absent instead of
+  showing a label with nothing under it.
+
 ## 0.18.0 — 2026-09-03
 
 Deploying a repository for the first time no longer stops at a screen that

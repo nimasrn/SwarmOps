@@ -174,6 +174,7 @@ function PageRouterContent(props: PageRouterProps) {
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
           onOpenImages={() => onOpen('images')}
+          onOpenPlatform={() => onOpen('platform')}
           onOpenWorkloads={() => onOpen('workloads')}
           toast={toast}
         />
@@ -231,6 +232,7 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
         <SwarmPage
           commands={commands}
           nodes={data.nodes}
+          observability={data.observability}
           onAddNode={() => onOpen('machines')}
           onDiagnostics={() => onOpen('machines')}
           onOpenLogs={() => onOpen('logs')}
@@ -266,7 +268,7 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
     case 'tls':
       return <TraefikControlPage initialTab="certificates" status={data.traefik} toast={toast} />
     case 'logs':
-      return <LogsPage />
+      return <LogsPage observability={data.observability} toast={toast} />
     case 'containers':
       return <ContainersPage onOpen={onOpen} toast={toast} />
     case 'storage':

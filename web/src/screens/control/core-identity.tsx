@@ -116,8 +116,18 @@ export function CoreIdentityPanels({ toast }: { toast: Toast }) {
       >
         {!self.update.configured ? (
           <Banner title="This controller has no updater" tone="neutral">
-            It was started from a source checkout or without the release installer, so there is nothing here to
-            schedule. Installing from the release installer gives it one.
+            <Rows gap="tight">
+              <Body size="sm">
+                Nothing here can be scheduled: this process was not told where an update request marker or status
+                file lives. A source checkout has neither by design.
+              </Body>
+              <Body size="sm">
+                An installed controller from before this wiring shipped also reports it. The installer refuses to
+                touch an existing controller, so the repair is one command on the Core host — it writes the
+                environment keys, adds the path unit, and restarts the controller:
+              </Body>
+              <Mono>curl -fsSL https://github.com/nimasrn/SwarmOps/releases/latest/download/repair-swarmops-core-update-wiring.sh | sudo bash</Mono>
+            </Rows>
           </Banner>
         ) : (
           <Rows gap="tight">

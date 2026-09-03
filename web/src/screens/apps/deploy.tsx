@@ -72,6 +72,8 @@ interface DeployPageProps {
   /** Where the push registry is configured, now that it is not part of the
       source boundary. */
   onOpenImages?: () => void
+  /** Where a slot is declared, for the install whose plan cannot offer one. */
+  onOpenPlatform?: () => void
   /** Where the Kubernetes reader hands its generated Compose off to. */
   onOpenWorkloads?: () => void
   toast: ReturnType<typeof useToast>
@@ -97,7 +99,7 @@ const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
   { label: 'Gitea or Forgejo', value: 'gitea' },
 ]
 
-export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloads, toast }: DeployPageProps) {
+export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatform, onOpenWorkloads, toast }: DeployPageProps) {
   const [source, setSource] = useState<DeploySource>('repository')
   const [status, setStatus] = useState<SourceStatus | null>(null)
   const [connections, setConnections] = useState<SourceConnection[]>([])
@@ -749,7 +751,17 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
               <Panel caption="Review and map services" marker="3" title="Review">
                 <Rows>
                   {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to load the reviewed application slots and queue a deployment.</Banner> : null}
-                  {managerID && !slotCreatable && approved.length === 0 ? <Banner title="No application slots are approved" tone="warning">{platform?.fileManaged ? 'This controller loads its manifest from a file, so the slot has to be declared there. Add an application-profile workload to the mounted manifest, then reconnect the selected manager.' : 'This controller has no platform definition to declare a slot in. Choose one in Platform → Platform definition, then reconnect the selected manager.'}</Banner> : null}
+                  {managerID && !slotCreatable && approved.length === 0 ? (
+                    <Banner
+                      action={!platform?.fileManaged && onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Open platform definition</Button> : undefined}
+                      title="There is no slot to map this service to"
+                      tone="warning"
+                    >
+                      {platform?.fileManaged
+                        ? <>This controller loads its manifest from <Mono>{platform.manifestPath || 'a mounted file'}</Mono>, so a slot can only be declared there. Add an application-profile workload to that file, then reconnect the selected manager.</>
+                        : 'This controller has no platform definition, so the deployment plan has no slot to offer and no name it may declare. Choose a definition first; the plan then lists its slots.'}
+                    </Banner>
+                  ) : null}
                   {managerID && !unmanaged && slotCreatable && !reviewedSlot && selectedSlot ? <Banner title="This deployment declares a new slot" tone="info">No reviewed slot is named <Mono>{selectedSlot.name}</Mono>, so releasing writes one into the platform definition with the domain and ceiling below. It is checked like any other: a hostname another workload owns is refused rather than taken.</Banner> : null}
                   {unmanaged ? <Banner title="This install has no platform manifest" tone="warning">Slot enforcement is off by declaration, so the name, domain, and reservation below are not checked against a reviewed list. Everything deploys inside the <Mono>{platform?.namespace}</Mono> namespace.</Banner> : null}
                   <Columns>
@@ -759,7 +771,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
                         { label: 'Resource ceiling', value: `${selectedSlot.replicas} replica${selectedSlot.replicas === 1 ? '' : 's'} · ${selectedSlot.cpuCores} vCPU · ${selectedSlot.memoryMiB} MiB` },
                         { label: 'Certificate resolver', value: selectedSlot.resolver || 'None configured' },
                         { label: 'Domain policy', value: sourceDomainPolicy(selectedSlot) },
-                      ]} /> : <Banner title={slotCreatable ? 'Name the application' : 'Map the service to a slot'} tone="info">{slotCreatable ? 'Name this deployment in the deployment plan beside this page. An existing slot is reused; any other name becomes a new one.' : 'Choose an approved application slot in the deployment plan beside this page.'}</Banner>}
+                      ]} /> : approved.length === 0 && !slotCreatable ? null : <Banner title={slotCreatable ? 'Name the application' : 'Map the service to a slot'} tone="info">{slotCreatable ? 'Name this deployment in the deployment plan beside this page. An existing slot is reused; any other name becomes a new one.' : 'Choose an approved application slot from the Slot list in the deployment plan beside this page.'}</Banner>}
                       {newSlot ? (
                         <Columns>
                           <Input hint={unmanaged ? "Nothing reviews this ceiling; the cluster's own capacity decides whether Swarm can schedule it." : 'This becomes the new slot’s reviewed ceiling, and every later deployment into it is held to exactly this.'} label="Replicas" min="1" onChange={(event) => setFreeReplicas(event.target.value)} type="number" value={freeReplicas} />
