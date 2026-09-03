@@ -11,6 +11,28 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.1 — 2026-09-04
+
+The deployment screen's new "there is no slot to map this service to" banner
+sent the operator to a screen that opened on the wrong tab, and named neither
+of the two things that actually unblock a deployment.
+
+- **Platform definition is a destination** — it was a third tab on Platform
+  services, which opens on Databases, so "open platform definition" landed an
+  operator one tab away from the thing they were sent for. It is now its own
+  page under Apps, reachable from search and from the deployment screen.
+- **The banner names both answers** — a controller with no definition can
+  author a manifest here, and the deployment then declares its own slot inside
+  it, or declare the install manifest-free with the typed confirmation and
+  have slot enforcement deliberately off. Neither was stated; "choose a
+  definition first" was.
+- **A node with no measured availability says so when it is imported** —
+  importing measured nodes from a cluster without the host probe loaded zeroes,
+  and preflight then refused the manifest with "available CPU, memory, and disk
+  must be measured before deployment": a manifest error that is not in the
+  manifest. The import now names the nodes that reported nothing and what
+  measures them.
+
 ## 0.19.0 — 2026-09-04
 
 Four screens named a prerequisite and then sent the operator somewhere else to

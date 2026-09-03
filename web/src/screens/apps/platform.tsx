@@ -26,14 +26,15 @@ type PlatformTab = 'data' | 'telemetry' | 'admission'
  * Deploy substitutes these for them, and this is the screen that explains what
  * it substituted.
  */
-export function PlatformServicesPage({ nodes, onOpen, status, toast, traefik }: {
+export function PlatformServicesPage({ initialTab = 'data', nodes, onOpen, status, toast, traefik }: {
+  initialTab?: PlatformTab
   nodes: Node[]
   onOpen: (page: WorkspacePage) => void
   status: ObservabilityStatus | null
   toast: Toast
   traefik: TraefikStatus | null
 }) {
-  const [tab, setTab] = useState<PlatformTab>('data')
+  const [tab, setTab] = useState<PlatformTab>(initialTab)
   const stateful = nodes.filter((node) => node.labels?.['nim.stateful'] === 'true')
 
   return (

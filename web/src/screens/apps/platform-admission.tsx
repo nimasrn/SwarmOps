@@ -164,6 +164,19 @@ export function PlatformAdmissionTab({ toast }: { toast: Toast }) {
     try {
       const nodes = await api.platformNodes()
       patch({ nodes })
+      // Docker reports a node's physical capacity; availability comes from the
+      // host probe. Importing zeroes and letting preflight refuse them with
+      // "available CPU, memory, and disk must be measured" sends the operator
+      // looking for a manifest mistake that is not in the manifest.
+      const unmeasured = nodes.filter((node) => !node.availableCPUCores || !node.availableMemoryMiB || !node.availableDiskGiB)
+      if (unmeasured.length) {
+        toast({
+          duration: 0,
+          message: `${unmeasured.map((node) => node.name).join(', ')} reported no available capacity. Only the host probe measures usage and disk, so install the node inventory agent on Platform → Metrics, traces & logs, then import again — preflight refuses a node whose availability is zero.`,
+          tone: 'danger',
+        })
+        return
+      }
       toast({ message: `Measured ${nodes.length} node${nodes.length === 1 ? '' : 's'} from the selected cluster`, tone: 'success' })
     } catch (failure) {
       setError(messageOf(failure))

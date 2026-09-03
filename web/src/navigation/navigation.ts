@@ -28,6 +28,7 @@ export type WorkspacePage =
   | 'applications'
   | 'deploy'
   | 'platform'
+  | 'platform-definition'
   | 'images'
   | 'workloads'
   // Machines — the hosts, their agents, and the cluster they form.
@@ -106,6 +107,7 @@ export const AREAS: AreaEntry[] = [
       { icon: 'layers', key: 'applications', label: 'Applications', summary: 'The products you operate as one lifecycle.', keywords: 'apps workload product service', views: ['overview', 'releases', 'resources', 'traffic'] },
       { icon: 'play', key: 'deploy', label: 'Deploy', summary: 'Build a repository, archive, or image and roll it out.', keywords: 'ship release rollout git build source kubernetes import' },
       { icon: 'database', key: 'platform', label: 'Platform services', summary: 'One database, one Prometheus, one Jaeger — shared by every app.', keywords: 'postgres mongo redis prometheus jaeger observability collectors databases' },
+      { icon: 'settings', key: 'platform-definition', label: 'Platform definition', summary: 'What a browser deployment is admitted against, before it runs.', keywords: 'manifest admission namespace registry resolvers slots unmanaged preflight' },
       { icon: 'package', key: 'images', label: 'Images & registries', summary: 'What was built, and where it is pushed and pulled from.', keywords: 'docker image tag digest builds ghcr registry credentials' },
       { icon: 'terminal', key: 'workloads', label: 'Stacks & services', summary: 'The Swarm objects underneath an application.', keywords: 'compose namespace stack replicas tasks scale advanced' },
     ],
@@ -265,7 +267,7 @@ export const LEGACY_ROUTES: Record<string, WorkspacePage> = {
  */
 export const CLUSTER_PAGES: ReadonlySet<WorkspacePage> = new Set<WorkspacePage>([
   'applications', 'containers', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'platform',
-  'routes', 'storage', 'swarm', 'tls', 'workloads',
+  'platform-definition', 'routes', 'storage', 'swarm', 'tls', 'workloads',
 ])
 
 const AREA_BY_SHORTCUT = new Map(AREAS.map((area) => [area.shortcut, area]))

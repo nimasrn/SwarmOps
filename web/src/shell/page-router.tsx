@@ -174,7 +174,7 @@ function PageRouterContent(props: PageRouterProps) {
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
           onOpenImages={() => onOpen('images')}
-          onOpenPlatform={() => onOpen('platform')}
+          onOpenPlatform={() => onOpen('platform-definition')}
           onOpenWorkloads={() => onOpen('workloads')}
           toast={toast}
         />
@@ -244,8 +244,10 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
     case 'workloads':
       return <WorkloadsPage data={data} onOpen={onOpen} toast={toast} />
     case 'platform':
+    case 'platform-definition':
       return (
         <PlatformServicesPage
+          initialTab={workspace === 'platform-definition' ? 'admission' : 'data'}
           nodes={data.nodes}
           onOpen={onOpen}
           status={data.observability}

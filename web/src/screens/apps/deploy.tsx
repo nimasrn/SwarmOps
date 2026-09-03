@@ -759,7 +759,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
                     >
                       {platform?.fileManaged
                         ? <>This controller loads its manifest from <Mono>{platform.manifestPath || 'a mounted file'}</Mono>, so a slot can only be declared there. Add an application-profile workload to that file, then reconnect the selected manager.</>
-                        : 'This controller has no platform definition, so the deployment plan has no slot to offer and no name it may declare. Choose a definition first; the plan then lists its slots.'}
+                        : <>This controller has no platform definition, so nothing decides what a browser deployment may be named, claim, or reserve — and the plan has no slot to offer and no name it may declare. Two answers unblock it, both on Platform definition: author a manifest here, and this deployment declares its own slot inside it; or declare this install manifest-free with the typed confirmation, and slot enforcement is deliberately off.</>}
                     </Banner>
                   ) : null}
                   {managerID && !unmanaged && slotCreatable && !reviewedSlot && selectedSlot ? <Banner title="This deployment declares a new slot" tone="info">No reviewed slot is named <Mono>{selectedSlot.name}</Mono>, so releasing writes one into the platform definition with the domain and ceiling below. It is checked like any other: a hostname another workload owns is refused rather than taken.</Banner> : null}
