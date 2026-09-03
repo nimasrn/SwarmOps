@@ -154,6 +154,38 @@ func TestLoadRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+// The console offers a default definition for an operator who does not want to
+// author one: the two constants, a namespace, GHCR, and the nodes measured from
+// the live cluster, with no workloads. If a new rule ever makes that shape
+// inadmissible, the button stops working and the operator is back to reading
+// findings one at a time — so the shape is asserted here rather than in the
+// browser.
+func TestConsoleDefaultDefinitionIsAdmissible(t *testing.T) {
+	t.Parallel()
+	report := Check(Manifest{
+		APIVersion: APIVersion,
+		Kind:       Kind,
+		Namespace:  "apps",
+		Nodes: []Node{{
+			AvailableCPUCores:  1.5,
+			AvailableDiskGiB:   40,
+			AvailableMemoryMiB: 1200,
+			CPUCores:           2,
+			MemoryMiB:          1945,
+			Name:               "manager-01",
+		}},
+		Registry: Registry{Host: "ghcr.io", Mode: "ghcr", Namespace: "apps"},
+	})
+	if !report.Valid() {
+		t.Fatalf("the console's default definition must be admissible, got %#v", report.Findings)
+	}
+	// An empty slot list is a warning and stays one: a first deployment
+	// declares the slot it names.
+	if !hasCode(report, "workloads-empty") {
+		t.Fatalf("expected the empty-workloads warning, got %#v", report.Findings)
+	}
+}
+
 func hasCode(report Report, wanted string) bool {
 	for _, finding := range report.Findings {
 		if finding.Code == wanted {

@@ -11,6 +11,37 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.2 — 2026-09-04
+
+Four stacks failing on the same missing node label looked, in the console,
+like four runs failing for no stated reason.
+
+- **A failure class survives to the operator** — a machine agent returns an
+  allow-listed Docker failure code, and every mapping for those codes was
+  matched only for the gateway installation. A managed database or the log
+  aggregator refused on placement therefore reported "SwarmOps could not
+  confirm that the requested change completed" — the wording reserved for an
+  outcome nobody observed — when the agent had named the exact condition.
+  Placement, image, port, missing network, config or secret, timeout, output
+  limit and stack rejection now each explain themselves for any action, and the
+  placement one names the `nim.stateful=true` label the managed stacks require.
+- **A run's latest result says what happened** — it was one of two fixed
+  sentences that restated the state badge beside it. It now carries the failure
+  summary and which attempt failed.
+- **A retried run explains itself** — the guidance banner, its blockers and its
+  recovery step were shown only for a run that had stopped. A run being retried
+  has already failed for the reason it will most likely fail on again, so it
+  states that reason too, and the ledger gained a Reason column: rows failing
+  for four different causes are no longer indistinguishable from four rows
+  failing for one.
+- **A platform definition has a default** — an operator who does not want to
+  author one gets a button that fills the only four things preflight requires:
+  the namespace, GitHub Container Registry, the nodes measured from the
+  selected cluster, and no slots, since a first deployment declares the slot it
+  names. DNS, resolvers, object storage, backups and build placement stay empty
+  until something needs them. A test pins that shape as admissible, so a new
+  rule cannot quietly turn the button into a dead end.
+
 ## 0.19.1 — 2026-09-04
 
 The deployment screen's new "there is no slot to map this service to" banner

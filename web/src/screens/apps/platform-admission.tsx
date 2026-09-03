@@ -160,6 +160,38 @@ export function PlatformAdmissionTab({ toast }: { toast: Toast }) {
     }
   }
 
+  // The smallest manifest preflight calls admissible is four things: the two
+  // constants, a namespace, a registry, and one measured node. Everything else
+  // on this screen — DNS providers, resolvers, object storage, backups, build
+  // labels, and the slot list itself — is optional, and a first deployment
+  // declares its own slot where the controller owns the definition. An
+  // operator who wants "the ordinary one" should not have to learn that by
+  // reading preflight findings one at a time.
+  const startFromDefault = async () => {
+    const name = (namespace || definition?.namespace || 'apps').toLowerCase()
+    let nodes: PlatformNode[] = []
+    try {
+      nodes = await api.platformNodes()
+    } catch (failure) {
+      setError(messageOf(failure))
+    }
+    const next: PlatformManifest = {
+      ...EMPTY_MANIFEST,
+      namespace: name,
+      nodes,
+      registry: { authSecret: '', host: 'ghcr.io', mode: 'ghcr', namespace: name },
+      workloads: [],
+    }
+    setMode('manifest')
+    setManifest(next)
+    setNamespace(name)
+    try {
+      setReport(await api.checkPlatform({ confirmation: '', manifest: next, mode: 'manifest', namespace: name }))
+    } catch (failure) {
+      setError(messageOf(failure))
+    }
+  }
+
   const importNodes = async () => {
     try {
       const nodes = await api.platformNodes()
@@ -191,6 +223,27 @@ export function PlatformAdmissionTab({ toast }: { toast: Toast }) {
   return (
     <Rows>
       {error ? <Banner tone="danger" title="The platform definition was not applied">{error}</Banner> : null}
+
+      {editable && (definition?.mode === 'unset' || !definition) ? (
+        <Banner tone="info" title="A platform definition is the list this controller checks a deployment against">
+          <Rows gap="tight">
+            <Body size="sm">
+              It answers four questions before anything runs: which namespace every stack is prefixed with, which
+              registry application images may come from, what capacity the cluster actually has, and which
+              application slots exist with the domain and ceiling each one owns. Only the first three are required —
+              a deployment declares its own slot where the controller owns the definition.
+            </Body>
+            <Body size="sm">
+              The default below is the ordinary one: this namespace, GitHub Container Registry, the nodes measured
+              from the selected cluster, and no slots yet. DNS providers, certificate resolvers, object storage,
+              backups and build placement stay empty until something needs them.
+            </Body>
+            <Inline gap="tight">
+              <Button onClick={() => void startFromDefault()} size="sm" variant="accent">Start from a default definition</Button>
+            </Inline>
+          </Rows>
+        </Banner>
+      ) : null}
 
       {definition?.fileManaged ? (
         <Banner tone="info" title="This controller loads a reviewed manifest from a file">

@@ -127,6 +127,10 @@ export function RunsPage({
     // has to say which cluster each row will actually change.
     { header: 'Server', key: 'server', render: (command) => servers.find((server) => server.id === command.serverId)?.name ?? <Mono>{shortID(command.serverId)}</Mono> },
     { header: 'State', key: 'state', render: (command) => <CommandStateBadge state={command.state} /> },
+    // The ledger used to show a state badge and an attempt count, so rows
+    // failing for four different reasons were indistinguishable from four
+    // rows failing for one.
+    { header: 'Reason', key: 'reason', render: (command) => command.failureSummary ?? command.lastError ?? (command.state === 'succeeded' ? '—' : 'No result has been recorded yet.') },
     { header: 'Attempts', key: 'attempts', numeric: true, render: (command) => `${command.attempt} / ${command.maxAttempts}` },
     { header: 'Next attempt', key: 'next', render: (command) => command.nextAttemptAt ? formatDateTime(command.nextAttemptAt) : 'No retry scheduled' },
     { header: 'Updated', key: 'updated', render: (command) => formatDateTime(command.updatedAt) },
@@ -156,7 +160,7 @@ export function RunsPage({
           >
             <Rows>
               {guidance ? (
-                <Banner title="Why this needs attention" tone="warning">
+                <Banner title={selected.state === 'retry_scheduled' ? 'Why this run keeps failing' : 'Why this needs attention'} tone="warning">
                   <Rows gap="tight">
                     <Body size="sm">{guidance.summary}</Body>
                     {guidance.blockers.length ? (
@@ -183,6 +187,8 @@ export function RunsPage({
               <Facts columns={1} items={[
                 { label: 'Command ID', mono: true, value: selected.id },
                 ...(selected.failureCode ? [{ label: 'Failure code', mono: true, value: selected.failureCode }] : []),
+                ...(selected.failureSummary ? [{ label: 'Failure', value: selected.failureSummary }] : []),
+                ...(selected.recoveryHint ? [{ label: 'Recovery', value: selected.recoveryHint }] : []),
                 { label: 'Explicit target', mono: true, value: selected.target || selected.nodeId },
                 { label: 'Server', value: servers.find((server) => server.id === selected.serverId)?.name ?? shortID(selected.serverId) },
                 { label: 'Actor', value: selected.actor },
@@ -257,7 +263,11 @@ export function RunsPage({
  * blocking on it would strand a run that is now perfectly retryable.
  */
 export function attentionGuidance(command: Command, dashboard: DashboardData | null, servers: Server[]) {
-  if (command.state !== 'needs_attention' && command.state !== 'failed') return null
+  // A retry-scheduled run has already failed at least once, for the same
+  // reason it will most likely fail again. Excluding it meant four stacks
+  // failing on the same missing placement label showed a state badge, an
+  // attempt count, and nothing an operator could act on.
+  if (command.state !== 'needs_attention' && command.state !== 'failed' && command.state !== 'retry_scheduled') return null
   const server = servers.find((candidate) => candidate.id === command.serverId)
   const blockers: string[] = []
 

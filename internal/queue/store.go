@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/securestore"
 )
@@ -138,9 +139,62 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "swarm_config_missing", "A required versioned Swarm configuration is missing.", "Repair the reviewed platform configurations, then retry the stack deployment."
 	case action == "observability.core":
 		return "observability_not_confirmed", "SwarmOps could not confirm the Prometheus, Alertmanager, and Jaeger deployment.", "Check the selected manager, Traefik gateway, stateful placement, and reviewed Swarm configs before retrying."
+	// The agent's failure class survived the boundary and was then thrown
+	// away: every code above is matched only for traefik.reconcile, so a
+	// managed database or the log aggregator failing on placement reported
+	// "SwarmOps could not confirm that the requested change completed" — the
+	// bucket for an UNKNOWN outcome — when the agent had said exactly which
+	// Docker condition refused it.
+	case safeCode != "":
+		return dockerFailureDiagnostic(safeCode)
 	default:
 		return "execution_not_confirmed", "SwarmOps could not confirm that the requested change completed.", "Inspect the explicit target and current resource state before retrying."
 	}
+}
+
+// dockerFailureDiagnostic explains an allow-listed agent failure class for any
+// stack, in the vocabulary the agent used. It is the fallback for actions with
+// no wording of their own; a specific case above always wins.
+func dockerFailureDiagnostic(safeCode string) (code, summary, recovery string) {
+	switch safeCode {
+	case agentcontrol.CommandFailurePlacement:
+		return "stack_placement_unsatisfied", "Docker could not place this stack's services on any eligible node.", "Check the placement this stack requires against the cluster: managed databases and the log aggregator need a ready, active node labelled nim.stateful=true, and every service needs a node with free capacity. Fix the placement, then retry."
+	case agentcontrol.CommandFailureImageUnavailable:
+		return "stack_image_unavailable", "The selected manager could not pull an image this stack declares.", "Verify registry reachability and the image reference, then retry."
+	case agentcontrol.CommandFailurePortUnavailable:
+		return "stack_port_unavailable", "Docker could not start the stack because a port it publishes is already in use.", "Inspect the selected manager for the process or service holding that port, resolve the conflict, then retry."
+	case agentcontrol.CommandFailureNetworkMissing:
+		return "stack_network_missing", "Docker rejected the stack because an external network it attaches to does not exist.", "Create the reviewed overlay network on the manager, then retry."
+	case agentcontrol.CommandFailureConfigMissing:
+		return "stack_config_missing", "Docker rejected the stack because an external configuration it mounts does not exist.", "Repair the reviewed platform configurations, then retry."
+	case agentcontrol.CommandFailureSecretMissing:
+		return "stack_secret_missing", "Docker rejected the stack because an external secret it mounts does not exist.", "Create the reviewed secret on the manager, then retry."
+	case agentcontrol.CommandFailureTimedOut:
+		return "stack_deploy_timed_out", "The deployment did not converge before the machine-agent deadline.", "Inspect the stack's service tasks and the manager's capacity, confirm the intended state, then retry only if the change is still missing."
+	case agentcontrol.CommandFailureOutputLimit:
+		return "stack_deploy_output_limit", "The deployment produced more status output than the bounded machine-agent response allows, which usually means services restarting repeatedly.", "Inspect the stack's service tasks for a repeating failure, resolve it, then retry."
+	case agentcontrol.CommandFailureStackDeploy:
+		return "stack_deploy_failed", "Docker rejected or failed to converge this stack.", "Inspect the stack's service tasks on the selected manager, resolve the reported Docker condition, then retry only if the change is still missing."
+	default:
+		return "stack_operation_failed", "The machine agent reported that the Docker operation failed.", "Inspect the target's current state on the selected manager before retrying."
+	}
+}
+
+// failureNarrative is what a run says about itself in one line, wherever it is
+// listed. It used to be one of two fixed sentences — "Execution failed; retry
+// scheduled with backoff." — which said only what the state badge beside it
+// already said, so an operator watching four stacks fail could not tell from
+// the console whether they had failed for the same reason or four different
+// ones.
+func failureNarrative(command domain.Command) string {
+	summary := strings.TrimSpace(command.FailureSummary)
+	if summary == "" {
+		summary = "SwarmOps could not confirm that the requested change completed."
+	}
+	if command.State == domain.CommandRetryScheduled {
+		return fmt.Sprintf("%s Attempt %d of %d failed; a retry is scheduled with backoff.", summary, command.Attempt, command.MaxAttempts)
+	}
+	return fmt.Sprintf("%s Attempt %d of %d failed and no retry is scheduled; inspect the target before retrying.", summary, command.Attempt, command.MaxAttempts)
 }
 
 func setCommandFailureDiagnostic(command *domain.Command, err error) {
@@ -765,16 +819,15 @@ func (s *Store) FailLease(id, leaseID string, executionErr error) (domain.Comman
 	event := "needs_attention"
 	if record.Command.AutoRetry && !isPermanent(executionErr) && record.Command.Attempt < record.Command.MaxAttempts {
 		next := now.Add(backoff(record.Command.Attempt))
-		record.Command.LastError = "Execution failed; retry scheduled with backoff."
 		record.Command.NextAttemptAt = &next
 		record.Command.State = domain.CommandRetryScheduled
 		event = "retry_scheduled"
 	} else {
-		record.Command.LastError = "Execution did not complete; inspect the target before retrying."
 		record.Command.NextAttemptAt = nil
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	setCommandFailureDiagnostic(&record.Command, executionErr)
+	record.Command.LastError = failureNarrative(record.Command)
 	record.Command.LeaseExpiresAt = nil
 	record.Command.UpdatedAt = now
 	record.LeaseID = ""
@@ -868,16 +921,15 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 	event := "needs_attention"
 	if record.Command.AutoRetry && !isPermanent(executionErr) && record.Command.Attempt < record.Command.MaxAttempts {
 		next := now.Add(backoff(record.Command.Attempt))
-		record.Command.LastError = "Execution failed; retry scheduled with backoff."
 		record.Command.NextAttemptAt = &next
 		record.Command.State = domain.CommandRetryScheduled
 		event = "retry_scheduled"
 	} else {
-		record.Command.LastError = "Execution did not complete; inspect the target before retrying."
 		record.Command.NextAttemptAt = nil
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	setCommandFailureDiagnostic(&record.Command, executionErr)
+	record.Command.LastError = failureNarrative(record.Command)
 	record.Command.UpdatedAt = now
 	record.Command.LeaseExpiresAt = nil
 	record.LeaseID = ""

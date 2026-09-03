@@ -344,7 +344,14 @@ test('background refreshes preserve the current workspace and loaded content', a
 
 test('runs explain observability failures and block unsafe retries', async () => {
   const runs = await source('screens/activity/runs.tsx')
-  assert.match(runs, /title="Why this needs attention"/)
+  assert.match(runs, /'Why this needs attention'/)
+
+  // A run that is being retried has already failed for the reason it will
+  // most likely fail on again, so it explains itself rather than showing a
+  // state badge and an attempt count alone.
+  assert.match(runs, /'Why this run keeps failing'/)
+  assert.match(runs, /command\.state !== 'retry_scheduled'/)
+  assert.match(runs, /header: 'Reason'/)
   assert.match(runs, /The SwarmOps-managed Traefik gateway is not installed/)
   assert.match(runs, /nim\.stateful=true placement label/)
   assert.match(runs, /Resolve prerequisites before retrying/)
