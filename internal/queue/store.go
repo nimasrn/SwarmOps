@@ -238,14 +238,17 @@ func uploadFailureDiagnostic(err error, limit int64) (code, summary, recovery st
 		return "provider_archive_rejected",
 			"The provider refused the archive request for this revision.",
 			"Check that the connection still has access to the repository and that the revision exists, then submit again."
-	case strings.Contains(message, "unexpected eof"), strings.Contains(message, "connection reset"), strings.Contains(message, "broken pipe"), strings.Contains(message, "read encrypted state source"), strings.Contains(message, "made no progress"):
-		return "source_input_stream_failed",
-			"The source input stream ended before the whole archive arrived.",
-			"Nothing was stored and no build ran. Check that the provider is reachable and the reference still resolves, then submit again."
+	// A cancelled request reaches the store wrapped in the same read error as
+	// an interrupted stream, so it has to be matched first or it is reported
+	// as a network fault the operator cannot find.
 	case strings.Contains(message, "context canceled"), strings.Contains(message, "context deadline exceeded"):
 		return "source_input_canceled",
 			"The request carrying the source input ended before the archive was stored.",
-			"Submit again; a slow provider download or a closed browser tab both end the request this way."
+			"Submit again and leave the deployment screen open; closing the tab, a reverse-proxy timeout, or navigating away all end the request this way."
+	case strings.Contains(message, "unexpected eof"), strings.Contains(message, "connection reset"), strings.Contains(message, "broken pipe"), strings.Contains(message, "read encrypted state source"), strings.Contains(message, "made no progress"):
+		return "source_input_stream_failed",
+			"The source input stream ended before the whole archive arrived.",
+			"Nothing was stored and no build ran. Check that the provider is reachable from the controller and that the revision still resolves, then submit again from the deployment screen."
 	default:
 		return "source_input_not_stored",
 			"The controller could not store the source input.",
@@ -642,6 +645,19 @@ func (s *Store) RetryNow(id string, authorityEpoch uint64) (domain.Command, erro
 	}
 	if authorityEpoch == 0 || authorityEpoch < record.Command.AuthorityEpoch {
 		return domain.Command{}, fmt.Errorf("command retry authority epoch is stale")
+	}
+	// An artifact-backed command carries its source input beside it. When
+	// storing that input failed the artifact was removed, so requeueing the
+	// record only buys the operator a second identical failure — with the
+	// build context now gone, it cannot succeed at all.
+	if record.Artifact {
+		stored, _, err := protectedArtifactFile(s.artifactPath(record.Command.ID))
+		if err != nil {
+			return domain.Command{}, err
+		}
+		if !stored {
+			return domain.Command{}, fmt.Errorf("this command's source input was never stored, so it cannot be retried; submit a new deployment from the deployment screen")
+		}
 	}
 	now := s.now().UTC()
 	previousAttempt := record.Command.Attempt

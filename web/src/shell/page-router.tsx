@@ -144,6 +144,7 @@ function PageRouterContent(props: PageRouterProps) {
               <RunsPage
                 commands={commands}
                 dashboard={data}
+                onOpenDeploy={() => onOpen('deploy')}
                 onOpenDiagnostics={() => onOpen('machines')}
                 onOpenGateway={() => onOpen('gateway')}
                 onOpenSwarm={() => onOpen('swarm')}

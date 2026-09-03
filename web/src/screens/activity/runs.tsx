@@ -48,6 +48,7 @@ type Toast = ReturnType<typeof useToast>
 export function RunsPage({
   commands,
   dashboard,
+  onOpenDeploy,
   onOpenDiagnostics,
   onOpenGateway,
   onOpenSwarm,
@@ -57,6 +58,7 @@ export function RunsPage({
 }: {
   commands: Command[]
   dashboard: DashboardData | null
+  onOpenDeploy: () => void
   onOpenDiagnostics: () => void
   onOpenGateway: () => void
   onOpenSwarm: () => void
@@ -199,7 +201,13 @@ export function RunsPage({
                 { label: 'Updated', value: formatDateTime(selected.updatedAt) },
               ]} />
               {selected.lastError ? <CodeBlock label="Latest result summary" wrap>{selected.lastError}</CodeBlock> : null}
-              {selected.state === 'needs_attention' || selected.state === 'retry_scheduled' ? (
+              {/* A run whose source input never reached the controller has no
+                  build context to retry with: the artifact was removed when the
+                  upload failed, and the controller refuses to requeue it. The
+                  honest next step is a new submission, so that is the button. */}
+              {needsResubmission(selected) ? (
+                <Button onClick={onOpenDeploy} variant="accent">Submit this deployment again</Button>
+              ) : selected.state === 'needs_attention' || selected.state === 'retry_scheduled' ? (
                 <Button
                   disabled={Boolean(retrying) || Boolean(guidance?.blockRetry)}
                   loading={retrying === selected.id}
@@ -298,6 +306,14 @@ export function attentionGuidance(command: Command, dashboard: DashboardData | n
       ? 'SwarmOps started the core monitoring change but could not prove that Prometheus, Alertmanager, and Jaeger completed. Automatic replay stopped to avoid duplicating an uncertain cluster mutation.'
       : command.lastError ?? 'SwarmOps could not confirm that this operation completed.'),
   }
+}
+
+/** Failure classes that mean the source input never reached the controller.
+    Nothing ran, nothing is stored, and the command cannot be requeued — only
+    submitted again from the deployment screen. */
+function needsResubmission(command: Command) {
+  const code = command.failureCode ?? ''
+  return code.startsWith('source_input_') || code.startsWith('build_context_') || code.startsWith('provider_archive_')
 }
 
 /** The operator's name for an action, where the wire name is a code. */

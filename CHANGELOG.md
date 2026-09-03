@@ -11,6 +11,21 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.5 — 2026-09-04
+
+- **A cancelled request is not a broken provider stream** — cancellation
+  reaches the command store wrapped in the same read error as a network cut,
+  and the stream case was matched first, so a closed browser tab, a
+  reverse-proxy timeout, or navigating away from the deployment screen all
+  reported that the provider's archive ended early. That sends an operator to
+  check a provider that was never the problem. Cancellation is matched first
+  now and names the three ways a request ends this way.
+- **A command whose input was never stored is no longer offered a retry** — a
+  failed upload removes the artifact, but an operator retry requeued the record
+  regardless, which bought a second identical failure with the build context
+  now gone. The controller refuses it and says why, and the run offers to
+  submit the deployment again instead of retrying it.
+
 ## 0.19.4 — 2026-09-04
 
 The upload classification added in 0.19.3 was too coarse in one direction: it

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
@@ -819,5 +820,48 @@ func TestUploadFailureDiagnosticSeparatesItsCauses(t *testing.T) {
 	_, summary, _ := uploadFailureDiagnostic(fmt.Errorf("encrypted state source exceeds the 536870912 byte limit"), 512<<20)
 	if !strings.Contains(summary, "512 MiB") {
 		t.Fatalf("the limit an operator has to change is not named: %s", summary)
+	}
+}
+
+// A cancelled request reaches the store wrapped in the same read error as an
+// interrupted stream, so matching the stream first reported "the provider
+// stream ended early" for a closed browser tab — a network fault the operator
+// would go looking for and never find.
+func TestCancelledRequestIsNotReportedAsAnInterruptedStream(t *testing.T) {
+	t.Parallel()
+	code, _, _ := uploadFailureDiagnostic(fmt.Errorf("read encrypted state source: read provider archive: %w", context.Canceled), 512<<20)
+	if code != "source_input_canceled" {
+		t.Fatalf("code = %q, want source_input_canceled", code)
+	}
+}
+
+// Requeueing an artifact-backed command whose input was never stored buys a
+// second identical failure, and the console offered exactly that button.
+func TestRetryRefusesACommandWhoseInputWasNeverStored(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	failing := io.MultiReader(bytes.NewReader([]byte("partial")), iotest.ErrReader(errors.New("unexpected EOF")))
+	submission, err := store.SubmitArtifactWithResult(SubmitInput{
+		Action:           "source.deploy",
+		Actor:            "operator",
+		AuthorityEpoch:   1,
+		ClusterID:        "default",
+		IdempotencyKey:   "source-deploy-1",
+		MaxArtifactBytes: 1 << 20,
+		MaxAttempts:      1,
+		Payload:          []byte(`{"kind":"source"}`),
+		ServerID:         "server-1",
+		Target:           "application/nim",
+	}, failing)
+	if err == nil {
+		t.Fatal("a failed artifact write must be reported to the caller")
+	}
+	if submission.Command.State != domain.CommandNeedsAttention {
+		t.Fatalf("state = %q, want needs_attention", submission.Command.State)
+	}
+	if _, retryErr := store.RetryNow(submission.Command.ID, 1); retryErr == nil {
+		t.Fatal("a command with no stored input must not be retryable")
+	} else if !strings.Contains(retryErr.Error(), "never stored") {
+		t.Fatalf("the refusal must say why: %v", retryErr)
 	}
 }
