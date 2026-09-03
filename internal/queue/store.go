@@ -180,6 +180,46 @@ func dockerFailureDiagnostic(safeCode string) (code, summary, recovery string) {
 	}
 }
 
+// uploadFailureDiagnostic explains why source input never reached the sealed
+// command store. The record used to carry one sentence — "Command input upload
+// did not complete" — for a limit that was exceeded, a controller disk with no
+// space left, and a provider stream that ended early, which are three
+// different problems with three different fixes and only one of them worth
+// retrying unchanged. The underlying error itself is never copied into the
+// ledger: it carries controller paths.
+func uploadFailureDiagnostic(err error, limit int64) (code, summary, recovery string) {
+	message := ""
+	if err != nil {
+		message = strings.ToLower(err.Error())
+	}
+	switch {
+	case strings.Contains(message, "exceeds the") && strings.Contains(message, "byte limit"), strings.Contains(message, "http: request body too large"):
+		return "source_input_too_large",
+			fmt.Sprintf("The source input is larger than this controller's %d MiB build limit.", limit>>20),
+			"Reduce what the build context carries — a .dockerignore excluding vendor, node_modules, build output and history is usually enough — or raise SWARMOPS_BUILD_MAX_BYTES on the controller, then submit again."
+	case strings.Contains(message, "no space left on device"):
+		return "controller_storage_full",
+			"The controller has no disk space left to store the source input.",
+			"Free space in the controller's state directory — Controller & recovery reports what it holds — then submit again. The command ledger is written before any operation runs, so this disk must never fill."
+	case strings.Contains(message, "permission denied"), strings.Contains(message, "read-only file system"):
+		return "controller_storage_unwritable",
+			"The controller could not write to its own state directory.",
+			"Check the ownership and mount of the controller's state directory, then submit again."
+	case strings.Contains(message, "unexpected eof"), strings.Contains(message, "connection reset"), strings.Contains(message, "broken pipe"), strings.Contains(message, "read encrypted state source"), strings.Contains(message, "made no progress"):
+		return "source_input_stream_failed",
+			"The source input stream ended before the whole archive arrived.",
+			"Nothing was stored and no build ran. Check that the provider is reachable and the reference still resolves, then submit again."
+	case strings.Contains(message, "context canceled"), strings.Contains(message, "context deadline exceeded"):
+		return "source_input_canceled",
+			"The request carrying the source input ended before the archive was stored.",
+			"Submit again; a slow provider download or a closed browser tab both end the request this way."
+	default:
+		return "source_input_not_stored",
+			"The controller could not store the source input.",
+			"Nothing was stored and no build ran. Submit a new command with the source input; if it fails again, check the controller's disk and its state directory."
+	}
+}
+
 // failureNarrative is what a run says about itself in one line, wherever it is
 // listed. It used to be one of two fixed sentences — "Execution failed; retry
 // scheduled with backoff." — which said only what the state badge beside it
@@ -471,7 +511,11 @@ func (s *Store) SubmitArtifactWithResult(input SubmitInput, body io.Reader) (Sub
 	updated.Command.UpdatedAt = s.now().UTC()
 	if writeErr != nil {
 		updated.Command.State = domain.CommandNeedsAttention
-		updated.Command.LastError = "Command input upload did not complete. Submit a new command with the source input."
+		code, summary, recovery := uploadFailureDiagnostic(writeErr, input.MaxArtifactBytes)
+		updated.Command.FailureCode = code
+		updated.Command.FailureSummary = summary
+		updated.Command.RecoveryHint = recovery
+		updated.Command.LastError = summary + " No build ran; submit a new command with the source input."
 		s.removeArtifact(record.Command.ID)
 	} else {
 		updated.Command.State = domain.CommandQueued

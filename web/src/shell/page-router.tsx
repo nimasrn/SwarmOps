@@ -256,7 +256,7 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
         />
       )
     case 'applications':
-      return <ApplicationsPage commands={commands.filter(command => command.serverId === serverID)} onDeployFromSource={() => onOpen('deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
+      return <ApplicationsPage commands={commands.filter(command => command.serverId === serverID)} onDeployFromSource={() => onOpen('deploy')} onOpenPlatform={() => onOpen('platform-definition')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
     case 'images':
       return <ImagesPage onDeployFromSource={() => onOpen('deploy')} toast={toast} />
     case 'gateway':

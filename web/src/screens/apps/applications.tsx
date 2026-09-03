@@ -23,12 +23,13 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { ApplicationSpec, ApplicationStatus, ApprovedWorkload, Command, DatabaseStatus } from '../../data/types'
+import type { ApplicationSpec, ApplicationStatus, ApprovedWorkload, Command, DatabaseStatus, PlatformDefinition } from '../../data/types'
 import { useSelectedRecord } from '../../navigation/use-workspace'
 import { shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { StatusBadge } from '../../components/badges'
+import { UseDefaultPlatformDefinition } from '../../components/default-platform-definition'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
 import { ApplicationDetailView } from './application-detail'
 
@@ -50,14 +51,16 @@ const domainRemovalPhrase = (name: string) => `REMOVE_DOMAIN_${name.toUpperCase(
  * cheapest real automation in the product: rolling a service after a base-image
  * or secret change previously meant retyping the whole spec from memory.
  */
-export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, toast }: {
+export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform, onOpenRoutes, toast }: {
   commands: Command[]
   onDeployFromSource: () => void
+  onOpenPlatform?: () => void
   onOpenRoutes: () => void
   toast: Toast
 }) {
   const [applications, setApplications] = useState<ApplicationStatus[] | null>(null)
   const [approved, setApproved] = useState<ApprovedWorkload[]>([])
+  const [platform, setPlatform] = useState<PlatformDefinition | null>(null)
   const [databases, setDatabases] = useState<DatabaseStatus[]>([])
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
@@ -88,11 +91,20 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
   const [backend, setBackend] = useState('')
 
   const refresh = async () => {
-    const [apps, slots, dbs] = await Promise.all([api.applications(), api.approvedApplications(), api.databases()])
+    const [apps, slots, dbs, definition] = await Promise.all([
+      api.applications(),
+      api.approvedApplications(),
+      api.databases(),
+      // An empty slot list means four different things depending on what
+      // admits deployments here, and the banner below used to state only one
+      // of them.
+      api.platform().catch(() => null),
+    ])
     const safeApps = Array.isArray(apps) ? apps : []
     const safeSlots = Array.isArray(slots) ? slots : []
     setApplications(safeApps)
     setApproved(safeSlots)
+    setPlatform(definition)
     setDatabases(Array.isArray(dbs) ? dbs : [])
     if (!selected && safeSlots.length > 0) setSelected(safeSlots[0].name)
   }
@@ -283,10 +295,45 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
       page="applications"
       width="full"
     >
-      {approved.length === 0 ? (
-        <Banner tone="warning" title="No application slots are approved">
-          Add a workload with <Mono>profile: application</Mono>, a domain, a resolver, and a resource budget to the reviewed platform manifest, then reconnect.
-        </Banner>
+      {approved.length === 0 && !platform?.unmanaged ? (
+        platform?.fileManaged ? (
+          <Banner tone="warning" title="No application slot is declared in the reviewed manifest">
+            <Rows gap="tight">
+              <Body size="sm">
+                This controller loads <Mono>{platform.manifestPath || 'its manifest'}</Mono> from a file, which stays
+                the reviewed artifact. Add a workload with <Mono>profile: application</Mono>, a domain, a resolver
+                and a resource budget there, then reconnect the selected manager.
+              </Body>
+            </Rows>
+          </Banner>
+        ) : platform?.editable && platform.mode === 'manifest' ? (
+          <Banner tone="info" title="No slot yet — the first deployment declares one">
+            <Rows gap="tight">
+              <Body size="sm">
+                This controller owns its platform definition, so nothing has to be written by hand first. Deploying
+                a repository writes the slot it names into the definition — the name, domain, certificate resolver
+                and ceiling chosen on the deployment screen — checked by the same preflight as every other slot.
+              </Body>
+              <Inline gap="tight">
+                <Button onClick={onDeployFromSource} size="sm" variant="accent">Deploy from source</Button>
+              </Inline>
+            </Rows>
+          </Banner>
+        ) : (
+          <Banner tone="warning" title="Nothing admits a deployment here yet">
+            <Rows gap="tight">
+              <Body size="sm">
+                No platform definition is chosen, so this controller refuses every browser deployment. Choosing one
+                takes a click: the default is this namespace, GitHub Container Registry and the nodes measured from
+                the cluster, with no slots — the first deployment declares its own.
+              </Body>
+              <Inline gap="tight">
+                <UseDefaultPlatformDefinition onApplied={(next) => { setPlatform(next); void refresh().catch((reason) => setError(messageOf(reason))) }} toast={toast} />
+                {onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Review it first</Button> : null}
+              </Inline>
+            </Rows>
+          </Banner>
+        )
       ) : null}
 
       {error && !composing ? <Banner tone="danger" title="Application data could not be refreshed">{error}</Banner> : null}

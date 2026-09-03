@@ -2,12 +2,14 @@ package queue
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -777,5 +779,35 @@ func TestPolicyRefusalIsNotReportedAsAnUnconfirmedChange(t *testing.T) {
 		if hint == "" {
 			t.Fatalf("%q gives the operator no next step", sample.message)
 		}
+	}
+}
+
+// One sentence covered a limit that was exceeded, a controller disk with no
+// space left, and a provider stream that ended early. They have three
+// different fixes, and only one of them is worth retrying unchanged.
+func TestUploadFailureDiagnosticSeparatesItsCauses(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		err  error
+		name string
+		want string
+	}{
+		{err: fmt.Errorf("encrypted state source exceeds the 536870912 byte limit"), name: "limit", want: "source_input_too_large"},
+		{err: fmt.Errorf("write encrypted state: %w", syscall.ENOSPC), name: "disk", want: "controller_storage_full"},
+		{err: fmt.Errorf("read encrypted state source: unexpected EOF"), name: "stream", want: "source_input_stream_failed"},
+		{err: context.Canceled, name: "canceled", want: "source_input_canceled"},
+		{err: fmt.Errorf("something else"), name: "unknown", want: "source_input_not_stored"},
+	} {
+		code, summary, recovery := uploadFailureDiagnostic(testCase.err, 512<<20)
+		if code != testCase.want {
+			t.Fatalf("%s: code = %q, want %q", testCase.name, code, testCase.want)
+		}
+		if summary == "" || recovery == "" {
+			t.Fatalf("%s: every upload failure states what happened and what to do", testCase.name)
+		}
+	}
+	_, summary, _ := uploadFailureDiagnostic(fmt.Errorf("encrypted state source exceeds the 536870912 byte limit"), 512<<20)
+	if !strings.Contains(summary, "512 MiB") {
+		t.Fatalf("the limit an operator has to change is not named: %s", summary)
 	}
 }

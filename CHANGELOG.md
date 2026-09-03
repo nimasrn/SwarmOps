@@ -11,6 +11,48 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.3 — 2026-09-04
+
+A scan of a fully pinned repository reported seven problems, four of which
+were not true, and the platform decision behind every refused deployment was
+still a document an operator met for the first time while trying to deploy.
+
+- **A build argument is read before a base image is called unpinned** — the
+  scanner refused to resolve any build argument on principle, so
+  `FROM ${GO_IMAGE}` was reported as mutable on a Dockerfile whose line above
+  it pinned `GO_IMAGE` to a tag. It now resolves the literal defaults of
+  arguments declared before the first `FROM`, which is Docker's own scope for
+  them: no environment, no nesting, no shell. A `FROM` naming an earlier stage
+  is no longer treated as a base image at all, one base image shared by four
+  stages is one finding rather than four, and an argument with no default
+  still warns — saying that it has none.
+- **What the scan read is not a warning** — findings the scanner marks
+  informational, like the health path taken from a `HEALTHCHECK` or a Traefik
+  router found in Compose, were listed under a warning heading with warning
+  icons, because the plan filtered on "not a blocker". They now sit under what
+  the scan read.
+- **The environment warning names the keys** — it said values are not imported
+  without saying which, so the operator had to open the Compose file to learn
+  what to re-supply.
+- **A source upload that fails says which failure it was** — one sentence
+  covered a build context over the size limit, a controller disk with no space
+  left, a provider stream that ended early, and a request that was cancelled.
+  Each is now classified, named and given its own next step, with the limit
+  stated in the size case. The deployment screen also stops reporting such a
+  command as queued: the controller answers with a durable attention record on
+  purpose, and calling it success was how a stated failure became a deployment
+  an operator believed was running.
+- **The empty-slot banner is no longer pre-0.18.0** — it told every operator to
+  add a workload to a reviewed manifest and reconnect, including on installs
+  where the first deployment declares its own slot and on installs that
+  declared themselves manifest-free. It now states which of those four cases
+  applies, and each one carries its own action.
+- **The default definition is offered where the wall is** — one shared action
+  applies it from Applications, from the deployment review step, or from the
+  platform screen, and when the cluster has no measured availability it says
+  the host probe is what measures it instead of returning a preflight finding
+  to translate.
+
 ## 0.19.2 — 2026-09-04
 
 Four stacks failing on the same missing node label looked, in the console,

@@ -451,17 +451,26 @@ func inspectComposeService(composePath, name string, service map[string]any, rep
 		result.findings = append(result.findings, Finding{Code: "resources_imported", Level: FindingInfo, Message: "Replica count and resource ceilings were read from the Compose deploy block; review them before releasing.", Subject: subject})
 	}
 
-	result.findings = append(result.findings, unimportedFindings(service, len(environment) > 0, subject)...)
+	result.findings = append(result.findings, unimportedFindings(service, result.environment, subject)...)
 	return result
 }
 
 // unimportedFindings names each part of a Compose service that SwarmOps
 // deliberately does not carry across. Every one of these is something an
 // operator would otherwise discover as a failed or wrong deployment.
-func unimportedFindings(service map[string]any, hasEnvironment bool, subject string) []Finding {
+func unimportedFindings(service map[string]any, environment []string, subject string) []Finding {
 	var findings []Finding
-	if hasEnvironment {
-		findings = append(findings, Finding{Code: "environment_review", Level: FindingWarning, Message: "Source environment values are not imported; add required non-secret settings and Swarm secrets through reviewed SwarmOps inputs.", Subject: subject})
+	if len(environment) > 0 {
+		// Naming the keys is the difference between a warning an operator can
+		// act on and one they have to go and read the Compose file to act on:
+		// these are exactly the settings that must be re-supplied, and a
+		// deployment missing one fails at runtime rather than at review.
+		findings = append(findings, Finding{
+			Code:    "environment_review",
+			Level:   FindingWarning,
+			Message: "Source environment values are not imported. " + namedKeys(environment) + " must be re-supplied as reviewed SwarmOps settings, a Swarm secret, or a managed database attachment.",
+			Subject: subject,
+		})
 	}
 	if hasListEntries(service["env_file"]) {
 		findings = append(findings, Finding{Code: "env_file_ignored", Level: FindingWarning, Message: "An env_file is not read; the values it holds must be supplied as reviewed SwarmOps settings or a managed database.", Subject: subject})
@@ -882,6 +891,17 @@ func containsWord(value, word string) bool {
 		}
 	}
 	return false
+}
+
+// namedKeys lists what a finding is about without letting one service's
+// environment become a paragraph.
+func namedKeys(keys []string) string {
+	keys = sortedUnique(keys)
+	const shown = 6
+	if len(keys) <= shown {
+		return strings.Join(keys, ", ")
+	}
+	return strings.Join(keys[:shown], ", ") + " and " + strconv.Itoa(len(keys)-shown) + " more"
 }
 
 func sortedUnique(values []string) []string {

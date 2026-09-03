@@ -14,13 +14,19 @@ import (
 // a port the operator had to guess at even though `EXPOSE 8080` was sitting in
 // the build.
 //
-// This parser is deliberately a reader, never an evaluator. It resolves no
-// build argument, follows no base image, and executes nothing; an instruction
-// it does not recognize is skipped rather than guessed at.
+// This parser is deliberately a reader, never an evaluator. It follows no base
+// image and executes nothing; an instruction it does not recognize is skipped
+// rather than guessed at. The single exception is the literal default of an
+// ARG declared before the first FROM — Docker's own rule for what a FROM line
+// may reference — because refusing to read it made the scanner report
+// `FROM ${GO_IMAGE}` as an unpinned base image on a Dockerfile whose very next
+// line pinned it to a digestable tag. A warning that is wrong about a pinned
+// build teaches operators to skip the warnings that are right.
 
 var (
-	dockerfileSecretKey = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)`)
-	dockerfileArgRef    = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*`)
+	dockerfileSecretKey    = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)`)
+	dockerfileArgRef       = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*`)
+	dockerfileArgExpansion = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*`)
 )
 
 type dockerfileInstruction struct {
@@ -36,22 +42,51 @@ func analyzeDockerfile(filename string, content []byte) (DockerfilePlan, []Findi
 	instructions := parseDockerfile(content)
 	var findings []Finding
 	stageStart := -1
+	arguments := map[string]string{}
+	stages := map[string]struct{}{}
 	for index, instruction := range instructions {
-		if instruction.keyword == "FROM" {
-			plan.Stages++
-			stageStart = index
-			if base := dockerfileBaseImage(instruction.arguments); base != "" {
-				plan.BaseImages = append(plan.BaseImages, base)
+		// Only an ARG before the first FROM is in scope for a FROM line, which
+		// is the rule Docker itself applies.
+		if instruction.keyword == "ARG" && plan.Stages == 0 {
+			if name, value, declared := dockerfileArgDefault(instruction.arguments); declared {
+				arguments[name] = value
 			}
+			continue
 		}
+		if instruction.keyword != "FROM" {
+			continue
+		}
+		plan.Stages++
+		stageStart = index
+		if alias := dockerfileStageAlias(instruction.arguments); alias != "" {
+			stages[alias] = struct{}{}
+		}
+		base := dockerfileBaseImage(instruction.arguments)
+		if base == "" {
+			continue
+		}
+		// `FROM build` names an earlier stage in this same file, not an image
+		// anything is pulled from. Reporting it as an unpinned base image
+		// invents a supply-chain risk that does not exist.
+		if _, isStage := stages[strings.ToLower(base)]; isStage {
+			continue
+		}
+		plan.BaseImages = append(plan.BaseImages, resolveDockerfileImage(base, arguments))
 	}
 	if plan.Stages == 0 {
 		return plan, []Finding{{Code: "dockerfile_no_from", Level: FindingBlocker, Message: "Dockerfile has no FROM instruction, so it cannot be built.", Subject: filename}}
 	}
-	for _, base := range plan.BaseImages {
-		if !immutableImage(base) {
-			findings = append(findings, Finding{Code: "dockerfile_mutable_base", Level: FindingWarning, Message: "Base image " + base + " is not pinned to a version or digest, so a rebuild can produce a different image from the same commit.", Subject: filename})
+	// The same base image in four stages is one fact about this build, not
+	// four warnings to read.
+	for _, base := range sortedUnique(plan.BaseImages) {
+		if immutableImage(base) {
+			continue
 		}
+		message := "Base image " + base + " is not pinned to a version or digest, so a rebuild can produce a different image from the same commit."
+		if strings.Contains(base, "${") || strings.Contains(base, "$") {
+			message = "Base image " + base + " is chosen by a build argument with no default in this file, so a rebuild can produce a different image from the same commit."
+		}
+		findings = append(findings, Finding{Code: "dockerfile_mutable_base", Level: FindingWarning, Message: message, Subject: filename})
 	}
 	// Only the final stage decides what the produced image runs as, listens
 	// on, and probes. Earlier stages are build scaffolding and are read only
@@ -161,6 +196,60 @@ func dockerfileBaseImage(arguments string) string {
 		return field
 	}
 	return ""
+}
+
+// dockerfileArgDefault reads `ARG NAME=value`. An ARG with no default declares
+// a name and nothing about the image, so it is not recorded.
+func dockerfileArgDefault(arguments string) (name, value string, declared bool) {
+	fields := strings.Fields(arguments)
+	if len(fields) == 0 {
+		return "", "", false
+	}
+	key, literal, found := strings.Cut(fields[0], "=")
+	if !found {
+		return "", "", false
+	}
+	literal = strings.Trim(strings.TrimSpace(literal), `"'`)
+	if literal == "" {
+		return "", "", false
+	}
+	return strings.TrimSpace(key), literal, true
+}
+
+// dockerfileStageAlias reads the name in `FROM image AS name`.
+func dockerfileStageAlias(arguments string) string {
+	fields := strings.Fields(arguments)
+	for index := 0; index+1 < len(fields); index++ {
+		if strings.EqualFold(fields[index], "AS") {
+			return strings.ToLower(fields[index+1])
+		}
+	}
+	return ""
+}
+
+// resolveDockerfileImage substitutes the literal ARG defaults this file
+// declared. It expands `${NAME}`, `${NAME:-fallback}` and `$NAME`, and nothing
+// else: no environment, no nesting, no shell. A reference it cannot resolve is
+// returned as written, so the finding still names what the operator will read
+// in the file.
+func resolveDockerfileImage(image string, arguments map[string]string) string {
+	resolved := dockerfileArgExpansion.ReplaceAllStringFunc(image, func(match string) string {
+		name := strings.TrimPrefix(match, "$")
+		name = strings.TrimPrefix(name, "{")
+		name = strings.TrimSuffix(name, "}")
+		fallback := ""
+		if key, value, found := strings.Cut(name, ":-"); found {
+			name, fallback = key, value
+		}
+		if value, declared := arguments[name]; declared {
+			return value
+		}
+		if fallback != "" {
+			return fallback
+		}
+		return match
+	})
+	return strings.TrimSpace(resolved)
 }
 
 func dockerfilePorts(arguments string) []uint16 {

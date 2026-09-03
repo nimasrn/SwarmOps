@@ -85,7 +85,12 @@ export function DeploymentPlan({
   slotCreatable?: boolean
   slotName: string
 }) {
-  const warnings = findings.filter((finding) => finding.level !== 'blocker')
+  // A finding the scanner marked "info" is what it READ — the health path it
+  // took from a HEALTHCHECK, the router it found in Compose. Listing it under
+  // a warning heading with a warning icon made a clean scan of a pinned,
+  // routed, health-checked repository look like seven problems.
+  const warnings = findings.filter((finding) => finding.level === 'warning')
+  const notes = findings.filter((finding) => finding.level === 'info')
   const blockers = findings.filter((finding) => finding.level === 'blocker')
   const databases = selectedService?.databases ?? []
   // The rail names the stacks the way the discovery found them — Prometheus,
@@ -228,6 +233,16 @@ export function DeploymentPlan({
           <List plain>
             {warnings.map((finding) => (
               <ListRow key={`${finding.code}/${finding.subject ?? ''}`} leading={<Icon name="alert" size="sm" tone="warning" />} title={finding.message} />
+            ))}
+          </List>
+        </RailSection>
+      ) : null}
+
+      {notes.length ? (
+        <RailSection meta={String(notes.length)} title="What the scan read">
+          <List plain>
+            {notes.map((finding) => (
+              <ListRow key={`${finding.code}/${finding.subject ?? ''}`} leading={<Icon name="info" size="sm" />} title={finding.message} />
             ))}
           </List>
         </RailSection>

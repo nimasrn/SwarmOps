@@ -38,6 +38,7 @@ import { formatDateTime, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
+import { UseDefaultPlatformDefinition } from '../../components/default-platform-definition'
 import { DeploymentPlan } from './deploy-parts/plan'
 import { SourceSetupPanel } from './deploy-parts/setup'
 import { SOURCE_DOCS_URL } from './source-settings'
@@ -488,7 +489,18 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
         revision: plan.revision.sha,
         service: selectedService.service,
       }, application)
-      toast({ message: `${selectedSlot.name} source deployment queued (${shortID(command.id)})`, tone: 'success' })
+      // The controller answers 202 with the command even when storing the
+      // source input failed, deliberately: a durable attention record is
+      // better than an opaque error. Reporting that record as "queued" is
+      // what turned a stated failure into a deployment the operator believed
+      // was running.
+      if (command.state === 'needs_attention' || command.state === 'failed') {
+        const reason = command.failureSummary ?? command.lastError ?? 'The controller could not queue this deployment.'
+        setError(`${reason}${command.recoveryHint ? ` ${command.recoveryHint}` : ''}`)
+        toast({ duration: 0, message: reason, tone: 'danger' })
+      } else {
+        toast({ message: `${selectedSlot.name} source deployment queued (${shortID(command.id)})`, tone: 'success' })
+      }
     } catch (reason) {
       setError(messageOf(reason))
     } finally {
@@ -753,7 +765,12 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
                   {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to load the reviewed application slots and queue a deployment.</Banner> : null}
                   {managerID && !slotCreatable && approved.length === 0 ? (
                     <Banner
-                      action={!platform?.fileManaged && onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Open platform definition</Button> : undefined}
+                      action={platform?.fileManaged ? undefined : (
+                        <Inline gap="tight">
+                          <UseDefaultPlatformDefinition onApplied={(next) => setPlatform(next)} toast={toast} />
+                          {onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Review it first</Button> : null}
+                        </Inline>
+                      )}
                       title="There is no slot to map this service to"
                       tone="warning"
                     >

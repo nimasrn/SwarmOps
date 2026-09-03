@@ -98,3 +98,60 @@ func TestAnalyzeDockerfileHonoursEscapeDirectiveAndRejectsEmptyFile(t *testing.T
 		t.Fatalf("findings = %#v", findings)
 	}
 }
+
+// The nim-zone Dockerfile pins both of its base images through build arguments
+// declared above the first FROM. Reading `${GO_IMAGE}` literally reported four
+// unpinned-base warnings for a build that is fully pinned, and repeated the
+// same one three times because three stages share a base.
+func TestBaseImagesResolveDeclaredBuildArguments(t *testing.T) {
+	t.Parallel()
+	plan, findings := analyzeDockerfile("Dockerfile", []byte(`ARG GO_IMAGE=golang:1.25-alpine
+ARG NODE_IMAGE=node:22-alpine
+
+FROM ${GO_IMAGE} AS content
+FROM ${NODE_IMAGE} AS dependencies
+FROM ${NODE_IMAGE} AS build
+FROM ${NODE_IMAGE} AS runtime
+COPY --from=build /app /app
+EXPOSE 8080
+USER node
+CMD ["node", "server.js"]
+`))
+	for _, finding := range findings {
+		if finding.Code == "dockerfile_mutable_base" {
+			t.Fatalf("a pinned build reported an unpinned base image: %s", finding.Message)
+		}
+	}
+	if len(plan.BaseImages) != 4 || plan.BaseImages[0] != "golang:1.25-alpine" || plan.BaseImages[3] != "node:22-alpine" {
+		t.Fatalf("base images were not resolved: %#v", plan.BaseImages)
+	}
+}
+
+// A stage name is not an image, and an argument with no default is not a pin.
+func TestBaseImageFindingsSeparateStagesFromUnpinnedArguments(t *testing.T) {
+	t.Parallel()
+	_, findings := analyzeDockerfile("Dockerfile", []byte(`ARG RUNTIME_IMAGE
+
+FROM alpine:3.20 AS base
+FROM base AS build
+FROM ${RUNTIME_IMAGE} AS runtime
+USER app
+CMD ["/app"]
+`))
+	mutable := 0
+	for _, finding := range findings {
+		if finding.Code != "dockerfile_mutable_base" {
+			continue
+		}
+		mutable++
+		if !strings.Contains(finding.Message, "${RUNTIME_IMAGE}") {
+			t.Fatalf("unexpected unpinned base finding: %s", finding.Message)
+		}
+		if !strings.Contains(finding.Message, "no default in this file") {
+			t.Fatalf("an unresolved build argument must say why it is unpinned: %s", finding.Message)
+		}
+	}
+	if mutable != 1 {
+		t.Fatalf("expected exactly one unpinned-base finding, got %d", mutable)
+	}
+}
