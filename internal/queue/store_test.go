@@ -795,6 +795,16 @@ func TestUploadFailureDiagnosticSeparatesItsCauses(t *testing.T) {
 		{err: fmt.Errorf("encrypted state source exceeds the 536870912 byte limit"), name: "limit", want: "source_input_too_large"},
 		{err: fmt.Errorf("write encrypted state: %w", syscall.ENOSPC), name: "disk", want: "controller_storage_full"},
 		{err: fmt.Errorf("read encrypted state source: unexpected EOF"), name: "stream", want: "source_input_stream_failed"},
+		// Deterministic causes reach the store as read errors on the same
+		// pipe, so a classifier that stopped at the stream case told an
+		// operator to retry a submission that cannot succeed.
+		{err: fmt.Errorf("read encrypted state source: build context exceeds the 20000 file limit"), name: "files", want: "build_context_too_many_files"},
+		{err: fmt.Errorf("read encrypted state source: build context exceeds the 1073741824 byte limit"), name: "context size", want: "build_context_too_large"},
+		{err: fmt.Errorf("read encrypted state source: build context contains a symbolic link or special file at \"link\""), name: "symlink", want: "build_context_unsupported_entry"},
+		{err: fmt.Errorf("read encrypted state source: selected build context contains no regular files"), name: "empty", want: "build_context_empty"},
+		{err: fmt.Errorf("read encrypted state source: provider archive contains more than one repository root"), name: "malformed", want: "provider_archive_malformed"},
+		{err: fmt.Errorf("read encrypted state source: open provider archive: gzip: invalid header"), name: "not gzip", want: "provider_archive_unreadable"},
+		{err: fmt.Errorf("provider archive request failed with status 404"), name: "status", want: "provider_archive_rejected"},
 		{err: context.Canceled, name: "canceled", want: "source_input_canceled"},
 		{err: fmt.Errorf("something else"), name: "unknown", want: "source_input_not_stored"},
 	} {

@@ -11,6 +11,27 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.4 — 2026-09-04
+
+The upload classification added in 0.19.3 was too coarse in one direction: it
+told operators to submit again for failures that will fail identically every
+time.
+
+- **A deterministic build-context failure is not a broken stream** — every
+  failure of the pipe that normalizes a provider archive reaches the command
+  store as a read error, so a context over the file or size limit, a symbolic
+  link inside it, a context path matching no regular files, a malformed
+  archive, a response that is not a gzip stream, and a provider that refused
+  the revision were all reported as "the source input stream ended before the
+  whole archive arrived — submit again". Each is now named with the fix that
+  can actually work; only a genuinely interrupted stream is told to retry
+  unchanged.
+- **The controller logs the underlying error** — the command record carries a
+  bounded, classified explanation and must never carry the raw error, which
+  names controller paths. Nothing logged it either, so an operator debugging a
+  repeated upload failure had nothing on the host to read. The controller now
+  warns with the command id, its classification, and the error itself.
+
 ## 0.19.3 — 2026-09-04
 
 A scan of a fully pinned repository reported seven problems, four of which

@@ -28,7 +28,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.19.3"
+const version = "0.19.4"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {

@@ -511,6 +511,16 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 		s.commandStoreError(response, request, err)
 		return
 	}
+	// The command record carries a bounded, classified explanation; it must
+	// never carry the raw error, which names controller paths. The controller's
+	// own log is where that error belongs, and without it an operator
+	// debugging a repeated upload failure has nothing on the host to read.
+	if err != nil {
+		s.logger.Warn("source deployment input was not stored",
+			"command", submission.Command.ID,
+			"failure", submission.Command.FailureCode,
+			"error", err)
+	}
 	s.recordCommandSubmission(claims, request, submission)
 	writeJSON(response, http.StatusAccepted, submission.Command)
 }

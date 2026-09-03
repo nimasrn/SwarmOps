@@ -193,7 +193,7 @@ func uploadFailureDiagnostic(err error, limit int64) (code, summary, recovery st
 		message = strings.ToLower(err.Error())
 	}
 	switch {
-	case strings.Contains(message, "exceeds the") && strings.Contains(message, "byte limit"), strings.Contains(message, "http: request body too large"):
+	case strings.Contains(message, "encrypted state source exceeds"), strings.Contains(message, "http: request body too large"):
 		return "source_input_too_large",
 			fmt.Sprintf("The source input is larger than this controller's %d MiB build limit.", limit>>20),
 			"Reduce what the build context carries — a .dockerignore excluding vendor, node_modules, build output and history is usually enough — or raise SWARMOPS_BUILD_MAX_BYTES on the controller, then submit again."
@@ -205,6 +205,39 @@ func uploadFailureDiagnostic(err error, limit int64) (code, summary, recovery st
 		return "controller_storage_unwritable",
 			"The controller could not write to its own state directory.",
 			"Check the ownership and mount of the controller's state directory, then submit again."
+	// Everything below this point is deterministic: the same submission fails
+	// the same way, so telling the operator to "submit again" would be advice
+	// that cannot work. These reach the store as read errors on the pipe that
+	// normalizes the provider archive, which is why they have to be matched
+	// before the stream case.
+	case strings.Contains(message, "file limit"):
+		return "build_context_too_many_files",
+			"The build context holds more files than a deployment may carry.",
+			"Exclude what the image does not need — a .dockerignore covering vendor, node_modules, build output and .git is usually enough — then submit again."
+	case strings.Contains(message, "build context exceeds"), strings.Contains(message, "provider archive exceeds"):
+		return "build_context_too_large",
+			"The build context is larger than this controller allows.",
+			"Exclude what the image does not need with a .dockerignore, or raise the configured archive limit on the controller, then submit again."
+	case strings.Contains(message, "symbolic link or special file"):
+		return "build_context_unsupported_entry",
+			"The build context contains a symbolic link or a special file, which is not carried into a build.",
+			"Replace it with a regular file, or move the build context to a directory that does not contain it, then submit again."
+	case strings.Contains(message, "no regular files"):
+		return "build_context_empty",
+			"The selected build context contains no regular files.",
+			"Check the build context path against the repository — a path that matches nothing produces an empty context — then submit again."
+	case strings.Contains(message, "repository root"), strings.Contains(message, "invalid path"), strings.Contains(message, "invalid root"):
+		return "provider_archive_malformed",
+			"The archive the provider returned is not shaped like a repository export.",
+			"Verify the repository and revision resolve to a normal source archive; nothing was stored."
+	case strings.Contains(message, "open provider archive"):
+		return "provider_archive_unreadable",
+			"The provider returned something that is not a gzipped source archive, which usually means the request was answered by an error or a login page.",
+			"Check the connection's token and its scope for this repository, then submit again."
+	case strings.Contains(message, "archive request failed with status"):
+		return "provider_archive_rejected",
+			"The provider refused the archive request for this revision.",
+			"Check that the connection still has access to the repository and that the revision exists, then submit again."
 	case strings.Contains(message, "unexpected eof"), strings.Contains(message, "connection reset"), strings.Contains(message, "broken pipe"), strings.Contains(message, "read encrypted state source"), strings.Contains(message, "made no progress"):
 		return "source_input_stream_failed",
 			"The source input stream ended before the whole archive arrived.",
