@@ -267,7 +267,7 @@ are in [console information architecture](docs/console-information-architecture.
 | Supported commands | A served catalogue of every read and mutation SwarmOps offers, with the Docker command each becomes, its API route, and the guards on it | The vocabulary is closed. An operation absent from the catalogue has no route, no queue action, and no argv the machine agent will accept. |
 | Commands | Track every accepted remote mutation from admission through completion, retry, or operator attention | The API writes the command ledger before returning `202`; it exposes no raw payload, source archive, remote output, or secret. Safe controller-owned failure codes, summaries, and recovery guidance remain visible in Runs and on the initiating screen. The newest queued or retry-scheduled command for the same server/action/target atomically replaces the older one; running and needs-attention commands remain visible. |
 | Images | Build a tarred local context with CPU/RAM caps and allow-listed immutable image tags; optionally push | Browser accepts `.tar`; `swarmops build --context` respects `.dockerignore`, never gives the manager a local path, and receives a queued command ID rather than remote build output. |
-| Source deploy | Verify and seal GitHub, GitLab, GitHub Enterprise, self-managed GitLab, or Gitea/Forgejo-compatible tokens; list accessible repositories; resolve a ref to a commit; find every Compose file and Dockerfile at any depth; build and deploy one classified application | Private hosts require an exact `SWARMOPS_SOURCE_ALLOWED_HOSTS` entry. Provider content is evidence only: browser responses and audit records contain paths, digests, classifications, and findings—not tokens, Compose/Dockerfile bodies, environment values, build contexts, or logs. Only regular files from the pinned build context enter the encrypted artifact queue. |
+| Source deploy | Verify and seal GitHub, GitLab, GitHub Enterprise, self-managed GitLab, or Gitea/Forgejo-compatible tokens; list accessible repositories; resolve a ref to a commit; find every Compose file and Dockerfile at any depth; build and deploy one classified application | Private hosts require an exact `SWARMOPS_SOURCE_ALLOWED_HOSTS` entry. A push registry is optional: with none configured the image is built on the host the deployment targets under the `swarmops-local/` prefix, is never pushed, and the application is pinned to that node, which the plan states as a warning before it is applied. Provider content is evidence only: browser responses and audit records contain paths, digests, classifications, and findings—not tokens, Compose/Dockerfile bodies, environment values, build contexts, or logs. Only regular files from the pinned build context enter the encrypted artifact queue. |
 | Edge / TLS | Accepted apex domains, typed HTTP/TCP/UDP routes, service-role inventory, isolated dependency bindings, static entrypoints, Cloudflare/Arvan DNS records, ACME state/retry, bounded logs, internal Prometheus status, and one-action cutover | Raw labels/rules/provider URLs/queries are never accepted. Publication has one order: an apex domain is accepted for the gateway, a record is created inside it, and only then may a route claim that hostname — a name outside an accepted domain, or one with no record yet, gets no router at all. The dashboard hostname is entered in the installation panel and stored with the selected cluster's sealed Traefik settings; Core does not read it from its process environment. Every mutation is durably queued for the selected manager; public exposure is denied by default and static changes warn that they restart the singleton. |
 | Console domain | Give the console itself a name: choose an accepted zone and the label under it on **Control → Core**, and SwarmOps creates the A record, proves it resolves on the public resolvers, picks the certificate resolver that matches the credential, and publishes the route | It is the same publication order and the same `RouteSpec` every other service gets, so the published console appears in Traffic → Routes and carries an ordinary certificate. The route is sensitive, so it needs the typed `PUBLISH_<SERVICE>` confirmation, and the gateway address is derived from the manager Traefik is pinned to rather than typed — a private advertised address is refused rather than published. A controller that does not run as a Swarm service on the selected cluster has nothing to label: it is published by the HTTPS reverse proxy in front of it, and the screen says so instead of offering the control. |
 | Applications | Render and deploy an application from a small spec: approved slot, immutable image, container port, health path, attached databases, metrics/tracing, optional backend, and an optional policy-bounded domain | SwarmOps generates the Compose and puts its own output through `ValidateCompose` and platform admission. Manual applications use an already-pushed image; Source deploy may first build a pinned repository context through the same capped build service. Exact domains and optional suffix policies come from the reviewed manifest, runtime assignments are unique, and removal needs the application-specific confirmation. |
@@ -837,7 +837,21 @@ binary with the same `SWARMOPS_*` environment values.
 A production platform-admission manifest is deliberately not copied from the
 example. If browser deployments or platform admission are required, keep its
 reviewed, non-secret manifest on this same control host and set
-`SWARMOPS_PLATFORM_MANIFEST_FILE` to that path before starting the API.
+`SWARMOPS_PLATFORM_MANIFEST_FILE` to that path before starting the API. That
+file stays authoritative and makes the console view of it read-only.
+
+A controller started without one is no longer stuck: Platform → Platform
+definition asks where the definition comes from, and accepts one of three
+answers. It can hold a manifest authored in the console — the same namespace,
+registry, resolvers, measured nodes, and application slots, sealed in
+controller state and put through the same preflight. It can be told this
+install has no platform manifest and must not have one, which turns slot
+enforcement off after the operator types `NO_PLATFORM_MANIFEST`: an application
+may then take any name inside the declared namespace, claim any domain, name
+any resolver, and reserve whatever the cluster will schedule. Or it can be left
+unconfigured, which refuses browser deployment exactly as before. Namespace
+confinement, cross-stack secret, config, volume and network isolation, the
+Traefik label subset, and per-host build permission are enforced in every case.
 
 ## Private source-to-deploy
 
@@ -875,6 +889,12 @@ SWARMOPS_SOURCE_IMAGE_PREFIX=ghcr.io/nimasrn
 SWARMOPS_IMAGE_PREFIXES=ghcr.io/nimasrn/
 SWARMOPS_BUILD_ENABLED=true
 ```
+
+Both image-prefix variables are optional. Without them SwarmOps builds under
+`swarmops-local/`, never pushes, and pins the application to the host that
+built it; `swarmops-local/` is always accepted by the build allow-list and by
+platform admission, because an image that is pulled from nowhere cannot be
+substituted by anyone who does not already control that host's image store.
 
 `SWARMOPS_SOURCE_ALLOWED_HOSTS` is needed only for private/self-managed hosts;
 use the exact hostname (and port when non-standard). GitHub.com, GitLab.com,

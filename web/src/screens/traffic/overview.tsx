@@ -17,6 +17,7 @@ import {
 import type { TableColumn } from '@nim.zone/ui'
 import type { CertificateStatus, PrometheusStatus, RouteInventoryRow, RoutingState } from '../../data/types'
 import { MetricChart } from '../../components/metric-chart'
+import { AccessLogPanel } from './access-log'
 import { capitalize } from '../../lib/format'
 
 
@@ -98,6 +99,10 @@ export function TrafficOverview({ certificates, prometheus, routes, state }: { c
           </Panel>
         </Rows>
       </Columns>
+      {/* The charts above say failures are happening. This says WHICH request
+          failed, which is the question they cannot answer. */}
+      <AccessLogPanel routes={routes} />
+
       <Columns template="thirds">
         <Panel title="Traffic by protocol"><Facts items={['http', 'tcp', 'udp'].map((value) => ({ label: value.toUpperCase(), value: String(routes.filter((row) => row.route.protocol === value).length) }))} /></Panel>
         <Panel title="Prometheus targets"><Facts items={[{ label: 'Collected', value: prometheus?.collected ? 'Yes' : 'No' }, { label: 'Targets', value: String(prometheus?.targets?.length ?? 0) }, { label: 'Failing', value: String(failingTargets) }]} /></Panel>

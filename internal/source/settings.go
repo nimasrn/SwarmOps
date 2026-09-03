@@ -169,8 +169,13 @@ func (s *SettingsStore) Save(input SettingsInput) (Settings, error) {
 	if candidate.RegistryServer == "" || candidate.RegistryUsername == "" {
 		password = ""
 	}
-	if candidate.BuildEnabled && (candidate.RegistryServer == "" || candidate.RegistryUsername == "" || password == "") {
-		return Settings{}, fmt.Errorf("bounded builds need a registry server, username, and password before they can push")
+	// A build no longer needs a registry. Without one the image is built under
+	// the local prefix and never pushed, so demanding a credential here would
+	// be demanding an account the operator may not have. A namespace WITH no
+	// credential is still refused: that build would be pushed, and would fail
+	// at the push with nothing said here.
+	if candidate.BuildEnabled && candidate.ImagePrefix != "" && (candidate.RegistryServer == "" || candidate.RegistryUsername == "" || password == "") {
+		return Settings{}, fmt.Errorf("a registry namespace needs a server, username, and password to push to; leave the namespace empty to build images on the deployment host instead")
 	}
 	previous := s.settings
 	s.settings = storedSettings{Settings: candidate, RegistryPassword: password}
@@ -221,9 +226,6 @@ func validateSettings(settings Settings) error {
 		if !strings.Contains(settings.ImagePrefix, "/") {
 			return fmt.Errorf("registry image prefix must include a namespace, such as ghcr.io/your-org")
 		}
-	}
-	if settings.BuildEnabled && settings.ImagePrefix == "" {
-		return fmt.Errorf("bounded builds need a registry image prefix")
 	}
 	for _, host := range settings.PrivateHosts {
 		if !validHostname(host) {

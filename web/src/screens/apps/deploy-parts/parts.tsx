@@ -57,6 +57,9 @@ export interface SourceDraft {
   savedAt: string
   serviceKey: string
   slotName: string
+  /** Which way into the flow the operator was using. Optional so a draft
+      written before the flow was persisted still restores. */
+  source?: 'kubernetes' | 'repository'
 }
 
 export function draftKey(managerID: string) {
@@ -236,14 +239,13 @@ export function connectionColumns(onEdit: (connection: SourceConnection) => void
   ]
 }
 
-export function deploymentBlocks({ blockers, managerID, selectedService, selectedSlot, status }: { blockers: SourceFinding[]; managerID: string; selectedService?: SourceServicePlan; selectedSlot?: ApprovedWorkload; status: SourceStatus }) {
+export function deploymentBlocks({ blockers, managerID, selectedService, selectedSlot, status, unmanaged }: { blockers: SourceFinding[]; managerID: string; selectedService?: SourceServicePlan; selectedSlot?: ApprovedWorkload; status: SourceStatus; unmanaged?: boolean }) {
   const result: string[] = []
   if (!managerID) result.push('Select a connected Swarm manager before queuing a deployment.')
   if (!selectedService) result.push('Select one deployable source service.')
-  if (!selectedSlot) result.push('Choose an approved application slot from the selected manager.')
+  if (!selectedSlot) result.push(unmanaged ? 'Name the application this deployment becomes.' : 'Choose an approved application slot from the selected manager.')
   if (blockers.length) result.push('Resolve the selected service’s blocking discovery findings.')
   if (selectedService?.build?.required && !status.buildEnabled) result.push('Source builds are disabled on this controller.')
-  if (selectedService?.build?.required && !status.imagePrefixConfigured) result.push('Configure an allow-listed source image prefix before building provider code.')
   return result
 }
 

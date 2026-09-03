@@ -5,10 +5,11 @@ import { Screen } from '../../components/screen'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { DatabasesTab } from './databases'
 import { TelemetryTab } from './observability'
+import { PlatformAdmissionTab } from './platform-admission'
 
 type Toast = ReturnType<typeof useToast>
 
-type PlatformTab = 'data' | 'telemetry'
+type PlatformTab = 'data' | 'telemetry' | 'admission'
 
 /**
  * The cluster singletons, in one place.
@@ -93,11 +94,13 @@ export function PlatformServicesPage({ nodes, onOpen, status, toast, traefik }: 
         options={[
           { label: 'Databases & caches', value: 'data' },
           { label: 'Metrics, traces & logs', value: 'telemetry' },
+          { label: 'Platform definition', value: 'admission' },
         ]}
         value={tab}
       />
 
       {tab === 'data' ? <DatabasesTab toast={toast} /> : null}
+      {tab === 'admission' ? <PlatformAdmissionTab toast={toast} /> : null}
       {tab === 'telemetry' && status && traefik ? (
         <TelemetryTab
           nodes={nodes}

@@ -18,6 +18,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/config"
+	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/preflight"
 	"github.com/nimasrn/SwarmOps/internal/remote"
@@ -418,8 +419,9 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 	if bytes.Contains(sealed, []byte(password)) {
 		t.Fatal("registry password was stored in plaintext")
 	}
-	if prefixes := api.sourceImagePrefixes(); len(prefixes) != 1 || prefixes[0] != "ghcr.io/acme/" {
-		t.Fatalf("push allow-list did not cover the configured namespace: %v", prefixes)
+	prefixes := api.sourceImagePrefixes()
+	if len(prefixes) != 2 || prefixes[0] != domain.LocalImagePrefix+"/" || prefixes[1] != "ghcr.io/acme/" {
+		t.Fatalf("push allow-list did not cover the local prefix and the configured namespace: %v", prefixes)
 	}
 }
 

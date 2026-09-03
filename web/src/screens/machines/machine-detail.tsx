@@ -4,7 +4,6 @@ import {
   Banner,
   Body,
   Button,
-  Columns,
   DetailHeader,
   Facts,
   Inline,

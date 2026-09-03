@@ -43,7 +43,7 @@ export function ProductionTrend() {
     try {
       const [reading, samples] = await Promise.all([api.insights(), api.insightsHistory()])
       setInsights(reading)
-      setHistory(samples)
+      setHistory(samples ?? [])
     } catch (reason) {
       setError(messageOf(reason))
     } finally {

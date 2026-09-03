@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nimasrn/SwarmOps/internal/domain"
 	"gopkg.in/yaml.v3"
 )
 
@@ -128,11 +129,9 @@ func scanRepository(ctx context.Context, provider provider, repository Repositor
 			contextPath = ""
 		}
 		serviceName := dockerfileServiceName(file.evidence.Path)
-		build := &BuildPlan{ContextPath: contextPath, DockerfilePath: path.Base(file.evidence.Path), Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Required: true}
+		build := &BuildPlan{ContextPath: contextPath, DockerfilePath: path.Base(file.evidence.Path), Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: options.ImagePrefix != "", Required: true}
 		findings := []Finding{{Code: "dockerfile_without_compose", Level: FindingWarning, Message: "Dockerfile was found without a Compose service; confirm its container port and health endpoint.", Subject: file.evidence.Path}}
-		if build.Image == "" {
-			findings = append(findings, Finding{Code: "build_registry_unavailable", Level: FindingBlocker, Message: "Source builds require a configured allow-listed image prefix.", Subject: file.evidence.Path})
-		}
+		findings = append(findings, buildDestinationFinding(build, file.evidence.Path)...)
 		findings = append(findings, evidence.findings[file.evidence.Path]...)
 		findings = append(findings, evidence.dockerignoreFinding(contextPath)...)
 		analyzed := evidence.dockerfiles[file.evidence.Path]
@@ -396,11 +395,9 @@ func inspectComposeService(composePath, name string, service map[string]any, rep
 	} else if image == "" {
 		defaultDockerfile := path.Join(composeDir, "Dockerfile")
 		if evidence.has(defaultDockerfile) {
-			result.build = &BuildPlan{ContextPath: composeDir, DockerfilePath: "Dockerfile", Image: generatedImage(options.ImagePrefix, repository.Path, buildIdentity, revision.SHA), Required: true}
+			result.build = &BuildPlan{ContextPath: composeDir, DockerfilePath: "Dockerfile", Image: generatedImage(options.ImagePrefix, repository.Path, buildIdentity, revision.SHA), Push: options.ImagePrefix != "", Required: true}
 			result.image = result.build.Image
-			if result.image == "" {
-				result.findings = append(result.findings, Finding{Code: "build_registry_unavailable", Level: FindingBlocker, Message: "Source builds require a configured allow-listed image prefix.", Subject: subject})
-			}
+			result.findings = append(result.findings, buildDestinationFinding(result.build, subject)...)
 		} else {
 			result.findings = append(result.findings, Finding{Code: "service_image", Level: FindingBlocker, Message: "Application service has neither an image nor a discoverable Dockerfile.", Subject: subject})
 		}
@@ -589,11 +586,9 @@ func composeBuildPlan(raw any, composeDir, serviceName string, repository Reposi
 	if !evidence.has(physical) {
 		findings = append(findings, Finding{Code: "dockerfile_missing", Level: FindingBlocker, Message: "The Dockerfile named by Compose was not found in the immutable repository tree.", Subject: physical})
 	}
-	image := generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA)
-	if image == "" {
-		findings = append(findings, Finding{Code: "build_registry_unavailable", Level: FindingBlocker, Message: "Source builds require a configured allow-listed image prefix.", Subject: physical})
-	}
-	return &BuildPlan{ContextPath: contextPath, DockerfilePath: dockerfilePath, Image: image, Required: true}, findings
+	build := &BuildPlan{ContextPath: contextPath, DockerfilePath: dockerfilePath, Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: options.ImagePrefix != "", Required: true}
+	findings = append(findings, buildDestinationFinding(build, physical)...)
+	return build, findings
 }
 
 func finalizePlan(plan *Plan) {
@@ -790,9 +785,30 @@ func cleanRelativePath(value string) (string, error) {
 	return clean, nil
 }
 
+// buildDestinationFinding says where the image this build produces will end
+// up. A build without a registry is not an error — it is the ordinary case for
+// an operator running one machine — but it is a fact about reach that the plan
+// must state before it is applied, because the resulting image exists only on
+// the host that built it.
+func buildDestinationFinding(build *BuildPlan, subject string) []Finding {
+	if build == nil {
+		return nil
+	}
+	if build.Image == "" {
+		return []Finding{{Code: "build_revision_unavailable", Level: FindingBlocker, Message: "This build has no immutable revision to tag its image with.", Subject: subject}}
+	}
+	if build.Push {
+		return nil
+	}
+	return []Finding{{Code: "build_local_image", Level: FindingWarning, Message: "No push registry is configured, so this image is built on the deployment host and stays there; the application is pinned to that host. Configure a registry to run it on any node.", Subject: subject}}
+}
+
 func generatedImage(prefix, repositoryPath, service, revision string) string {
-	if prefix == "" || !validSHA(revision) {
+	if !validSHA(revision) {
 		return ""
+	}
+	if prefix == "" {
+		prefix = domain.LocalImagePrefix
 	}
 	repositoryName := path.Base(repositoryPath)
 	name := normalizeApplicationName(repositoryName + "-" + service)

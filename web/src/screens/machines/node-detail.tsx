@@ -11,7 +11,6 @@ import {
   Facts,
   Inline,
   Input,
-  Label,
   Metric,
   MetricGrid,
   Mono,
@@ -58,6 +57,7 @@ export function NodeDetailView({
   onDiagnostics,
   onLabel,
   onReadiness,
+  onRefresh,
   onRemove,
   onRole,
   taskError,
@@ -78,6 +78,7 @@ export function NodeDetailView({
   onDiagnostics: () => void
   onLabel: (key: string, value: string) => void
   onReadiness: () => void
+  onRefresh: () => void
   onRemove: (confirmation: string) => Promise<void>
   onRole: (role: 'demote' | 'promote') => void
   taskError: string
@@ -90,6 +91,7 @@ export function NodeDetailView({
       <DetailHeader
         actions={
           <Inline>
+            <Button disabled={busy} iconStart="refresh" onClick={onRefresh} variant="ghost">Re-read this node</Button>
             <Button iconStart="activity" onClick={onDiagnostics} variant="secondary">Run diagnosis</Button>
             <Button onClick={onReadiness} variant="secondary">Prepare node</Button>
           </Inline>

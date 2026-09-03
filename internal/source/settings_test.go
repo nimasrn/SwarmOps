@@ -67,13 +67,27 @@ func TestSettingsKeepSealedPasswordWhenBlank(t *testing.T) {
 	}
 }
 
-func TestSettingsRejectBuildsWithoutPushCredential(t *testing.T) {
+func TestSettingsRejectNamespaceWithoutPushCredential(t *testing.T) {
 	store := newTestSettings(t, Settings{})
 	if _, err := store.Save(SettingsInput{BuildEnabled: true, Enabled: true, ImagePrefix: "ghcr.io/acme"}); err == nil {
-		t.Fatal("builds were enabled with no registry credential")
+		t.Fatal("a push namespace was accepted with no registry credential")
 	}
-	if _, err := store.Save(SettingsInput{BuildEnabled: true, Enabled: true, RegistryPassword: "p", RegistryServer: "ghcr.io", RegistryUsername: "robot"}); err == nil {
-		t.Fatal("builds were enabled with no image prefix")
+}
+
+// An operator with one machine and no registry account is the ordinary case.
+// Builds are allowed with no registry at all: the image is then built on the
+// deployment host, never pushed, and the application is pinned to that host.
+func TestSettingsAllowBuildsWithoutRegistry(t *testing.T) {
+	store := newTestSettings(t, Settings{})
+	settings, err := store.Save(SettingsInput{BuildEnabled: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("builds were refused without a registry: %v", err)
+	}
+	if !settings.BuildEnabled || settings.ImagePrefix != "" {
+		t.Fatalf("unexpected settings: %+v", settings)
+	}
+	if store.RegistryConfigured() {
+		t.Fatal("a credential was invented for a registry-less build")
 	}
 }
 

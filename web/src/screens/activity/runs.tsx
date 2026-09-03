@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ActivityFeed,
   Banner,
@@ -85,8 +85,27 @@ export function RunsPage({
     }
   }
 
+  // The list is the last 100 runs. A run linked into an incident channel an
+  // hour ago is routinely older than that, and the screen used to answer such
+  // a link with "not found in the retained window" — which is true of the LIST
+  // and not of the controller, which will still serve that run by id. So when
+  // the window does not hold it, ask for it.
   const attention = commands.filter((command) => command.state === 'needs_attention')
-  const selected = commands.find((command) => command.id === selectedID)
+  const listed = commands.find((command) => command.id === selectedID)
+  const [fetched, setFetched] = useState<{ command?: Command; error?: string; id: string }>()
+
+  useEffect(() => {
+    if (!selectedID || listed) return
+    let live = true
+    setFetched({ id: selectedID })
+    void api.command(selectedID)
+      .then((command) => { if (live) setFetched({ command, id: selectedID }) })
+      .catch((reason) => { if (live) setFetched({ error: messageOf(reason), id: selectedID }) })
+    return () => { live = false }
+  }, [listed, selectedID])
+
+  const beyondWindow = !listed && fetched?.id === selectedID ? fetched : undefined
+  const selected = listed ?? beyondWindow?.command
   const guidance = selected ? attentionGuidance(selected, dashboard, servers) : null
   const queued = commands.filter((command) => command.state === 'queued' || command.state === 'uploading').length
   const running = commands.filter(isInFlight).length
@@ -125,7 +144,9 @@ export function RunsPage({
       status={attention.length ? <StatusDot tone="danger">{attention.length} need attention</StatusDot> : <StatusDot tone="success">No attention required</StatusDot>}
       width="full"
     >
-      {selectedID && !selected ? <Banner title="Run not found in the retained window" tone="warning" action={<Button onClick={() => setSelectedID('')}>Clear selection</Button>}>The requested run is not in this snapshot. No outcome is inferred.</Banner> : null}
+      {selectedID && !selected && beyondWindow?.error ? <Banner title="This run could not be read" tone="warning" action={<Button onClick={() => setSelectedID('')}>Clear selection</Button>}>{beyondWindow.error} No outcome is inferred.</Banner> : null}
+      {selectedID && !selected && !beyondWindow?.error ? <Banner title="Reading this run" tone="info">It is older than the retained window shown below, so it is being read from the controller by id.</Banner> : null}
+      {selected && !listed ? <Banner title="Older than the retained window" tone="info">This run was read from the controller by id. It is not in the list below, and the figures above count only the retained window.</Banner> : null}
       <DetailLayout
         aside={selected ? (
           <Panel

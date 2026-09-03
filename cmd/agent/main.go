@@ -24,6 +24,7 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
+	"github.com/nimasrn/SwarmOps/internal/domain"
 )
 
 const (
@@ -218,7 +219,7 @@ func loadRuntime() (runtimeConfig, error) {
 		}
 	}
 	config := runtimeConfig{
-		allowedImagePrefixes: splitCSV(env("SWARMOPS_AGENT_IMAGE_PREFIXES", "ghcr.io/nimasrn/")),
+		allowedImagePrefixes: splitCSV(env("SWARMOPS_AGENT_IMAGE_PREFIXES", domain.LocalImagePrefix+"/,ghcr.io/nimasrn/")),
 		automaticUpdates:     boolEnv("SWARMOPS_AGENT_AUTO_UPDATE_ENABLED", false),
 		buildEnabled:         boolEnv("SWARMOPS_AGENT_BUILD_ENABLED", false),
 		buildMaxBytes:        int64Env("SWARMOPS_AGENT_BUILD_MAX_BYTES", 512<<20),

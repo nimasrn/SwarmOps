@@ -21,6 +21,7 @@ import type { ComposePlan, Node, Stack } from '../../data/types'
 import { formatDateTime, shortDigest, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { StatusBadge } from '../../components/badges'
+import { ConfirmPhrase } from '../../components/confirm-phrase'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -28,10 +29,14 @@ type Toast = ReturnType<typeof useToast>
  * Namespaced groups of services, and the one way to add another.
  *
  * Writing Compose is the ADVANCED path — the supported route to a running
- * application is Deliver → Deploy from source, which renders the Compose, the
- * route, the probe and the wiring for you. So the editor lives behind a button
- * rather than beside the list: presented as equals, an operator reasonably
- * concludes that hand-written Compose is what the product expects of them.
+ * application is Apps → Deploy, which renders the Compose, the route, the probe
+ * and the wiring for you. So the editor lives behind a button rather than
+ * beside the list: presented as equals, an operator reasonably concludes that
+ * hand-written Compose is what the product expects of them.
+ *
+ * Behind a button is right; behind NO button, which is what this screen
+ * actually shipped, is a two-hundred-line editor that nothing could open. The
+ * button is quiet and it exists.
  */
 export function StacksTab({ nodes, stacks, onDeployFromSource, toast }: {
   nodes: Node[]
@@ -45,6 +50,7 @@ export function StacksTab({ nodes, stacks, onDeployFromSource, toast }: {
   const [targetNodeID, setTargetNodeID] = useState('')
   const [plan, setPlan] = useState<ComposePlan | null>(null)
   const [pending, setPending] = useState<'deploy' | 'validate' | null>(null)
+  const [removing, setRemoving] = useState('')
   const [error, setError] = useState('')
 
   const importCompose = async (file: File | undefined) => {
@@ -91,17 +97,53 @@ export function StacksTab({ nodes, stacks, onDeployFromSource, toast }: {
   }
 
 
+  const remove = async (stack: Stack, confirmation: string) => {
+    setRemoving(stack.name)
+    try {
+      const command = await api.removeStack(stack.name, confirmation)
+      toast({ message: `Removal of ${stack.name} queued (${shortID(command.id)})`, tone: 'success' })
+    } catch (reason) {
+      toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
+    } finally {
+      setRemoving('')
+    }
+  }
+
   const columns: TableColumn<Stack>[] = [
     { header: 'Stack', key: 'name', render: (stack) => <strong>{stack.name}</strong> },
     { header: 'Services', key: 'services', numeric: true, render: (stack) => stack.serviceCount },
     { header: 'Running tasks', key: 'tasks', numeric: true, render: (stack) => stack.runningTasks },
     { header: 'Health', key: 'health', render: (stack) => <StatusBadge health={stack.health} /> },
     { header: 'Last change', key: 'updated', render: (stack) => formatDateTime(stack.updatedAt) },
+    {
+      header: '',
+      key: 'actions',
+      render: (stack) => (
+        <ConfirmPhrase
+          action="Remove"
+          busy={removing === stack.name}
+          compact
+          onConfirm={(confirmation) => remove(stack, confirmation)}
+          phrase={`REMOVE_STACK_${stack.name.toUpperCase()}`}
+        />
+      ),
+    },
   ]
 
   return (
     <>
-      <Panel caption={`${stacks.length} discovered`} flush title="Managed stacks">
+      <Panel
+        actions={
+          <Inline>
+            <Button onClick={onDeployFromSource} size="sm" variant="accent">Deploy from source</Button>
+            <Button onClick={() => setOpen(true)} size="sm" variant="ghost">Write Compose</Button>
+          </Inline>
+        }
+        caption={`${stacks.length} discovered`}
+        description="Removing a stack removes every service in it. The volumes those services mounted, and the data in them, are left behind."
+        flush
+        title="Managed stacks"
+      >
         <DataTable
           caption="Discovered Docker stacks"
           columns={columns}

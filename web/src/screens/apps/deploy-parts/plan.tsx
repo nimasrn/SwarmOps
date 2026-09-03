@@ -5,6 +5,7 @@ import {
   CopyChip,
   Icon,
   Inline,
+  Input,
   Label,
   List,
   ListRow,
@@ -63,6 +64,7 @@ export function DeploymentPlan({
   selectedService,
   selectedSlot,
   slotName,
+  unmanaged,
 }: {
   approved: ApprovedWorkload[]
   blocks: string[]
@@ -79,6 +81,8 @@ export function DeploymentPlan({
   selectedService?: SourceServicePlan
   selectedSlot?: ApprovedWorkload
   slotName: string
+  /** True when this install has no manifest, so the slot is typed, not picked. */
+  unmanaged?: boolean
 }) {
   const warnings = findings.filter((finding) => finding.level !== 'blocker')
   const blockers = findings.filter((finding) => finding.level === 'blocker')
@@ -113,7 +117,9 @@ export function DeploymentPlan({
               trailing={
                 <Inline gap="tight">
                   <Label>Slot</Label>
-                  <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder="Slot" value={slotName} />
+                  {unmanaged
+                    ? <Input aria-label="Application name" onChange={(event) => onChooseSlot(event.target.value)} placeholder="Name" value={slotName} />
+                    : <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder="Slot" value={slotName} />}
                 </Inline>
               }
             />

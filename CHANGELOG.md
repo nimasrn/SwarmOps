@@ -11,6 +11,55 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.17.0 — 2026-09-03
+
+A controller can now be set up entirely from the console: the platform
+definition it admits deployments against, and a build that needs no registry
+account at all.
+
+- **The platform definition is authored in the console** — Platform → Platform
+  definition asks where the definition comes from and takes one of three
+  answers: a manifest written here (namespace, registry, ingress, certificate
+  resolvers, measured nodes and the application slots each with its domain
+  policy and resource ceiling), no manifest at all, or nothing chosen yet. What
+  is authored here goes through the same `preflight.Check` a mounted file goes
+  through, is sealed with the rest of the controller state, and reaches the
+  next deployment without a restart. Node capacity is measured from the live
+  cluster rather than retyped. A mounted `SWARMOPS_PLATFORM_MANIFEST_FILE`
+  still wins and makes the console view read-only, so the reviewed artifact
+  cannot be replaced from a browser.
+- **An install may declare that it has no manifest** — and must not have one.
+  Confirmed by typing `NO_PLATFORM_MANIFEST`, this turns off the four checks
+  only a manifest can answer: an application may take any name inside the
+  declared namespace, claim any domain, name any certificate resolver, and
+  reserve whatever the cluster will schedule. Everything that never needed a
+  manifest stays: namespace confinement, the refusal to mount another stack's
+  secrets, configs, volumes or networks, the approved Traefik label subset, a
+  certificate resolver on every public route, and each host's own build and
+  image permissions. Deploy then takes a typed application name and a stated
+  ceiling in place of a reviewed slot.
+- **A push registry is optional** — an operator with one machine and no
+  registry account is the ordinary case, not a misconfiguration. With no
+  registry configured the image is built on the host the deployment targets
+  under the `swarmops-local/` prefix, is never pushed, and the application is
+  pinned to that node. Discovery states this as a warning on the plan before it
+  is applied rather than blocking with "source builds require a configured
+  allow-listed image prefix", and the registry screen offers "nowhere" as a
+  real answer beside GHCR, Docker Hub and a custom host.
+- **Endpoints the console served but never called are reachable** — what the
+  edge actually carried, request by request, on Traffic → Overview; the digest,
+  layers and platform behind an image; the containers attached to a network;
+  the mountpoint, driver options and labels of a volume; a run older than the
+  retained list, fetched by id instead of reported missing; a single node
+  re-read after a membership change; and the Compose editor that shipped with
+  no button able to open it. The dead `GET /api/v1/traefik/runtime` route is
+  gone rather than left served and unused.
+- **An empty cluster renders as empty, not as a crash** — a handler that
+  returned no rows served the JSON literal `null`, and the console iterates
+  every list it reads. Lists are now rendered as `[]`, and the screens that
+  count what they receive tolerate either. "None" and "could not measure" stay
+  distinct, carried by explicit fields as before.
+
 ## 0.16.1 — 2026-09-03
 
 A scanned repository now reaches production on a cluster that was not already

@@ -23,8 +23,8 @@ type MetricsTarget struct {
 // Prometheus never joins an application overlay or reaches a backend directly.
 func (c *ControlPlane) MetricsTargets() []MetricsTarget {
 	namespace := ""
-	if c.Admission != nil {
-		namespace = c.Admission.Namespace()
+	if c.admission() != nil {
+		namespace = c.admission().Namespace()
 	}
 	return MetricsTargetsFor(c.Apps, namespace)
 }

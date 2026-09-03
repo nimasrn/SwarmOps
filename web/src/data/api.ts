@@ -25,6 +25,10 @@ import type {
   VolumeSummary,
   ApplicationStatus,
   ApprovedWorkload,
+  PlatformDefinition,
+  PlatformInput,
+  PlatformNode,
+  PreflightReport,
   AuditEvent,
   Command,
   ComposePlan,
@@ -34,7 +38,6 @@ import type {
   Overview,
   RegistryMirrorApplyResult,
   RegistryMirrorFleet,
-  Service,
   Server,
   ServerCredentials,
   ServerInput,
@@ -166,13 +169,6 @@ export class SwarmOpsAPI {
     }))
   }
 
-  enrollServer(token: string, name: string) {
-    return this.request<Server>('/api/v1/servers/enroll', {
-      method: 'POST',
-      body: JSON.stringify({ token, name }),
-    })
-  }
-
   addServer(input: ServerInput) {
     return this.request<Server>('/api/v1/servers', {
       method: 'POST',
@@ -240,12 +236,16 @@ export class SwarmOpsAPI {
     })
   }
 
+  // `overview` carries the node and service inventories with it, so the whole
+  // console reads one snapshot and two panels cannot disagree about what the
+  // cluster was doing. Separate `nodes()` and `services()` methods existed
+  // beside it, called by nothing, describing the same objects at a different
+  // instant — the routes remain, and the Action catalogue is where a raw
+  // inventory read is offered.
   overview() { return this.request<Overview>('/api/v1/overview') }
-  nodes() { return this.request<Node[]>('/api/v1/nodes') }
   node(id: string) { return this.request<Node>(`/api/v1/nodes/${encodeURIComponent(id)}`) }
   nodeTasks(id: string) { return this.request<Task[]>(`/api/v1/nodes/${encodeURIComponent(id)}/tasks`) }
   stacks() { return this.request<Stack[]>('/api/v1/stacks') }
-  services() { return this.request<Service[]>('/api/v1/services') }
   auditEvents() { return this.request<AuditEvent[]>('/api/v1/audit-events?limit=100') }
 
   // The Docker and Swarm inventory. Every entry here is a read; the console
@@ -477,6 +477,18 @@ export class SwarmOpsAPI {
   databases() { return this.request<DatabaseStatus[]>('/api/v1/databases') }
   applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
   approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
+  platform() { return this.request<PlatformDefinition>('/api/v1/platform') }
+
+  savePlatform(input: PlatformInput) {
+    return this.request<PlatformDefinition>('/api/v1/platform', { method: 'PUT', body: JSON.stringify(input) })
+  }
+
+  checkPlatform(input: PlatformInput) {
+    return this.request<PreflightReport>('/api/v1/platform/check', { method: 'POST', body: JSON.stringify(input) })
+  }
+
+  /** The live cluster's nodes, projected into measured manifest declarations. */
+  platformNodes() { return this.request<PlatformNode[]>('/api/v1/platform/nodes') }
   sourceStatus() { return this.request<SourceStatus>('/api/v1/sources/status') }
   sourceSettings() { return this.request<SourceSettings>('/api/v1/sources/settings') }
 

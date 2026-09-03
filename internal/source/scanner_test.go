@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/nimasrn/SwarmOps/internal/domain"
 )
 
 func TestScannerClassifiesMonorepoAndNeverReturnsSourceValues(t *testing.T) {
@@ -119,6 +121,87 @@ func TestScannerFindsEveryStandaloneDockerfileInMonorepo(t *testing.T) {
 	}
 	if plan.Services[0].Build == nil || plan.Services[1].Build == nil || !plan.Ready {
 		t.Fatalf("standalone Dockerfiles were not deployable: %#v", plan.Services)
+	}
+}
+
+// A repository with a Dockerfile and no configured registry is deployable.
+// It used to be a blocker — "Source builds require a configured allow-listed
+// image prefix" — which made a registry account the price of deploying from
+// source at all. The image is now built on the deployment host under the local
+// prefix, is not pushed, and the plan says so as a warning rather than
+// refusing.
+func TestScannerBuildsWithoutARegistry(t *testing.T) {
+	revision := Revision{SHA: strings.Repeat("e", 40)}
+	provider := &fixtureProvider{
+		files: map[string][]byte{
+			"compose.yml": []byte("services:\n  api:\n    build: .\n    ports: [8080]\n"),
+			"Dockerfile":  []byte("FROM scratch\n"),
+		},
+		repository: Repository{DefaultBranch: "main", ID: "acme/mono", Name: "mono", Path: "acme/mono"},
+		revision:   revision,
+		tree: []TreeEntry{
+			{Path: "compose.yml", Type: "blob"},
+			{Path: "Dockerfile", Type: "blob"},
+		},
+	}
+	plan, err := scanRepository(context.Background(), provider, provider.repository, revision, Options{}.withDefaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, found := plan.Service("compose.yml", "api")
+	if !found || service.Build == nil {
+		t.Fatalf("no build plan without a registry: %#v", plan.Services)
+	}
+	if !strings.HasPrefix(service.Build.Image, domain.LocalImagePrefix+"/") || service.Build.Push {
+		t.Fatalf("build without a registry was not local: %#v", service.Build)
+	}
+	if !plan.Ready {
+		t.Fatalf("a registry-less build was refused: %#v", plan.Findings)
+	}
+	local := false
+	for _, finding := range service.Findings {
+		if finding.Code == "build_local_image" {
+			if finding.Level != FindingWarning {
+				t.Fatalf("the local-image finding blocks the plan: %#v", finding)
+			}
+			local = true
+		}
+		if finding.Level == FindingBlocker {
+			t.Fatalf("unexpected blocker without a registry: %#v", finding)
+		}
+	}
+	if !local {
+		t.Fatalf("the plan did not say the image stays on the host: %#v", service.Findings)
+	}
+}
+
+// A configured registry still produces a pushed image under that namespace.
+func TestScannerPushesWhenARegistryIsConfigured(t *testing.T) {
+	revision := Revision{SHA: strings.Repeat("f", 40)}
+	provider := &fixtureProvider{
+		files: map[string][]byte{
+			"compose.yml": []byte("services:\n  api:\n    build: .\n    ports: [8080]\n"),
+			"Dockerfile":  []byte("FROM scratch\n"),
+		},
+		repository: Repository{DefaultBranch: "main", ID: "acme/mono", Name: "mono", Path: "acme/mono"},
+		revision:   revision,
+		tree: []TreeEntry{
+			{Path: "compose.yml", Type: "blob"},
+			{Path: "Dockerfile", Type: "blob"},
+		},
+	}
+	plan, err := scanRepository(context.Background(), provider, provider.repository, revision, Options{ImagePrefix: "ghcr.io/acme"}.withDefaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, found := plan.Service("compose.yml", "api")
+	if !found || service.Build == nil || !service.Build.Push || !strings.HasPrefix(service.Build.Image, "ghcr.io/acme/") {
+		t.Fatalf("a configured registry did not produce a pushed image: %#v", service.Build)
+	}
+	for _, finding := range service.Findings {
+		if finding.Code == "build_local_image" {
+			t.Fatalf("a pushed image was reported as local: %#v", finding)
+		}
 	}
 }
 

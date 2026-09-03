@@ -106,6 +106,36 @@ test('every reading sits beside the object it describes', async () => {
   // Its two screens each went somewhere an object owns them.
   assert.match(nav, /key: 'platform'/)
   assert.match(nav, /key: 'containers'/)
+
+  // The rule retired the AREA and left the screen. `screens/home/insights.tsx`
+  // survived with four endpoints wired to it and no route reaching it, which
+  // is the same failure one level down: a reading that sits beside no object
+  // at all. Its content now sits with the objects it describes.
+  assert.ok(!files.includes('screens/home/insights.tsx'), 'the unreachable insights screen is back')
+})
+
+test('every reading the controller serves is drawn somewhere', async () => {
+  const [api, files] = await Promise.all([source('data/api.ts'), tree()])
+
+  // The bug this catches, in its general form: a method on the API client that
+  // nothing calls is an endpoint the controller serves and the console never
+  // asks for. Eight of them had accumulated — node role, labels and removal,
+  // service image, limits and removal, stack removal, the gateway access log —
+  // each one a control the navigation promised and no screen offered.
+  //
+  // A method may be added here before its screen. It may not be FORGOTTEN
+  // here, which is what happened every time.
+  const methods = [...api.matchAll(/^\s{2}([a-zA-Z][A-Za-z0-9]*)(?:<[^>]*>)?\(/gm)]
+    .map((match) => match[1])
+    .filter((name) => name !== 'constructor' && name !== 'request' && name !== 'commandRequest')
+
+  const callers = await Promise.all(
+    files.filter((file) => (file.endsWith('.ts') || file.endsWith('.tsx')) && file !== 'data/api.ts').map(source),
+  )
+  const everywhereElse = callers.join('\n')
+
+  const uncalled = methods.filter((name) => !everywhereElse.includes(`.${name}(`))
+  assert.deepEqual(uncalled, [], `these API methods are served by the controller and called by no screen: ${uncalled.join(', ')}`)
 })
 
 test('the palette runs actions and finds named things, not only screens', async () => {

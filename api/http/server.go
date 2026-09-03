@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -140,6 +141,7 @@ type Server struct {
 	sources        *source.Service
 	sourceSettings *source.SettingsStore
 	apps           *ops.ApplicationStore
+	platform       *ops.PlatformStore
 	agentBroker    *agentpull.Broker
 	agentRegistry  *agentpull.Registry
 	namespace      string
@@ -271,7 +273,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/traefik/dns/records", s.withActiveAuth(s.traefikDNSRecordApply))
 	mux.HandleFunc("DELETE /api/v1/traefik/dns/records/{id}", s.withActiveAuth(s.traefikDNSRecordDelete))
 	mux.HandleFunc("GET /api/v1/traefik/dns/records/{id}/verify", s.withAuth(false, s.traefikDNSVerify))
-	mux.HandleFunc("GET /api/v1/traefik/runtime", s.withAuth(false, s.traefikRuntime))
 	mux.HandleFunc("GET /api/v1/traefik/certificates", s.withAuth(false, s.traefikCertificates))
 	mux.HandleFunc("POST /api/v1/traefik/certificates/{route}/retry", s.withActiveAuth(s.traefikCertificateRetry))
 	mux.HandleFunc("GET /api/v1/traefik/logs", s.withAuth(false, s.traefikLogs))
@@ -282,6 +283,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/observability/node-agent", s.withActiveAuth(s.nodeAgentCollection))
 	mux.HandleFunc("POST /api/v1/observability/core", s.withActiveAuth(s.coreObservability))
 	mux.HandleFunc("POST /api/v1/observability/logs", s.withActiveAuth(s.logsCollection))
+	mux.HandleFunc("GET /api/v1/platform", s.withAuth(false, s.platformRead))
+	mux.HandleFunc("PUT /api/v1/platform", s.withActiveAuth(s.platformApply))
+	mux.HandleFunc("POST /api/v1/platform/check", s.withAuth(false, s.platformCheck))
+	mux.HandleFunc("GET /api/v1/platform/nodes", s.withAuth(false, s.platformNodes))
 	mux.HandleFunc("GET /api/v1/applications", s.withAuth(false, s.applications))
 	mux.HandleFunc("GET /api/v1/applications/approved", s.withAuth(false, s.approvedApplications))
 	mux.HandleFunc("POST /api/v1/applications/plan", s.withActiveAuth(s.applicationPlan))
@@ -918,7 +923,7 @@ func (s *Server) metricsTargets(response http.ResponseWriter, request *http.Requ
 	kind := request.URL.Query().Get("kind")
 	targets := []ops.MetricsTarget{}
 	if kind == "" || kind == "application" {
-		targets = append(targets, ops.MetricsTargetsFor(s.apps, s.namespace)...)
+		targets = append(targets, ops.MetricsTargetsFor(s.apps, s.discoveryNamespace())...)
 	}
 	if kind == "" || kind == "machine" {
 		targets = append(targets, machineMetricsTargets(s.servers.List())...)
@@ -939,6 +944,16 @@ func (s *Server) SetApplicationDiscovery(apps *ops.ApplicationStore, namespace s
 // New so the version constant stays in cmd/api, which is where the release
 // duty says it lives.
 func (s *Server) SetVersion(version string) { s.version = version }
+
+// discoveryNamespace prefers the namespace currently admitting deployments, so
+// discovery follows a namespace an operator changes from the panel rather than
+// the one this process happened to start with.
+func (s *Server) discoveryNamespace() string {
+	if namespace := s.platform.Admission().Namespace(); namespace != "" {
+		return namespace
+	}
+	return s.namespace
+}
 
 // SetSourceService enables the optional sealed Git-provider boundary. Keeping
 // it out of New preserves the default-off posture for existing deployments.
@@ -994,7 +1009,10 @@ func (s *Server) sourceRegistryAuth() []byte {
 // sourceImagePrefixes is the push allow-list. The configured prefix is always
 // covered so a panel-set namespace does not need a second, separate list.
 func (s *Server) sourceImagePrefixes() []string {
-	prefixes := append([]string{}, s.config.ImagePrefixes...)
+	// Images that are never pushed are always allowed: the prefix is one this
+	// controller generates itself, and an image under it cannot be pulled from
+	// anywhere, so allow-listing it grants no reach.
+	prefixes := append([]string{domain.LocalImagePrefix + "/"}, s.config.ImagePrefixes...)
 	prefix := strings.TrimSpace(s.effectiveSourceSettings().ImagePrefix)
 	if prefix == "" {
 		return prefixes
@@ -1535,7 +1553,26 @@ func decodeJSON(response http.ResponseWriter, request *http.Request, target any)
 func writeJSON(response http.ResponseWriter, status int, value any) {
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)
-	_ = json.NewEncoder(response).Encode(value)
+	_ = json.NewEncoder(response).Encode(emptyRatherThanNull(value))
+}
+
+// emptyRatherThanNull renders a nil slice as [] instead of null.
+//
+// A Go handler that returns "no rows" as a nil slice serves the JSON literal
+// null, and null is not a collection: the console iterates every list endpoint
+// it reads, so an empty cluster answered a chart with a crash rather than with
+// an empty chart. The distinction the API means to draw is between "none" and
+// "could not measure", and that one is carried by explicit fields — never by
+// the difference between [] and null.
+func emptyRatherThanNull(value any) any {
+	if value == nil {
+		return value
+	}
+	reflected := reflect.ValueOf(value)
+	if reflected.Kind() == reflect.Slice && reflected.IsNil() {
+		return reflect.MakeSlice(reflected.Type(), 0, 0).Interface()
+	}
+	return value
 }
 
 func writeError(response http.ResponseWriter, status int, message string) {

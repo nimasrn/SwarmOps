@@ -131,7 +131,7 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 	case strings.Contains(message, "is not declared in the reviewed platform manifest"):
 		return "stack_not_declared", "This stack name is not declared in the reviewed platform manifest.", "Add the stack to the manifest and restart the controller, or deploy an application whose slot the manifest already approves."
 	case strings.Contains(message, "reviewed platform manifest"):
-		return "platform_manifest_required", "This controller has no reviewed platform manifest, so it will not deploy a stack composed in a browser.", "Mount the reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE on the controller, or deploy through Apps → Deploy, which renders an approved application spec instead."
+		return "platform_manifest_required", "This controller has no reviewed platform manifest, so it will not deploy a stack composed in a browser.", "Choose a platform in Platform → Platform definition — author a manifest there or declare this install manifest-free — or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE on the controller."
 	case strings.Contains(message, "read trusted stack asset"):
 		return "controller_asset_missing", "The controller's reviewed deployment asset is unavailable.", "Repair or update the controller installation before retrying."
 	case strings.Contains(message, "config") && strings.Contains(message, "not found"):

@@ -10,18 +10,24 @@ import {
   Input,
   Mono,
   Panel,
+  RecordLink,
   Select,
+  Sheet,
   Spinner,
   Stack as Rows,
   Switch,
+  Facts,
+  Body,
+  DataTable as Table,
   useToast,
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../../data/api'
 import type {
+  NetworkDetail,
   NetworkSummary,
 } from '../../../data/types'
-import { shortID } from '../../../lib/format'
+import { formatDateTime, shortID } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
 import { useResource } from '../../../data/hooks'
 import { ConfirmPhrase } from '../../../components/confirm-phrase'
@@ -35,6 +41,24 @@ export function NetworksTab({ toast }: { toast: Toast }) {
   const [attachable, setAttachable] = useState(true)
   const [internal, setInternal] = useState(false)
   const [pending, setPending] = useState('')
+  // `docker network inspect` is the only place the ATTACHED CONTAINERS live,
+  // which is the one question a network row cannot answer and the one an
+  // operator has before they remove it. The endpoint was served and unused.
+  const [inspected, setInspected] = useState<NetworkDetail | null>(null)
+  const [inspectError, setInspectError] = useState('')
+
+  const inspect = async (network: NetworkSummary) => {
+    setInspected(null)
+    setInspectError('')
+    setPending(`inspect-${network.Id}`)
+    try {
+      setInspected(await api.network(network.Id))
+    } catch (reason) {
+      setInspectError(messageOf(reason))
+    } finally {
+      setPending('')
+    }
+  }
 
   const create = async () => {
     setPending('create')
@@ -48,7 +72,7 @@ export function NetworksTab({ toast }: { toast: Toast }) {
   }
 
   const columns: TableColumn<NetworkSummary>[] = [
-    { header: 'Network', key: 'name', render: (network) => <Mono>{network.Name}</Mono> },
+    { header: 'Network', key: 'name', render: (network) => <RecordLink meta={`${network.Driver} · ${network.Scope}`} onClick={() => void inspect(network)} title={network.Name} /> },
     { header: 'Driver', key: 'driver', render: (network) => network.Driver },
     { header: 'Scope', key: 'scope', render: (network) => network.Scope },
     { header: 'Subnet', key: 'subnet', render: (network) => <Mono>{network.IPAM?.Config?.map((entry) => entry.Subnet).filter(Boolean).join(', ') || '—'}</Mono> },
@@ -98,6 +122,37 @@ export function NetworksTab({ toast }: { toast: Toast }) {
           </Rows>
         </Columns>
       </Panel>
+      <Sheet closeLabel="Close the network inspector" onClose={() => { setInspected(null); setInspectError('') }} open={Boolean(inspected) || Boolean(inspectError)} title={inspected?.Name ?? 'Network'}>
+        {inspectError ? <Banner tone="danger" title="This network could not be inspected">{inspectError}</Banner> : null}
+        {inspected ? (
+          <Rows gap="tight">
+            <Facts columns={1} items={[
+              { label: 'Name', mono: true, value: inspected.Name },
+              { label: 'ID', mono: true, value: inspected.Id },
+              { label: 'Driver', value: inspected.Driver },
+              { label: 'Scope', value: inspected.Scope },
+              { label: 'Subnets', mono: true, value: inspected.IPAM?.Config?.map((entry) => entry.Subnet).filter(Boolean).join(', ') || 'None assigned' },
+              { label: 'Gateways', mono: true, value: inspected.IPAM?.Config?.map((entry) => entry.Gateway).filter(Boolean).join(', ') || 'None assigned' },
+              { label: 'Created', value: inspected.Created ? formatDateTime(inspected.Created) : 'Not reported' },
+              { label: 'Flags', value: [inspected.Ingress ? 'ingress' : '', inspected.Attachable ? 'attachable' : '', inspected.Internal ? 'internal' : ''].filter(Boolean).join(', ') || 'none' },
+            ]} />
+            <Body size="sm" tone="muted">
+              Attached containers are those the SELECTED manager can see. On an overlay network, tasks on other nodes are
+              attached too and are not listed here.
+            </Body>
+            <Table
+              caption="Containers attached on this manager"
+              columns={[
+                { header: 'Container', key: 'name', render: (row: { id: string; ipv4: string; name: string }) => <Mono>{row.name}</Mono> },
+                { header: 'Address', key: 'ipv4', render: (row: { id: string; ipv4: string; name: string }) => <Mono>{row.ipv4 || '—'}</Mono> },
+              ]}
+              empty={<EmptyState description="This manager reports nothing attached to this network." icon="external" title="Nothing attached here" />}
+              rowKey={(row) => row.id}
+              rows={Object.entries(inspected.Containers ?? {}).map(([id, value]) => ({ id, ipv4: value.IPv4Address, name: value.Name }))}
+            />
+          </Rows>
+        ) : null}
+      </Sheet>
       <Panel flush title={`Networks (${data?.length ?? 0})`}>
         <DataTable
           caption="Networks on the selected target"

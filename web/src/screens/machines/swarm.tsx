@@ -65,15 +65,25 @@ export function SwarmPage({
   const [taskError, setTaskError] = useState('')
   const [containerError, setContainerError] = useState('')
   const [busy, setBusy] = useState(false)
-  const selected = nodes.find((node) => node.id === selectedID)
+  // The cluster snapshot arrives on a poll. A membership change queued from
+  // this page lands between polls, so the page that queued it needs to be able
+  // to ask about its own node — which is exactly what `GET /nodes/{id}` is
+  // for, and what nothing had ever called it for.
+  const [reread, setReread] = useState<Node | null>(null)
+  const fromSnapshot = nodes.find((node) => node.id === selectedID)
+  const selected = reread?.id === selectedID ? reread : fromSnapshot
 
   useEffect(() => {
     if (!selected) return
     let live = true
     setTaskError('')
     setContainerError('')
-    void api.nodeTasks(selected.id).then((value) => { if (live) setTasks(value) }).catch((reason) => { if (live) setTaskError(messageOf(reason)) })
-    void api.containers().then((value) => { if (live) setContainers(value) }).catch((reason) => { if (live) setContainerError(messageOf(reason)) })
+    setReread(null)
+    // `?? []` rather than trust: a controller that answered an empty result as
+    // JSON null took this whole screen down with it, because every reading
+    // below counts what it got.
+    void api.nodeTasks(selected.id).then((value) => { if (live) setTasks(value ?? []) }).catch((reason) => { if (live) setTaskError(messageOf(reason)) })
+    void api.containers().then((value) => { if (live) setContainers(value ?? []) }).catch((reason) => { if (live) setContainerError(messageOf(reason)) })
     return () => { live = false }
   }, [selected?.id])
 
@@ -89,6 +99,18 @@ export function SwarmPage({
     } catch (reason) {
       toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
       throw reason
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const refreshNode = async () => {
+    if (!selectedID) return
+    setBusy(true)
+    try {
+      setReread(await api.node(selectedID))
+    } catch (reason) {
+      toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
     } finally {
       setBusy(false)
     }
@@ -188,6 +210,7 @@ export function SwarmPage({
         onDiagnostics={onDiagnostics}
         onLabel={updateLabel}
         onReadiness={onReadiness}
+        onRefresh={() => void refreshNode()}
         onRemove={removeNode}
         onRole={updateRole}
         taskError={taskError}

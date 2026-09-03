@@ -119,7 +119,11 @@ type BuildPlan struct {
 	ContextPath    string `json:"contextPath"`
 	DockerfilePath string `json:"dockerfilePath"`
 	Image          string `json:"image"`
-	Required       bool   `json:"required"`
+	// Push is false when no push registry is configured. The image is then
+	// built under LocalImagePrefix and stays on the host that built it, which
+	// is why the deployment pins itself to that node.
+	Push     bool `json:"push"`
+	Required bool `json:"required"`
 }
 
 // DockerfilePlan is the validated summary of one Dockerfile: derived facts

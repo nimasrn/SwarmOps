@@ -445,7 +445,7 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 			Dockerfile: candidate.Build.DockerfilePath,
 			Image:      candidate.Build.Image,
 			MemoryMiB:  spec.MemoryMiB,
-			Push:       true,
+			Push:       candidate.Build.Push,
 		})
 		if err != nil {
 			writeError(response, http.StatusUnprocessableEntity, err.Error())

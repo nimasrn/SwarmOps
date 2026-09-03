@@ -149,7 +149,7 @@ export function MetricChartGrid({ lead = [], query, refreshMs }: MetricChartGrid
     let live = true
     setNames(undefined)
     void api.metricSeries(scope)
-      .then((value) => { if (live) setNames({ scope, series: value.series ?? [] }) })
+      .then((value) => { if (live) setNames({ scope, series: value?.series ?? [] }) })
       .catch((reason) => { if (live) setNames({ error: messageOf(reason), scope }) })
     return () => { live = false }
   }, [scope])

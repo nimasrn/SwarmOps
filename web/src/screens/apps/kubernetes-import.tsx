@@ -52,9 +52,6 @@ export function KubernetesImportPanel({ onOpenWorkloads }: { onOpenWorkloads: ()
     { header: 'What changes', key: 'note', render: (row: ImportMapping) => row.note ?? '—' },
   ]
 
-  const mapped = report?.mappings.length ?? 0
-  const gaps = report?.gaps.length ?? 0
-
   return (
     <>
       <Panel

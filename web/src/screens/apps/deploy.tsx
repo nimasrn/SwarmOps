@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Badge,
   BrandMark,
@@ -27,6 +27,7 @@ import { api } from '../../data/api'
 import type {
   ApplicationSpec,
   ApprovedWorkload,
+  PlatformDefinition,
   SourceConnection,
   SourcePlan,
   SourceProviderKind,
@@ -102,6 +103,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
   const [approved, setApproved] = useState<ApprovedWorkload[]>([])
+  const [platform, setPlatform] = useState<PlatformDefinition | null>(null)
   const [plan, setPlan] = useState<SourcePlan | null>(null)
   const [error, setError] = useState('')
   const [pending, setPending] = useState('')
@@ -122,9 +124,19 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
   const [port, setPort] = useState('8080')
   const [healthPath, setHealthPath] = useState('/healthz')
   const [metricsEnabled, setMetricsEnabled] = useState(false)
+  // An install with no manifest has no slot list to pick from, so the operator
+  // states the ceiling this deployment should run under instead of inheriting
+  // a reviewed one. These are ignored entirely when slots exist.
+  const [freeReplicas, setFreeReplicas] = useState('1')
+  const [freeCPU, setFreeCPU] = useState('0.5')
+  const [freeMemory, setFreeMemory] = useState('512')
+  const [freeResolver, setFreeResolver] = useState('le')
   const [draftSavedAt, setDraftSavedAt] = useState('')
   const [managing, setManaging] = useState(false)
   const [changingRepository, setChangingRepository] = useState(false)
+  // A restored draft has to outlive the repository listing that follows it.
+  const restoredDraft = useRef<SourceDraft | null>(null)
+  const [hydrated, setHydrated] = useState(false)
 
   const selectedConnection = connections.find((connection) => connection.id === connectionID)
   const selectedRepository = repositories.find((repository) => repository.id === repositoryID)
@@ -136,10 +148,25 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     () => deployableServices.find((service) => sourceServiceKey(service) === serviceKey),
     [deployableServices, serviceKey],
   )
-  const selectedSlot = approved.find((slot) => slot.name === slotName)
+  const unmanaged = Boolean(platform?.unmanaged)
+  // Downstream, a slot is a slot: the review card, the blockers, and the
+  // deployment all read the same shape whether a manifest approved it or the
+  // operator just typed it.
+  const selectedSlot = unmanaged
+    ? (slotName.trim()
+      ? {
+        cpuCores: Number(freeCPU) || 0.25,
+        domainOptional: true,
+        memoryMiB: Number(freeMemory) || 256,
+        name: slotName.trim(),
+        replicas: Number(freeReplicas) || 1,
+        resolver: freeResolver.trim(),
+      } satisfies ApprovedWorkload
+      : undefined)
+    : approved.find((slot) => slot.name === slotName)
   const selectedServiceFindings = selectedService?.findings ?? []
   const blockers = selectedServiceFindings.filter((finding) => finding.level === 'blocker')
-  const canEditDomain = Boolean(selectedSlot?.domainOptional || selectedSlot?.domainSuffixes?.length)
+  const canEditDomain = unmanaged || Boolean(selectedSlot?.domainOptional || selectedSlot?.domainSuffixes?.length)
 
   const loadSource = useCallback(async () => {
     setError('')
@@ -154,7 +181,10 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     setConnectionID((current) => nextConnections.some((connection) => connection.id === current) ? current : nextConnections[0]?.id ?? '')
   }, [])
 
-  const loadRepositories = useCallback(async (id: string) => {
+  // `preferred` is how a restored draft survives this load: listing a
+  // connection's projects used to reset the selection to the first row, which
+  // threw away the repository and revision the operator had saved.
+  const loadRepositories = useCallback(async (id: string, preferred?: { ref: string; repositoryID: string }) => {
     if (!id) {
       setRepositories([])
       return
@@ -164,9 +194,10 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     try {
       const nextRepositories = normalizeArray(await api.sourceRepositories(id))
       setRepositories(nextRepositories)
-      const nextRepository = nextRepositories[0]
+      const restored = preferred ? nextRepositories.find((repository) => repository.id === preferred.repositoryID) : undefined
+      const nextRepository = restored ?? nextRepositories[0]
       setRepositoryID(nextRepository?.id ?? '')
-      setRef(nextRepository?.defaultBranch ?? '')
+      setRef(restored && preferred ? (preferred.ref || restored.defaultBranch || '') : nextRepository?.defaultBranch ?? '')
     } catch (reason) {
       setRepositories([])
       setRepositoryID('')
@@ -179,12 +210,16 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
   const loadApprovedSlots = useCallback(async () => {
     if (!managerID) {
       setApproved([])
+      setPlatform(null)
       return
     }
     try {
-      setApproved(normalizeArray(await api.approvedApplications()))
+      const [slots, definition] = await Promise.all([api.approvedApplications(), api.platform()])
+      setApproved(normalizeArray(slots))
+      setPlatform(definition)
     } catch (reason) {
       setApproved([])
+      setPlatform(null)
       setError(messageOf(reason))
     }
   }, [managerID])
@@ -201,9 +236,18 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
       return
     }
     setPlan(null)
-    setServiceKey('')
-    void loadRepositories(connectionID)
+    // A restored draft is consumed once: after this load the operator's own
+    // choices own the selection.
+    const draft = restoredDraft.current
+    restoredDraft.current = null
+    if (!draft || draft.connectionID !== connectionID) setServiceKey('')
+    void loadRepositories(connectionID, draft && draft.connectionID === connectionID ? { ref: draft.ref, repositoryID: draft.repositoryID } : undefined)
   }, [connectionID, loadRepositories, status?.enabled])
+  useEffect(() => {
+    if (!selectedService || slotName || !unmanaged) return
+    setSlotName(selectedService.name)
+    setDomain(selectedService.route?.hosts?.[0] ?? '')
+  }, [selectedService, slotName, unmanaged])
   useEffect(() => {
     if (!selectedService || slotName || approved.length === 0) return
     const matching = approved.find((slot) => slot.name === selectedService.name) ?? approved[0]
@@ -335,17 +379,32 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
   // A draft is the selection, never the evidence: no path, digest, finding, or
   // provider response is written to browser storage, so a saved draft cannot
   // become a copy of someone's repository sitting in localStorage.
-  const saveDraft = () => {
-    if (!managerID) return
-    const draft: SourceDraft = { connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, savedAt: new Date().toISOString(), serviceKey, slotName }
+  const writeDraft = useCallback(() => {
+    if (!managerID) return false
+    const draft: SourceDraft = { connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, savedAt: new Date().toISOString(), serviceKey, slotName, source }
     try {
       window.localStorage.setItem(draftKey(managerID), JSON.stringify(draft))
       setDraftSavedAt(draft.savedAt)
-      toast({ message: 'Deployment plan draft saved in this browser', tone: 'success' })
+      return true
     } catch {
-      toast({ message: 'This browser refused to store the draft', tone: 'danger' })
+      return false
     }
+  }, [connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, serviceKey, slotName, source])
+
+  const saveDraft = () => {
+    if (!managerID) return
+    toast(writeDraft()
+      ? { message: 'Deployment plan draft saved in this browser', tone: 'success' }
+      : { message: 'This browser refused to store the draft', tone: 'danger' })
   }
+
+  // The draft is kept without being asked for. A reload used to cost the
+  // operator the whole selection — which way in, which provider, which
+  // repository, which revision — even though none of it is evidence.
+  useEffect(() => {
+    if (!hydrated) return
+    writeDraft()
+  }, [hydrated, writeDraft])
 
   const restoreDraft = useCallback(() => {
     if (!managerID) return
@@ -353,11 +412,17 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     try {
       stored = window.localStorage.getItem(draftKey(managerID))
     } catch {
+      setHydrated(true)
       return
     }
-    if (!stored) return
+    if (!stored) {
+      setHydrated(true)
+      return
+    }
     try {
       const draft = JSON.parse(stored) as SourceDraft
+      restoredDraft.current = draft
+      if (draft.source === 'kubernetes' || draft.source === 'repository') setSource(draft.source)
       setConnectionID(draft.connectionID)
       setRepositoryID(draft.repositoryID)
       setRef(draft.ref)
@@ -366,11 +431,15 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
       setPort(draft.port)
       setHealthPath(draft.healthPath)
       setMetricsEnabled(draft.metricsEnabled)
+      setServiceKey(draft.serviceKey)
       setDraftSavedAt(draft.savedAt)
     } catch {
       // A draft this console cannot read is a draft it discards. It holds no
       // information the operator cannot re-enter in four fields.
+      restoredDraft.current = null
       window.localStorage.removeItem(draftKey(managerID))
+    } finally {
+      setHydrated(true)
     }
   }, [managerID])
 
@@ -431,6 +500,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
     selectedSlot,
     status,
     blockers,
+    unmanaged,
   })
   const discovered = Boolean(plan)
 
@@ -446,7 +516,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
      requirements, so they are reported here and enforced by the deployment
      blocks — not used to hide the whole flow behind a settings page. */
   const ready = status.enabled
-  const releaseReady = status.buildEnabled && status.imagePrefixConfigured
+  const releaseReady = status.buildEnabled
 
   return (
     <Screen
@@ -507,6 +577,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
                 selectedService={selectedService}
                 selectedSlot={selectedSlot}
                 slotName={slotName}
+                unmanaged={unmanaged}
               />
             }
           >
@@ -662,7 +733,8 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
               <Panel caption="Review and map services" marker="3" title="Review">
                 <Rows>
                   {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to load the reviewed application slots and queue a deployment.</Banner> : null}
-                  {managerID && approved.length === 0 ? <Banner title="No application slots are approved" tone="warning">Add an application-profile workload to the reviewed platform manifest, then reconnect the selected manager.</Banner> : null}
+                  {managerID && !unmanaged && approved.length === 0 ? <Banner title="No application slots are approved" tone="warning">Add an application-profile workload in Platform → Platform definition, or mount a reviewed manifest on the controller, then reconnect the selected manager.</Banner> : null}
+                  {unmanaged ? <Banner title="This install has no platform manifest" tone="warning">Slot enforcement is off by declaration, so the name, domain, and reservation below are not checked against a reviewed list. Everything deploys inside the <Mono>{platform?.namespace}</Mono> namespace.</Banner> : null}
                   <Columns>
                     <Rows>
                       {selectedSlot ? <Facts columns={1} items={[
@@ -670,8 +742,16 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
                         { label: 'Resource ceiling', value: `${selectedSlot.replicas} replica${selectedSlot.replicas === 1 ? '' : 's'} · ${selectedSlot.cpuCores} vCPU · ${selectedSlot.memoryMiB} MiB` },
                         { label: 'Certificate resolver', value: selectedSlot.resolver || 'None configured' },
                         { label: 'Domain policy', value: sourceDomainPolicy(selectedSlot) },
-                      ]} /> : <Banner title="Map the service to a slot" tone="info">Choose an approved application slot in the deployment plan beside this page.</Banner>}
-                      {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
+                      ]} /> : <Banner title={unmanaged ? 'Name the application' : 'Map the service to a slot'} tone="info">{unmanaged ? 'Type the name this deployment takes in the deployment plan beside this page.' : 'Choose an approved application slot in the deployment plan beside this page.'}</Banner>}
+                      {unmanaged && selectedSlot ? (
+                        <Columns>
+                          <Input hint="Nothing reviews this ceiling; the cluster's own capacity decides whether Swarm can schedule it." label="Replicas" min="1" onChange={(event) => setFreeReplicas(event.target.value)} type="number" value={freeReplicas} />
+                          <Input label="vCPU per replica" min="0.1" onChange={(event) => setFreeCPU(event.target.value)} step="0.1" type="number" value={freeCPU} />
+                          <Input label="Memory (MiB)" min="64" onChange={(event) => setFreeMemory(event.target.value)} type="number" value={freeMemory} />
+                          <Input hint="The Traefik certificate resolver a public domain is issued through." label="Certificate resolver" onChange={(event) => setFreeResolver(event.target.value)} value={freeResolver} />
+                        </Columns>
+                      ) : null}
+                      {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={unmanaged ? 'Any hostname. Nothing checks it against a reviewed list on this install.' : canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
                       <Columns>
                         <Input label="Container port" min="1" onChange={(event) => setPort(event.target.value)} type="number" value={port} />
                         <Input label="Health path" onChange={(event) => setHealthPath(event.target.value)} value={healthPath} />
@@ -701,10 +781,10 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenWorkloa
               title="Release"
             >
               <Rows>
-                <Body size="sm">The command re-discovers the selected provider project at the pinned commit, rebuilds only the approved context when necessary, pushes it through the configured registry credential, enables detected managed databases, reconciles necessary shared platform stacks, and deploys the generated application through policy admission.</Body>
+                <Body size="sm">The command re-discovers the selected provider project at the pinned commit, rebuilds only the approved context when necessary, pushes it to the configured registry when there is one, enables detected managed databases, reconciles necessary shared platform stacks, and deploys the generated application through policy admission.</Body>
                 <Facts columns={3} items={[
                   { label: 'Bounded source builds', value: status.buildEnabled ? 'Enabled' : 'Disabled' },
-                  { label: 'Registry image prefix', value: status.imagePrefixConfigured ? 'Configured' : 'Not configured' },
+                  { label: 'Built images go to', value: status.imagePrefixConfigured ? 'The configured registry' : 'The deployment host only' },
                   { label: 'Private provider hosts', value: status.privateHostsConfigured ? 'Configured' : 'Not configured' },
                 ]} />
                 <Inline><Button disabled={pending !== ''} onClick={() => { setPlan(null); setServiceKey(''); setSlotName('') }} size="sm" variant="secondary">Start another discovery</Button></Inline>

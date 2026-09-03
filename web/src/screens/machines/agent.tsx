@@ -10,7 +10,6 @@ import {
   CodeBlock,
   Mono,
   Panel,
-  Select,
   Spinner,
   Stack as Rows,
   StatusDot,
@@ -105,6 +104,11 @@ export function AgentTab({ onRefreshServers, serverID, servers, toast }: AgentTa
   return (
     <>
       <Inline>
+        {/* The agent's own verdict on itself. It was computed into `state`,
+            used only to disable a button, and never shown — so a degraded
+            agent looked exactly like a healthy one until you noticed that
+            the update control was greyed out. */}
+        <StatusDot tone={statusTone(state)}>{statusLabel(state, current?.summary)}</StatusDot>
         <Button disabled={!serverID || loading} iconStart="refresh" loading={loading} onClick={() => void refresh()} variant="secondary">Refresh diagnosis</Button>
         <Button onClick={() => { window.location.hash = 'logs' }} variant="ghost">Open agent logs</Button>
       </Inline>
@@ -149,4 +153,3 @@ export function AgentTab({ onRefreshServers, serverID, servers, toast }: AgentTa
 
 function statusLabel(state: string, summary?: string) { return summary || (state ? state[0].toUpperCase() + state.slice(1) : 'Unknown') }
 function statusTone(state: string): 'danger' | 'neutral' | 'success' | 'warning' { return state === 'healthy' ? 'success' : state === 'degraded' ? 'warning' : state === 'unhealthy' ? 'danger' : 'neutral' }
-function metricTone(state: string): 'danger' | 'neutral' | 'success' | 'warning' { return statusTone(state) }

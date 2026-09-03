@@ -12,7 +12,6 @@ import {
   Mono,
   Panel,
   ResourceMeter,
-  Select,
   Sheet,
   Spinner,
   Stack as Rows,
@@ -179,7 +178,16 @@ export function SetupTab({ serverID, servers, toast }: SetupTabProps) {
           </Panel>
 
           <Panel
-            caption={`${readinessIssueCount(readiness)} of 4 checks need action`}
+            actions={
+              <Inline>
+                <StatusDot tone={outstanding ? 'warning' : 'success'}>
+                  {outstanding ? `${outstanding} of 4 need action` : 'All four ready'}
+                </StatusDot>
+                <Button disabled={pending} iconStart="refresh" loading={pending} onClick={() => void refresh()} size="sm" variant="secondary">Re-check</Button>
+              </Inline>
+            }
+            caption={`${outstanding} of 4 checks need action`}
+            description="Read when this tab opened. A fix queued here lands on the host asynchronously, so re-check rather than assuming the state below has caught up."
             title="Setup checks"
           >
             <Rows>

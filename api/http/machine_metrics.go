@@ -154,7 +154,7 @@ func (s *Server) machineMetrics(response http.ResponseWriter, request *http.Requ
 	}
 
 	response.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	_, _ = response.Write([]byte(renderMachineMetrics(server, metrics, fetchedAt, now, s.namespace)))
+	_, _ = response.Write([]byte(renderMachineMetrics(server, metrics, fetchedAt, now, s.discoveryNamespace())))
 }
 
 // machineMetricsJSON serves the same cached sample the scrape endpoint uses,

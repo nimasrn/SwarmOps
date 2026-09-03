@@ -32,8 +32,8 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 	if err := c.requireAudit(); err != nil {
 		return err
 	}
-	if c.Admission == nil {
-		return fmt.Errorf("application deployment requires SWARMOPS_PLATFORM_MANIFEST_FILE")
+	if c.admission() == nil {
+		return fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
 	spec = spec.Normalize()
 	// Databases come first, and completely. Provisioning waits for each
@@ -74,7 +74,7 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 			err = c.RefreshTraefikRuntime(ctx)
 		}
 	}
-	c.record(actor, requestID, "application.deploy", "stack/"+spec.StackName(c.Admission.Namespace()), err, map[string]string{
+	c.record(actor, requestID, "application.deploy", "stack/"+spec.StackName(c.admission().Namespace()), err, map[string]string{
 		"databases": strings.Join(spec.Databases, ","),
 		"delivery":  spec.DatabaseDelivery,
 		"domain":    spec.Domain,
@@ -93,7 +93,7 @@ func (c *ControlPlane) applyApplicationDependencyBindings(ctx context.Context, a
 		bindings = append(bindings, DependencyBinding{CallerService: route.ServiceKey, Delivery: DependencyExisting, TargetRoute: managedDatabaseRoute(definition).Key, Version: RoutingSchemaVersion})
 	}
 	if spec.Backend != "" {
-		backendService := c.Admission.Namespace() + "-" + spec.Backend + "_" + ApplicationServiceName
+		backendService := c.admission().Namespace() + "-" + spec.Backend + "_" + ApplicationServiceName
 		bindings = append(bindings, DependencyBinding{CallerService: route.ServiceKey, Delivery: DependencyExisting, TargetRoute: defaultRouteKey(backendService), Version: RoutingSchemaVersion})
 	}
 	if spec.Tracing {
@@ -118,8 +118,8 @@ func (c *ControlPlane) RemoveApplication(ctx context.Context, actor, requestID, 
 	if err := c.requireAudit(); err != nil {
 		return err
 	}
-	if c.Admission == nil {
-		return fmt.Errorf("application deployment requires SWARMOPS_PLATFORM_MANIFEST_FILE")
+	if c.admission() == nil {
+		return fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
 	spec, found := c.Apps.Get(name)
 	if !found {
@@ -128,7 +128,7 @@ func (c *ControlPlane) RemoveApplication(ctx context.Context, actor, requestID, 
 	if confirmation != ApplicationRemovalConfirmation(spec.Name) {
 		return fmt.Errorf("removal requires confirmation %s", ApplicationRemovalConfirmation(spec.Name))
 	}
-	stack := spec.StackName(c.Admission.Namespace())
+	stack := spec.StackName(c.admission().Namespace())
 	_, err := c.CLI.Run(ctx, "stack", "rm", stack)
 	if err == nil {
 		err = c.Apps.Remove(spec.Name)
@@ -173,8 +173,8 @@ func (c *ControlPlane) SetApplicationDomain(ctx context.Context, actor, requestI
 // PlanApplication renders and validates without deploying, so the console can
 // show the operator the exact Compose that would be applied.
 func (c *ControlPlane) PlanApplication(ctx context.Context, spec ApplicationSpec) ([]byte, error) {
-	if c.Admission == nil {
-		return nil, fmt.Errorf("application deployment requires SWARMOPS_PLATFORM_MANIFEST_FILE")
+	if c.admission() == nil {
+		return nil, fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
 	spec = spec.Normalize()
 	// Planning must not provision. It renders against whatever credential the
@@ -199,13 +199,13 @@ func (c *ControlPlane) renderApplication(ctx context.Context, spec ApplicationSp
 	if err := spec.Validate(); err != nil {
 		return nil, "", err
 	}
-	if err := c.Admission.ValidateApplicationImage(spec.Image); err != nil {
+	if err := c.admission().ValidateApplicationImage(spec.Image); err != nil {
 		return nil, "", err
 	}
 	if err := c.Apps.DomainAvailable(spec.Name, spec.Domain); err != nil {
 		return nil, "", err
 	}
-	namespace := c.Admission.Namespace()
+	namespace := c.admission().Namespace()
 	stack := spec.StackName(namespace)
 
 	input := ApplicationRenderInput{DatabaseURIs: map[string]string{}, Namespace: namespace, Spec: spec}
@@ -253,17 +253,48 @@ func (c *ControlPlane) renderApplication(ctx context.Context, spec ApplicationSp
 	if err != nil {
 		return nil, "", err
 	}
+	// An image that was built here and never pushed exists on exactly one
+	// host. Swarm would otherwise schedule the service anywhere and the other
+	// nodes would fail to pull a name no registry answers for, so the
+	// constraint is part of what makes a registry optional rather than a
+	// promise that quietly breaks on the second node.
+	if LocalImage(spec.Image) {
+		nodeID, err := c.localImageNodeID(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		if rendered, err = PinComposeToNode(rendered, nodeID); err != nil {
+			return nil, "", err
+		}
+	}
 	if _, err := ValidateCompose(rendered); err != nil {
 		return nil, "", fmt.Errorf("rendered application failed compose policy: %w", err)
 	}
-	if err := c.Admission.ValidateStack(stack, rendered); err != nil {
+	if err := c.admission().ValidateStack(stack, rendered); err != nil {
 		return nil, "", err
 	}
 	return rendered, stack, nil
 }
 
+// localImageNodeID names the node whose image store holds images this
+// controller builds. It is the node the Docker endpoint being deployed through
+// is, which is also the node the build ran on.
+func (c *ControlPlane) localImageNodeID(ctx context.Context) (string, error) {
+	if c.Docker == nil {
+		return "", fmt.Errorf("an image built without a registry needs a Docker endpoint to be pinned to")
+	}
+	info, err := c.Docker.Info(ctx)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(info.Swarm.NodeID) == "" {
+		return "", fmt.Errorf("this host is not a Swarm node, so an image built without a registry cannot be pinned to it")
+	}
+	return info.Swarm.NodeID, nil
+}
+
 func (c *ControlPlane) applicationDesiredRoute(spec ApplicationSpec) RouteSpec {
-	stack := spec.StackName(c.Admission.Namespace())
+	stack := spec.StackName(c.admission().Namespace())
 	fallback := applicationRouteSpec(spec, stack)
 	if c.Routing == nil || !validClusterID(c.ServerID) {
 		return fallback
@@ -303,7 +334,7 @@ func (c *ControlPlane) prepareApplicationRouteNetwork(ctx context.Context, spec 
 		return fmt.Errorf("Traefik singleton service was not found")
 	}
 	return adapter.PrepareRoutingNetwork(ctx, agentcontrol.RoutingNetworkRequest{
-		Network:          RouteNetworkName(spec.ServiceDNSName(c.Admission.Namespace())),
+		Network:          RouteNetworkName(spec.ServiceDNSName(c.admission().Namespace())),
 		TraefikServiceID: traefikID,
 		Version:          agentcontrol.RoutingVersion,
 	})
@@ -341,7 +372,7 @@ func (c *ControlPlane) deployRenderedApplication(ctx context.Context, rendered [
 	if err != nil {
 		return err
 	}
-	if report := c.Admission.CheckLive(nodes); !report.Valid() {
+	if report := c.admission().CheckLive(nodes); !report.Valid() {
 		return fmt.Errorf("live platform admission refused this deployment: %s", summarizeFindings(report))
 	}
 	return c.deployTrustedContent(ctx, rendered, stack)
@@ -363,8 +394,8 @@ func (c *ControlPlane) Applications(ctx context.Context) ([]ApplicationStatus, e
 		running[service.Name] = service.RunningTasks
 	}
 	namespace := ""
-	if c.Admission != nil {
-		namespace = c.Admission.Namespace()
+	if c.admission() != nil {
+		namespace = c.admission().Namespace()
 	}
 	statuses := make([]ApplicationStatus, 0, len(specs))
 	for _, spec := range specs {
@@ -387,7 +418,7 @@ func (c *ControlPlane) Applications(ctx context.Context) ([]ApplicationStatus, e
 
 // ApprovedApplications exposes the reviewed manifest's application slots.
 func (c *ControlPlane) ApprovedApplications() []ApprovedWorkload {
-	return c.Admission.ApprovedApplications()
+	return c.admission().ApprovedApplications()
 }
 
 // ApplicationStatus is the browser-safe view of one rendered application.

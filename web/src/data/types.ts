@@ -669,6 +669,94 @@ export interface ApprovedWorkload {
   resolver?: string
 }
 
+// The platform definition decides what this controller will deploy. It comes
+// either from a manifest file mounted on the controller, from the manifest an
+// operator authors in the console, or — deliberately — from nothing at all.
+export type PlatformMode = 'unset' | 'manifest' | 'unmanaged' | 'file'
+
+export interface PreflightFinding {
+  code: string
+  level: 'error' | 'warning' | string
+  message: string
+  subject?: string
+}
+
+export interface PreflightResources {
+  cpuCores: number
+  diskGiB: number
+  memoryMiB: number
+}
+
+export interface PreflightReport {
+  findings: PreflightFinding[] | null
+  namespace: string
+  totals: { available: PreflightResources; requested: PreflightResources }
+}
+
+export interface PlatformNode {
+  availableCPUCores: number
+  availableDiskGiB: number
+  availableMemoryMiB: number
+  cpuCores: number
+  labels?: Record<string, string> | null
+  memoryMiB: number
+  name: string
+}
+
+export interface PlatformWorkload {
+  advertiseIP?: string
+  domain?: string
+  domainOptional?: boolean
+  domainSuffixes?: string[] | null
+  name: string
+  objectStorageProvider?: string
+  profile: string
+  replicas: number
+  resolver?: string
+  resources: PreflightResources
+}
+
+export interface PlatformManifest {
+  apiVersion: string
+  backup: { prefix: string; provider: string; schedule: string }
+  build: { cacheNodeLabel: string; nodeLabel: string }
+  dns: {
+    providers: { credentialSecret: string; name: string; type: string }[] | null
+    resolvers: { challenge: string; name: string; provider: string }[] | null
+  }
+  ingress: { publicIPs: string[] | null }
+  kind: string
+  namespace: string
+  nodes: PlatformNode[] | null
+  registry: { authSecret: string; host: string; mode: string; namespace: string }
+  storage: { bucket: string; credentialSecret: string; endpoint: string; name: string }[] | null
+  workloads: PlatformWorkload[] | null
+}
+
+export interface PlatformDefinition {
+  /** The exact phrase that must be typed to deploy without a manifest. */
+  confirmationPhrase: string
+  editable: boolean
+  fileManaged: boolean
+  manifest: PlatformManifest
+  manifestPath: string
+  mode: PlatformMode
+  namespace: string
+  report?: PreflightReport
+  slots: ApprovedWorkload[] | null
+  /** True when this install deploys with slot enforcement deliberately off. */
+  unmanaged: boolean
+  updatedAt: string
+  updatedBy: string
+}
+
+export interface PlatformInput {
+  confirmation?: string
+  manifest?: PlatformManifest
+  mode: PlatformMode
+  namespace?: string
+}
+
 export type SourceProviderKind = 'github' | 'gitlab' | 'gitea'
 export type SourceClassification = 'application' | 'managed_data' | 'shared_platform' | 'unsupported'
 export type SourceFindingLevel = 'info' | 'warning' | 'blocker'
@@ -758,6 +846,9 @@ export interface SourceBuildPlan {
   contextPath: string
   dockerfilePath: string
   image: string
+  // push is false when no registry is configured: the image is built on the
+  // deployment host, stays there, and the application is pinned to that host.
+  push: boolean
   required: boolean
 }
 

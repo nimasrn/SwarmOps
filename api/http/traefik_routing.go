@@ -360,23 +360,6 @@ func (s *Server) traefikDNSVerify(response http.ResponseWriter, request *http.Re
 	writeJSON(response, http.StatusOK, status)
 }
 
-func (s *Server) traefikRuntime(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
-	target, ok := s.targetFor(response, request)
-	if !ok {
-		return
-	}
-	if err := target.Control.RefreshTraefikRuntime(request.Context()); err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	state, err := target.Control.RoutingState(request.Context(), false)
-	if err != nil {
-		s.operationError(response, request, err)
-		return
-	}
-	writeJSON(response, http.StatusOK, state.Runtime)
-}
-
 func (s *Server) traefikCertificates(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	target, ok := s.targetFor(response, request)
 	if !ok {

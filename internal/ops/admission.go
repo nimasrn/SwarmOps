@@ -19,10 +19,17 @@ import (
 type PlatformAdmission struct {
 	manifest  preflight.Manifest
 	workloads map[string]preflight.Workload
+	// unmanaged marks an install the operator has declared has no platform
+	// manifest and must not have one. Slot enforcement — approved names,
+	// domains, resolvers, and capacity ceilings — is off; the structural
+	// checks that keep one browser stack out of another's secrets, networks,
+	// and Traefik routers stay on, because those never needed a manifest.
+	unmanaged bool
 }
 
 var (
 	memoryQuantityPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)([kKmMgGtT]i?[bB]?|[bB])?$`)
+	platformNamePattern   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 	routerRulePattern     = regexp.MustCompile(`^Host\(\s*[` + "`'\"" + `]?([^` + "`'\"" + `)\s]+)[` + "`'\"" + `]?\s*\)$`)
 )
 
@@ -51,6 +58,26 @@ func NewPlatformAdmission(manifest preflight.Manifest) (*PlatformAdmission, erro
 	return result, nil
 }
 
+// NewUnmanagedAdmission builds the admission an operator gets after declaring
+// this install manifest-free. The namespace is still required: it is the stack
+// prefix every browser deployment is confined to, and without it a deployment
+// could name a stack a Git-managed workload already owns.
+func NewUnmanagedAdmission(namespace string) (*PlatformAdmission, error) {
+	namespace = strings.ToLower(strings.TrimSpace(namespace))
+	if !platformNamePattern.MatchString(namespace) {
+		return nil, fmt.Errorf("unmanaged platform namespace must be a lowercase DNS-safe name")
+	}
+	return &PlatformAdmission{
+		manifest:  preflight.Manifest{Namespace: namespace},
+		workloads: map[string]preflight.Workload{},
+		unmanaged: true,
+	}, nil
+}
+
+// Unmanaged reports whether slot enforcement is deliberately off, so the
+// console can offer free-form application names instead of an empty list.
+func (a *PlatformAdmission) Unmanaged() bool { return a != nil && a.unmanaged }
+
 func (a *PlatformAdmission) Namespace() string {
 	if a == nil {
 		return ""
@@ -62,11 +89,31 @@ func (a *PlatformAdmission) ValidateApplicationImage(image string) error {
 	if a == nil {
 		return fmt.Errorf("application image requires a reviewed platform manifest")
 	}
+	// An image SwarmOps built and never pushed is admissible without appearing
+	// in the manifest's registry namespace. The manifest reviews where images
+	// are PULLED FROM; this one is pulled from nowhere. It cannot be replaced
+	// by anyone who does not already control the host's image store, which is
+	// a strictly smaller trust surface than a registry account.
+	if LocalImage(image) {
+		return nil
+	}
+	// An unmanaged install declares no reviewed registry namespace, so there
+	// is none to hold the image to. The controller's own source image-prefix
+	// allow-list still applies to anything it builds.
+	if a.unmanaged {
+		return nil
+	}
 	prefix := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(a.manifest.Registry.Host)), "/") + "/" + strings.Trim(strings.ToLower(strings.TrimSpace(a.manifest.Registry.Namespace)), "/") + "/"
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(image)), prefix) {
-		return fmt.Errorf("application image must use reviewed registry namespace %q", strings.TrimSuffix(prefix, "/"))
+		return fmt.Errorf("application image must use reviewed registry namespace %q, or be an image SwarmOps built on the host itself", strings.TrimSuffix(prefix, "/"))
 	}
 	return nil
+}
+
+// LocalImage reports whether an image is one SwarmOps built on the deployment
+// host and never pushed.
+func LocalImage(image string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(image)), domain.LocalImagePrefix+"/")
 }
 
 // ValidateStack checks that a custom browser stack names an approved workload
@@ -74,7 +121,7 @@ func (a *PlatformAdmission) ValidateApplicationImage(image string) error {
 // domain or certificate resolver owned by another workload.
 func (a *PlatformAdmission) ValidateStack(name string, raw []byte) error {
 	if a == nil {
-		return fmt.Errorf("browser stack deployment requires SWARMOPS_PLATFORM_MANIFEST_FILE")
+		return fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
 	prefix := a.manifest.Namespace + "-"
 	if !strings.HasPrefix(name, prefix) {
@@ -82,10 +129,16 @@ func (a *PlatformAdmission) ValidateStack(name string, raw []byte) error {
 	}
 	workloadName := strings.TrimPrefix(name, prefix)
 	workload, found := a.workloads[workloadName]
-	if !found {
+	switch {
+	case a.unmanaged:
+		// No slot list exists to look the stack up in. The workload below is
+		// a placeholder that carries no ceiling and owns no domain; the
+		// unmanaged flag tells the route and capacity checks to skip exactly
+		// the questions only a manifest can answer.
+		workload = preflight.Workload{Name: workloadName, Profile: "application", DomainOptional: true}
+	case !found:
 		return fmt.Errorf("stack %q is not declared in the reviewed platform manifest", name)
-	}
-	if workload.Profile != "application" {
+	case workload.Profile != "application":
 		return fmt.Errorf("stack %q uses the %q profile, which must be deployed from its reviewed Git manifest rather than browser Compose", name, workload.Profile)
 	}
 	root, err := parseCompose(raw)
@@ -95,10 +148,10 @@ func (a *PlatformAdmission) ValidateStack(name string, raw []byte) error {
 	if err := validateWorkloadExternalResources(root, name); err != nil {
 		return fmt.Errorf("stack %q: %w", name, err)
 	}
-	if err := validateWorkloadCapacity(root, workload); err != nil {
+	if err := validateWorkloadCapacity(root, workload, a.unmanaged); err != nil {
 		return fmt.Errorf("stack %q: %w", name, err)
 	}
-	if err := validateWorkloadRoutes(root, name, workload); err != nil {
+	if err := validateWorkloadRoutes(root, name, workload, a.unmanaged); err != nil {
 		return fmt.Errorf("stack %q: %w", name, err)
 	}
 	return nil
@@ -107,7 +160,9 @@ func (a *PlatformAdmission) ValidateStack(name string, raw []byte) error {
 // CheckLive repeats the capacity and placement portion of admission against a
 // fresh, authenticated Docker/agent inventory immediately before deployment.
 func (a *PlatformAdmission) CheckLive(nodes []domain.Node) preflight.Report {
-	if a == nil {
+	if a == nil || a.unmanaged {
+		// An unmanaged install declares no node inventory, so there is no
+		// plan to hold the live cluster to.
 		return preflight.Report{}
 	}
 	observed := make([]preflight.ObservedNode, 0, len(nodes))
@@ -146,7 +201,7 @@ type approvedRouter struct {
 // subset needed for a simple application. Allowing arbitrary Traefik labels
 // from the browser would let one workload define shared middleware, TCP, or
 // UDP routing owned by another namespace.
-func validateWorkloadRoutes(root map[string]any, stack string, workload preflight.Workload) error {
+func validateWorkloadRoutes(root map[string]any, stack string, workload preflight.Workload, unmanaged bool) error {
 	services, ok := asMap(root["services"])
 	if !ok || len(services) == 0 {
 		return fmt.Errorf("compose must declare at least one service")
@@ -241,17 +296,30 @@ func validateWorkloadRoutes(root map[string]any, stack string, workload prefligh
 				}
 				continue
 			}
-			if defaultDomain == "" && len(workload.DomainSuffixes) == 0 {
-				return fmt.Errorf("service %q defines a public Traefik router but workload %q has no approved domain", serviceName, workload.Name)
-			}
-			if !workloadAllowsDomain(workload, domain) {
-				return fmt.Errorf("service %q claims domain %q outside its reviewed policy", serviceName, domain)
-			}
-			if claimedDomain != "" && claimedDomain != domain {
-				return fmt.Errorf("workload %q may claim only one domain", workload.Name)
+			// Domain ownership is the one question only a reviewed manifest
+			// can answer. Unmanaged installs accept any hostname the operator
+			// types; the entrypoint and certificate-resolver shape below is
+			// still enforced, so a route cannot quietly skip TLS.
+			if !unmanaged {
+				if defaultDomain == "" && len(workload.DomainSuffixes) == 0 {
+					return fmt.Errorf("service %q defines a public Traefik router but workload %q has no approved domain", serviceName, workload.Name)
+				}
+				if !workloadAllowsDomain(workload, domain) {
+					return fmt.Errorf("service %q claims domain %q outside its reviewed policy", serviceName, domain)
+				}
+				if claimedDomain != "" && claimedDomain != domain {
+					return fmt.Errorf("workload %q may claim only one domain", workload.Name)
+				}
 			}
 			claimedDomain = domain
-			if entry.resolver != workload.Resolver || entry.entrypoints != "websecure" {
+			if entry.entrypoints != "websecure" {
+				return fmt.Errorf("service %q must route %q through the websecure entrypoint", serviceName, domain)
+			}
+			if unmanaged {
+				if strings.TrimSpace(entry.resolver) == "" {
+					return fmt.Errorf("service %q must name a certificate resolver for %q", serviceName, domain)
+				}
+			} else if entry.resolver != workload.Resolver {
 				return fmt.Errorf("service %q must route only %q through websecure with resolver %q", serviceName, domain, workload.Resolver)
 			}
 			servicePort := servicePorts[entry.service]
@@ -325,7 +393,7 @@ func validateWorkloadExternalResources(root map[string]any, stack string) error 
 // services, but it cannot turn an application workload into a global service
 // or claim more replicas, CPU reservation, or memory reservation than the
 // manifest reserved for it.
-func validateWorkloadCapacity(root map[string]any, workload preflight.Workload) error {
+func validateWorkloadCapacity(root map[string]any, workload preflight.Workload, unmanaged bool) error {
 	services, ok := asMap(root["services"])
 	if !ok || len(services) == 0 {
 		return fmt.Errorf("compose must declare at least one service")
@@ -354,12 +422,17 @@ func validateWorkloadCapacity(root map[string]any, workload preflight.Workload) 
 		if err != nil {
 			return fmt.Errorf("service %q reservations: %w", serviceName, err)
 		}
-		if reservationCPU > budget.CPUCores || reservationMemoryMiB > float64(budget.MemoryMiB) {
+		if !unmanaged && (reservationCPU > budget.CPUCores || reservationMemoryMiB > float64(budget.MemoryMiB)) {
 			return fmt.Errorf("service %q reservation exceeds its reviewed workload budget", serviceName)
 		}
 		totalReplicas += replicas
 		totalCPU += reservationCPU * float64(replicas)
 		totalMemoryMiB += reservationMemoryMiB * float64(replicas)
+	}
+	// Without a manifest there is no reserved budget to exceed. Live cluster
+	// capacity still decides whether Swarm can schedule the service.
+	if unmanaged {
+		return nil
 	}
 	if totalReplicas > workload.Replicas {
 		return fmt.Errorf("compose requests %d replicas, exceeding the reviewed workload budget of %d", totalReplicas, workload.Replicas)

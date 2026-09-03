@@ -4,6 +4,16 @@ package domain
 
 import "time"
 
+
+// LocalImagePrefix names images SwarmOps builds but never pushes. An operator
+// with one machine and no registry account is the ordinary case, not a
+// misconfiguration, and an image under this prefix is the answer to it: it is
+// built on the host the deployment targets, read from that host's own image
+// store, and the application that uses it is pinned to that host. Both the
+// build allow-list and platform admission accept it unconditionally, because
+// a name that never leaves the machine grants no reach a registry would.
+const LocalImagePrefix = "swarmops-local"
+
 // CommandState describes the durable lifecycle of an approved SwarmOps
 // mutation. Read operations and machine-API key handoff are intentionally not
 // commands: retaining either would create a security or freshness hazard.

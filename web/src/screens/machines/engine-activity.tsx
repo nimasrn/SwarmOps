@@ -40,7 +40,7 @@ export function EngineActivityPanel() {
     setLoading(true)
     setError('')
     try {
-      setEvents(await api.events(minutes))
+      setEvents((await api.events(minutes)) ?? [])
     } catch (reason) {
       setError(messageOf(reason))
       setEvents([])

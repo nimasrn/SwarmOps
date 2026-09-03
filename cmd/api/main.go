@@ -20,6 +20,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/build"
 	"github.com/nimasrn/SwarmOps/internal/config"
+	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
 	"github.com/nimasrn/SwarmOps/internal/queue"
 	"github.com/nimasrn/SwarmOps/internal/remote"
@@ -27,7 +28,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.16.1"
+const version = "0.17.0"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -85,6 +86,16 @@ func main() {
 		logger.Error("load platform admission", "error", err)
 		os.Exit(1)
 	}
+	// The panel-owned platform definition is always constructed. A mounted
+	// manifest still wins and makes the console view read-only; without one,
+	// this is where an operator authors the platform or declares the install
+	// manifest-free, neither of which they could do by editing controller
+	// environment they cannot reach from a browser.
+	platform, err := ops.NewPlatformStore(cfg.DataDir, cfg.DataEncryptionKey, admission)
+	if err != nil {
+		logger.Error("load sealed platform definition", "error", err)
+		os.Exit(1)
+	}
 	credentials, err := ops.NewCredentialStore(cfg.DataDir, cfg.DataEncryptionKey)
 	if err != nil {
 		logger.Error("load sealed database credentials", "error", err)
@@ -138,7 +149,10 @@ func main() {
 		return cfg.RegistryAuth
 	}
 	imagePrefixes := func() []string {
-		prefixes := append([]string{}, cfg.ImagePrefixes...)
+		// Images that are never pushed are always allowed: they carry a fixed
+		// prefix this controller generates itself, so allow-listing them
+		// grants no reach a registry prefix would not.
+		prefixes := append([]string{domain.LocalImagePrefix + "/"}, cfg.ImagePrefixes...)
 		prefix := strings.TrimSpace(firstNonEmpty(sourceSettings.Settings().ImagePrefix, cfg.SourceImagePrefix))
 		if prefix == "" {
 			return prefixes
@@ -217,6 +231,7 @@ func main() {
 		control := ops.NewControlPlane(connection.Docker, cli, auditStore, ops.ControlPlaneOptions{
 			Admission:   admission,
 			Apps:        applications,
+			Platform:    platform,
 			Credentials: credentials,
 			DatabaseSettings: ops.DatabaseSettings{
 				MongoImage:               cfg.MongoImage,
@@ -262,6 +277,7 @@ func main() {
 	if err == nil {
 		api.SetVersion(version)
 		api.SetApplicationDiscovery(applications, admission.Namespace())
+		api.SetPlatformStore(platform)
 		api.SetSourceService(sourceService)
 		api.SetSourceSettings(sourceSettings)
 	}

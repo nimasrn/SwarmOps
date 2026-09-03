@@ -39,7 +39,7 @@ services:
       # this so the console routes to itself rather than to nothing.
       SWARMOPS_CORE_SERVICE: ${SWARMOPS_CORE_SERVICE:-swarmops_api}
       SWARMOPS_DATA_ENCRYPTION_KEY_FILE: /run/secrets/swarmops_data_encryption_key
-      SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-ghcr.io/nimasrn/}
+      SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-swarmops-local/,ghcr.io/nimasrn/}
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
       SWARMOPS_ALERTMANAGER_CONFIG_NAME: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
       SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME: ${SWARMOPS_FLUENTD_AGGREGATOR_CONFIG_NAME:-swarmops_fluentd_aggregator_v1}

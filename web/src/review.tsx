@@ -173,6 +173,70 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return json(sampleRange(parameters.get('scope') ?? 'machine', parameters.get('series') ?? 'cpu', parameters.get('from'), parameters.get('to')))
   }
 
+  // The reading vocabulary. The harness answers it from the same table the
+  // controller keeps, so the chart grids draw every series a scope has rather
+  // than the handful a screen used to name by hand.
+  if (path === '/api/v1/metrics/series') {
+    const scope = new URL(url, 'http://local').searchParams.get('scope') ?? 'machine'
+    const vocabulary: Record<string, string[]> = {
+      application: ['errors', 'latency-p95', 'requests'],
+      cluster: ['containers', 'cpu', 'machines', 'memory', 'memory-total', 'network-rx', 'network-tx'],
+      container: ['block-read', 'block-write', 'cpu', 'memory', 'memory-limit', 'network-rx', 'network-tx'],
+      gateway: ['bytes-out', 'errors', 'latency-p95', 'requests'],
+      machine: ['containers', 'cpu', 'cpu-iowait', 'disk-read', 'disk-write', 'load', 'memory', 'memory-total', 'network-rx', 'network-tx'],
+    }
+    const series = vocabulary[scope]
+    if (!series) return json({ error: 'Unknown metric scope' }, 422)
+    return json({ scope, series })
+  }
+
+  // Single-object inspectors. Each answers from the list fixture so the sheet
+  // shows the object the row named, and 404s otherwise rather than inventing
+  // one.
+  const volumeRead = path.match(/^\/api\/v1\/volumes\/([^/]+)$/)
+  if (volumeRead && init?.method !== 'POST') {
+    return json({
+      CreatedAt: new Date(Date.now() - 86400000).toISOString(),
+      Driver: 'local',
+      Labels: {},
+      Mountpoint: `/var/lib/docker/volumes/${volumeRead[1]}/_data`,
+      Name: volumeRead[1],
+      Options: {},
+      Scope: 'local',
+      UsageData: { RefCount: 1, Size: 2.4e9 },
+    })
+  }
+
+  const networkRead = path.match(/^\/api\/v1\/networks\/([^/]+)$/)
+  if (networkRead && init?.method !== 'POST') {
+    return json({
+      Attachable: true,
+      Containers: { c1: { EndpointID: 'e1', IPv4Address: '10.0.1.4/24', Name: 'production_checkout-api.1' } },
+      Created: new Date(Date.now() - 604800000).toISOString(),
+      Driver: 'overlay',
+      Id: networkRead[1],
+      IPAM: { Config: [{ Gateway: '10.0.1.1', Subnet: '10.0.1.0/24' }] },
+      Ingress: false,
+      Internal: false,
+      Name: 'production',
+      Scope: 'swarm',
+    })
+  }
+
+  const imageRead = path.match(/^\/api\/v1\/images\/([^/]+)$/)
+  if (imageRead && init?.method !== 'POST') {
+    return json({
+      Architecture: 'arm64',
+      Created: new Date(Date.now() - 172800000).toISOString(),
+      Id: imageRead[1],
+      Os: 'linux',
+      RepoDigests: ['ghcr.io/example/checkout@sha256:9f2c1ab0000000000000000000000000000000000000000000000000000000ab'],
+      RepoTags: ['ghcr.io/example/checkout:1.8.4'],
+      RootFS: { Layers: ['sha256:aa', 'sha256:bb', 'sha256:cc'], Type: 'layers' },
+      Size: 184e6,
+    })
+  }
+
   const containerRead = path.match(/^\/api\/v1\/containers\/([^/]+)(\/stats)?$/)
   if (containerRead) {
     const id = containerRead[1]
@@ -206,7 +270,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   // is truthy, so returning [] where a page expects a single object sends it
   // past its own `if (!thing)` guard and into `thing.field.length`. Collections
   // get []; everything else gets null, which guards correctly.
-  const COLLECTIONS = /\/(containers|images|networks|volumes|configs|secrets|nodes|services|stacks|databases|applications|builds|commands|audit-events|routes|certificates|replicas|connections)$/
+  const COLLECTIONS = /\/(containers|images|networks|volumes|configs|secrets|nodes|services|stacks|databases|applications|builds|commands|audit-events|routes|certificates|replicas|connections|tasks|events|logs|history)$/
   return json(COLLECTIONS.test(path) ? [] : null)
 }
 
