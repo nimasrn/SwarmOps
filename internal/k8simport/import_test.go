@@ -166,3 +166,67 @@ func TestOversizedNameIsBounded(t *testing.T) {
 		t.Fatal("truncation must be visible, not silent")
 	}
 }
+
+// A Deployment's env and volume mounts were not read at all, so a workload's
+// configuration and storage vanished from the generated Compose with no
+// mapping, note or gap — the silent oversell this package exists to prevent.
+func TestDeploymentCarriesEnvAndVolumesAndReportsWhatItCannot(t *testing.T) {
+	t.Parallel()
+	report, err := ParseString(`
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
+          env:
+            - name: LOG_LEVEL
+              value: info
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: settings
+              mountPath: /etc/settings
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: web-data
+        - name: settings
+          configMap: {}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(report.Compose, "LOG_LEVEL=info") {
+		t.Fatalf("plain env value was dropped from the draft:\n%s", report.Compose)
+	}
+	if !strings.Contains(report.Compose, "data:/data") {
+		t.Fatalf("claim-backed mount was dropped from the draft:\n%s", report.Compose)
+	}
+	if !strings.Contains(report.Compose, "\nvolumes:\n  data:") {
+		t.Fatalf("named volume was not declared, so the stack would not deploy:\n%s", report.Compose)
+	}
+	// The secret-derived variable and the ConfigMap mount cannot carry across,
+	// and must be reported rather than silently discarded.
+	joined := ""
+	for _, gap := range report.Gaps {
+		joined += gap.Why + " " + gap.Options + " "
+	}
+	if !strings.Contains(joined, "Secret") {
+		t.Fatalf("indirect environment value was not reported: %#v", report.Gaps)
+	}
+	if !strings.Contains(joined, "/etc/settings") {
+		t.Fatalf("ConfigMap-backed mount was not reported: %#v", report.Gaps)
+	}
+	if report.Safe() {
+		t.Fatal("a workload that lost its secret env and config mount was reported as safe")
+	}
+}

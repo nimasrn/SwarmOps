@@ -22,9 +22,41 @@ type document struct {
 		Template struct {
 			Spec struct {
 				NodeSelector map[string]string `yaml:"nodeSelector"`
-				Containers   []struct {
-					Name          string `yaml:"name"`
-					Image         string `yaml:"image"`
+				// Volumes and the container's env and volumeMounts were not
+				// read at all, so a workload's configuration and storage
+				// disappeared from the generated Compose with no mapping, no
+				// note, and no gap — the exact silent oversell this package
+				// exists to prevent.
+				Volumes []struct {
+					Name                  string `yaml:"name"`
+					PersistentVolumeClaim *struct {
+						ClaimName string `yaml:"claimName"`
+					} `yaml:"persistentVolumeClaim"`
+					EmptyDir  *struct{} `yaml:"emptyDir"`
+					HostPath  *struct{} `yaml:"hostPath"`
+					ConfigMap *struct{} `yaml:"configMap"`
+					Secret    *struct{} `yaml:"secret"`
+				} `yaml:"volumes"`
+				Containers []struct {
+					Name  string `yaml:"name"`
+					Image string `yaml:"image"`
+					Env   []struct {
+						Name      string `yaml:"name"`
+						Value     string `yaml:"value"`
+						ValueFrom *struct {
+							SecretKeyRef    *struct{} `yaml:"secretKeyRef"`
+							ConfigMapKeyRef *struct{} `yaml:"configMapKeyRef"`
+							FieldRef        *struct{} `yaml:"fieldRef"`
+						} `yaml:"valueFrom"`
+					} `yaml:"env"`
+					EnvFrom []struct {
+						ConfigMapRef *struct{} `yaml:"configMapRef"`
+						SecretRef    *struct{} `yaml:"secretRef"`
+					} `yaml:"envFrom"`
+					VolumeMounts []struct {
+						Name      string `yaml:"name"`
+						MountPath string `yaml:"mountPath"`
+					} `yaml:"volumeMounts"`
 					LivenessProbe *struct {
 						HTTPGet *struct {
 							Path string `yaml:"path"`
