@@ -756,7 +756,17 @@ Core can only create its fixed local request marker. It stops the Agent and its
 provisioning helper, activates the candidate, checks localhost health, and
 restores the previous known-good release when health fails. It never accepts a
 release URL, tag, executable, or shell command from Core or a browser. Use
-`--no-auto-update` to remove the timer and request path explicitly. Pass
+`--no-auto-update` to remove the timer and request path explicitly.
+
+An operator who mirrors releases, or who runs an air-gapped estate, points the
+installer at their own tree with `--release-base-url <https|http|file URL>`. It
+reads `<base>/<release>/checksums.txt` and the platform bundle from there and
+verifies both exactly as it does for GitHub, so nothing about the integrity
+check changes. It requires an explicit `--release`, since only GitHub publishes
+a "latest" pointer, and it disables the update timer: Warden resolves updates
+through the GitHub API and would otherwise replace the pinned build on its next
+tick. `--enable-build` allows the bounded source-to-image build on that machine,
+which the source-to-deploy screen needs and which is off until asked for. Pass
 `--install-dependencies` only when its documented Debian/Ubuntu or Homebrew
 runtime-package installation is appropriate. With `--install-docker` and
 `--init-swarm`, it can prepare a fresh Debian/Ubuntu host before the agent

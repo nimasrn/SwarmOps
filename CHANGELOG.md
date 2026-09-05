@@ -11,6 +11,74 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.6 — 2026-09-05
+
+- **Host setup now reaches the machine** — the provisioning route was absent
+  from the reviewed agent catalogue, so for an outbound-pull agent every Docker
+  installation, Swarm initialisation, UFW baseline and registry-mirror change
+  was refused by the controller before it ever reached the host. Two faults in
+  the installed units hid behind it: the agent and its provisioning helper
+  declared the same systemd `RuntimeDirectory`, so starting the agent deleted
+  the helper's live socket, and the units withheld `AF_NETLINK`, so the helper
+  could not enumerate the machine's own addresses and rejected every Swarm
+  advertise address as foreign.
+- **A host that gains Docker after enrolment is usable without restarting the
+  controller** — the Docker facade was built only from the enrolment handshake,
+  so the documented `--defer-docker` order left a nil facade for the life of the
+  process and every cluster read answered "selected server has no control
+  plane". Node inventory had the matching gap: it was enriched only from the
+  in-cluster agent service, so a host-native agent contributed no memory, disk,
+  OS or engine reading and platform admission refused every deployment for want
+  of a live one.
+- **The observability and logs stacks deploy on a fresh cluster** — both declare
+  their Swarm configs as external and nothing created them, so Docker refused
+  each stack with "config not found"; the controller now creates every missing
+  reviewed config from its own asset directory. Prometheus never started because
+  `--web.enable-lifecycle=false` is rejected outright by Prometheus 3.x, and
+  Jaeger crash-looped because its image ships no `/var/lib/jaeger` and the fresh
+  volume was owned by root.
+- **A repository can be deployed from GitHub again** — the provider archive
+  begins with a pax global header, which the extractor counted as a path, so its
+  name became the archive root and every GitHub tarball was rejected as "not
+  shaped like a repository export". A build targeting the reserved local image
+  prefix also demanded a registry credential that a single-machine install can
+  never have, and reported source deployment as unavailable without one.
+- **Routing stops refusing work the controller itself generated** — the private
+  `swarmops.internal` zone was held to the public-DNS admission rules, the two
+  synthetic platform metrics targets were required to exist as stored routes,
+  unnamed dependency bindings were treated as colliding so one caller could
+  reach only a single target, and a route's own entry point counted against its
+  own port, which made re-applying an existing TCP route fail permanently once a
+  managed database existed.
+- **A failure says what went wrong** — every failed operation reached the
+  operator as "SwarmOps could not confirm that the requested change completed"
+  with the cause discarded by the worker, the provisioning helper and the
+  bounded Docker wrapper alike. Each records it now. Separating the Docker CLI's
+  stderr from its stdout was part of that and a fix in its own right: a
+  `WARNING:` line produced by the agent's own sandbox was being parsed as JSON
+  and corrupted every routing read on a healthy host.
+- **The Kubernetes importer no longer loses a workload quietly** — a
+  Deployment's `env`, `envFrom`, `volumeMounts` and `volumes` were never read, so
+  its configuration and storage vanished from the generated Compose with no
+  mapping, note or gap while the report still called itself safe. Plain values
+  and claim-backed mounts carry across now, with the top-level `volumes`
+  declaration the draft had been missing, and anything drawn from a Secret,
+  ConfigMap, hostPath or the downward API is reported as a gap.
+- **The agent installer can install a mirrored or locally built release** —
+  `--release-base-url` fetches the bundle and its checksums from an operator's
+  own tree with the same verification as the GitHub path, which is what makes an
+  air-gapped install possible; it requires an explicit `--release` and disables
+  the update timer, because Warden resolves updates through the GitHub API and
+  would otherwise replace the pinned build. `--enable-build` turns on the
+  bounded source build, without which source-to-deploy is unreachable on a
+  freshly installed host.
+- **Traefik serves its API to the node's agent** — router status was read from a
+  port nothing listened on, and a host-native agent cannot reach an overlay
+  address in any case, so the runtime view was permanently unavailable. The API
+  is now served on a non-public entry point published in host mode on the node
+  itself; it is reachable from that machine, and the reviewed UFW baseline is
+  what keeps it off the public internet.
+
 ## 0.19.5 — 2026-09-04
 
 - **A cancelled request is not a broken provider stream** — cancellation
