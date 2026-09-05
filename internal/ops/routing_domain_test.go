@@ -63,12 +63,30 @@ func TestRouteRequiresAnExistingRecordUnderAnAcceptedDomain(t *testing.T) {
 		t.Fatalf("err = %v, want an unaccepted domain rejection", err)
 	}
 
-	// Domain accepted, subdomain not created yet.
+	// Domain accepted and this install manages no DNS for it: the zone is the
+	// gate. A record can only be created against a provider credential, so
+	// requiring one here would leave an install whose DNS lives elsewhere
+	// unable to route any domain at all.
 	if err := store.PutDomain("manager-1", DomainSpec{Zone: "example.com", Version: RoutingSchemaVersion}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PutRoute("manager-1", domainTestRoute()); err == nil || !strings.Contains(err.Error(), "no DNS record") {
-		t.Fatalf("err = %v, want a missing record rejection", err)
+	if err := store.PutRoute("manager-1", domainTestRoute()); err != nil {
+		t.Fatalf("route under an accepted zone with no managed DNS: %v", err)
+	}
+
+	// Once a record for the zone IS held here, this is where the subdomain
+	// should have been created, and a host missing one is still refused.
+	sibling := domainTestRecord()
+	sibling.ID = "other"
+	sibling.Name = "other.example.com"
+	if err := store.PutDNSRecord("manager-1", sibling, RouteHTTP); err != nil {
+		t.Fatal(err)
+	}
+	missing := domainTestRoute()
+	missing.Key = "absent"
+	missing.Match.Hosts = []string{"absent.example.com"}
+	if err := store.PutRoute("manager-1", missing); err == nil || !strings.Contains(err.Error(), "no DNS record") {
+		t.Fatalf("err = %v, want a missing record rejection once the zone is managed here", err)
 	}
 
 	// Subdomain created: the route is now assignable.

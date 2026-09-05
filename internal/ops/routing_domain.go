@@ -57,6 +57,18 @@ func DomainRemovalConfirmation(zone string) string {
 
 // acceptedZone reports the accepted domain that owns a hostname. A name is
 // owned by its own zone or by any registered parent zone.
+// zoneHasManagedRecords reports whether this install holds any DNS record for
+// the zone, which is what makes it the place a subdomain should be created.
+func zoneHasManagedRecords(records []DNSRecordSpec, zone string) bool {
+	zone = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(zone), "."))
+	for _, record := range records {
+		if strings.ToLower(strings.TrimSuffix(strings.TrimSpace(record.Zone), ".")) == zone {
+			return true
+		}
+	}
+	return false
+}
+
 func acceptedZone(domains []DomainSpec, host string) (DomainSpec, bool) {
 	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
 	best, found := DomainSpec{}, false
@@ -131,11 +143,22 @@ func ValidateRouteAdmission(route RouteSpec, records []DNSRecordSpec, domains []
 		if isReservedInternalHost(name) {
 			continue
 		}
-		if _, found := acceptedZone(domains, name); !found {
+		zone, found := acceptedZone(domains, name)
+		if !found {
 			return fmt.Errorf("route host %q does not belong to an accepted gateway domain", host)
 		}
-		if _, found := dnsRecordNamed(records, name); !found {
-			return fmt.Errorf("route host %q has no DNS record; create the subdomain before assigning it to a service", host)
+		// A record is required only where SwarmOps actually manages DNS for the
+		// zone. Records can only be created against a provider credential, so
+		// demanding one unconditionally meant an install whose DNS lives
+		// elsewhere — or which uses HTTP-01 and needs no DNS API at all — could
+		// never route a domain however plainly its zone was accepted. Where
+		// this install does hold records for the zone it is the place the
+		// subdomain should have been created, and a missing one is still a
+		// mistake worth refusing.
+		if zoneHasManagedRecords(records, zone.Zone) {
+			if _, found := dnsRecordNamed(records, name); !found {
+				return fmt.Errorf("route host %q has no DNS record; create the subdomain before assigning it to a service", host)
+			}
 		}
 	}
 	if route.DNSReference != "" {

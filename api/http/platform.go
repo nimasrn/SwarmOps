@@ -102,6 +102,33 @@ func (s *Server) platformNodes(response http.ResponseWriter, request *http.Reque
 	writeJSON(response, http.StatusOK, measuredNodes(nodes))
 }
 
+// platformIngressCandidates offers the addresses the cluster actually has, so
+// an ingress IP is chosen from the live nodes rather than copied in by hand.
+func (s *Server) platformIngressCandidates(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	target, ok := s.targetFor(response, request)
+	if !ok {
+		return
+	}
+	nodes, err := target.Control.Nodes(request.Context())
+	if err != nil {
+		s.operationError(response, request, err)
+		return
+	}
+	candidates := make([]map[string]string, 0, len(nodes))
+	for _, node := range nodes {
+		address := strings.TrimSpace(node.Address)
+		if address == "" {
+			continue
+		}
+		candidates = append(candidates, map[string]string{
+			"address":  address,
+			"node":     node.Hostname,
+			"nodeRole": node.Role,
+		})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"candidates": candidates})
+}
+
 func measuredNodes(nodes []domain.Node) []preflight.Node {
 	measured := make([]preflight.Node, 0, len(nodes))
 	for _, node := range nodes {

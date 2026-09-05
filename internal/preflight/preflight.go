@@ -310,6 +310,14 @@ func sortFindings(report *Report) {
 
 func checkRegistry(registry Registry, errorf func(string, string, string, ...any)) {
 	subject := "registry"
+	// A registry is optional. An install that builds its images on the machine
+	// it deploys them to never pulls from one, and demanding a namespace it
+	// will never use made the definition carry a fiction. An empty block means
+	// exactly that: images come from somewhere else, and the controller's own
+	// image prefix policy still decides what may be deployed.
+	if registry == (Registry{}) {
+		return
+	}
 	if !validHost(registry.Host) {
 		errorf("registry-host", subject, "host must be a hostname without a URL scheme")
 	}
@@ -375,6 +383,10 @@ func checkBackup(backup Backup, providers map[string]ObjectStorageProvider, erro
 	}
 }
 
+// DefaultResolver is the certificate resolver a domain uses when none is
+// chosen. HTTP-01 works with no credential, so it is the honest default.
+const DefaultResolver = "http"
+
 func checkDNS(dns DNS, ingress Ingress, errorf func(string, string, string, ...any)) (map[string]DNSProvider, map[string]CertificateResolver) {
 	providers := make(map[string]DNSProvider, len(dns.Providers))
 	for _, provider := range dns.Providers {
@@ -395,7 +407,7 @@ func checkDNS(dns DNS, ingress Ingress, errorf func(string, string, string, ...a
 		}
 		providers[provider.Name] = provider
 	}
-	resolvers := make(map[string]CertificateResolver, len(dns.Resolvers))
+	resolvers := make(map[string]CertificateResolver, len(dns.Resolvers)+1)
 	for _, resolver := range dns.Resolvers {
 		subject := "resolver/" + resolver.Name
 		if !validName(resolver.Name) {
@@ -415,13 +427,19 @@ func checkDNS(dns DNS, ingress Ingress, errorf func(string, string, string, ...a
 			if resolver.Provider != "" {
 				errorf("resolver-http-provider", subject, "HTTP resolver must not set a DNS provider")
 			}
-			if !hasPublicIP(ingress.PublicIPs) {
-				errorf("resolver-http-ingress", subject, "HTTP challenge needs at least one valid public ingress IP")
-			}
 		default:
 			errorf("resolver-challenge", subject, "challenge must be dns or http")
 		}
 		resolvers[resolver.Name] = resolver
+	}
+	// HTTP-01 needs no credential and no provider, so it is available whether
+	// or not a definition mentions it. Requiring every install to declare a
+	// resolver before a domain could be used made the ordinary case — one
+	// hostname, a certificate issued over HTTP — impossible to express without
+	// a DNS section it never uses. A definition that declares its own resolver
+	// under this name keeps it.
+	if _, declared := resolvers[DefaultResolver]; !declared {
+		resolvers[DefaultResolver] = CertificateResolver{Challenge: "http", Name: DefaultResolver}
 	}
 	return providers, resolvers
 }
@@ -456,8 +474,14 @@ func checkNodes(nodes []Node, errorf, warnf func(string, string, string, ...any)
 			warnf("node-low-memory", subject, "less than 20%% of physical memory is currently available")
 		}
 	}
+	// Declaring the topology is optional. The capacity figures here are a
+	// snapshot an operator has to keep current against readings that move on
+	// their own, and requiring one before anything could be deployed made a
+	// working cluster refuse its own applications. A definition that declares
+	// nodes still has them checked, live and offline; one that declares none is
+	// scheduled by the cluster, which knows its own size.
 	if len(nodes) == 0 {
-		errorf("nodes", "nodes", "at least one measured node is required")
+		warnf("nodes-undeclared", "nodes", "no nodes are declared, so capacity and placement are left to the live cluster")
 	}
 	return nodes
 }
@@ -612,7 +636,11 @@ func checkWorkloads(manifest Manifest, nodes []Node, storage map[string]ObjectSt
 		report.Totals.Available.MemoryMiB += node.AvailableMemoryMiB
 		report.Totals.Available.DiskGiB += node.AvailableDiskGiB
 	}
-	if report.Totals.Requested.CPUCores > report.Totals.Available.CPUCores || report.Totals.Requested.MemoryMiB > report.Totals.Available.MemoryMiB || report.Totals.Requested.DiskGiB > report.Totals.Available.DiskGiB {
+	// Capacity is only compared against a topology the definition declares. A
+	// definition with no nodes is not making a claim about the cluster's size,
+	// and inventing one from an empty list produced a refusal every time — the
+	// live cluster is what actually schedules, and it reports its own capacity.
+	if len(nodes) > 0 && (report.Totals.Requested.CPUCores > report.Totals.Available.CPUCores || report.Totals.Requested.MemoryMiB > report.Totals.Available.MemoryMiB || report.Totals.Requested.DiskGiB > report.Totals.Available.DiskGiB) {
 		errorf("cluster-capacity", "cluster", "requested reservations exceed measured available cluster resources")
 	}
 	if profileCounts["observability"] > 1 {
@@ -656,7 +684,10 @@ func checkPlacement(workload Workload, rule profileRule, resources Resources, no
 			break
 		}
 	}
-	if !fitsOne {
+	// With no declared nodes there is nothing to fit against; the live cluster
+	// decides, and refusing here would block every deployment on a definition
+	// that deliberately describes no topology.
+	if !fitsOne && len(nodes) > 0 {
 		errorf("placement-capacity", subject, "no eligible node can satisfy one replica reservation")
 	}
 }
@@ -718,11 +749,15 @@ func checkDomain(workload Workload, rule profileRule, resolvers map[string]Certi
 		}
 		seenSuffixes[suffix] = subject
 	}
-	resolver, exists := resolvers[workload.Resolver]
-	if !exists {
-		errorf("domain-resolver", subject, "domain requires a declared certificate resolver")
-	} else if resolver.Challenge == "http" && !hasPublicIP(ingress.PublicIPs) {
-		errorf("domain-http-ingress", subject, "HTTP resolver needs a valid ingress public IP")
+	// An unset resolver means the built-in HTTP-01 one. The public ingress
+	// address is a deployment fact rather than something an operator should
+	// have to copy into the definition by hand, so it is no longer demanded
+	// here; Traffic reports a route whose challenge cannot complete.
+	if workload.Resolver == "" {
+		return
+	}
+	if _, exists := resolvers[workload.Resolver]; !exists {
+		errorf("domain-resolver", subject, "domain names resolver %q, which this definition does not declare", workload.Resolver)
 	}
 }
 

@@ -2,6 +2,7 @@ package ops
 
 import (
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/preflight"
 	"regexp"
 	"sort"
 	"strconv"
@@ -71,10 +72,14 @@ type ApplicationSpec struct {
 	MetricsPath   string   `json:"metricsPath,omitempty"`
 	MetricsPort   uint16   `json:"metricsPort,omitempty"`
 	Name          string   `json:"name"`
-	Port          uint16   `json:"port"`
-	Replicas      uint64   `json:"replicas"`
-	Resolver      string   `json:"resolver,omitempty"`
-	Tracing       bool     `json:"tracing"`
+	// Plan names the reviewed size this application runs at. Explicit CPUs and
+	// MemoryMiB still win, so an operator who needs a size that is not offered
+	// states the numbers; an empty plan and no numbers is the default plan.
+	Plan     string `json:"plan,omitempty"`
+	Port     uint16 `json:"port"`
+	Replicas uint64 `json:"replicas"`
+	Resolver string `json:"resolver,omitempty"`
+	Tracing  bool   `json:"tracing"`
 }
 
 // StackName is the Swarm stack this application deploys as. The namespace
@@ -100,6 +105,12 @@ func (s ApplicationSpec) Normalize() ApplicationSpec {
 	s.MetricsPath = strings.TrimSpace(s.MetricsPath)
 	s.Name = strings.ToLower(strings.TrimSpace(s.Name))
 	s.Resolver = strings.TrimSpace(s.Resolver)
+	// A routed application with no resolver named takes HTTP-01, which needs no
+	// credential. Refusing instead made every domain require a DNS section the
+	// install may never have.
+	if s.Domain != "" && s.Resolver == "" {
+		s.Resolver = preflight.DefaultResolver
+	}
 	if s.DatabaseDelivery == "" {
 		s.DatabaseDelivery = DeliverySecret
 	}
@@ -115,11 +126,17 @@ func (s ApplicationSpec) Normalize() ApplicationSpec {
 	if s.Replicas == 0 {
 		s.Replicas = 1
 	}
-	if s.CPUs == 0 {
-		s.CPUs = 0.5
-	}
-	if s.MemoryMiB == 0 {
-		s.MemoryMiB = 512
+	// Size comes from the chosen plan, and anything stated explicitly overrides
+	// it. An unknown plan name is left for Validate to refuse by name rather
+	// than silently resolving to the default.
+	s.Plan = strings.ToLower(strings.TrimSpace(s.Plan))
+	if plan, err := LookupResourcePlan(s.Plan); err == nil {
+		if s.CPUs == 0 {
+			s.CPUs = plan.CPUCores
+		}
+		if s.MemoryMiB == 0 {
+			s.MemoryMiB = plan.MemoryMiB
+		}
 	}
 	databases := make([]string, 0, len(s.Databases))
 	seen := map[string]bool{}
@@ -173,6 +190,9 @@ func (s ApplicationSpec) Validate() error {
 	}
 	if s.Port == 0 {
 		return fmt.Errorf("application port is required")
+	}
+	if _, err := LookupResourcePlan(s.Plan); err != nil {
+		return err
 	}
 	if s.Domain != "" && !applicationHostPattern.MatchString(s.Domain) {
 		return fmt.Errorf("application domain must be a fully qualified hostname")

@@ -186,7 +186,6 @@ func TestRenderApplicationRefusesUnapprovedInput(t *testing.T) {
 	mutations := map[string]func(*ApplicationSpec){
 		"mutable image tag":         func(s *ApplicationSpec) { s.Image = "ghcr.io/nimasrn/vlora-backend:latest" },
 		"credential in environment": func(s *ApplicationSpec) { s.Env = map[string]string{"API_TOKEN": "abc"} },
-		"routed without a resolver": func(s *ApplicationSpec) { s.Resolver = "" },
 		"unknown database":          func(s *ApplicationSpec) { s.Databases = []string{"mysql"} },
 		"invalid health path":       func(s *ApplicationSpec) { s.HealthPath = "http://elsewhere/health" },
 		"name with an underscore":   func(s *ApplicationSpec) { s.Name = "vlora_backend" },
@@ -255,4 +254,45 @@ func containsString(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+// A routed application no longer has to name a certificate resolver. HTTP-01
+// needs no credential, so it is the default, and requiring one meant every
+// domain dragged in a DNS section the install may never use.
+func TestApplicationDefaultsToTheHTTPResolverAndAPlan(t *testing.T) {
+	t.Parallel()
+	spec := ApplicationSpec{
+		Domain: "nim.nim.zone",
+		Image:  "swarmops-local/hello:1",
+		Name:   "nim",
+		Port:   80,
+	}.Normalize()
+	if spec.Resolver != preflight.DefaultResolver {
+		t.Fatalf("resolver = %q, want %q", spec.Resolver, preflight.DefaultResolver)
+	}
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("routed application without a named resolver was refused: %v", err)
+	}
+
+	// Size comes from the default plan when nothing is stated.
+	plan, err := LookupResourcePlan("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.CPUs != plan.CPUCores || spec.MemoryMiB != plan.MemoryMiB {
+		t.Fatalf("default size = %v/%v, want %v/%v", spec.CPUs, spec.MemoryMiB, plan.CPUCores, plan.MemoryMiB)
+	}
+
+	// A named plan sets the size, and explicit numbers still win over it.
+	sized := ApplicationSpec{Domain: "nim.nim.zone", Image: "swarmops-local/hello:1", Name: "nim", Plan: "large", Port: 80}.Normalize()
+	if sized.CPUs != 2 || sized.MemoryMiB != 2048 {
+		t.Fatalf("large plan = %v/%v", sized.CPUs, sized.MemoryMiB)
+	}
+	custom := ApplicationSpec{Image: "swarmops-local/hello:1", MemoryMiB: 777, Name: "nim", Plan: "large", Port: 80}.Normalize()
+	if custom.MemoryMiB != 777 {
+		t.Fatalf("explicit memory was overridden by the plan: %v", custom.MemoryMiB)
+	}
+	if unknown := (ApplicationSpec{Image: "swarmops-local/hello:1", Name: "nim", Plan: "enormous", Port: 80}).Normalize().Validate(); unknown == nil {
+		t.Fatal("an unknown plan name was accepted")
+	}
 }

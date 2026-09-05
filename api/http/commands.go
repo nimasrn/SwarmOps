@@ -355,6 +355,16 @@ func (s *Server) submitApplicationDeploy(response http.ResponseWriter, request *
 		return
 	}
 	spec = spec.Normalize()
+	// The slot is declared before the plan is checked against it, exactly as
+	// the source-to-deploy path does. Without this a first deployment from the
+	// applications screen was refused with "stack is not declared in the
+	// reviewed platform manifest" — for a slot the execution step would have
+	// declared a moment later — so the same first deployment succeeded through
+	// one screen and failed through the other.
+	if err := target.Control.EnsureApplicationSlot(claims.Username, requestID(request), spec); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return

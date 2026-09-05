@@ -354,12 +354,16 @@ func applicationSlotWorkload(manifest preflight.Manifest, name string, slot Appr
 		workload.Resolver = ""
 		return workload
 	}
-	// A resolver the operator never named is only ever inferred when the
-	// definition leaves no choice: one declared resolver is the one this
-	// domain would have been issued through anyway, and two is a decision
-	// preflight should make the operator state.
+	// A resolver the operator never named falls to the one declared, when the
+	// definition leaves no choice, and otherwise to HTTP-01 — which needs no
+	// credential and is what a domain would be issued through anyway. Refusing
+	// the slot instead meant a definition with no DNS section could not carry a
+	// hostname at all.
 	if workload.Resolver == "" && len(manifest.DNS.Resolvers) == 1 {
 		workload.Resolver = manifest.DNS.Resolvers[0].Name
+	}
+	if workload.Resolver == "" {
+		workload.Resolver = preflight.DefaultResolver
 	}
 	return workload
 }

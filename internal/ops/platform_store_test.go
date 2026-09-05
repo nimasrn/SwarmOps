@@ -114,10 +114,23 @@ func TestPlatformStoreSealsAndReloadsAnAuthoredManifest(t *testing.T) {
 	if _, err := store.Save("admin", PlatformInput{Manifest: manifest, Mode: PlatformModeManifest}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	incomplete := applicationManifest()
-	incomplete.Nodes = nil
-	if _, err := store.Save("admin", PlatformInput{Manifest: incomplete, Mode: PlatformModeManifest}, time.Now()); err == nil || !strings.Contains(err.Error(), "not admissible") {
-		t.Fatalf("unmeasured manifest error = %v", err)
+	// Declaring the topology is optional: the capacity figures are a snapshot an
+	// operator would have to keep current against readings that move on their
+	// own, so a definition may leave the cluster to schedule itself.
+	undeclared := applicationManifest()
+	undeclared.Nodes = nil
+	if _, err := store.Save("admin", PlatformInput{Manifest: undeclared, Mode: PlatformModeManifest}, time.Now()); err != nil {
+		t.Fatalf("manifest without declared nodes was refused: %v", err)
+	}
+	// A node that IS declared is still measured.
+	unmeasured := applicationManifest()
+	unmeasured.Nodes[0].MemoryMiB = 0
+	unmeasured.Nodes[0].AvailableMemoryMiB = 0
+	if _, err := store.Save("admin", PlatformInput{Manifest: unmeasured, Mode: PlatformModeManifest}, time.Now()); err == nil || !strings.Contains(err.Error(), "not admissible") {
+		t.Fatalf("unmeasured declared node error = %v", err)
+	}
+	if _, err := store.Save("admin", PlatformInput{Manifest: manifest, Mode: PlatformModeManifest}, time.Now()); err != nil {
+		t.Fatal(err)
 	}
 	reopened, err := NewPlatformStore(dataDir, testPlatformKey, nil)
 	if err != nil {

@@ -287,8 +287,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/v1/platform", s.withActiveAuth(s.platformApply))
 	mux.HandleFunc("POST /api/v1/platform/check", s.withAuth(false, s.platformCheck))
 	mux.HandleFunc("GET /api/v1/platform/nodes", s.withAuth(false, s.platformNodes))
+	mux.HandleFunc("GET /api/v1/platform/ingress-candidates", s.withAuth(false, s.platformIngressCandidates))
 	mux.HandleFunc("GET /api/v1/applications", s.withAuth(false, s.applications))
 	mux.HandleFunc("GET /api/v1/applications/approved", s.withAuth(false, s.approvedApplications))
+	mux.HandleFunc("GET /api/v1/applications/plans", s.withAuth(false, s.applicationPlans))
 	mux.HandleFunc("POST /api/v1/applications/plan", s.withActiveAuth(s.applicationPlan))
 	mux.HandleFunc("POST /api/v1/applications", s.withActiveAuth(s.applicationDeploy))
 	mux.HandleFunc("POST /api/v1/applications/{name}/remove", s.withActiveAuth(s.applicationRemove))
@@ -1231,6 +1233,15 @@ func (s *Server) applications(response http.ResponseWriter, request *http.Reques
 // approvedApplications tells the console which application names, domains,
 // resolvers, and resource ceilings the reviewed manifest allows. The console
 // offers these rather than free-form input.
+// applicationPlans lists the reviewed sizes a deployment may choose from, so
+// the console offers the same set the controller enforces.
+func (s *Server) applicationPlans(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
+	writeJSON(response, http.StatusOK, map[string]any{
+		"default": ops.DefaultResourcePlan,
+		"plans":   ops.ResourcePlans(),
+	})
+}
+
 func (s *Server) approvedApplications(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	target, ok := s.targetFor(response, request)
 	if !ok {
