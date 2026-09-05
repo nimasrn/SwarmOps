@@ -999,6 +999,22 @@ func (s *Server) effectiveSourceSettings() source.Settings {
 
 // sourceRegistryAuth prefers the sealed console credential and falls back to
 // the protected registry file the controller was started with.
+// sourceBuildEnabled reports whether a source build can actually run. A build
+// that targets the local, never-pushed image prefix needs no registry
+// credential at all — sourceImagePrefixes says so explicitly — so requiring one
+// reported source-to-deploy as unavailable on every install that had not
+// configured a registry, including the local-only default.
+func (s *Server) sourceBuildEnabled() bool {
+	settings := s.effectiveSourceSettings()
+	if !settings.BuildEnabled {
+		return false
+	}
+	if strings.TrimSpace(settings.ImagePrefix) == domain.LocalImagePrefix {
+		return true
+	}
+	return len(s.sourceRegistryAuth()) > 0
+}
+
 func (s *Server) sourceRegistryAuth() []byte {
 	if auth := s.sourceSettings.RegistryAuth(); len(auth) > 0 {
 		return auth
@@ -1071,7 +1087,7 @@ func (s *Server) sourceSettingsApply(response http.ResponseWriter, request *http
 func (s *Server) sourceStatus(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
 	settings := s.effectiveSourceSettings()
 	writeJSON(response, http.StatusOK, map[string]any{
-		"buildEnabled":           settings.BuildEnabled && len(s.sourceRegistryAuth()) > 0,
+		"buildEnabled":           s.sourceBuildEnabled(),
 		"enabled":                settings.Enabled && s.sources != nil,
 		"imagePrefixConfigured":  strings.TrimSpace(settings.ImagePrefix) != "",
 		"privateHostsConfigured": len(settings.PrivateHosts) > 0,

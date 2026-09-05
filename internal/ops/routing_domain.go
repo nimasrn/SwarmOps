@@ -101,6 +101,18 @@ func ValidateDomainAdmission(record DNSRecordSpec, domains []DomainSpec) error {
 // A wildcard host is admitted against its own base name: *.example.com needs
 // example.com to be both an accepted domain and an existing record, because a
 // wildcard by construction covers subdomains that were never created one by one.
+// ReservedInternalZone is the suffix SwarmOps uses for the private aliases it
+// generates itself. It is not delegated in public DNS and is never issued a
+// certificate.
+const ReservedInternalZone = "swarmops.internal"
+
+// isReservedInternalHost reports whether a hostname belongs to the reserved
+// internal zone, matching the zone apex and any name beneath it.
+func isReservedInternalHost(name string) bool {
+	name = strings.ToLower(strings.Trim(strings.TrimSpace(name), "."))
+	return name == ReservedInternalZone || strings.HasSuffix(name, "."+ReservedInternalZone)
+}
+
 func ValidateRouteAdmission(route RouteSpec, records []DNSRecordSpec, domains []DomainSpec) error {
 	route = route.Normalize()
 	hosts := append(append([]string{}, route.Match.Hosts...), route.Match.SNI...)
@@ -108,6 +120,16 @@ func ValidateRouteAdmission(route RouteSpec, records []DNSRecordSpec, domains []
 		name := strings.TrimPrefix(host, "*.")
 		if name == "" {
 			return fmt.Errorf("route host %q is invalid", host)
+		}
+		// SwarmOps generates its own private aliases under the reserved
+		// internal zone for service-to-service routing. They are never public
+		// DNS names, so demanding a registered gateway domain and an existing
+		// DNS record for them made the product reject hostnames it had just
+		// generated: enabling observability failed on
+		// "swarmops-alertmanager.swarmops.internal does not belong to an
+		// accepted gateway domain". Operator-chosen hostnames are unaffected.
+		if isReservedInternalHost(name) {
+			continue
 		}
 		if _, found := acceptedZone(domains, name); !found {
 			return fmt.Errorf("route host %q does not belong to an accepted gateway domain", host)

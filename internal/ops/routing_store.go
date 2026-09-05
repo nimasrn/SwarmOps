@@ -189,17 +189,39 @@ func (s *RoutingStore) RemoveRoute(clusterID, key string) error {
 	})
 }
 
+// platformMetricsRoute reports whether a dependency target is one of the two
+// synthetic platform metrics endpoints rather than a stored route.
+func platformMetricsRoute(target string) bool {
+	return target == platformSwarmOpsMetricsRoute || target == platformTraefikMetricsRoute
+}
+
 func (s *RoutingStore) PutBinding(clusterID string, binding DependencyBinding) error {
 	binding = binding.Normalize()
 	if err := binding.Validate(); err != nil {
 		return err
 	}
 	return s.update(clusterID, func(cluster *routingCluster) error {
-		if _, found := cluster.Routes[binding.TargetRoute]; !found {
+		// The platform metrics targets are synthetic: ApplyDependencyBinding
+		// resolves them to fixed internal aliases precisely because no stored
+		// route exists for the controller's own or Traefik's metrics endpoint.
+		// Requiring a stored route here contradicted that and made enabling
+		// observability fail with "dependency target route was not found",
+		// permanently so for a host-native controller that is not a Swarm
+		// service at all.
+		if _, found := cluster.Routes[binding.TargetRoute]; !found && !platformMetricsRoute(binding.TargetRoute) {
 			return fmt.Errorf("dependency target route was not found")
 		}
 		key := dependencyBindingKey(binding)
 		for existingKey, existing := range cluster.Bindings {
+			// Only a NAMED delivery can collide: the name becomes an injected
+			// variable on the caller. An unnamed binding delivers nothing, and
+			// treating those as conflicting stopped one caller from depending
+			// on more than one target — which is exactly what the observability
+			// stack does, binding Prometheus to Alertmanager and to each
+			// metrics endpoint it scrapes.
+			if binding.Name == "" {
+				continue
+			}
 			if existingKey != key && existing.CallerService == binding.CallerService && existing.Name == binding.Name {
 				return fmt.Errorf("dependency binding delivery name conflicts")
 			}
@@ -608,7 +630,9 @@ func validateRoutingCluster(cluster *routingCluster) error {
 		if err := binding.Validate(); err != nil {
 			return err
 		}
-		if _, found := cluster.Routes[binding.TargetRoute]; !found {
+		// Same exemption as PutBinding: the platform metrics targets are
+		// synthetic and never appear as stored routes.
+		if _, found := cluster.Routes[binding.TargetRoute]; !found && !platformMetricsRoute(binding.TargetRoute) {
 			return fmt.Errorf("dependency binding target route is missing")
 		}
 	}

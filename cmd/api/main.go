@@ -17,6 +17,7 @@ import (
 	"time"
 
 	apihttp "github.com/nimasrn/SwarmOps/api/http"
+	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/build"
 	"github.com/nimasrn/SwarmOps/internal/config"
@@ -29,6 +30,18 @@ import (
 )
 
 const version = "0.19.5"
+
+// hostSnapshotFor exposes the enrolled machine agent's own host reading to the
+// control plane. Without it a host-native agent contributed nothing to node
+// inventory, and platform admission refused every deployment for want of a
+// live memory, disk, and agent reading.
+func hostSnapshotFor(runner any) func(context.Context) (agent.Snapshot, error) {
+	inspector, ok := runner.(apihttp.HostInspector)
+	if !ok {
+		return nil
+	}
+	return inspector.Snapshot
+}
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
@@ -249,12 +262,14 @@ func main() {
 			},
 			Agent:                    agentReader,
 			AgentService:             cfg.AgentService,
+			HostSnapshot:             hostSnapshotFor(connection.Runner),
 			AgentStackFile:           cfg.AgentStackFile,
 			CoreService:              cfg.CoreService,
 			DataDir:                  cfg.DataDir,
 			LogsStackFile:            cfg.LogsStackFile,
 			Mutations:                cfg.MutationEnabled,
 			ObservabilityStackFile:   cfg.ObservabilityStackFile,
+			ObservabilityConfigFiles: cfg.ObservabilityConfigFiles,
 			Routing:                  routing,
 			ServerID:                 id,
 			TraefikSettings:          traefikSettings,
@@ -296,7 +311,20 @@ func main() {
 		Execute:          api.ExecuteCommand,
 		ExecutionTimeout: api.CommandExecutionTimeout,
 		OnTransition:     api.RecordCommandTransition,
-		Store:            api.CommandStore(),
+		// The operator-facing failure is deliberately a short, safe
+		// diagnostic. Without this the controller kept no record of the
+		// underlying cause at all, so "SwarmOps could not confirm that the
+		// requested change completed" was the whole story on both sides.
+		OnExecuteError: func(command domain.Command, err error) {
+			logger.Error("command execution failed",
+				"command_id", command.ID,
+				"action", command.Action,
+				"server_id", command.ServerID,
+				"target", command.Target,
+				"attempt", command.Attempt,
+				"error", err)
+		},
+		Store: api.CommandStore(),
 	}
 	// The dashboard's trend lines come from a short in-memory series. Sampling
 	// here rather than on request keeps one reading per interval however many

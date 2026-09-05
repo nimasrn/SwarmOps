@@ -372,6 +372,26 @@ func (m *Manager) AttachPull(agentID, name string, status agentpull.Status, tran
 		Version:       status.Update.Version,
 	}
 	if existing := m.connections[agentID]; existing != nil {
+		// The Docker facade is built from the handshake, so a host that gains
+		// Docker AFTER it first connected kept a nil facade for the life of the
+		// process. That is the documented onboarding order — enrol with
+		// --defer-docker, then install Docker from Host setup — and it left
+		// every cluster read and deployment failing with "selected server has
+		// no control plane" until Core was restarted. Rebuild the connection
+		// whenever Docker availability actually changes, in either direction.
+		if existing.Profile.DockerAvailable != profile.DockerAvailable {
+			rebuilt, err := newPullConnection(profile, transport)
+			if err != nil {
+				return domain.Server{}, err
+			}
+			existing.close()
+			m.connections[agentID] = rebuilt
+			m.profiles[agentID] = profile
+			if err := m.saveLocked(); err != nil {
+				return domain.Server{}, err
+			}
+			return profile, nil
+		}
 		existing.Profile = profile
 		m.profiles[agentID] = profile
 		if err := m.saveLocked(); err != nil {

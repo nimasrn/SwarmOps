@@ -77,6 +77,7 @@ type Config struct {
 	MongoStackFile                string
 	MutationEnabled               bool
 	ObservabilityStackFile        string
+	ObservabilityConfigFiles      map[string]string
 	PostgresImage                 string
 	PostgresPasswordSecret        string
 	PostgresAppBootstrapFile      string
@@ -152,25 +153,38 @@ func Load() (Config, error) {
 		// The Swarm service this controller runs as, when it runs in the
 		// cluster at all. It is what the console publishes a domain onto; a
 		// host-native controller has none and is told so rather than guessed at.
-		CoreService:              env("SWARMOPS_CORE_SERVICE", "swarmops_api"),
-		CoreName:                 env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
-		DataDir:                  env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
-		CoreReleaseDir:           env("SWARMOPS_CORE_RELEASE_DIR", ""),
-		CoreUpdateRequestFile:    env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
-		CoreUpdateStatusFile:     env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
-		ImagePrefixes:            csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
-		HTTPAllowRemote:          envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
-		HTTPEnabled:              envBool("SWARMOPS_HTTP_ENABLED", false),
-		HTTPListenAddr:           env("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:8085"),
-		InsecureDevAuth:          envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
-		ListenAddr:               env("SWARMOPS_LISTEN_ADDR", ":8084"),
-		LogsStackFile:            env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
-		MongoImage:               env("MONGO_IMAGE", "mongo:8.2.3"),
-		MongoPasswordSecret:      env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
-		MongoAppBootstrapFile:    env("SWARMOPS_MONGO_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "mongo-app-bootstrap.js")),
-		MongoStackFile:           env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
-		MutationEnabled:          envBool("SWARMOPS_MUTATIONS_ENABLED", false),
-		ObservabilityStackFile:   env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
+		CoreService:            env("SWARMOPS_CORE_SERVICE", "swarmops_api"),
+		CoreName:               env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
+		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
+		CoreReleaseDir:         env("SWARMOPS_CORE_RELEASE_DIR", ""),
+		CoreUpdateRequestFile:  env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
+		CoreUpdateStatusFile:   env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
+		ImagePrefixes:          csv(env("SWARMOPS_IMAGE_PREFIXES", "")),
+		HTTPAllowRemote:        envBool("SWARMOPS_HTTP_ALLOW_REMOTE", false),
+		HTTPEnabled:            envBool("SWARMOPS_HTTP_ENABLED", false),
+		HTTPListenAddr:         env("SWARMOPS_HTTP_LISTEN_ADDR", "127.0.0.1:8085"),
+		InsecureDevAuth:        envBool("SWARMOPS_INSECURE_DEV_AUTH", false),
+		ListenAddr:             env("SWARMOPS_LISTEN_ADDR", ":8084"),
+		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
+		MongoImage:             env("MONGO_IMAGE", "mongo:8.2.3"),
+		MongoPasswordSecret:    env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
+		MongoAppBootstrapFile:  env("SWARMOPS_MONGO_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "mongo-app-bootstrap.js")),
+		MongoStackFile:         env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
+		MutationEnabled:        envBool("SWARMOPS_MUTATIONS_ENABLED", false),
+		ObservabilityStackFile: env("SWARMOPS_OBSERVABILITY_STACK_FILE", filepath.Join(assetDir, "observability.yml")),
+		// The observability stack consumes these as EXTERNAL Swarm configs.
+		// Nothing created them, so enabling observability on a fresh cluster
+		// always failed with "config not found"; Core owns the reviewed content
+		// and now creates each missing one from its own asset directory.
+		ObservabilityConfigFiles: map[string]string{
+			"alertmanager":     env("SWARMOPS_ALERTMANAGER_CONFIG_FILE", filepath.Join(assetDir, "alertmanager.yml")),
+			"jaeger":           env("SWARMOPS_JAEGER_CONFIG_FILE", filepath.Join(assetDir, "jaeger.yml")),
+			"prometheus":       env("SWARMOPS_PROMETHEUS_CONFIG_FILE", filepath.Join(assetDir, "prometheus.yml")),
+			"prometheus_rules": env("SWARMOPS_PROMETHEUS_RULES_FILE", filepath.Join(assetDir, "prometheus-rules.yml")),
+			// The logs stack declares its Fluentd configs external too.
+			"fluentd_aggregator": env("SWARMOPS_FLUENTD_AGGREGATOR_FILE", filepath.Join(assetDir, "fluentd-aggregator.conf")),
+			"fluentd_forwarder":  env("SWARMOPS_FLUENTD_FORWARDER_FILE", filepath.Join(assetDir, "fluentd-forwarder.conf")),
+		},
 		PostgresImage:            env("POSTGRES_IMAGE", "postgres:18.2-alpine"),
 		PostgresPasswordSecret:   env("SWARMOPS_POSTGRES_PASSWORD_SECRET", "swarmops_postgres_password_v1"),
 		PostgresAppBootstrapFile: env("SWARMOPS_POSTGRES_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "postgres-app-bootstrap.sh")),

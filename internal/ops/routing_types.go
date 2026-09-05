@@ -16,6 +16,9 @@ import (
 
 const (
 	RoutingSchemaVersion = 1
+	// traefikAPIEntryPoint is the entry point name Traefik serves its API on
+	// when api.insecure is set. The machine agent reads router status there.
+	traefikAPIEntryPoint = "traefik"
 	RoutePortMin         = uint16(10000)
 	RoutePortMax         = uint16(19999)
 	MaxTraefikLogRecords = 1000
@@ -429,6 +432,15 @@ func DefaultTraefikSettings(email string) TraefikSettings {
 			{Name: "websecure", Port: 443, Protocol: RouteHTTP, Public: true},
 			{Name: "internal-http", Port: 8081, Protocol: RouteHTTP, Public: false},
 			{Name: "metrics", Port: 8082, Protocol: RouteHTTP, Public: false},
+			// The machine agent reads router status from Traefik's own API.
+			// Nothing served it before: the dashboard is exposed only through
+			// an authenticated router, so every runtime read timed out against
+			// a port that was never listening. The name must be exactly
+			// "traefik": that is the entry point api.insecure serves on, and
+			// declaring it here keeps the port explicit instead of letting
+			// Traefik invent a second one on 8080. It is not public and carries
+			// no ACME resolver.
+			{Name: "traefik", Port: 8080, Protocol: RouteHTTP, Public: false},
 		},
 		MetricsEnabled: true,
 		OperationalLog: "INFO",
@@ -809,11 +821,22 @@ func (f TraefikLogFilter) Validate(now time.Time) error {
 	return nil
 }
 
-func AllocateRoutePort(settings TraefikSettings, protocol RouteProtocol, routes []RouteSpec, requested uint16) (uint16, error) {
+// AllocateRoutePort picks the listen port for a non-HTTP route. `routes` must
+// already exclude the route being planned; `ownEntryPoint` names the static
+// entry point that route itself owns.
+//
+// Excluding that entry point is what makes re-applying an existing route
+// possible at all. A TCP route installs an entry point named for its own port,
+// so on the second pass the allocator found that entry point, decided the port
+// was taken, and refused with "requested tcp port N is already allocated" —
+// permanently, for every later deployment on a cluster that had a managed
+// database, because every application deploy re-applies the managed routes.
+func AllocateRoutePort(settings TraefikSettings, protocol RouteProtocol, routes []RouteSpec, requested uint16, ownEntryPoint string) (uint16, error) {
 	settings = settings.Normalize()
 	if protocol == RouteHTTP {
 		return 0, nil
 	}
+	ownEntryPoint = strings.TrimSpace(ownEntryPoint)
 	used := map[uint16]bool{}
 	for _, route := range routes {
 		if route.Protocol == protocol && route.ListenPort != 0 {
@@ -821,7 +844,7 @@ func AllocateRoutePort(settings TraefikSettings, protocol RouteProtocol, routes 
 		}
 	}
 	for _, entry := range settings.EntryPoints {
-		if entry.Protocol == protocol {
+		if entry.Protocol == protocol && (ownEntryPoint == "" || entry.Name != ownEntryPoint) {
 			used[entry.Port] = true
 		}
 	}

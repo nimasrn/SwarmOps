@@ -16,16 +16,23 @@ import (
 )
 
 type ControlPlane struct {
-	Agent                    AgentReader
-	AgentService             string
-	AgentStackFile           string
-	Admission                *PlatformAdmission
-	Apps                     *ApplicationStore
-	Audit                    *audit.Store
+	Agent        AgentReader
+	AgentService string
+	// HostSnapshot reads the ENROLLED machine agent for this connection.
+	// Node inventory used to be enriched only from the in-cluster
+	// swarmops-agent service, so a host-native agent — the documented
+	// production model — left every node with no memory, disk, OS, or engine
+	// reading, and platform admission refused every deployment on
+	// live-agent/live-memory-available/live-disk-available.
+	HostSnapshot   func(context.Context) (agent.Snapshot, error)
+	AgentStackFile string
+	Admission      *PlatformAdmission
+	Apps           *ApplicationStore
+	Audit          *audit.Store
 	// Platform is the sealed, console-owned platform definition. It is
 	// consulted before the startup Admission so a panel change reaches the
 	// next deployment without restarting the controller.
-	Platform *PlatformStore
+	Platform                 *PlatformStore
 	CLI                      DockerCLI
 	CoreService              string
 	Credentials              *CredentialStore
@@ -36,6 +43,7 @@ type ControlPlane struct {
 	LogsStackFile            string
 	Mutations                bool
 	ObservabilityStackFile   string
+	ObservabilityConfigFiles map[string]string
 	Routing                  *RoutingStore
 	ServerID                 string
 	StackDeployer            StackDeployer
@@ -50,6 +58,7 @@ type ControlPlane struct {
 type ControlPlaneOptions struct {
 	Agent                    AgentReader
 	AgentService             string
+	HostSnapshot             func(context.Context) (agent.Snapshot, error)
 	AgentStackFile           string
 	Admission                *PlatformAdmission
 	Apps                     *ApplicationStore
@@ -63,6 +72,7 @@ type ControlPlaneOptions struct {
 	LogsStackFile            string
 	Mutations                bool
 	ObservabilityStackFile   string
+	ObservabilityConfigFiles map[string]string
 	Routing                  *RoutingStore
 	ServerID                 string
 	TraefikSettings          TraefikStackSettings
@@ -88,6 +98,7 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 	return &ControlPlane{
 		Agent:                    options.Agent,
 		AgentService:             options.AgentService,
+		HostSnapshot:             options.HostSnapshot,
 		AgentStackFile:           options.AgentStackFile,
 		Admission:                options.Admission,
 		Apps:                     options.Apps,
@@ -103,6 +114,7 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		LogsStackFile:            options.LogsStackFile,
 		Mutations:                options.Mutations,
 		ObservabilityStackFile:   options.ObservabilityStackFile,
+		ObservabilityConfigFiles: options.ObservabilityConfigFiles,
 		Routing:                  options.Routing,
 		ServerID:                 options.ServerID,
 		StackDeployer:            StackDeployer{CLI: cli, DataDir: options.DataDir, Enabled: options.Mutations},
@@ -291,6 +303,17 @@ func (c *ControlPlane) Nodes(ctx context.Context) ([]domain.Node, error) {
 		return nil, err
 	}
 	agents := c.agentAddresses(ctx)
+	// The enrolled machine agent for this connection reports its own host. It
+	// is matched by node name so a single reviewed reading enriches exactly the
+	// node it came from, and the in-cluster agent service — when one is
+	// deployed — still takes precedence for every other node.
+	var hostSnapshot agent.Snapshot
+	hostSnapshotOK := false
+	if c.HostSnapshot != nil {
+		if snapshot, err := c.HostSnapshot(ctx); err == nil && strings.TrimSpace(snapshot.NodeName) != "" {
+			hostSnapshot, hostSnapshotOK = snapshot, true
+		}
+	}
 	nodes := make([]domain.Node, 0, len(rawNodes))
 	for _, raw := range rawNodes {
 		node := fromDockerNode(raw)
@@ -302,6 +325,8 @@ func (c *ControlPlane) Nodes(ctx context.Context) ([]domain.Node, error) {
 			} else {
 				applySnapshot(&node, snapshot)
 			}
+		} else if hostSnapshotOK && strings.EqualFold(strings.TrimSpace(node.Hostname), strings.TrimSpace(hostSnapshot.NodeName)) {
+			applySnapshot(&node, hostSnapshot)
 		}
 		nodes = append(nodes, node)
 	}
@@ -525,6 +550,9 @@ func (c *ControlPlane) LogsCollection(ctx context.Context, actor, requestID stri
 		}
 		routes, routeErr := trustedStackRouteTemplates("swarmops-logs")
 		if routeErr == nil {
+			routeErr = c.ensureLogsConfigs(ctx)
+		}
+		if routeErr == nil {
 			routeErr = c.prepareManagedRouteNetworks(ctx, routes)
 		}
 		if routeErr == nil {
@@ -602,6 +630,9 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 		}
 		routes, routeErr := trustedStackRouteTemplates("swarmops-observability")
 		if routeErr == nil {
+			routeErr = c.ensureObservabilityConfigs(ctx)
+		}
+		if routeErr == nil {
 			routeErr = c.prepareManagedRouteNetworks(ctx, routes)
 		}
 		if routeErr == nil {
@@ -652,6 +683,72 @@ func (c *ControlPlane) AuditEvents(limit int) ([]domain.AuditEvent, error) {
 // to Docker through stdin. This keeps the same trusted-stack boundary while
 // allowing the Docker CLI to run through the remote machine API without
 // copying a Compose file onto that server's filesystem.
+// ensureObservabilityConfigs creates the reviewed Swarm configs the
+// observability stack declares as external. They were never created by
+// anything, so a fresh cluster could not enable observability at all: Docker
+// refused the stack with "config not found" for prometheus, its rules,
+// alertmanager, and jaeger. The content comes from the controller's own asset
+// directory, and an existing config is left untouched so the versioned name
+// stays immutable.
+// ensureLogsConfigs creates the reviewed Fluentd configs the logs stack
+// declares as external, for the same reason the observability stack needs
+// ensureObservabilityConfigs: nothing else creates them, so enabling log
+// collection failed with "config not found: swarmops_fluentd_aggregator_v1".
+func (c *ControlPlane) ensureLogsConfigs(ctx context.Context) error {
+	return c.ensureReviewedConfigs(ctx, map[string]string{
+		c.TrustedStackSettings.FluentAggregatorConfigName: c.ObservabilityConfigFiles["fluentd_aggregator"],
+		c.TrustedStackSettings.FluentForwarderConfigName:  c.ObservabilityConfigFiles["fluentd_forwarder"],
+	})
+}
+
+func (c *ControlPlane) ensureObservabilityConfigs(ctx context.Context) error {
+	return c.ensureReviewedConfigs(ctx, map[string]string{
+		c.TrustedStackSettings.AlertmanagerConfigName:    c.ObservabilityConfigFiles["alertmanager"],
+		c.TrustedStackSettings.JaegerConfigName:          c.ObservabilityConfigFiles["jaeger"],
+		c.TrustedStackSettings.PrometheusConfigName:      c.ObservabilityConfigFiles["prometheus"],
+		c.TrustedStackSettings.PrometheusRulesConfigName: c.ObservabilityConfigFiles["prometheus_rules"],
+	})
+}
+
+// ensureReviewedConfigs creates each named Swarm config from the controller's
+// own asset directory when it is absent. An existing config is left untouched
+// so a versioned name stays immutable.
+func (c *ControlPlane) ensureReviewedConfigs(ctx context.Context, wanted map[string]string) error {
+	existing, err := c.CLI.Run(ctx, "config", "ls", "--format", "{{.Name}}")
+	if err != nil {
+		return fmt.Errorf("list reviewed configs: %w", err)
+	}
+	present := map[string]bool{}
+	for _, name := range strings.Fields(existing) {
+		present[name] = true
+	}
+	for _, name := range sortedStrings(mapKeys(wanted)) {
+		file := wanted[name]
+		if name == "" || present[name] {
+			continue
+		}
+		if strings.TrimSpace(file) == "" {
+			return fmt.Errorf("reviewed config %s has no configured asset file", name)
+		}
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			return fmt.Errorf("read trusted stack asset: %w", readErr)
+		}
+		if _, err := c.CLI.RunInput(ctx, bytes.NewReader(content), "config", "create", name, "-"); err != nil {
+			return fmt.Errorf("create reviewed config %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func mapKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func (c *ControlPlane) deployTrustedStack(ctx context.Context, file, name string) error {
 	raw, err := os.ReadFile(file)
 	if err != nil {

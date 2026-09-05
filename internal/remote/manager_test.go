@@ -537,3 +537,48 @@ func TestAttachPullCarriesNativeUpdaterStateAndKeepsCoreRequestedAt(t *testing.T
 		t.Fatalf("re-attach dropped automatic updates = %#v", refreshed.AgentHealth.Update)
 	}
 }
+
+// The documented onboarding order enrols an agent with --defer-docker and then
+// installs Docker from Host setup. The Docker facade was built only on the
+// first handshake, so Core kept a nil facade for the life of the process and
+// every cluster read failed with "selected server has no control plane".
+func TestAttachPullRebuildsControlPlaneWhenDockerArrivesAfterEnrolment(t *testing.T) {
+	t.Parallel()
+	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerless := agentpull.Status{NodeName: "node-1", RemoteControlEnabled: true, Version: "test"}
+	profile, err := manager.AttachPull("agent-1", "node-1", dockerless, unavailableRoundTripper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.RLock()
+	before := manager.connections[profile.ID]
+	manager.mu.RUnlock()
+	if before == nil || before.Docker != nil {
+		t.Fatalf("pre-Docker connection carried a control plane: %#v", before)
+	}
+
+	ready := agentpull.Status{DockerAvailable: true, DockerVersion: "29.8.0", NodeName: "node-1", RemoteControlEnabled: true, SwarmControlAvailable: true, SwarmState: "active", Version: "test"}
+	if _, err := manager.AttachPull("agent-1", "node-1", ready, unavailableRoundTripper{}); err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.RLock()
+	after := manager.connections[profile.ID]
+	manager.mu.RUnlock()
+	if after == nil || after.Docker == nil {
+		t.Fatal("Docker became available but the connection kept no control plane")
+	}
+
+	// Losing Docker must drop the facade again rather than keep a stale one.
+	if _, err := manager.AttachPull("agent-1", "node-1", dockerless, unavailableRoundTripper{}); err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.RLock()
+	reverted := manager.connections[profile.ID]
+	manager.mu.RUnlock()
+	if reverted == nil || reverted.Docker != nil {
+		t.Fatal("Docker went away but the connection kept a control plane")
+	}
+}

@@ -20,6 +20,9 @@ const (
 	streamFormatHeader = "swarmops-sealed-stream-v1\x00"
 	keySize            = 32
 	streamChunkSize    = 64 << 10
+	// maxIdleStreamReads bounds consecutive zero-byte, nil-error reads before
+	// the source is treated as stalled.
+	maxIdleStreamReads = 128
 )
 
 var ErrInvalidCiphertext = errors.New("encrypted state is invalid or the data key does not match")
@@ -189,9 +192,17 @@ func (s *Sealer) WriteReaderFile(path, purpose string, source io.Reader, maxByte
 
 	buffer := make([]byte, streamChunkSize)
 	var index uint64
+	// io.Reader is explicitly allowed to return (0, nil), and callers must treat
+	// that as "nothing happened" and read again. Failing on the first such read
+	// rejected perfectly good input — a repository archive streamed from a
+	// provider arrived that way, and every source deployment failed with "the
+	// source input stream ended before the whole archive arrived". The bound
+	// still stops a reader that genuinely never progresses.
+	idle := 0
 	for {
 		count, readErr := source.Read(buffer)
 		if count > 0 {
+			idle = 0
 			if written > maxBytes-int64(count) {
 				return 0, fmt.Errorf("encrypted state source exceeds the %d byte limit", maxBytes)
 			}
@@ -208,7 +219,10 @@ func (s *Sealer) WriteReaderFile(path, purpose string, source io.Reader, maxByte
 			return 0, fmt.Errorf("read encrypted state source: %w", readErr)
 		}
 		if count == 0 {
-			return 0, errors.New("encrypted state source made no progress")
+			idle++
+			if idle > maxIdleStreamReads {
+				return 0, errors.New("encrypted state source made no progress")
+			}
 		}
 	}
 	if err = s.writeStreamFrame(temporary, purpose, index, true, nil); err != nil {

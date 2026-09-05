@@ -131,3 +131,44 @@ func TestSealerWriteReaderFileStreamsEncryptedContent(t *testing.T) {
 		t.Fatalf("tampered stream error = %v, want ErrInvalidCiphertext", err)
 	}
 }
+
+// io.Reader may legally return (0, nil); callers must read again. Treating the
+// first such read as a stalled source rejected valid input, which is what made
+// every source deployment fail before its archive had been stored.
+func TestSealStreamToleratesZeroByteReads(t *testing.T) {
+	t.Parallel()
+	sealer, err := New(bytes.Repeat([]byte{5}, keySize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte("swarmops"), 4096)
+	source := &stutteringReader{data: payload}
+	path := filepath.Join(t.TempDir(), "sealed")
+	written, err := sealer.WriteReaderFile(path, "test", source, int64(len(payload))+1)
+	if err != nil {
+		t.Fatalf("seal stream with idle reads: %v", err)
+	}
+	if written != int64(len(payload)) {
+		t.Fatalf("written = %d, want %d", written, len(payload))
+	}
+}
+
+// stutteringReader returns (0, nil) before every real read.
+type stutteringReader struct {
+	data   []byte
+	offset int
+	stall  bool
+}
+
+func (r *stutteringReader) Read(p []byte) (int, error) {
+	if r.offset >= len(r.data) {
+		return 0, io.EOF
+	}
+	r.stall = !r.stall
+	if r.stall {
+		return 0, nil
+	}
+	count := copy(p, r.data[r.offset:])
+	r.offset += count
+	return count, nil
+}

@@ -25,9 +25,15 @@ type Worker struct {
 	CanExecute       func() bool
 	Execute          ExecuteFunc
 	ExecutionTimeout func(domain.Command) time.Duration
-	OnTransition     TransitionFunc
-	PollInterval     time.Duration
-	Store            *Store
+	// OnExecuteError receives the executor's own error before it is reduced to
+	// the operator-facing diagnostic. The ledger and the API deliberately carry
+	// only safe, bounded wording, which left a failed command with no
+	// server-side record of WHY it failed; this is where the controller logs
+	// that cause for its own operator.
+	OnExecuteError func(domain.Command, error)
+	OnTransition   TransitionFunc
+	PollInterval   time.Duration
+	Store          *Store
 	// StoreRetryAttempts bounds the retries for a transient durable-store
 	// failure (for example momentary I/O pressure) before the worker stops.
 	// The store rolls back failed transitions in memory, so a retried claim,
@@ -109,6 +115,9 @@ func (w Worker) Run(ctx context.Context) error {
 				return err
 			}
 			continue
+		}
+		if w.OnExecuteError != nil {
+			w.OnExecuteError(record.Command, err)
 		}
 		var event string
 		var failed domain.Command

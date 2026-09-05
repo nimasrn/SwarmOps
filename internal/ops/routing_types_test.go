@@ -339,3 +339,34 @@ func TestTraefikLogFilterNormalizeAndValidate(t *testing.T) {
 func contains(haystack, needle string) bool {
 	return len(needle) > 0 && (strings.Contains(haystack, needle))
 }
+
+// A TCP route installs a static entry point named for its own port. Counting
+// that entry point as an allocation made re-applying the route impossible, so
+// once a managed database existed every later application deployment failed
+// with "requested tcp port N is already allocated".
+func TestAllocateRoutePortIgnoresTheRouteOwnEntryPoint(t *testing.T) {
+	t.Parallel()
+	settings := TraefikSettings{
+		EntryPoints: []StaticEntryPoint{
+			{Name: "web", Port: 80, Protocol: RouteHTTP, Public: true},
+			{Name: "tcp-16379", Port: 16379, Protocol: RouteTCP},
+		},
+		PortRange: PortRange{Start: RoutePortMin, End: RoutePortMax},
+	}.Normalize()
+
+	port, err := AllocateRoutePort(settings, RouteTCP, nil, 16379, "tcp-16379")
+	if err != nil || port != 16379 {
+		t.Fatalf("re-applying a route was refused its own port: port=%d err=%v", port, err)
+	}
+
+	// Another route may not claim that port.
+	if _, err := AllocateRoutePort(settings, RouteTCP, nil, 16379, "tcp-16380"); err == nil {
+		t.Fatal("a different route was allowed to claim an allocated port")
+	}
+
+	// A port held by another ROUTE is still refused.
+	others := []RouteSpec{{Key: "other", Protocol: RouteTCP, ListenPort: 16381}}
+	if _, err := AllocateRoutePort(settings, RouteTCP, others, 16381, "tcp-16381"); err == nil {
+		t.Fatal("a port held by another route was allowed")
+	}
+}

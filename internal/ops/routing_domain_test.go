@@ -152,3 +152,29 @@ func TestLegacyStateAdoptsTheZonesItsRecordsAlreadyUse(t *testing.T) {
 		t.Fatalf("domains = %#v, want the record zone adopted once", cluster.Domains)
 	}
 }
+
+// SwarmOps generates its own aliases under the reserved internal zone. Holding
+// them to the public-DNS admission rules made the controller reject hostnames
+// it had just produced, so enabling observability could never complete.
+func TestRouteAdmissionAcceptsReservedInternalHostsWithoutPublicDNS(t *testing.T) {
+	t.Parallel()
+	internal := RouteSpec{
+		Key:        "swarmops-alertmanager",
+		Match:      RouteMatch{Hosts: []string{"swarmops-alertmanager." + ReservedInternalZone}, PathPrefix: "/"},
+		Protocol:   RouteHTTP,
+		Scope:      RouteInternal,
+		ServiceKey: "swarmops-observability_alertmanager",
+		TargetPort: 9093,
+		Version:    RoutingSchemaVersion,
+	}.Normalize()
+	if err := ValidateRouteAdmission(internal, nil, nil); err != nil {
+		t.Fatalf("reserved internal host was rejected: %v", err)
+	}
+
+	// A hostname outside the reserved zone still needs a registered domain.
+	public := internal
+	public.Match = RouteMatch{Hosts: []string{"alertmanager.example.com"}, PathPrefix: "/"}
+	if err := ValidateRouteAdmission(public.Normalize(), nil, nil); err == nil {
+		t.Fatal("unregistered public host was admitted")
+	}
+}

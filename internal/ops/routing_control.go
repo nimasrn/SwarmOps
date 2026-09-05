@@ -154,7 +154,7 @@ func (c *ControlPlane) PlanRoute(ctx context.Context, requested RouteSpec) (Rout
 		}
 	}
 	if route.Protocol != RouteHTTP {
-		port, err := AllocateRoutePort(state.Settings, route.Protocol, otherRoutes, route.ListenPort)
+		port, err := AllocateRoutePort(state.Settings, route.Protocol, otherRoutes, route.ListenPort, staticEntryPointFor(route).Name)
 		if err != nil {
 			return RoutePlan{}, err
 		}
@@ -348,7 +348,24 @@ func (c *ControlPlane) applyRoutePlan(ctx context.Context, plan RoutePlan, optio
 		_ = c.Routing.PutRuntime(c.ServerID, RouteRuntime{Errors: []string{"machine reconciliation did not complete"}, ObservedAt: time.Now().UTC(), Protocol: plan.Route.Protocol, RouteKey: plan.Route.Key, State: "drift", Version: RoutingSchemaVersion})
 		return err
 	}
-	return c.RefreshTraefikRuntime(ctx)
+	// The route is applied at this point. Refreshing the runtime view only
+	// OBSERVES Traefik's dashboard API, and a host-native agent may not be able
+	// to reach it at all; failing here reported an applied route as a failed
+	// deployment and blocked enabling observability. Record that the
+	// observation is unavailable and let the applied change stand — the same
+	// best-effort treatment this refresh already gets after a certificate
+	// change.
+	if err := c.RefreshTraefikRuntime(ctx); err != nil {
+		_ = c.Routing.PutRuntime(c.ServerID, RouteRuntime{
+			Errors:     []string{"Traefik runtime status is unavailable from the selected machine; the route was applied."},
+			ObservedAt: time.Now().UTC(),
+			Protocol:   plan.Route.Protocol,
+			RouteKey:   plan.Route.Key,
+			State:      "unknown",
+			Version:    RoutingSchemaVersion,
+		})
+	}
+	return nil
 }
 
 func (c *ControlPlane) DeclareServiceRouteRole(actor, requestID string, declaration ServiceRouteDeclaration) error {

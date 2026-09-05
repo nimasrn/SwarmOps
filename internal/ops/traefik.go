@@ -164,7 +164,11 @@ func RenderTraefikStaticConfig(settings TraefikSettings) ([]byte, error) {
 		resolvers[resolver.Name] = map[string]any{"acme": acme}
 	}
 	root := map[string]any{
-		"api":         map[string]any{"dashboard": true, "insecure": false},
+		// The dashboard stays behind its authenticated router. The API is also
+		// served on the non-public "traefik" entry point so the machine agent
+		// on this node can read router status; that entry point is never
+		// published to a public address.
+		"api":         map[string]any{"dashboard": true, "insecure": true},
 		"entryPoints": entryPoints,
 		"log":         map[string]any{"format": "json", "level": settings.OperationalLog},
 		"metrics": map[string]any{"prometheus": map[string]any{
@@ -545,14 +549,21 @@ func applyTypedTraefikStack(root map[string]any, settings TraefikStackSettings) 
 	}
 	ports := []any{}
 	for _, entry := range settings.Control.EntryPoints {
-		if !entry.Public {
-			continue
-		}
 		protocol := "tcp"
 		if entry.Protocol == RouteUDP {
 			protocol = "udp"
 		}
-		ports = append(ports, map[string]any{"target": entry.Port, "published": entry.Port, "protocol": protocol, "mode": "ingress"})
+		switch {
+		case entry.Public:
+			ports = append(ports, map[string]any{"target": entry.Port, "published": entry.Port, "protocol": protocol, "mode": "ingress"})
+		case entry.Name == traefikAPIEntryPoint:
+			// The API entry point is published in HOST mode, on the node only.
+			// A host-native machine agent — the documented production model —
+			// cannot reach an overlay address at all, so router status was
+			// unreadable however long it waited. Host mode also keeps this off
+			// the routing mesh, so it is never reachable from another node.
+			ports = append(ports, map[string]any{"target": entry.Port, "published": entry.Port, "protocol": protocol, "mode": "host"})
+		}
 	}
 	service["ports"] = ports
 	networks := []any{"traefik"}
