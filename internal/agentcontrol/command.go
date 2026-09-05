@@ -85,9 +85,22 @@ var (
 	stackNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 	// Only SwarmOps' own generated credentials may be created through this
 	// vocabulary, so the name is confined to the swarmops_ prefix.
-	managedSecretPattern = regexp.MustCompile(`^(swarmops_[a-z0-9][a-z0-9_]{0,54}|traefik_dns_[a-z0-9][a-z0-9_]{0,72}_v[1-9][0-9]*|traefik_dashboard_auth_v[1-9][0-9]*)$`)
+	// Per-application database connection secrets are named
+	// <stack>_<engine>_uri_v<n>, and the stack carries the namespace and the
+	// application name, so they never begin with "swarmops_". Without this
+	// branch every deployment that attaches a managed database was refused at
+	// the agent with "invalid managed secret operation". The engine and the
+	// _uri_v<n> suffix keep it a narrow, reviewed shape.
+	managedSecretPattern = regexp.MustCompile(`^(swarmops_[a-z0-9][a-z0-9_]{0,54}|traefik_dns_[a-z0-9][a-z0-9_]{0,72}_v[1-9][0-9]*|traefik_dashboard_auth_v[1-9][0-9]*|[a-z0-9][a-z0-9_-]{0,80}_(postgres|mongo|redis)_uri_v[1-9][0-9]*)$`)
 	removableDNSSecret   = regexp.MustCompile(`^traefik_dns_(cloudflare|arvan)_[a-z0-9][a-z0-9_]{0,62}_v[1-9][0-9]*$`)
-	managedConfigPattern = regexp.MustCompile(`^(swarmops_traefik_static_v1_[a-f0-9]{16}|nim_traefik_dynamic_v[1-9][0-9]*)$`)
+	// The reviewed configs Core is allowed to create. The observability names
+	// were missing, so the controller could render and deploy that stack but
+	// never create the external configs it declares, and Docker refused it with
+	// "config not found" on every fresh cluster. The per-application database
+	// bootstrap configs were missing for the same reason, which failed every
+	// deployment that attaches a managed database. This stays an explicit
+	// allow-list: a name outside it is still rejected.
+	managedConfigPattern = regexp.MustCompile(`^(swarmops_traefik_static_v1_[a-f0-9]{16}|nim_traefik_dynamic_v[1-9][0-9]*|swarmops_(prometheus_config|prometheus_rules|alertmanager_config|jaeger_config|fluentd_aggregator|fluentd_forwarder)_v[1-9][0-9]*|swarmops_(postgres|mongo|redis)_app_bootstrap_[a-f0-9]{12})$`)
 	secretValuePattern   = regexp.MustCompile(`^[A-Za-z0-9+/=_.:@?&-]{16,512}$`)
 	dashboardAuthPattern = regexp.MustCompile(`^operator:\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$`)
 )

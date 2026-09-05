@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -172,6 +173,7 @@ func ServeProvisioner(ctx context.Context, socketPath string, agentPort uint16) 
 			var request agentcontrol.ProvisioningRequest
 			decoder := json.NewDecoder(io.LimitReader(connection, provisioningRequestLimit))
 			if err := decoder.Decode(&request); err != nil || decoder.Decode(&struct{}{}) != io.EOF || request.Validate() != nil {
+				slog.Error("machine provisioning request was rejected before execution")
 				_ = json.NewEncoder(connection).Encode(provisionerResponse{Error: "invalid request"})
 				return
 			}
@@ -181,6 +183,19 @@ func ServeProvisioner(ctx context.Context, socketPath string, agentPort uint16) 
 			err := provisioner.apply(operationContext, request)
 			cancel()
 			if err != nil {
+				// The reply to the agent stays deliberately opaque, and the
+				// controller reduces it again. Without this line the cause of a
+				// failed host operation existed nowhere at all; the helper's own
+				// journal is the one place an operator can be shown it.
+				slog.Error("machine provisioning operation failed",
+					"install_docker", request.InstallDocker,
+					"update_docker", request.UpdateDocker,
+					"update_os", request.UpdateOS,
+					"initialize_swarm", request.InitializeSwarm,
+					"join_swarm", request.JoinSwarm,
+					"apply_ufw", request.ApplyUFW,
+					"apply_registry_mirrors", request.ApplyRegistryMirrors,
+					"error", err)
 				_ = json.NewEncoder(connection).Encode(provisionerResponse{Error: "operation did not complete"})
 				return
 			}

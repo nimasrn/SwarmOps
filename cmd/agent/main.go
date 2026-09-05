@@ -74,7 +74,10 @@ func main() {
 		Docker:               docker,
 		LogsBaseURL:          env("SWARMOPS_LOGS_INTERNAL_URL", "http://swarmops-fluentd-query.swarmops.internal:8081"),
 		PrometheusBaseURL:    env("SWARMOPS_PROMETHEUS_INTERNAL_URL", "http://swarmops-prometheus.swarmops.internal:8081"),
-		TraefikAPIBaseURL:    env("SWARMOPS_TRAEFIK_INTERNAL_API_URL", "http://traefik_traefik:8080/api"),
+		// A host-native agent cannot resolve or route to the overlay service
+		// name, which is the documented production model; the node's own
+		// address works for both a host-native agent and a containerised one.
+		TraefikAPIBaseURL:    env("SWARMOPS_TRAEFIK_INTERNAL_API_URL", "http://127.0.0.1:8080/api"),
 		EnrollmentSecret:     runtime.enrollmentSecret,
 		EnrollmentSecretFile: runtime.enrollmentSecretFile,
 		HostOS:               env("SWARMOPS_HOST_OS", "/host/etc/os-release"),

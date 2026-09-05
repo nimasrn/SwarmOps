@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os/exec"
@@ -153,7 +154,7 @@ func (s *Server) provisioningApply(response http.ResponseWriter, request *http.R
 	operationContext, cancel := context.WithTimeout(request.Context(), provisioningTimeout)
 	defer cancel()
 	if err := s.provision(operationContext, input); err != nil {
-		http.Error(response, "machine provisioning did not complete", http.StatusBadGateway)
+		failGateway(response, "machine provisioning did not complete", err)
 		return
 	}
 	writeJSON(response, map[string]string{"status": "ok"})
@@ -381,7 +382,7 @@ func (s *Server) engineBuild(response http.ResponseWriter, request *http.Request
 	defer cancel()
 	output, err := s.config.Docker.Build(buildContext, request.Body, query, headers)
 	if err != nil {
-		http.Error(response, "machine image build failed", http.StatusBadGateway)
+		failGateway(response, "machine image build failed", err)
 		return
 	}
 	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -502,20 +503,49 @@ func (s *Server) validBuildRequest(request *http.Request) (url.Values, http.Head
 	return query, headers, nil
 }
 
+// runDockerCommand keeps stdout and stderr apart so a Docker CLI warning can
+// never corrupt output the controller parses. Failure classification still sees
+// both streams, because Docker reports the reason a stack was refused on stderr.
 func runDockerCommand(ctx context.Context, compose []byte, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	buffer := &limitedBuffer{limit: commandOutputLimit}
+	stdout := &limitedBuffer{limit: commandOutputLimit}
+	stderr := &limitedBuffer{limit: commandOutputLimit}
 	command := exec.CommandContext(ctx, "docker", args...)
 	if len(compose) > 0 {
 		command.Stdin = bytes.NewReader(compose)
 	}
-	command.Stdout = buffer
-	command.Stderr = buffer
-	if err := command.Run(); err != nil || buffer.err != nil {
-		return "", &boundedDockerCommandError{code: dockerCommandFailureCode(args, buffer.String(), ctx.Err(), buffer.err)}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil || stdout.err != nil || stderr.err != nil {
+		combined := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+		outputErr := stdout.err
+		if outputErr == nil {
+			outputErr = stderr.err
+		}
+		code := dockerCommandFailureCode(args, combined, ctx.Err(), outputErr)
+		// Only the small failure code crosses back to Core, by design. Docker's
+		// own explanation is written here instead of being discarded, so the
+		// machine's journal can answer why a deployment was refused rather than
+		// leaving an operator with a bare failure class.
+		slog.Error("bounded Docker operation failed",
+			"operation", strings.Join(args, " "),
+			"failure_code", code,
+			"output", combined,
+			"error", err)
+		return "", &boundedDockerCommandError{code: code}
 	}
-	return buffer.String(), nil
+	return stdout.String(), nil
+}
+
+// failGateway writes the bounded operator-facing message and records the cause
+// in the machine's own journal. Every one of these paths previously discarded
+// the underlying error, so a failed reconcile, build, or provisioning run left
+// Core reporting only "machine API returned HTTP 502" with nothing anywhere
+// that said why.
+func failGateway(response http.ResponseWriter, message string, err error, attributes ...any) {
+	slog.Error(message, append(attributes, "error", err)...)
+	http.Error(response, message, http.StatusBadGateway)
 }
 
 type boundedDockerCommandError struct{ code string }

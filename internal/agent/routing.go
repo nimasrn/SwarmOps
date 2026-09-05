@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os/exec"
 	"sort"
@@ -59,7 +62,7 @@ func (s *Server) routingReconcile(response http.ResponseWriter, request *http.Re
 		return
 	}
 	if err := reconcileTypedRoute(request.Context(), input); err != nil {
-		http.Error(response, "routing reconciliation failed", http.StatusBadGateway)
+		failGateway(response, "routing reconciliation failed", err, "network", input.Network, "service", input.ServiceID)
 		return
 	}
 	writeJSON(response, map[string]string{"status": "ok"})
@@ -83,7 +86,7 @@ func (s *Server) routingNetwork(response http.ResponseWriter, request *http.Requ
 		err = ensureServiceNetwork(request.Context(), input.TraefikServiceID, network, "")
 	}
 	if err != nil {
-		http.Error(response, "routing network preparation failed", http.StatusBadGateway)
+		failGateway(response, "routing network preparation failed", err, "network", input.Network, "traefik_service", input.TraefikServiceID)
 		return
 	}
 	writeJSON(response, map[string]string{"status": "ok"})
@@ -103,7 +106,7 @@ func (s *Server) routingBind(response http.ResponseWriter, request *http.Request
 		return
 	}
 	if err := reconcileTypedBinding(request.Context(), input); err != nil {
-		http.Error(response, "dependency binding failed", http.StatusBadGateway)
+		failGateway(response, "dependency binding failed", err)
 		return
 	}
 	writeJSON(response, map[string]string{"status": "ok"})
@@ -172,10 +175,17 @@ func reconcileTypedRoute(ctx context.Context, input agentcontrol.RoutingReconcil
 			}
 		}
 	}
+	// The request is de-duplicated against itself as well as against the
+	// service. A port named twice in one reconcile — which happens as soon as
+	// an application and a managed database it depends on are reconciled
+	// together — produced two --publish-add flags in a single update, and
+	// Docker rejected the whole thing with "port is already allocated".
+	restored := map[uint16]bool{}
 	for _, restoredPort := range input.RestorePublishedPorts {
-		if publishedPortExists(current, restoredPort) {
+		if restored[restoredPort.PublishedPort] || publishedPortExists(current, restoredPort) {
 			continue
 		}
+		restored[restoredPort.PublishedPort] = true
 		args = append(args, "--publish-add", formatPublishedPort(restoredPort))
 	}
 	for _, remove := range input.RemoveNetworks {
@@ -244,7 +254,10 @@ func reconcileTypedBinding(ctx context.Context, input agentcontrol.RoutingBindin
 }
 
 func ensureEncryptedRoutingNetwork(ctx context.Context, name string) (inspectedNetwork, error) {
-	output, err := runRoutingDocker(ctx, nil, "network", "inspect", name)
+	// A miss here is the normal path for a route that has not been created yet,
+	// so it is probed quietly; only a failure to CREATE the network is an error
+	// worth reporting.
+	output, err := runRoutingDockerQuiet(ctx, nil, "network", "inspect", name)
 	if err != nil {
 		if _, createErr := runRoutingDocker(ctx, nil, "network", "create", "--driver", "overlay", "--opt", "encrypted", name); createErr != nil {
 			return inspectedNetwork{}, createErr
@@ -256,6 +269,11 @@ func ensureEncryptedRoutingNetwork(ctx context.Context, name string) (inspectedN
 	}
 	var networks []inspectedNetwork
 	if err := json.Unmarshal([]byte(output), &networks); err != nil || len(networks) != 1 {
+		// The bounded error deliberately says nothing about the host. Record
+		// what Docker actually returned here so an unparseable inspect is
+		// diagnosable instead of being an unexplained routing failure.
+		slog.Error("routing network inspect was not a single JSON network",
+			"network", name, "matches", len(networks), "output", truncateForLog(output, 512), "error", err)
 		return inspectedNetwork{}, fmt.Errorf("inspect routing network")
 	}
 	network := networks[0]
@@ -264,6 +282,23 @@ func ensureEncryptedRoutingNetwork(ctx context.Context, name string) (inspectedN
 		return inspectedNetwork{}, fmt.Errorf("routing network is not an encrypted Swarm overlay")
 	}
 	return network, nil
+}
+
+// sortedUniqueStrings returns the distinct values in a stable order so a
+// service update is deterministic and never re-applies the same attachment.
+func sortedUniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func ensureServiceNetwork(ctx context.Context, serviceID string, network inspectedNetwork, alias string) error {
@@ -281,7 +316,18 @@ func ensureServiceNetwork(ctx context.Context, serviceID string, network inspect
 		// Docker cannot add an alias to an existing service network in place.
 		// Replacing just this attachment is bounded and preserves every other
 		// network; the controller surfaces the resulting singleton risk.
-		_, err = runRoutingDocker(ctx, nil, "service", "update", "--network-rm", network.Name, "--network-add", "name="+network.Name+",alias="+alias, serviceID)
+		//
+		// The replacement must carry the aliases the attachment ALREADY has.
+		// Dropping them made each dependency binding erase the previous one, so
+		// a caller with more than one dependency could only ever reach the last
+		// one applied — Prometheus lost its Alertmanager alias the moment the
+		// Traefik metrics alias was bound, and that target went down.
+		aliases := append(append([]string{}, attachment.Aliases...), alias)
+		value := "name=" + network.Name
+		for _, name := range sortedUniqueStrings(aliases) {
+			value += ",alias=" + name
+		}
+		_, err = runRoutingDocker(ctx, nil, "service", "update", "--network-rm", network.Name, "--network-add", value, serviceID)
 		return err
 	}
 	value := network.Name
@@ -369,18 +415,101 @@ func containsString(values []string, expected string) bool {
 	return false
 }
 
+// truncateForLog bounds diagnostic output so a large or hostile command result
+// cannot flood the machine journal.
+func truncateForLog(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "…"
+}
+
+// runRoutingDockerQuiet is runRoutingDocker for probes whose failure is an
+// expected outcome rather than a fault.
+func runRoutingDockerQuiet(ctx context.Context, input io.Reader, args ...string) (string, error) {
+	return routingDocker(ctx, false, input, args...)
+}
+
 func runRoutingDocker(ctx context.Context, input io.Reader, args ...string) (string, error) {
+	return routingDocker(ctx, true, input, args...)
+}
+
+// routingDocker keeps stdout and stderr apart. The Docker CLI writes warnings
+// to stderr — for example when the agent's ProtectHome sandbox makes
+// /root/.docker/config.json unreadable — and folding those into stdout put a
+// "WARNING: ..." line in front of every JSON document the routing code parses,
+// so each of these operations failed on a healthy host. Diagnostics still get
+// both streams; only the returned value is stdout.
+func routingDocker(ctx context.Context, report bool, input io.Reader, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	buffer := &limitedBuffer{limit: commandOutputLimit}
+	stdout := &limitedBuffer{limit: commandOutputLimit}
+	stderr := &limitedBuffer{limit: commandOutputLimit}
 	command := exec.CommandContext(ctx, "docker", args...)
 	command.Stdin = input
-	command.Stdout = buffer
-	command.Stderr = buffer
-	if err := command.Run(); err != nil || buffer.err != nil {
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil || stdout.err != nil || stderr.err != nil {
+		if report {
+			slog.Error("fixed routing operation failed",
+				"operation", strings.Join(args, " "),
+				"stderr", truncateForLog(stderr.String(), 512),
+				"error", err)
+		}
 		return "", fmt.Errorf("run fixed routing operation")
 	}
-	return buffer.String(), nil
+	return stdout.String(), nil
+}
+
+// traefikAPIBaseURL resolves the Traefik API endpoint for THIS agent. The
+// configured default names the Swarm service (traefik_traefik), which only
+// resolves from inside the overlay network — that is, only when the agent is
+// itself a container on that network. A host-native agent, which is the
+// documented production model, cannot resolve it at all, so every Traefik
+// runtime read failed with "no such host" and observability could never be
+// confirmed. When the configured host does not resolve, fall back to the
+// address of the Traefik task running on this machine.
+func (s *Server) traefikAPIBaseURL(ctx context.Context) string {
+	configured := strings.TrimSuffix(strings.TrimSpace(s.config.TraefikAPIBaseURL), "/")
+	parsed, err := url.Parse(configured)
+	if err != nil || parsed.Hostname() == "" {
+		return configured
+	}
+	if _, err := net.DefaultResolver.LookupHost(ctx, parsed.Hostname()); err == nil {
+		return configured
+	}
+	address := localTraefikAddress(ctx)
+	if address == "" {
+		return configured
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "8080"
+	}
+	parsed.Host = net.JoinHostPort(address, port)
+	return strings.TrimSuffix(parsed.String(), "/")
+}
+
+// localTraefikAddress returns the container IP of the Traefik task running on
+// this machine, or "" when none is present.
+func localTraefikAddress(ctx context.Context) string {
+	containers, err := runRoutingDocker(ctx, nil, "ps", "--filter", "label=com.docker.swarm.service.name=traefik_traefik", "--format", "{{.ID}}")
+	if err != nil {
+		return ""
+	}
+	for _, id := range strings.Fields(containers) {
+		output, err := runRoutingDocker(ctx, nil, "inspect", "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", id)
+		if err != nil {
+			continue
+		}
+		for _, candidate := range strings.Fields(output) {
+			if parsed, err := netip.ParseAddr(candidate); err == nil && parsed.IsValid() && !parsed.IsUnspecified() {
+				return candidate
+			}
+		}
+	}
+	return ""
 }
 
 func (s *Server) traefikRuntime(response http.ResponseWriter, request *http.Request) {
@@ -400,8 +529,8 @@ func (s *Server) traefikRuntime(response http.ResponseWriter, request *http.Requ
 			Status      string   `json:"status"`
 			Using       []string `json:"using"`
 		}
-		if err := fixedInternalJSON(request.Context(), client, strings.TrimSuffix(s.config.TraefikAPIBaseURL, "/")+"/"+protocol+"/routers", &routes); err != nil {
-			http.Error(response, "Traefik runtime unavailable", http.StatusBadGateway)
+		if err := fixedInternalJSON(request.Context(), client, s.traefikAPIBaseURL(request.Context())+"/"+protocol+"/routers", &routes); err != nil {
+			failGateway(response, "Traefik runtime unavailable", err)
 			return
 		}
 		for _, route := range routes {
@@ -441,7 +570,7 @@ func (s *Server) traefikLogs(response http.ResponseWriter, request *http.Request
 	}
 	entries, err := s.queryTraefikLogs(request.Context(), query)
 	if err != nil {
-		http.Error(response, "Traefik logs unavailable", http.StatusBadGateway)
+		failGateway(response, "Traefik logs unavailable", err)
 		return
 	}
 	writeJSON(response, entries)
