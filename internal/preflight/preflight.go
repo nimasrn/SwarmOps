@@ -512,15 +512,25 @@ func checkObserved(manifest Manifest, observed []ObservedNode, report *Report) {
 		} else if actual.MemoryMiB < expected.MemoryMiB {
 			errorf("live-memory-capacity", subject, "live memory capacity %d MiB is below declared %d MiB", actual.MemoryMiB, expected.MemoryMiB)
 		}
-		if actual.AvailableMemoryMiB == 0 {
-			errorf("live-memory-available", subject, "live available memory is unavailable")
-		} else if actual.AvailableMemoryMiB < expected.AvailableMemoryMiB {
-			errorf("live-memory-available", subject, "live available memory %d MiB is below declared %d MiB", actual.AvailableMemoryMiB, expected.AvailableMemoryMiB)
+		// A live reading of zero used to fail on its own, before the declared
+		// figure was consulted at all — so a definition that asks for nothing
+		// was still refused, and a node with less than one whole GiB free could
+		// never be admitted whatever it declared. Nothing is required when the
+		// definition declares nothing, and when it does declare a floor, a
+		// missing reading and an insufficient one are the same refusal.
+		if expected.AvailableMemoryMiB > 0 {
+			if actual.AvailableMemoryMiB == 0 {
+				errorf("live-memory-available", subject, "live available memory is unavailable")
+			} else if actual.AvailableMemoryMiB < expected.AvailableMemoryMiB {
+				errorf("live-memory-available", subject, "live available memory %d MiB is below declared %d MiB", actual.AvailableMemoryMiB, expected.AvailableMemoryMiB)
+			}
 		}
-		if actual.AvailableDiskGiB == 0 {
-			errorf("live-disk-available", subject, "live available disk is unavailable")
-		} else if actual.AvailableDiskGiB < expected.AvailableDiskGiB {
-			errorf("live-disk-available", subject, "live available disk %d GiB is below declared %d GiB", actual.AvailableDiskGiB, expected.AvailableDiskGiB)
+		if expected.AvailableDiskGiB > 0 {
+			if actual.AvailableDiskGiB == 0 {
+				errorf("live-disk-available", subject, "live available disk is unavailable")
+			} else if actual.AvailableDiskGiB < expected.AvailableDiskGiB {
+				errorf("live-disk-available", subject, "live available disk %d GiB is below declared %d GiB", actual.AvailableDiskGiB, expected.AvailableDiskGiB)
+			}
 		}
 		for label, expectedValue := range expected.Labels {
 			if actual.Labels[label] != expectedValue {

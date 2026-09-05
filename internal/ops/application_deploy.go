@@ -65,6 +65,11 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 	if err := c.requireAudit(); err != nil {
 		return err
 	}
+	// A controller that was never given a definition deploys manifest-free
+	// rather than refusing the first application anyone tries.
+	if err := c.ensurePlatformDefinition(actor); err != nil {
+		return err
+	}
 	if c.admission() == nil {
 		return fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}
@@ -211,6 +216,9 @@ func (c *ControlPlane) SetApplicationDomain(ctx context.Context, actor, requestI
 // PlanApplication renders and validates without deploying, so the console can
 // show the operator the exact Compose that would be applied.
 func (c *ControlPlane) PlanApplication(ctx context.Context, spec ApplicationSpec) ([]byte, error) {
+	if err := c.ensurePlatformDefinition("system"); err != nil {
+		return nil, err
+	}
 	if c.admission() == nil {
 		return nil, fmt.Errorf("this controller has no platform definition; choose a platform in Platform → Platform definition, or mount a reviewed manifest as SWARMOPS_PLATFORM_MANIFEST_FILE")
 	}

@@ -277,3 +277,45 @@ func TestPlatformStoreDeclaresNoSlotWithoutAManifestMode(t *testing.T) {
 		t.Fatalf("declaration on a manifest-free install = %v, %v", created, err)
 	}
 }
+
+// A controller that was never given a platform definition refused every
+// application, so a working cluster could not deploy anything until someone
+// hand-wrote a manifest — and kept its capacity snapshot current afterwards.
+// The first deployment records the install as manifest-free instead.
+func TestControlPlaneDefaultsToAManifestFreeInstall(t *testing.T) {
+	t.Parallel()
+	store, err := NewPlatformStore(t.TempDir(), testPlatformKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plane := &ControlPlane{Platform: store, now: func() time.Time { return time.Now().UTC() }}
+	if plane.admission() != nil {
+		t.Fatal("a fresh controller already had an admission in force")
+	}
+	if err := plane.ensurePlatformDefinition("admin"); err != nil {
+		t.Fatal(err)
+	}
+	admission := plane.admission()
+	if admission == nil || !admission.Unmanaged() {
+		t.Fatalf("default admission = %#v", admission)
+	}
+	if state := store.State(); state.Mode != PlatformModeUnmanaged || state.Namespace != defaultPlatformNamespace {
+		t.Fatalf("stored default = %+v", state)
+	}
+
+	// An authored definition is the operator's, and is never replaced by this.
+	authored, err := store.Save("admin", PlatformInput{
+		Confirmation: UnmanagedConfirmation,
+		Mode:         PlatformModeUnmanaged,
+		Namespace:    "apps",
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plane.ensurePlatformDefinition("admin"); err != nil {
+		t.Fatal(err)
+	}
+	if state := store.State(); state.Namespace != authored.Namespace {
+		t.Fatalf("an authored definition was overwritten: %+v", state)
+	}
+}

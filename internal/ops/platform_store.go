@@ -39,6 +39,12 @@ const (
 // a deliberate sentence rather than a toggle.
 const UnmanagedConfirmation = "NO_PLATFORM_MANIFEST"
 
+// defaultPlatformNamespace is the stack prefix a controller confines itself to
+// until an operator declares one. It matches the namespace the shipped example
+// manifest uses, so stacks are named the same way whether or not a manifest is
+// ever authored.
+const defaultPlatformNamespace = "production"
+
 // PlatformStore holds the platform definition an operator writes from the
 // console. It exists for the same reason the source settings store does: an
 // operator running SwarmOps from a browser cannot mount a file on the

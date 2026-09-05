@@ -998,6 +998,41 @@ func min(left, right uint64) uint64 {
 // admission is the platform admission in force for this control plane. A
 // mounted manifest stays authoritative; otherwise the console-owned definition
 // answers, which is nil until an operator has made a choice.
+// ensurePlatformDefinition lets a controller that has never been given one
+// deploy anyway, by recording that this install is manifest-free.
+//
+// A platform manifest is a review gate: it pins the registry namespace, the
+// certificate resolvers and a capacity snapshot of every node, and admission
+// holds each deployment against it. That is worth having on a fleet somebody
+// signs off. Requiring it before the FIRST deployment is a different thing —
+// it means a working cluster refuses every application until an operator
+// hand-writes a capacity snapshot and then keeps it current, because the
+// snapshot is compared against live readings that move on their own.
+//
+// So the default is no manifest, confined to one namespace. Deployments work
+// immediately, and an operator who wants the gate authors it in
+// Platform → Platform definition, which replaces this.
+//
+// A mounted manifest file, an authored definition and an install already
+// declared manifest-free are all left exactly as they are.
+func (c *ControlPlane) ensurePlatformDefinition(actor string) error {
+	if c == nil || c.Platform == nil || c.admission() != nil {
+		return nil
+	}
+	if c.Platform.FileManaged() || c.Platform.State().Mode != PlatformModeUnset {
+		return nil
+	}
+	_, err := c.Platform.Save(actor, PlatformInput{
+		Confirmation: UnmanagedConfirmation,
+		Mode:         PlatformModeUnmanaged,
+		Namespace:    defaultPlatformNamespace,
+	}, c.now())
+	if err != nil {
+		return fmt.Errorf("record this install as manifest-free: %w", err)
+	}
+	return nil
+}
+
 func (c *ControlPlane) admission() *PlatformAdmission {
 	if c == nil {
 		return nil
