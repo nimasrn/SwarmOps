@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,10 @@ import (
 	"strings"
 	"time"
 )
+
+// statusTimeout bounds one handshake snapshot so a hung local Docker daemon
+// cannot stall the outbound poll loop indefinitely.
+const statusTimeout = 20 * time.Second
 
 type ClientConfig struct {
 	AgentID   string
@@ -64,14 +69,28 @@ func NewClient(config ClientConfig) (*Client, error) {
 
 func (c *Client) Run(ctx context.Context) error {
 	backoff := time.Second
+	// A failing poll loop used to be completely silent: the service stayed
+	// "active", the agent logged nothing after its start banner, and Core simply
+	// showed the host as disconnected. Report the first failure of an outage and
+	// the recovery, so the machine's own journal explains why it went quiet
+	// without repeating the same line for every retry.
+	failing := false
 	for ctx.Err() == nil {
-		status, err := c.config.Status(ctx)
+		status, err := c.status(ctx)
 		if err == nil {
 			err = c.cycle(ctx, status)
 		}
 		if err == nil {
+			if failing {
+				slog.Info("SwarmOps agent outbound poll recovered", "core", c.config.BaseURL)
+				failing = false
+			}
 			backoff = time.Second
 			continue
+		}
+		if !failing {
+			failing = true
+			slog.Warn("SwarmOps agent outbound poll failed", "core", c.config.BaseURL, "retry_in", jitter(backoff).String(), "error", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -83,6 +102,17 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// status bounds the handshake snapshot. It queries the local Docker daemon, and
+// an unbounded call there silently wedged the whole poll loop: a daemon that
+// stopped answering — during a restart, or heavy image pulls — left the agent
+// running, logging nothing, and shown as disconnected in Core forever, because
+// nothing after this point could time out and retry.
+func (c *Client) status(ctx context.Context) (Status, error) {
+	statusContext, cancel := context.WithTimeout(ctx, statusTimeout)
+	defer cancel()
+	return c.config.Status(statusContext)
 }
 
 func (c *Client) cycle(ctx context.Context, status Status) error {

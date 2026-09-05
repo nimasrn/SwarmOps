@@ -91,6 +91,12 @@ func validateRequest(method, requestURI string) error {
 	if path == "/v1/status" || path == "/v1/diagnostics" || path == "/v1/snapshot" ||
 		path == "/v1/metrics" || path == "/v1/metrics/query" ||
 		path == "/v1/swarm/join-token" ||
+		// Host setup is the first thing an operator does after enrolling an
+		// outbound agent, and the apply route was missing beside its status
+		// route: every Docker install, Swarm initialisation, UFW baseline, and
+		// registry-mirror change failed as an uncatalogued controller contract
+		// error rather than reaching the machine.
+		path == "/v1/provisioning" ||
 		path == "/v1/provisioning/status" || path == "/v1/agent/update" ||
 		path == "/v1/commands" || path == "/v1/logs/query" || path == "/v1/logs/status" ||
 		strings.HasPrefix(path, "/v1/routing/") ||

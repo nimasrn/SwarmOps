@@ -8,17 +8,42 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
+// sortedWaiting orders in-flight requests by sequence so redelivery is
+// deterministic and always resumes with the oldest unanswered request.
+func sortedWaiting(waiting map[string]*pending) []*pending {
+	items := make([]*pending, 0, len(waiting))
+	for _, item := range waiting {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(left, right int) bool {
+		return items[left].request.Sequence < items[right].request.Sequence
+	})
+	return items
+}
+
 const defaultLease = 35 * time.Second
 
 type pending struct {
-	request Request
-	result  chan result
+	request   Request
+	result    chan result
+	delivered bool
+	// delivered records that this request has been handed to the agent at
+	// least once; until then it is still queued and must not be treated as
+	// in-flight. redelivered records that it was already handed out a second
+	// time. A poll from an agent means it is idle, so an in-flight request it
+	// never answered was lost in transit — a large build context truncated
+	// mid-transfer, for example. Without one retry that request simply
+	// vanished and the command sat "running" until its execution timeout.
+	// The retry is capped at one so a mutation that DID run on the machine but
+	// failed to report cannot be replayed indefinitely.
+	redelivered bool
 }
 
 type result struct {
@@ -98,6 +123,25 @@ func (b *Broker) Poll(ctx context.Context, input PollRequest) (*Request, error) 
 		if input.Cursor > state.next {
 			state.next = input.Cursor
 		}
+		// This agent is polling, so it is not executing anything. A request it
+		// has NOT acknowledged (its poll cursor is still below that sequence)
+		// never arrived; hand it back once. A request it did acknowledge is
+		// left alone: the agent ran it and only the response was lost, and
+		// replaying it would repeat a mutation the machine already performed.
+		for _, item := range sortedWaiting(state.waiting) {
+			if !item.delivered || item.redelivered || item.request.Sequence <= input.Cursor {
+				continue
+			}
+			if time.Now().UTC().After(item.request.ExpiresAt) {
+				delete(state.waiting, item.request.ID)
+				item.result <- result{err: context.DeadlineExceeded}
+				continue
+			}
+			item.redelivered = true
+			request := item.request
+			b.mu.Unlock()
+			return &request, nil
+		}
 		for len(state.pending) > 0 {
 			item := state.pending[0]
 			state.pending = state.pending[1:]
@@ -106,6 +150,7 @@ func (b *Broker) Poll(ctx context.Context, input PollRequest) (*Request, error) 
 				item.result <- result{err: context.DeadlineExceeded}
 				continue
 			}
+			item.delivered = true
 			request := item.request
 			b.mu.Unlock()
 			return &request, nil
