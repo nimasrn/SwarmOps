@@ -129,7 +129,7 @@ func scanRepository(ctx context.Context, provider provider, repository Repositor
 			contextPath = ""
 		}
 		serviceName := dockerfileServiceName(file.evidence.Path)
-		build := &BuildPlan{ContextPath: contextPath, DockerfilePath: path.Base(file.evidence.Path), Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: options.ImagePrefix != "", Required: true}
+		build := &BuildPlan{ContextPath: contextPath, DockerfilePath: path.Base(file.evidence.Path), Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: pushableImagePrefix(options.ImagePrefix), Required: true}
 		findings := []Finding{{Code: "dockerfile_without_compose", Level: FindingWarning, Message: "Dockerfile was found without a Compose service; confirm its container port and health endpoint.", Subject: file.evidence.Path}}
 		findings = append(findings, buildDestinationFinding(build, file.evidence.Path)...)
 		findings = append(findings, evidence.findings[file.evidence.Path]...)
@@ -395,7 +395,7 @@ func inspectComposeService(composePath, name string, service map[string]any, rep
 	} else if image == "" {
 		defaultDockerfile := path.Join(composeDir, "Dockerfile")
 		if evidence.has(defaultDockerfile) {
-			result.build = &BuildPlan{ContextPath: composeDir, DockerfilePath: "Dockerfile", Image: generatedImage(options.ImagePrefix, repository.Path, buildIdentity, revision.SHA), Push: options.ImagePrefix != "", Required: true}
+			result.build = &BuildPlan{ContextPath: composeDir, DockerfilePath: "Dockerfile", Image: generatedImage(options.ImagePrefix, repository.Path, buildIdentity, revision.SHA), Push: pushableImagePrefix(options.ImagePrefix), Required: true}
 			result.image = result.build.Image
 			result.findings = append(result.findings, buildDestinationFinding(result.build, subject)...)
 		} else {
@@ -595,7 +595,7 @@ func composeBuildPlan(raw any, composeDir, serviceName string, repository Reposi
 	if !evidence.has(physical) {
 		findings = append(findings, Finding{Code: "dockerfile_missing", Level: FindingBlocker, Message: "The Dockerfile named by Compose was not found in the immutable repository tree.", Subject: physical})
 	}
-	build := &BuildPlan{ContextPath: contextPath, DockerfilePath: dockerfilePath, Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: options.ImagePrefix != "", Required: true}
+	build := &BuildPlan{ContextPath: contextPath, DockerfilePath: dockerfilePath, Image: generatedImage(options.ImagePrefix, repository.Path, serviceName, revision.SHA), Push: pushableImagePrefix(options.ImagePrefix), Required: true}
 	findings = append(findings, buildDestinationFinding(build, physical)...)
 	return build, findings
 }
@@ -810,6 +810,17 @@ func buildDestinationFinding(build *BuildPlan, subject string) []Finding {
 		return nil
 	}
 	return []Finding{{Code: "build_local_image", Level: FindingWarning, Message: "No push registry is configured, so this image is built on the deployment host and stays there; the application is pinned to that host. Configure a registry to run it on any node.", Subject: subject}}
+}
+
+// pushableImagePrefix reports whether a generated image should be pushed to a
+// registry. The reserved local prefix names images SwarmOps builds and
+// deliberately never pushes, so treating any non-empty prefix as pushable made
+// the build demand a registry credential the local-only default can never
+// have, and source-to-deploy failed with "registry push requires a configured
+// registry credential secret".
+func pushableImagePrefix(prefix string) bool {
+	prefix = strings.TrimSuffix(strings.TrimSpace(prefix), "/")
+	return prefix != "" && prefix != domain.LocalImagePrefix
 }
 
 func generatedImage(prefix, repositoryPath, service, revision string) string {

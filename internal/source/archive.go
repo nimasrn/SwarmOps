@@ -70,6 +70,14 @@ func writeNormalizedBuildTar(source *tar.Reader, destination io.Writer, contextP
 		if err != nil {
 			return fmt.Errorf("read provider archive: %w", err)
 		}
+		// A pax global/extended header is archive metadata, not repository
+		// content. GitHub puts one ("pax_global_header") at the front of every
+		// tarball, and counting it as a path made its name the archive root, so
+		// the first real entry looked like a second root and every GitHub
+		// source deployment was rejected as a malformed provider archive.
+		if header.Typeflag == tar.TypeXGlobalHeader || header.Typeflag == tar.TypeXHeader {
+			continue
+		}
 		name, archiveRoot, err := archiveRelativePath(header.Name)
 		if err != nil {
 			return err

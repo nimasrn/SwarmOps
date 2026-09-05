@@ -445,3 +445,22 @@ func TestScannerBlocksStatefulServiceAndFallsBackToDockerfilePort(t *testing.T) 
 		t.Fatal("a plan whose only application is blocked must not be ready")
 	}
 }
+
+// The reserved local prefix names images that are built on the deployment host
+// and never pushed. Marking them pushable made every local-only source deploy
+// fail with "registry push requires a configured registry credential secret".
+func TestReservedLocalImagePrefixIsNeverPushed(t *testing.T) {
+	t.Parallel()
+	if pushableImagePrefix(domain.LocalImagePrefix) {
+		t.Fatal("reserved local image prefix was marked pushable")
+	}
+	if pushableImagePrefix(domain.LocalImagePrefix + "/") {
+		t.Fatal("reserved local image prefix with a trailing slash was marked pushable")
+	}
+	if pushableImagePrefix("") {
+		t.Fatal("an unset image prefix was marked pushable")
+	}
+	if !pushableImagePrefix("ghcr.io/nimasrn") {
+		t.Fatal("a real registry namespace was not marked pushable")
+	}
+}

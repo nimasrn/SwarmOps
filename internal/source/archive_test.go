@@ -100,3 +100,57 @@ func testArchive(t *testing.T, entries []archiveEntry) []byte {
 	}
 	return buffer.Bytes()
 }
+
+// GitHub prefixes every repository tarball with a pax global header. Counting
+// it as a path made its name the archive root, so the first real entry looked
+// like a second repository root and the export was rejected as malformed.
+func TestNormalizeBuildArchiveIgnoresPaxGlobalHeader(t *testing.T) {
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(gzipWriter)
+	// This is exactly what GitHub emits ahead of the repository tree.
+	if err := tarWriter.WriteHeader(&tar.Header{
+		Name:       "pax_global_header",
+		Typeflag:   tar.TypeXGlobalHeader,
+		PAXRecords: map[string]string{"comment": "0000000000000000000000000000000000000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "repo-sha/Dockerfile", Mode: 0o644, Typeflag: tar.TypeReg, Size: int64(len("FROM scratch\n"))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tarWriter, "FROM scratch\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archive := buffer.Bytes()
+	contextReader, err := normalizeBuildArchive(io.NopCloser(bytes.NewReader(archive)), "", 1<<20)
+	if err != nil {
+		t.Fatalf("provider archive with a pax global header was rejected: %v", err)
+	}
+	defer contextReader.Close()
+	tarReader := tar.NewReader(contextReader)
+	files := map[string]string{}
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(tarReader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[header.Name] = string(body)
+	}
+	if len(files) != 1 || files["Dockerfile"] != "FROM scratch\n" {
+		t.Fatalf("normalized files = %#v", files)
+	}
+}
