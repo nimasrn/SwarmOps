@@ -17,6 +17,16 @@ services:
         published: 443
         protocol: tcp
         mode: ingress
+      # Traefik's own API, for the machine agent on this node. Host mode keeps
+      # it off the routing mesh so it is reachable at the node's own address
+      # and never load-balanced in from another node; a host-native agent
+      # cannot reach an overlay address at all, which is why every router
+      # status read used to time out. The reviewed UFW baseline is what keeps
+      # this off the public internet.
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_acme:/data

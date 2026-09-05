@@ -10,7 +10,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
-      - --web.enable-lifecycle=false
+      # Prometheus 3.x parses these as kingpin booleans: the negative form is
+      # --no-<flag>, and --web.enable-lifecycle=false is rejected outright with
+      # "unexpected false", so the service never started.
+      - --no-web.enable-lifecycle
     configs:
       - source: prometheus_config
         target: /etc/prometheus/prometheus.yml
@@ -71,6 +74,14 @@ services:
   jaeger:
     image: ${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}
     command: ["--config=/etc/jaeger/config.yml"]
+    # The image runs as uid 10001 but ships no /var/lib/jaeger, so Docker
+    # creates the fresh volume's mountpoint owned by root and the badger store
+    # cannot create its directories: Jaeger crash-looped with "mkdir
+    # /var/lib/jaeger/primary: permission denied". Swarm has no init container
+    # to chown a volume, and no directory in the image is owned by 10001, so
+    # this service owns its data volume as root. The root filesystem stays
+    # read-only and the volume remains the only writable path.
+    user: "0:0"
     configs:
       - source: jaeger_config
         target: /etc/jaeger/config.yml
