@@ -29,7 +29,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.19.6"
+const version = "0.19.7"
 
 // hostSnapshotFor exposes the enrolled machine agent's own host reading to the
 // control plane. Without it a host-native agent contributed nothing to node

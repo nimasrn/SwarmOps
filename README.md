@@ -864,8 +864,14 @@ controller state and put through the same preflight. It can be told this
 install has no platform manifest and must not have one, which turns slot
 enforcement off after the operator types `NO_PLATFORM_MANIFEST`: an application
 may then take any name inside the declared namespace, claim any domain, name
-any resolver, and reserve whatever the cluster will schedule. Or it can be left
-unconfigured, which refuses browser deployment exactly as before. Namespace
+any resolver, and reserve whatever the cluster will schedule. That is also what
+an unconfigured controller becomes on its first deployment: requiring a
+manifest before anything can be deployed meant a working cluster refused every
+application until someone hand-wrote a capacity snapshot and then kept it
+current against live readings that move on their own, so the default is now to
+record the install as manifest-free rather than to refuse. Authoring a
+definition afterwards replaces it, and a mounted manifest file is never touched.
+Namespace
 confinement, cross-stack secret, config, volume and network isolation, the
 Traefik label subset, and per-host build permission are enforced in every case.
 

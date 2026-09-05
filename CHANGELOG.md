@@ -11,6 +11,28 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.7 — 2026-09-05
+
+- **A controller that was never given a platform definition deploys instead of
+  refusing** — every application was rejected outright with "this controller has
+  no platform definition", so a working cluster could not deploy anything until
+  someone hand-wrote a manifest. Keeping one is worse than writing it: the
+  manifest carries a capacity snapshot that admission holds against live
+  readings, and those move on their own, so a definition that was accurate when
+  written starts refusing its own cluster after a build, a pull, or another
+  workload starting. The first deployment on a controller with no definition now
+  records the install as manifest-free, confined to one namespace. A manifest is
+  a review gate for a fleet somebody signs off, not a precondition for the first
+  deployment; authoring one in Platform → Platform definition replaces the
+  default, and a mounted manifest file or an already-authored definition is
+  never touched.
+- **A live reading of zero no longer fails a check that asked for nothing** —
+  live admission rejected a missing measurement before it consulted the declared
+  figure, so a definition that required no headroom was still refused, and a node
+  with less than one whole GiB free could never be admitted whatever it declared.
+  Nothing is required when nothing is declared, and where a floor is declared a
+  missing reading and an insufficient one are the same refusal.
+
 ## 0.19.6 — 2026-09-05
 
 - **Host setup now reaches the machine** — the provisioning route was absent
