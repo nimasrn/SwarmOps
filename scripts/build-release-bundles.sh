@@ -33,6 +33,12 @@ for required in go tar; do
   command -v "$required" >/dev/null 2>&1 || fail "$required is required"
 done
 
+# bsdtar on macOS otherwise stores an AppleDouble "._name" companion for every
+# entry carrying extended attributes, and the installers reject an archive that
+# holds anything but the reviewed binaries. Release archives must be identical
+# whoever builds them.
+export COPYFILE_DISABLE=1
+
 release_build_dir="$(mktemp -d "${TMPDIR:-/tmp}/swarmops-release.XXXXXX")"
 cleanup() {
   rm -rf "$release_build_dir"

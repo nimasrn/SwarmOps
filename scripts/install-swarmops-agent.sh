@@ -8,6 +8,10 @@ umask 077
 
 github_repository="nimasrn/SwarmOps"
 release_version="latest"
+# Optional mirror or locally staged release tree. When set, the installer
+# fetches <base>/<release>/checksums.txt and <base>/<release>/<asset> instead
+# of GitHub. Checksum verification and archive-layout validation are unchanged.
+release_base_url=""
 listen_addr="0.0.0.0:9180"
 tls_cert_file=""
 tls_key_file=""
@@ -19,6 +23,8 @@ install_docker=false
 init_swarm=false
 defer_docker=false
 automatic_updates=true
+automatic_updates_requested=false
+build_enabled=false
 os_name="$(uname -s)"
 generated_tls=false
 core_url=""
@@ -64,11 +70,13 @@ usage() {
 	'--docker-socket <path>         Docker Unix socket; defaults by platform.' \
 	'--release <tag|latest>         Immutable GitHub release tag (default: latest).' \
 	'--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
+	'--release-base-url <url>       Mirror or local release tree; requires an explicit --release.' \
 	'--install-dependencies         Install curl, tar, and OpenSSL where supported.' \
     '--install-docker              Install Docker before enrolling (Debian/Ubuntu only).' \
     '--init-swarm                  Initialize a one-node Docker Swarm after Docker is ready.' \
     '--defer-docker                 Install the agent before Docker; finish Docker/Swarm in Server readiness.' \
 	'--no-auto-update               Disable the checksum-verified release update timer.' \
+	'--enable-build                 Allow bounded source-to-image builds on this machine.' \
     '-h, --help                     Show this help.'
 }
 
@@ -260,6 +268,7 @@ release_platform() {
 
 resolve_release_version() {
   [[ "$release_version" == latest ]] || return 0
+  [[ -z "$release_base_url" ]] || fail '--release-base-url requires an explicit --release <tag>'
   local resolved_url
   resolved_url="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output /dev/null --write-out '%{url_effective}' "https://github.com/$github_repository/releases/latest")" || fail 'resolve latest GitHub release'
   case "$resolved_url" in
@@ -300,14 +309,43 @@ validate_agent_release() {
   done
 }
 
+# Fetch one release file. GitHub downloads stay pinned to HTTPS end to end.
+# An operator-supplied mirror may also be http:// or file://; the bundle is
+# still checksum-verified and layout-validated before anything is installed.
+fetch_release_file() {
+  local url="$1" destination="$2" label="$3"
+  case "$url" in
+    https://*)
+      curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        --output "$destination" "$url" || fail "download $label"
+      ;;
+    http://*)
+      curl --fail --silent --show-error --location --proto '=http' --proto-redir '=http,=https' \
+        --output "$destination" "$url" || fail "download $label"
+      ;;
+    file://*)
+      local source_path="${url#file://}"
+      [[ "$source_path" == /* ]] || fail "$label mirror path must be absolute"
+      [[ -f "$source_path" && ! -L "$source_path" && -s "$source_path" ]] || fail "$label is not a readable regular file"
+      cat -- "$source_path" >"$destination" || fail "read $label"
+      ;;
+    *) fail "$label must use an https://, http://, or file:// URL" ;;
+  esac
+}
+
 download_agent_release() {
-  local asset_name checksums_url bundle_url expected_checksum actual_checksum checksum_count
+  local asset_name checksums_url bundle_url expected_checksum actual_checksum checksum_count release_base
   asset_name="swarmops-agent_${release_version}_${release_os}_${release_arch}.tar.gz"
-  checksums_url="https://github.com/$github_repository/releases/download/$release_version/checksums.txt"
-  bundle_url="https://github.com/$github_repository/releases/download/$release_version/$asset_name"
+  if [[ -n "$release_base_url" ]]; then
+    release_base="$release_base_url/$release_version"
+  else
+    release_base="https://github.com/$github_repository/releases/download/$release_version"
+  fi
+  checksums_url="$release_base/checksums.txt"
+  bundle_url="$release_base/$asset_name"
   download_dir="$(mktemp -d "$release_dir/.download.XXXXXX")"
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/checksums.txt" "$checksums_url" || fail 'download release checksums'
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --output "$download_dir/$asset_name" "$bundle_url" || fail 'download Agent release bundle'
+  fetch_release_file "$checksums_url" "$download_dir/checksums.txt" 'release checksums'
+  fetch_release_file "$bundle_url" "$download_dir/$asset_name" 'Agent release bundle'
   checksum_count="$(awk -v asset="$asset_name" '$2 == asset || $2 == "*" asset {count++} END {print count+0}' "$download_dir/checksums.txt")"
   [[ "$checksum_count" == 1 ]] || fail 'release checksums must contain exactly one entry for the Agent bundle'
   expected_checksum="$(awk -v asset="$asset_name" '$2 == asset || $2 == "*" asset {print $1; exit}' "$download_dir/checksums.txt")"
@@ -450,9 +488,10 @@ write_environment_file() {
 	  "SWARMOPS_CORE_URL=$core_url" \
 	  "SWARMOPS_AGENT_STATE_DIR=$update_status_dir" \
       "PATH=$docker_bin_dir:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "DOCKER_CONFIG=$update_status_dir/docker" \
       'SWARMOPS_HOST_ROOT=/' \
       'SWARMOPS_AGENT_REMOTE_CONTROL_ENABLED=true' \
-      'SWARMOPS_AGENT_BUILD_ENABLED=false'
+      "SWARMOPS_AGENT_BUILD_ENABLED=$build_enabled"
     if [[ "$os_name" == Linux ]]; then
       printf '%s\n' \
         'SWARMOPS_HOST_OS=/etc/os-release' \
@@ -528,7 +567,7 @@ write_linux_update_services() {
       'LockPersonality=yes' \
       'RestrictNamespaces=yes' \
       'RestrictRealtime=yes' \
-      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
       'SystemCallArchitectures=native' \
 	  "ReadWritePaths=$release_dir $update_status_dir /run/swarmops-agent" \
 	  'UMask=0077'
@@ -680,6 +719,15 @@ activate_macos_release() {
   fail "Agent release $release_version failed local health validation; restored ${previous_release:-no previous release}"
 }
 
+# AF_NETLINK is required, not optional: net.Interfaces() opens a netlink socket
+# on Linux, so without it the helper cannot enumerate the machine's own
+# addresses and every Swarm advertise address is rejected as foreign.
+#
+# The agent and the provisioning helper share /run/swarmops-agent, and systemd
+# empties a RuntimeDirectory every time either unit starts. Both units therefore
+# set RuntimeDirectoryPreserve: without it the agent's own start deleted the
+# helper's live socket, and every host-setup operation failed against a helper
+# that was still running on an unlinked inode.
 write_linux_service() {
   local temporary_service
   temporary_service="$(mktemp '/etc/systemd/system/.swarmops-agent.XXXXXX')"
@@ -711,13 +759,14 @@ write_linux_service() {
       'LockPersonality=yes' \
       'RestrictNamespaces=yes' \
       'RestrictRealtime=yes' \
-      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
       'SystemCallArchitectures=native' \
       'CapabilityBoundingSet=' \
       'AmbientCapabilities=' \
       'UMask=0077' \
       'RuntimeDirectory=swarmops-agent' \
       'RuntimeDirectoryMode=0755' \
+      'RuntimeDirectoryPreserve=yes' \
 	  "ReadWritePaths=/run/swarmops-agent $update_status_dir" \
       '' \
       '[Install]' \
@@ -756,10 +805,11 @@ write_linux_provision_service() {
       'LockPersonality=yes' \
       'RestrictNamespaces=yes' \
       'RestrictRealtime=yes' \
-      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
+      'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK' \
       'SystemCallArchitectures=native' \
       'RuntimeDirectory=swarmops-agent' \
       'RuntimeDirectoryMode=0755' \
+      'RuntimeDirectoryPreserve=yes' \
       'UMask=0077' \
       '' \
       '[Install]' \
@@ -1051,6 +1101,11 @@ while [[ "$#" -gt 0 ]]; do
 	  github_repository="$2"
       shift 2
       ;;
+    --release-base-url)
+      [[ "$#" -ge 2 ]] || fail '--release-base-url requires a value'
+      release_base_url="${2%/}"
+      shift 2
+      ;;
     --advertise-host)
       [[ "$#" -ge 2 ]] || fail '--advertise-host requires a value'
       advertise_host="$2"
@@ -1070,6 +1125,11 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --no-auto-update)
       automatic_updates=false
+      automatic_updates_requested=true
+      shift
+      ;;
+    --enable-build)
+      build_enabled=true
       shift
       ;;
     --install-dependencies)
@@ -1089,6 +1149,15 @@ while [[ "$#" -gt 0 ]]; do
       ;;
   esac
 done
+
+# A mirrored or locally staged release is a deliberate pin. Warden resolves its
+# updates through the GitHub API, so leaving the update timer on would quietly
+# replace the operator's chosen build with a GitHub one on the next tick. Pin
+# the install instead, and say so.
+if [[ -n "$release_base_url" && "$automatic_updates" == true && "$automatic_updates_requested" == false ]]; then
+  automatic_updates=false
+  printf '%s\n' 'SwarmOps machine-agent install: --release-base-url pins this install; automatic updates are disabled.' >&2
+fi
 
 case "$os_name" in
   Linux)
