@@ -118,7 +118,12 @@ managed database attachments:
 
 The application slot — its name, public domain, certificate resolver, and
 resource ceiling — comes from the reviewed platform manifest, so an operator
-picks from approved domains rather than claiming an arbitrary one. A repository
+picks from approved domains rather than claiming an arbitrary one. Only the
+name is ever required: size comes from a named plan chosen on the deployment
+screen, `nano` through `xlarge`, defaulting to `small` and overridden by stating
+CPU and memory directly, and a domain with no resolver named takes HTTP-01,
+which needs no credential. `GET /api/v1/applications/plans` is the set the
+controller enforces, so the console offers exactly those. A repository
 being deployed for the first time has no slot yet, and where the controller
 owns its own definition it declares one from the deployment itself: the name,
 domain, resolver, and ceiling chosen on the screen are written into the sealed
@@ -997,7 +1002,12 @@ image-build checks above.
 
 ## Platform admission before build or deploy
 
-Use a reviewed, non-secret platform manifest for every cluster-wide rollout:
+Use a reviewed, non-secret platform manifest for every cluster-wide rollout.
+Every section of it is optional except the namespace: a definition that declares
+no nodes leaves capacity and placement to the live cluster, which knows its own
+size, and one that declares no registry means images come from somewhere else
+while the controller's image-prefix policy still decides what may be deployed.
+Declare a node and it is measured, live and offline, exactly as before:
 
 ```bash
 make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml

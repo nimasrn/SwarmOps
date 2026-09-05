@@ -11,6 +11,46 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.19.8 — 2026-09-06
+
+- **A domain no longer needs a certificate resolver declared for it** — adding
+  an application slot with a hostname failed with "domain requires a declared
+  certificate resolver" unless the definition already named one, and a
+  definition that named none could not carry a hostname at all. HTTP-01 needs no
+  credential, so it is built in and always available: a slot or an application
+  with a domain and no resolver takes it. A definition that declares its own
+  resolver under that name keeps it, and HTTP-01 no longer demands a public
+  ingress IP be typed into the definition either.
+- **Application size is a plan chosen per deployment, not a ceiling written into
+  the definition** — every slot had to carry CPU and memory before anything was
+  deployed into it, which put the decision at review time and in the wrong file.
+  Sizes are now named — `nano`, `small`, `medium`, `large`, `xlarge` — default to
+  `small`, and are overridden by stating CPU and memory directly for a size that
+  is not offered. The set is served from `GET /api/v1/applications/plans` so the
+  console offers exactly what the controller enforces, and the choice changes on
+  the next deployment rather than at review.
+- **The registry and the node topology are optional** — an install that builds
+  its images on the machine it deploys them to never pulls from a registry, and
+  declaring a namespace it will never use made the definition carry a fiction. A
+  definition that declares no nodes leaves capacity and placement to the live
+  cluster, which knows its own size, rather than to a snapshot an operator has to
+  keep current. A node that IS declared is still measured, live and offline.
+- **An ingress address is chosen from the cluster** — `GET
+  /api/v1/platform/ingress-candidates` returns the live nodes and their
+  addresses, so the address is picked rather than copied in by hand.
+- **A routed host no longer requires a DNS record this install cannot create** —
+  routing a domain demanded a SwarmOps DNS record for it, and records can only be
+  created against a provider credential, so an install whose DNS is managed
+  elsewhere could never route any domain however plainly its zone was accepted.
+  The accepted gateway zone is the gate; a record is required only where this
+  install actually holds records for that zone, which is where the subdomain
+  should have been created.
+- **A first deployment from the applications screen is not refused for a slot it
+  is about to declare** — it was rejected with "stack is not declared in the
+  reviewed platform manifest" while the same first deployment through
+  source-to-deploy was accepted, because only that path declared the slot before
+  checking the plan against it.
+
 ## 0.19.7 — 2026-09-05
 
 - **A controller that was never given a platform definition deploys instead of
