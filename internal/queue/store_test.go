@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -862,5 +863,123 @@ func TestRetryRefusesACommandWhoseInputWasNeverStored(t *testing.T) {
 		t.Fatal("a command with no stored input must not be retryable")
 	} else if !strings.Contains(retryErr.Error(), "never stored") {
 		t.Fatalf("the refusal must say why: %v", retryErr)
+	}
+}
+
+// The cause of a failure SwarmOps cannot name has to survive somewhere.
+//
+// It reached the classifier, matched nothing, and was dropped: LastError is
+// rebuilt from the generic summary, so the ledger, the console and the CLI all
+// said "SwarmOps could not confirm that the requested change completed" and an
+// operator had nowhere left to look. Retrying is the only thing that message
+// suggests, and for a deterministic cause it can never work.
+func TestAnUnclassifiedFailureWritesItsCauseToTheLog(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	var captured bytes.Buffer
+	store.SetLogger(slog.New(slog.NewJSONHandler(&captured, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	cause := "docker: Error response from daemon: rpc error: code = Unknown desc = something the classifier has never seen"
+	failed, _, err := store.Fail(command.ID, errors.New(cause))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.FailureCode != FailureCodeUnclassified {
+		t.Fatalf("this test needs an unclassified failure, got %q", failed.FailureCode)
+	}
+	// What the operator is shown still says only that SwarmOps does not know.
+	if !strings.Contains(failed.LastError, "could not confirm") {
+		t.Fatalf("ledger narrative = %q", failed.LastError)
+	}
+	logged := captured.String()
+	for _, want := range []string{cause, command.ID, command.Action, command.Target, "no classified cause"} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("the log does not carry %q:\n%s", want, logged)
+		}
+	}
+}
+
+// A failure the classifier does name already carries its reason to the
+// operator, so logging its cause would be noise for every retry of every
+// known condition.
+func TestAClassifiedFailureIsNotLogged(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	var captured bytes.Buffer
+	store.SetLogger(slog.New(slog.NewJSONHandler(&captured, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	failed, _, err := store.Fail(command.ID, errors.New("the traefik singleton service was not found"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.FailureCode != "gateway_required" {
+		t.Fatalf("failure code = %q", failed.FailureCode)
+	}
+	if captured.Len() != 0 {
+		t.Fatalf("a classified failure was logged:\n%s", captured.String())
+	}
+}
+
+// One repeating failure must not be able to fill the controller's disk through
+// its own log line.
+func TestALoggedCauseIsBounded(t *testing.T) {
+	t.Parallel()
+	bounded := boundedCause(strings.Repeat("x", maxLoggedCause*3))
+	if len(bounded) > maxLoggedCause+len("… (truncated)") {
+		t.Fatalf("bounded cause is %d bytes", len(bounded))
+	}
+	if !strings.HasSuffix(bounded, "(truncated)") {
+		t.Fatal("a truncated cause does not say that it was truncated")
+	}
+	if short := boundedCause("  short cause  "); short != "short cause" {
+		t.Fatalf("short cause = %q", short)
+	}
+}
+
+// A gateway prerequisite is a gateway prerequisite whichever command met it.
+//
+// The routing store checks these for every command that touches it, but they
+// were classified only for traefik.reconcile. Accepting a domain before the
+// ACME email was configured therefore reported "SwarmOps could not confirm
+// that the requested change completed" — which names neither the missing
+// prerequisite nor the page that supplies it — and the operator's only
+// suggested move, retrying, could never work.
+func TestGatewayPrerequisitesAreNamedForEveryRoutingCommand(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"traefik.domain.register", "traefik.dns.record.apply", "traefik.route.apply", "traefik.reconcile"} {
+		for _, sample := range []struct {
+			code    string
+			message string
+		}{
+			{"traefik_acme_email_required", "Traefik ACME email is not configured"},
+			{"traefik_network_required", "the external traefik overlay network is missing"},
+			{"traefik_edge_label_required", "no ready active manager has nim.edge=true"},
+			{"traefik_dynamic_config_required", "the reviewed traefik dynamic config is missing"},
+		} {
+			code, summary, hint := commandFailureDiagnostic(action, errors.New(sample.message))
+			if code != sample.code {
+				t.Errorf("%s / %q classified as %q, want %q", action, sample.message, code, sample.code)
+			}
+			if strings.Contains(summary, "could not confirm") {
+				t.Errorf("%s / %q is a named prerequisite, not an unconfirmed change: %q", action, sample.message, summary)
+			}
+			if hint == "" {
+				t.Errorf("%s / %q gives the operator no next step", action, sample.message)
+			}
+		}
 	}
 }

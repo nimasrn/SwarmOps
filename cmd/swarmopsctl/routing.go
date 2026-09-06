@@ -10,7 +10,7 @@ import (
 
 func routingCommands() []command {
 	return []command{
-		{Group: groupRouting, Name: "domain", Summary: "List and manage routed domains", Run: runDomain, Usage: "domain list|add <zone>|remove <zone>"},
+		{Group: groupRouting, Name: "domain", Summary: "List and manage routed domains", Run: runDomain, Usage: "domain list|add <zone> [--note <owner>]|remove <zone>"},
 		{Group: groupRouting, Name: "route", Summary: "Read and apply Traefik routes", Run: runRoute, Usage: "route list|plan <file.json>|apply <file.json>"},
 		{Group: groupRouting, Name: "cert", Summary: "Read certificates and retry issuance", Run: runCert, Usage: "cert list|retry <route>"},
 		{Group: groupRouting, Name: "dns", Summary: "Manage DNS records and provider credentials", Run: runDNS, Usage: "dns records|record add <file.json>|record remove <id>|verify <id>|credentials"},
@@ -33,7 +33,7 @@ func runDomain(arguments []string) error {
 	case "add", "remove":
 		var opts options
 		flags := newFlagSet("domain", &opts)
-		provider := flags.String("provider", "", "DNS provider for the zone")
+		note := flags.String("note", "", "who owns this zone")
 		confirm := flags.Bool("yes", false, "skip the interactive confirmation")
 		rest, err := parseAfterPositionals(flags, arguments[1:])
 		if err != nil {
@@ -49,7 +49,9 @@ func runDomain(arguments []string) error {
 		ctx, cancel := timeoutContext(followTimeout)
 		defer cancel()
 		if arguments[0] == "add" {
-			body := map[string]string{"zone": rest[0], "provider": *provider}
+			// The controller reads the zone as a nested spec, and owns the
+			// acceptance timestamp: sending one it did not set is refused.
+			body := map[string]any{"domain": map[string]any{"note": *note, "zone": rest[0]}}
 			return submitAndFollow(ctx, client, "/api/v1/traefik/domains", "domain", body, false)
 		}
 		if err := requireConfirmation(*confirm, fmt.Sprintf("Stop managing domain %s?", rest[0])); err != nil {

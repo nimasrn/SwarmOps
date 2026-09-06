@@ -170,6 +170,10 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
+	// A failure the classifier cannot name reaches the operator as "SwarmOps
+	// could not confirm that the requested change completed". The cause is
+	// written here instead of being lost with it.
+	commandStore.SetLogger(logger)
 	core, err := coretopology.Open(cfg.DataDir, cfg.DataEncryptionKey, coretopology.Config{
 		Endpoint: cfg.CoreEndpoint,
 		ID:       cfg.CoreID,

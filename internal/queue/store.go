@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,6 +77,17 @@ func safeFailureCode(err error) string {
 	return ""
 }
 
+// FailureCodeUnclassified is the bucket an execution error lands in when the
+// classifier recognises nothing about it. It is a statement that SwarmOps does
+// not know what happened, not a description of what happened — which is why a
+// command carrying it is also written to the controller log with its cause.
+const FailureCodeUnclassified = "execution_not_confirmed"
+
+// maxLoggedCause bounds what one failure may write to the log. The cause can
+// carry an agent's wrapped output, and an unbounded one turns a repeating
+// failure into a disk-filling loop.
+const maxLoggedCause = 2048
+
 // commandFailureDiagnostic converts locally generated execution errors into a
 // bounded operator explanation. Raw remote output never enters the command
 // ledger or browser, but the safe failure class and next action must survive.
@@ -90,15 +102,23 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "execution_interrupted", "The controller stopped before it could confirm the remote result.", "Verify the target's current state, then retry only if the intended change is still missing."
 	case strings.Contains(message, "server is not connected") || strings.Contains(message, "select a connected server"):
 		return "target_disconnected", "The selected server was not connected when execution started.", "Open Diagnostics, restore the agent connection, then retry this command."
-	case action == "traefik.reconcile" && strings.Contains(message, "traefik acme email"):
-		return "traefik_acme_email_required", "Traefik cannot be installed until a valid ACME contact email is configured.", "Open Gateway & ports, enter the ACME email under static settings, apply it, then retry the installation."
-	case action == "traefik.reconcile" && strings.Contains(message, "external traefik overlay network"):
+	// These five are the gateway's own prerequisites, and the routing store
+	// checks them for every command that touches it — accepting a domain,
+	// applying a record, publishing a route — not only for the installation.
+	// Matching them on traefik.reconcile alone meant that every other routing
+	// command hit the same guard and reported "SwarmOps could not confirm that
+	// the requested change completed", which names neither the missing
+	// prerequisite nor the page that supplies it. The message is specific
+	// enough to classify on its own.
+	case strings.Contains(message, "traefik acme email"):
+		return "traefik_acme_email_required", "Traefik has no valid ACME contact email configured, and the gateway cannot be used until it does.", "Open Gateway & ports, enter the ACME email under static settings, apply it, then retry."
+	case strings.Contains(message, "external traefik overlay network"):
 		return "traefik_network_required", "Traefik requires the external attachable overlay network named traefik.", "Open Docker resources and create the reviewed encrypted traefik overlay, then retry."
-	case action == "traefik.reconcile" && strings.Contains(message, "nim.edge=true"):
+	case strings.Contains(message, "nim.edge=true"):
 		return "traefik_edge_label_required", "Traefik has no eligible manager because nim.edge=true is missing.", "Open Swarm & placement, label the reviewed manager nim.edge=true, then retry."
-	case action == "traefik.reconcile" && strings.Contains(message, "dynamic config"):
+	case strings.Contains(message, "dynamic config"):
 		return "traefik_dynamic_config_required", "The reviewed Traefik dynamic config is missing.", "Create the configured dynamic Swarm config, then retry."
-	case action == "traefik.reconcile" && strings.Contains(message, "dashboard") && strings.Contains(message, "secret"):
+	case strings.Contains(message, "dashboard") && strings.Contains(message, "secret"):
 		return "traefik_dashboard_auth_required", "The Traefik dashboard-auth secret is missing.", "Create the configured htpasswd Swarm secret, then retry."
 	case safeCode == "docker_ingress_network_missing":
 		return "swarm_ingress_network_missing", "Docker has no swarm ingress network, so no service can publish a port.", "Recreate the ingress network on the manager (docker network create --driver overlay --ingress --subnet 10.0.0.0/24 --gateway 10.0.0.1 ingress), then retry."
@@ -146,7 +166,7 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 	case safeCode != "":
 		return dockerFailureDiagnostic(safeCode)
 	default:
-		return "execution_not_confirmed", "SwarmOps could not confirm that the requested change completed.", "Inspect the explicit target and current resource state before retrying."
+		return FailureCodeUnclassified, "SwarmOps could not confirm that the requested change completed.", "Inspect the explicit target and current resource state before retrying."
 	}
 }
 
@@ -275,6 +295,58 @@ func setCommandFailureDiagnostic(command *domain.Command, err error) {
 	command.FailureCode, command.FailureSummary, command.RecoveryHint = commandFailureDiagnostic(command.Action, err)
 }
 
+// logUnclassifiedFailure keeps the cause of a failure the classifier could not
+// name.
+//
+// A classified failure carries its own reason to the operator. An unclassified
+// one carried nothing: the error reached commandFailureDiagnostic, was matched
+// against every known pattern, and was then dropped — LastError is rebuilt from
+// the generic summary, so the ledger, the console and the CLI all reported
+// "SwarmOps could not confirm that the requested change completed" and there
+// was nowhere left to look. The cause was destroyed at the only point that
+// still had it.
+//
+// The log is not the ledger and not the browser, so the boundary that keeps
+// remote output out of both is intact: this is the operator's own controller
+// log, bounded in length, and it is written only when SwarmOps has nothing
+// else to say.
+func (s *Store) logUnclassifiedFailure(command domain.Command, err error) {
+	if err == nil || command.FailureCode != FailureCodeUnclassified {
+		return
+	}
+	s.logger().Warn("command failed with no classified cause",
+		"action", command.Action,
+		"attempt", command.Attempt,
+		"cause", boundedCause(err.Error()),
+		"command_id", command.ID,
+		"server_id", command.ServerID,
+		"target", command.Target,
+	)
+}
+
+func (s *Store) logger() *slog.Logger {
+	if s.log != nil {
+		return s.log
+	}
+	return slog.Default()
+}
+
+// SetLogger directs the store's diagnostics at the controller's own logger. A
+// store without one still logs, through the process default.
+func (s *Store) SetLogger(logger *slog.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.log = logger
+}
+
+func boundedCause(cause string) string {
+	cause = strings.TrimSpace(cause)
+	if len(cause) <= maxLoggedCause {
+		return cause
+	}
+	return cause[:maxLoggedCause] + "… (truncated)"
+}
+
 func clearCommandFailureDiagnostic(command *domain.Command) {
 	command.FailureCode = ""
 	command.FailureSummary = ""
@@ -385,6 +457,7 @@ type Store struct {
 	dir          string
 	inputsDir    string
 	historyLimit int
+	log          *slog.Logger
 	now          func() time.Time
 	path         string
 	records      []storedRecord
@@ -918,6 +991,7 @@ func (s *Store) FailLease(id, leaseID string, executionErr error) (domain.Comman
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	setCommandFailureDiagnostic(&record.Command, executionErr)
+	s.logUnclassifiedFailure(record.Command, executionErr)
 	record.Command.LastError = failureNarrative(record.Command)
 	record.Command.LeaseExpiresAt = nil
 	record.Command.UpdatedAt = now
@@ -1020,6 +1094,7 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		record.Command.State = domain.CommandNeedsAttention
 	}
 	setCommandFailureDiagnostic(&record.Command, executionErr)
+	s.logUnclassifiedFailure(record.Command, executionErr)
 	record.Command.LastError = failureNarrative(record.Command)
 	record.Command.UpdatedAt = now
 	record.Command.LeaseExpiresAt = nil
