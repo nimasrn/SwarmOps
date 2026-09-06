@@ -1059,7 +1059,9 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
 			return queue.PermanentError(err)
 		}
-		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(s.commandStepRecorder(record.Command))))
+		deployErr := target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(s.commandStepRecorder(record.Command)))
+		s.linkApplicationOutcome(target, input.Spec.Name, record.Command.ID)
+		return classifyCommandError(deployErr)
 	case commandApplicationRemove:
 		var input applicationRemoveCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
@@ -1128,7 +1130,9 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 				step("Pushed " + result.Image)
 			}
 		}
-		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(step)))
+		deployErr := target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(step))
+		s.linkApplicationOutcome(target, input.Spec.Name, record.Command.ID)
+		return classifyCommandError(deployErr)
 	default:
 		return queue.PermanentError(fmt.Errorf("unsupported queued command"))
 	}
@@ -1288,5 +1292,25 @@ func (s *Server) commandStepRecorder(command domain.Command) func(string) {
 		if err := s.commands.AppendEvent(command.ID, domain.CommandRunning, evidence); err != nil {
 			s.logger.Warn("record command step", "command_id", command.ID, "error", err)
 		}
+	}
+}
+
+// linkApplicationOutcome names the run that explains an application's state.
+//
+// The control plane records what happened; only this layer knows which command
+// it happened under. Without the link an application reported as failed sent
+// the operator to search the ledger for a run they could only identify by
+// timestamp.
+func (s *Server) linkApplicationOutcome(target Target, application, commandID string) {
+	if target.Control == nil || target.Control.Apps == nil {
+		return
+	}
+	outcome, found := target.Control.Apps.Outcome(application)
+	if !found {
+		return
+	}
+	outcome.LastCommandID = commandID
+	if err := target.Control.Apps.PutOutcome(application, outcome); err != nil {
+		s.logger.Warn("link application outcome", "application", application, "error", err)
 	}
 }

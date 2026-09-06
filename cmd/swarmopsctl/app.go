@@ -198,14 +198,10 @@ func runApp(arguments []string) error {
 		}
 		table := cli.Table{Header: []string{"NAME", "STATE", "TASKS", "PLAN", "IMAGE", "URL"}}
 		for _, status := range statuses {
-			state := "not deployed"
-			if status.Deployed {
-				state = "running"
-			}
-			table.Add(status.Spec.Name, state, strconv.FormatUint(status.RunningTasks, 10),
+			table.Add(status.Spec.Name, applicationStateLabel(status), strconv.FormatUint(status.RunningTasks, 10),
 				cli.Dash(status.Spec.Plan), cli.Dash(status.Spec.Image), cli.Dash(status.URL))
 		}
-		return table.Write(os.Stdout, "No application has been deployed yet. Run `swarmops init` then `swarmops deploy`.")
+		return table.Write(os.Stdout, "No application exists yet. Run `swarmops init` then `swarmops deploy`.")
 	case "show":
 		if len(rest) != 1 {
 			return errUsage
@@ -263,14 +259,39 @@ func runApp(arguments []string) error {
 	}
 }
 
+// applicationStateLabel says which of the three situations this is. "not
+// deployed" used to cover both an application that never started and one that
+// was stopped, which need different answers.
+func applicationStateLabel(status ops.ApplicationStatus) string {
+	switch status.State {
+	case ops.ApplicationServing:
+		return "serving"
+	case ops.ApplicationStopped:
+		return "stopped"
+	case ops.ApplicationFailed:
+		return "failed to start"
+	default:
+		if status.Deployed {
+			return "serving"
+		}
+		return "not running"
+	}
+}
+
 func printApplication(status ops.ApplicationStatus) error {
 	facts := cli.Table{}
-	state := "not deployed"
-	if status.Deployed {
-		state = fmt.Sprintf("running (%d task(s))", status.RunningTasks)
+	state := applicationStateLabel(status)
+	if status.RunningTasks > 0 {
+		state = fmt.Sprintf("%s (%d task(s))", state, status.RunningTasks)
 	}
 	facts.Add("name", status.Spec.Name)
 	facts.Add("state", state)
+	if status.FailureSummary != "" {
+		facts.Add("last failure", status.FailureSummary)
+	}
+	if status.LastCommandID != "" {
+		facts.Add("last run", status.LastCommandID+"  (swarmops command show "+status.LastCommandID+")")
+	}
 	facts.Add("image", cli.Dash(status.Spec.Image))
 	facts.Add("plan", cli.Dash(status.Spec.Plan))
 	facts.Add("size", fmt.Sprintf("%g vCPU, %d MiB", status.Spec.CPUs, status.Spec.MemoryMiB))

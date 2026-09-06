@@ -667,12 +667,24 @@ export interface ApplicationSpec {
   tracing?: boolean
 }
 
+/** The three situations an application can be in. `deployed: false` used to
+    cover two of them — one that never started and one that was stopped — which
+    need different answers from an operator. */
+export type ApplicationState = 'failed' | 'serving' | 'stopped'
+
 export interface ApplicationStatus {
   deployed: boolean
+  /** The controller's account of the last deployment that did not work. */
+  failureSummary?: string
+  lastAttemptAt?: string
+  /** The run that explains this state in full: its steps, its classified
+      failure, and its execution log. */
+  lastCommandId?: string
   runningTasks: number
   service: string
   spec: ApplicationSpec
   stack: string
+  state: ApplicationState
   url?: string
 }
 

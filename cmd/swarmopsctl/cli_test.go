@@ -105,7 +105,21 @@ func deployedApplication() ops.ApplicationStatus {
 			Replicas:  1,
 		},
 		Stack: "production-api",
+		State: ops.ApplicationServing,
 		URL:   "https://api.example.com",
+	}
+}
+
+// The application that could not start. It used to be absent from this list
+// entirely, because a spec was stored only after a deployment succeeded.
+func failedApplication() ops.ApplicationStatus {
+	return ops.ApplicationStatus{
+		FailureSummary: "the managed Traefik gateway is required before this stack can create private routes",
+		LastCommandID:  "cmd-e184b37a3fe8a43101e894645c8c4bcb",
+		Service:        "production-broken_app",
+		Spec:           ops.ApplicationSpec{Image: "ghcr.io/example/broken:1", Name: "broken", Plan: "small", Port: 8080},
+		Stack:          "production-broken",
+		State:          ops.ApplicationFailed,
 	}
 }
 
@@ -187,9 +201,34 @@ func TestApplicationListPrintsATable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"NAME", "api", "running", "https://api.example.com"} {
+	for _, want := range []string{"NAME", "api", "serving", "https://api.example.com"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("table did not mention %q:\n%s", want, output)
+		}
+	}
+}
+
+// An application that failed to start is listed, named as failed, and carries
+// the run that explains it. Before, it was not listed at all.
+func TestAnApplicationThatFailedToStartIsListedAndExplained(t *testing.T) {
+	stub := newControllerStub(t, []ops.ApplicationStatus{deployedApplication(), failedApplication()})
+	useStub(t, stub)
+	output, err := captureStdout(t, func() error { return runApp([]string{"list"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"broken", "failed to start"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("the list did not mention %q:\n%s", want, output)
+		}
+	}
+	shown, err := captureStdout(t, func() error { return runApp([]string{"show", "broken"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"failed to start", "managed Traefik gateway is required", "cmd-e184b37a3fe8a43101e894645c8c4bcb"} {
+		if !strings.Contains(shown, want) {
+			t.Errorf("`app show` did not mention %q:\n%s", want, shown)
 		}
 	}
 }

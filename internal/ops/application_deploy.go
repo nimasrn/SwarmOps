@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
 )
@@ -73,8 +74,27 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 		step.report("Deploying the " + stack + " stack")
 		err = c.deployRenderedApplication(ctx, rendered, stack)
 	}
+	// The application is stored whether or not it started.
+	//
+	// It used to be stored only on success, so a deployment that failed left
+	// nothing behind: the application was not listed, not inspectable, and not
+	// removable, and an operator who had just asked for it saw no trace of it
+	// at all. Every failure that reaches this point is a runtime one — an
+	// invalid spec is refused before a command exists, because submission
+	// renders and validates first — so what failed here is an application
+	// worth keeping and fixing rather than one that should vanish.
+	if putErr := c.Apps.Put(spec); putErr != nil && err == nil {
+		err = putErr
+	}
+	outcome := ApplicationOutcome{LastAttemptAt: time.Now().UTC()}
 	if err == nil {
-		err = c.Apps.Put(spec)
+		outcome.Started = true
+		outcome.StartedAt = outcome.LastAttemptAt
+	} else {
+		outcome.FailureSummary = err.Error()
+	}
+	if outcomeErr := c.Apps.PutOutcome(spec.Name, outcome); outcomeErr != nil && err == nil {
+		err = outcomeErr
 	}
 	if err == nil && c.Routing != nil && validClusterID(c.ServerID) {
 		route := c.applicationDesiredRoute(spec)
@@ -141,7 +161,14 @@ func (c *ControlPlane) RemoveApplication(ctx context.Context, actor, requestID, 
 		return fmt.Errorf("removal requires confirmation %s", ApplicationRemovalConfirmation(spec.Name))
 	}
 	stack := spec.StackName(ApplicationNamespace)
+	// An application that never started has no stack to remove, and Docker
+	// says so rather than succeeding. Refusing the removal on that basis left
+	// the operator holding a record they could not delete — which is how
+	// keeping failed applications would otherwise turn into collecting them.
 	_, err := c.CLI.Run(ctx, "stack", "rm", stack)
+	if err != nil && stackAlreadyAbsent(err) {
+		err = nil
+	}
 	if err == nil {
 		err = c.Apps.Remove(spec.Name)
 	}
@@ -158,6 +185,17 @@ func (c *ControlPlane) RemoveApplication(ctx context.Context, actor, requestID, 
 // SetApplicationDomain re-renders an existing application with one hostname,
 // or with no route at all. It never edits Traefik directly; the normal
 // renderer and admission path own both assignment and removal.
+// stackAlreadyAbsent reports whether Docker refused a stack removal because
+// there was nothing to remove. Removing what is already gone is the outcome
+// the caller asked for.
+func stackAlreadyAbsent(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "nothing found in stack") || strings.Contains(message, "no such stack")
+}
+
 func (c *ControlPlane) SetApplicationDomain(ctx context.Context, actor, requestID, name, domain, resolver, confirmation string) error {
 	if c.Apps == nil {
 		return fmt.Errorf("sealed applications are not configured")
@@ -396,12 +434,17 @@ func (c *ControlPlane) Applications(ctx context.Context) ([]ApplicationStatus, e
 	for _, spec := range specs {
 		service := spec.ServiceDNSName(namespace)
 		tasks, deployed := running[service]
+		outcome, _ := c.Apps.Outcome(spec.Name)
 		status := ApplicationStatus{
-			Deployed:     deployed,
-			RunningTasks: tasks,
-			Service:      service,
-			Spec:         spec,
-			Stack:        spec.StackName(namespace),
+			Deployed:       deployed,
+			FailureSummary: outcome.FailureSummary,
+			LastAttemptAt:  outcome.LastAttemptAt,
+			LastCommandID:  outcome.LastCommandID,
+			RunningTasks:   tasks,
+			Service:        service,
+			State:          applicationState(outcome, deployed, tasks),
+			Spec:           spec,
+			Stack:          spec.StackName(namespace),
 		}
 		if spec.Domain != "" {
 			status.URL = "https://" + spec.Domain
@@ -413,10 +456,46 @@ func (c *ControlPlane) Applications(ctx context.Context) ([]ApplicationStatus, e
 
 // ApplicationStatus is the browser-safe view of one rendered application.
 type ApplicationStatus struct {
-	Deployed     bool            `json:"deployed"`
-	RunningTasks uint64          `json:"runningTasks"`
-	Service      string          `json:"service"`
-	Spec         ApplicationSpec `json:"spec"`
-	Stack        string          `json:"stack"`
-	URL          string          `json:"url,omitempty"`
+	Deployed bool `json:"deployed"`
+	// FailureSummary and LastCommandID describe the last deployment that did
+	// not work. The command is where the whole account lives: its steps, its
+	// classified failure, and its execution log.
+	FailureSummary string          `json:"failureSummary,omitempty"`
+	LastAttemptAt  time.Time       `json:"lastAttemptAt,omitempty"`
+	LastCommandID  string          `json:"lastCommandId,omitempty"`
+	RunningTasks   uint64          `json:"runningTasks"`
+	Service        string          `json:"service"`
+	Spec           ApplicationSpec `json:"spec"`
+	Stack          string          `json:"stack"`
+	// State is what an operator reads. "deployed: false" alone could not tell
+	// an application that never started from one whose stack was removed.
+	State string `json:"state"`
+	URL   string `json:"url,omitempty"`
+}
+
+// The states an application is reported in.
+const (
+	// ApplicationFailed has never deployed successfully.
+	ApplicationFailed = "failed"
+	// ApplicationServing is deployed with at least one running task.
+	ApplicationServing = "serving"
+	// ApplicationStopped started at some point and has no running task now.
+	ApplicationStopped = "stopped"
+)
+
+// applicationState names what an operator is looking at.
+//
+// "deployed: false" carried two different situations under one word: an
+// application that never started, and one that started and was later stopped or
+// had its stack removed. They need different actions — the first is fixed by
+// reading why it failed, the second by asking why it went away — so they are
+// reported differently.
+func applicationState(outcome ApplicationOutcome, deployed bool, tasks uint64) string {
+	if deployed && tasks > 0 {
+		return ApplicationServing
+	}
+	if outcome.Started {
+		return ApplicationStopped
+	}
+	return ApplicationFailed
 }

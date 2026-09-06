@@ -632,6 +632,11 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 				if !application.Metrics {
 					continue
 				}
+				// Same reason as the discovery document: an application that
+				// never started has no route to bind Prometheus to.
+				if outcome, found := c.Apps.Outcome(application.Name); found && !outcome.Started {
+					continue
+				}
 				targetRoute := defaultRouteKey(application.ServiceDNSName(ApplicationNamespace))
 				if routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: targetRoute, Version: RoutingSchemaVersion}); routeErr != nil {
 					break

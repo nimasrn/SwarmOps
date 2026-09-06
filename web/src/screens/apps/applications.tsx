@@ -290,8 +290,12 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
   }
   if (inspected) return <Screen page="applications"><EmptyState title="Application not found" description={`No application named ${inspected} is present in this cluster snapshot.`} actions={<Button onClick={() => setInspected('')}>Back to applications</Button>} /></Screen>
 
-  const serving = applications.filter((status) => status.deployed && status.runningTasks > 0)
-  const degraded = applications.filter((status) => status.deployed && status.runningTasks === 0)
+  const serving = applications.filter((status) => status.state === 'serving')
+  const degraded = applications.filter((status) => status.state === 'stopped')
+  // An application that never started is not "deployed but down": nothing was
+  // ever running to go down. It is kept, and named, so it can be read and
+  // fixed rather than disappearing the moment its first deployment failed.
+  const failed = applications.filter((status) => status.state === 'failed')
   const published = applications.filter((status) => Boolean(status.spec.domain))
   // Every application's hostname can be changed or withdrawn. Nothing declares
   // one in advance any more, so nothing can forbid changing it either.
@@ -302,7 +306,7 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
     { header: 'Address', key: 'url', render: (status) => status.url ? <a href={status.url} rel="noreferrer" target="_blank">{status.url}</a> : 'Internal only' },
     { header: 'Image', key: 'image', render: (status) => <Mono>{status.spec.image}</Mono> },
     { header: 'Databases', key: 'databases', render: (status) => (status.spec.databases ?? []).join(', ') || 'None' },
-    { header: 'Tasks', key: 'tasks', render: (status) => <StatusBadge health={status.runningTasks > 0 ? 'healthy' : status.deployed ? 'degraded' : 'unknown'} label={status.deployed ? `${status.runningTasks} running` : 'Not deployed'} /> },
+    { header: 'Tasks', key: 'tasks', render: (status) => <StatusBadge health={status.state === 'serving' ? 'healthy' : status.state === 'failed' ? 'unhealthy' : 'degraded'} label={status.state === 'serving' ? `${status.runningTasks} running` : status.state === 'failed' ? 'Failed to start' : 'Stopped'} /> },
     {
       header: 'Action',
       key: 'action',
@@ -330,7 +334,8 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
       }
       insights={[
         { hint: serving.length === applications.length ? 'Every deployed application has a running task' : 'Applications with at least one running task', icon: 'layers', label: 'Serving', tone: applications.length && serving.length === applications.length ? 'success' : 'warning', value: `${serving.length} / ${applications.length}` },
-        { hint: degraded.length ? 'Deployed, but Swarm reports no running task' : 'No deployed application is down', icon: 'alert', label: 'Deployed but down', tone: degraded.length ? 'danger' : 'success', value: String(degraded.length) },
+        { hint: degraded.length ? 'Started at some point, with no running task now' : 'No started application is down', icon: 'alert', label: 'Stopped', tone: degraded.length ? 'danger' : 'success', value: String(degraded.length) },
+        { hint: failed.length ? 'Never started; open the run that explains why' : 'Every application has started at least once', icon: 'alert', label: 'Failed to start', tone: failed.length ? 'danger' : 'success', value: String(failed.length) },
         { hint: published.length ? 'Reachable on a public hostname through the gateway' : 'Every application is internal only', icon: 'globe', label: 'Publicly routed', onOpen: onOpenRoutes, value: String(published.length) },
         { hint: 'Applications SwarmOps has deployed on this controller', icon: 'shield', label: 'Deployed', tone: 'neutral', value: String(applications.length) },
       ]}
@@ -340,7 +345,7 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
       {error && !composing ? <Banner tone="danger" title="Application data could not be refreshed">{error}</Banner> : null}
       <Inline>
         <Input label="Find an application" placeholder="Name, image, or domain" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <Select label="Application state" value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} options={[{label: 'All states', value: 'all'}, {label: 'Serving', value: 'serving'}, {label: 'Needs attention', value: 'attention'}]} />
+        <Select label="Application state" value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} options={[{label: 'All states', value: 'all'}, {label: 'Serving', value: 'serving'}, {label: 'Failed to start', value: 'failed'}, {label: 'Needs attention', value: 'attention'}]} />
       </Inline>
       <Panel caption={`${applications.length} applications in this cluster`} flush title="Applications" variant="plain">
         <DataTable
@@ -348,7 +353,10 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, t
           columns={columns}
           empty={applications.length ? <EmptyState title="No matching applications" description="Try another name or clear the state filter." actions={<Button onClick={() => { setQuery(''); setStateFilter('all') }}>Clear filters</Button>} /> : <EmptyState actions={<Button onClick={onDeployFromSource} variant="accent">Deploy from source</Button>} description="Point SwarmOps at a repository and it will build, render, route, and roll out the result." icon="layers" title="No applications yet" />}
           rowKey={(status) => status.spec.name}
-          rows={applications.filter((status) => `${status.spec.name} ${status.spec.image} ${status.spec.domain ?? ''}`.toLowerCase().includes(query.toLowerCase()) && (stateFilter === 'all' || (stateFilter === 'serving' ? status.deployed && status.runningTasks >= (status.spec.replicas ?? 1) : !status.deployed || status.runningTasks < (status.spec.replicas ?? 1))))}
+          rows={applications.filter((status) => `${status.spec.name} ${status.spec.image} ${status.spec.domain ?? ''}`.toLowerCase().includes(query.toLowerCase()) && (stateFilter === 'all'
+            || (stateFilter === 'serving' && status.state === 'serving' && status.runningTasks >= (status.spec.replicas ?? 1))
+            || (stateFilter === 'failed' && status.state === 'failed')
+            || (stateFilter === 'attention' && (status.state !== 'serving' || status.runningTasks < (status.spec.replicas ?? 1)))))}
         />
       </Panel>
 

@@ -35,6 +35,14 @@ func MetricsTargetsFor(apps *ApplicationStore, namespace string) []MetricsTarget
 		if !spec.Metrics {
 			continue
 		}
+		// An application that has never started has no service to scrape.
+		// Advertising one would leave Prometheus holding a permanently down
+		// target standing in for a deployment that never happened — which is
+		// the cost of keeping applications that failed, and the reason the
+		// store records whether each has ever run.
+		if outcome, found := apps.Outcome(spec.Name); found && !outcome.Started {
+			continue
+		}
 		service := spec.ServiceDNSName(namespace)
 		route := applicationRouteSpec(spec, spec.StackName(namespace))
 		targets = append(targets, MetricsTarget{

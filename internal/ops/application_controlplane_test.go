@@ -3,11 +3,16 @@ package ops
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
+	"github.com/nimasrn/SwarmOps/internal/securestore"
 )
 
 func newApplicationControlPlane(t *testing.T, runner *recordingRunner) *ControlPlane {
@@ -207,5 +212,151 @@ func TestANewApplicationPlansWithNothingDeclaredInAdvance(t *testing.T) {
 	}
 	if normalized.Resolver != DefaultResolver || normalized.CPUs != plan.CPUCores || normalized.MemoryMiB != plan.MemoryMiB {
 		t.Fatalf("defaults were not applied: %#v", normalized)
+	}
+}
+
+// An application that failed to start is kept, and says so.
+//
+// It used to be stored only after a deployment succeeded, so a failure left
+// nothing behind: not listed, not inspectable, not removable, and no different
+// from an application that had never been asked for.
+func TestAFailedApplicationIsKeptAndNamedAsFailed(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := bytes.Repeat([]byte{12}, 32)
+	store, err := NewApplicationStore(dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := ApplicationSpec{Image: "ghcr.io/example/api:1", Name: "api", Port: 8080}
+	if err := store.Put(spec); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutOutcome("api", ApplicationOutcome{FailureSummary: "the managed Traefik gateway is required", LastCommandID: "cmd-1", LastAttemptAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	outcome, found := store.Outcome("api")
+	if !found || outcome.Started || outcome.LastCommandID != "cmd-1" {
+		t.Fatalf("outcome = %#v, found=%t", outcome, found)
+	}
+	if state := applicationState(outcome, false, 0); state != ApplicationFailed {
+		t.Fatalf("state = %q, want %q", state, ApplicationFailed)
+	}
+	// A later success clears the failure and marks it started.
+	if err := store.PutOutcome("api", ApplicationOutcome{Started: true, StartedAt: time.Now().UTC(), LastAttemptAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	outcome, _ = store.Outcome("api")
+	if !outcome.Started || outcome.FailureSummary != "" {
+		t.Fatalf("after success outcome = %#v", outcome)
+	}
+	if state := applicationState(outcome, true, 2); state != ApplicationServing {
+		t.Fatalf("state = %q", state)
+	}
+	// Stopping is not the same as never having started, and the store
+	// remembers which of the two this is.
+	if err := store.PutOutcome("api", ApplicationOutcome{FailureSummary: "stack deploy refused", LastAttemptAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	outcome, _ = store.Outcome("api")
+	if !outcome.Started {
+		t.Fatal("an application that has started must keep having started")
+	}
+	if state := applicationState(outcome, false, 0); state != ApplicationStopped {
+		t.Fatalf("state = %q, want %q", state, ApplicationStopped)
+	}
+}
+
+func TestAnOutcomeSurvivesAReloadAndIsForgottenWithItsApplication(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := bytes.Repeat([]byte{9}, 32)
+	store, err := NewApplicationStore(dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(ApplicationSpec{Image: "ghcr.io/example/api:1", Name: "api", Port: 8080}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutOutcome("api", ApplicationOutcome{FailureSummary: "gateway required", LastCommandID: "cmd-7"}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := NewApplicationStore(dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, found := reloaded.Outcome("api")
+	if !found || outcome.LastCommandID != "cmd-7" || outcome.FailureSummary != "gateway required" {
+		t.Fatalf("after reload outcome = %#v, found=%t", outcome, found)
+	}
+	if err := reloaded.Remove("api"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := reloaded.Outcome("api"); found {
+		t.Fatal("the outcome outlived the application it described")
+	}
+	again, err := NewApplicationStore(dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := again.Outcome("api"); found {
+		t.Fatal("the removed outcome came back after a reload")
+	}
+}
+
+// An older store held specs alone, and every spec in it was written only after
+// a deployment succeeded. Reading one forward has to say so, or every existing
+// application would be reported as never having started.
+func TestAnOlderStoreReadsAsApplicationsThatHaveStarted(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := bytes.Repeat([]byte{5}, 32)
+	sealer, err := securestore.New(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(map[string]any{
+		"applications": []ApplicationSpec{{CPUs: 0.5, Image: "ghcr.io/example/api:1", MemoryMiB: 512, Name: "api", Port: 8080, Replicas: 1}},
+		"version":      1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(dataDir, "applications.sealed"), applicationStateKey, legacy); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewApplicationStore(dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, found := store.Outcome("api")
+	if !found || !outcome.Started {
+		t.Fatalf("a version 1 application read as %#v, found=%t", outcome, found)
+	}
+	if state := applicationState(outcome, false, 0); state != ApplicationStopped {
+		t.Fatalf("state = %q, want %q — it started once, so it is stopped rather than failed", state, ApplicationStopped)
+	}
+}
+
+// Removing what is already gone is the outcome the caller asked for. Refusing
+// it left an operator holding a record they could not delete, which is how
+// keeping failed applications turns into collecting them.
+func TestAStackThatWasNeverCreatedDoesNotBlockRemoval(t *testing.T) {
+	t.Parallel()
+	for _, message := range []string{
+		"Nothing found in stack: production-api",
+		"no such stack: production-api",
+	} {
+		if !stackAlreadyAbsent(errors.New(message)) {
+			t.Errorf("%q was not recognised as an absent stack", message)
+		}
+	}
+	for _, message := range []string{"permission denied", "cannot connect to the Docker daemon"} {
+		if stackAlreadyAbsent(errors.New(message)) {
+			t.Errorf("%q was treated as an absent stack", message)
+		}
+	}
+	if stackAlreadyAbsent(nil) {
+		t.Error("a nil error was treated as an absent stack")
 	}
 }
