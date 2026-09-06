@@ -10,6 +10,7 @@ import {
   Facts,
   Inline,
   Input,
+  Label,
   Mono,
   Panel,
   RecordLink,
@@ -23,17 +24,23 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { ApplicationSpec, ApplicationStatus, ApprovedWorkload, Command, DatabaseStatus, PlatformDefinition } from '../../data/types'
+import type { ApplicationSpec, ApplicationStatus, Command, DatabaseStatus, ResourcePlan } from '../../data/types'
 import { useSelectedRecord } from '../../navigation/use-workspace'
 import { shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { StatusBadge } from '../../components/badges'
-import { UseDefaultPlatformDefinition } from '../../components/default-platform-definition'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
+import { EnvironmentEditor } from '../../components/environment-editor'
+import { commandFailureText, commandOutcomeTitle, commandOutcomeTone, commandProgressText, isTerminal } from '../../lib/command-outcome'
+import { environmentErrors, reservedDatabaseNames } from '../../lib/environment'
 import { ApplicationDetailView } from './application-detail'
 
 type Toast = ReturnType<typeof useToast>
+
+/** A deployment builds and rolls out; the screen watches it for that long
+    before handing it to Activity → Runs. */
+const DEPLOY_FOLLOW_MS = 10 * 60 * 1000
 
 const removalPhrase = (name: string) => `REMOVE_APPLICATION_${name.toUpperCase().replace(/-/g, '_')}`
 const domainRemovalPhrase = (name: string) => `REMOVE_DOMAIN_${name.toUpperCase().replace(/-/g, '_')}`
@@ -51,16 +58,14 @@ const domainRemovalPhrase = (name: string) => `REMOVE_DOMAIN_${name.toUpperCase(
  * cheapest real automation in the product: rolling a service after a base-image
  * or secret change previously meant retyping the whole spec from memory.
  */
-export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform, onOpenRoutes, toast }: {
+export function ApplicationsPage({ commands, onDeployFromSource, onOpenRoutes, toast }: {
   commands: Command[]
   onDeployFromSource: () => void
-  onOpenPlatform?: () => void
   onOpenRoutes: () => void
   toast: Toast
 }) {
   const [applications, setApplications] = useState<ApplicationStatus[] | null>(null)
-  const [approved, setApproved] = useState<ApprovedWorkload[]>([])
-  const [platform, setPlatform] = useState<PlatformDefinition | null>(null)
+  const [plans, setPlans] = useState<ResourcePlan[]>([])
   const [databases, setDatabases] = useState<DatabaseStatus[]>([])
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
@@ -89,29 +94,31 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
   const [metricsPath, setMetricsPath] = useState('/metrics')
   const [tracing, setTracing] = useState(false)
   const [backend, setBackend] = useState('')
+  const [environment, setEnvironment] = useState<Record<string, string>>({})
+  const [progress, setProgress] = useState('')
+  const [outcome, setOutcome] = useState<Command | null>(null)
 
   const refresh = async () => {
-    const [apps, slots, dbs, definition] = await Promise.all([
+    const [apps, dbs, offered] = await Promise.all([
       api.applications(),
-      api.approvedApplications(),
       api.databases(),
-      // An empty slot list means four different things depending on what
-      // admits deployments here, and the banner below used to state only one
-      // of them.
-      api.platform().catch(() => null),
+      api.applicationPlans().catch(() => null),
     ])
     const safeApps = Array.isArray(apps) ? apps : []
-    const safeSlots = Array.isArray(slots) ? slots : []
     setApplications(safeApps)
-    setApproved(safeSlots)
-    setPlatform(definition)
+    setPlans(Array.isArray(offered?.plans) ? offered.plans : [])
     setDatabases(Array.isArray(dbs) ? dbs : [])
-    if (!selected && safeSlots.length > 0) setSelected(safeSlots[0].name)
+    if (!selected && safeApps.length > 0) setSelected(safeApps[0].spec.name)
   }
   useEffect(() => { void refresh().catch((reason) => setError(messageOf(reason))) }, [])
 
-  const slot = approved.find((workload) => workload.name === selected)
   const runningDatabases = databases.filter((database) => database.installed)
+
+  // An attached engine delivers its URI under <ENGINE>_URL, or the _FILE
+  // variant when it is mounted. Naming those here means a collision the
+  // controller refuses is shown on the field rather than after the deploy.
+  const reservedEnvironmentNames = reservedDatabaseNames(attached)
+  const environmentProblems = environmentErrors(environment, reservedEnvironmentNames)
 
   const specOf = (): ApplicationSpec => ({
     ...(revisionSpec?.name === selected ? revisionSpec : {}),
@@ -119,7 +126,7 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
     cpus: Number(cpus),
     databaseDelivery: delivery,
     databases: attached,
-    domain: revisionSpec?.name === selected ? revisionSpec.domain : slot?.domain,
+    domain: revisionSpec?.name === selected ? revisionSpec.domain : undefined,
     healthPath,
     image: image.trim(),
     memoryMiB: Number(memoryMiB),
@@ -128,8 +135,11 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
     name: selected,
     port: Number(port),
     replicas: Number(replicas),
-    resolver: revisionSpec?.name === selected ? revisionSpec.resolver : slot?.resolver,
+    resolver: revisionSpec?.name === selected ? revisionSpec.resolver : undefined,
     tracing,
+    // Sent under the name the controller reads it by. The spec field carries
+    // no JSON tag, so the wire name is the Go field name.
+    Env: Object.keys(environment).length > 0 ? environment : undefined,
   })
 
   const plan = async () => {
@@ -147,14 +157,45 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
     }
   }
 
+  /**
+   * Follow a queued deployment to whatever it becomes.
+   *
+   * The console used to toast the command ID and refresh: a deployment that
+   * ended in needs_attention looked exactly like one that started serving, and
+   * the controller's own reason was never read. It is read here, and shown.
+   */
+  const follow = async (command: Command, name: string) => {
+    setOutcome(null)
+    setProgress('')
+    const final = isTerminal(command.state)
+      ? command
+      : await api.waitForCommand(command.id, DEPLOY_FOLLOW_MS, (update) => setProgress(commandProgressText(update)))
+    setProgress('')
+    await refresh()
+    if (final.state === 'succeeded') {
+      toast({ message: `${name} is deployed (${shortID(final.id)})`, tone: 'success' })
+      return true
+    }
+    if (isTerminal(final.state)) {
+      setOutcome(final)
+      toast({ duration: 0, message: commandFailureText(final), tone: 'danger' })
+      return false
+    }
+    // The screen stopped watching; the command did not.
+    toast({ message: `${name} is still deploying as ${shortID(final.id)}. Watch it under Activity → Runs.`, tone: 'neutral' })
+    return false
+  }
+
   const deploy = async () => {
     setPending(true)
     setError('')
+    setOutcome(null)
     try {
       const command = await api.deployApplication(specOf())
       toast({ message: `${selected} deployment queued (${shortID(command.id)})`, tone: 'success' })
-      setComposing(false)
-      await refresh()
+      // The sheet stays open on a failure: it holds the fields the operator
+      // would otherwise have to type again to correct one of them.
+      if (await follow(command, selected)) setComposing(false)
     } catch (reason) {
       setError(messageOf(reason))
     } finally {
@@ -168,7 +209,7 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
       const command = await api.deployApplication(status.spec)
       setRedeployFor(null)
       toast({ message: `${status.spec.name} redeploy queued (${shortID(command.id)})`, tone: 'success' })
-      await refresh()
+      await follow(command, status.spec.name)
     } catch (reason) {
       toast({ duration: 0, message: messageOf(reason), tone: 'danger' })
     } finally {
@@ -191,13 +232,14 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
   }
 
   const saveDomain = async (status: ApplicationStatus, value: string) => {
-    const policy = approved.find((workload) => workload.name === status.spec.name)
     setPending(true)
     try {
       const command = await api.setApplicationDomain(
         status.spec.name,
         value.trim(),
-        value.trim() ? policy?.resolver ?? '' : '',
+        // Empty means the controller's default resolver, which needs no DNS
+        // credential. An application that already names one keeps it.
+        value.trim() ? status.spec.resolver ?? '' : '',
         value.trim() ? '' : domainRemovalPhrase(status.spec.name),
       )
       toast({ message: `${status.spec.name} domain update queued (${shortID(command.id)})`, tone: 'success' })
@@ -238,7 +280,8 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
           setPort(String(spec.port)); setHealthPath(spec.healthPath ?? ''); setReplicas(String(spec.replicas))
           setCPUs(String(spec.cpus)); setMemoryMiB(String(spec.memoryMiB)); setAttached(spec.databases ?? [])
           setDelivery(spec.databaseDelivery ?? 'secret'); setMetrics(spec.metrics); setMetricsPath(spec.metricsPath ?? '/metrics')
-          setTracing(spec.tracing ?? false); setBackend(spec.backend ?? ''); setPreview(''); setComposing(true)
+          setTracing(spec.tracing ?? false); setBackend(spec.backend ?? ''); setEnvironment(spec.Env ?? {})
+          setPreview(''); setComposing(true)
         }}
         onOpenRoutes={onOpenRoutes}
         status={inspectedStatus}
@@ -250,10 +293,9 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
   const serving = applications.filter((status) => status.deployed && status.runningTasks > 0)
   const degraded = applications.filter((status) => status.deployed && status.runningTasks === 0)
   const published = applications.filter((status) => Boolean(status.spec.domain))
-  const editableDomain = (status: ApplicationStatus) => {
-    const policy = approved.find((workload) => workload.name === status.spec.name)
-    return Boolean(policy?.domainOptional || policy?.domainSuffixes?.length)
-  }
+  // Every application's hostname can be changed or withdrawn. Nothing declares
+  // one in advance any more, so nothing can forbid changing it either.
+  const editableDomain = (_status: ApplicationStatus) => true
 
   const columns: TableColumn<ApplicationStatus>[] = [
     { header: 'Application', key: 'name', render: (status) => <RecordLink meta={status.stack} onClick={() => setInspected(status.spec.name)} title={status.spec.name} /> },
@@ -283,59 +325,18 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
       actions={
         <Inline>
           <Button iconStart="play" onClick={onDeployFromSource} variant="accent">Deploy from source</Button>
-          <Button disabled={!approved.length} iconStart="package" onClick={() => setComposing(true)} variant="secondary">Deploy a pushed image…</Button>
+          <Button iconStart="package" onClick={() => setComposing(true)} variant="secondary">Deploy a pushed image…</Button>
         </Inline>
       }
       insights={[
         { hint: serving.length === applications.length ? 'Every deployed application has a running task' : 'Applications with at least one running task', icon: 'layers', label: 'Serving', tone: applications.length && serving.length === applications.length ? 'success' : 'warning', value: `${serving.length} / ${applications.length}` },
         { hint: degraded.length ? 'Deployed, but Swarm reports no running task' : 'No deployed application is down', icon: 'alert', label: 'Deployed but down', tone: degraded.length ? 'danger' : 'success', value: String(degraded.length) },
         { hint: published.length ? 'Reachable on a public hostname through the gateway' : 'Every application is internal only', icon: 'globe', label: 'Publicly routed', onOpen: onOpenRoutes, value: String(published.length) },
-        { hint: approved.length ? 'Reviewed slots this controller may deploy into' : 'No slot is approved in the platform manifest', icon: 'shield', label: 'Approved slots', tone: approved.length ? 'neutral' : 'warning', value: String(approved.length) },
+        { hint: 'Applications SwarmOps has deployed on this controller', icon: 'shield', label: 'Deployed', tone: 'neutral', value: String(applications.length) },
       ]}
       page="applications"
       width="full"
     >
-      {approved.length === 0 && !platform?.unmanaged ? (
-        platform?.fileManaged ? (
-          <Banner tone="warning" title="No application slot is declared in the reviewed manifest">
-            <Rows gap="tight">
-              <Body size="sm">
-                This controller loads <Mono>{platform.manifestPath || 'its manifest'}</Mono> from a file, which stays
-                the reviewed artifact. Add a workload with <Mono>profile: application</Mono>, a domain, a resolver
-                and a resource budget there, then reconnect the selected manager.
-              </Body>
-            </Rows>
-          </Banner>
-        ) : platform?.editable && platform.mode === 'manifest' ? (
-          <Banner tone="info" title="No slot yet — the first deployment declares one">
-            <Rows gap="tight">
-              <Body size="sm">
-                This controller owns its platform definition, so nothing has to be written by hand first. Deploying
-                a repository writes the slot it names into the definition — the name, domain, certificate resolver
-                and ceiling chosen on the deployment screen — checked by the same preflight as every other slot.
-              </Body>
-              <Inline gap="tight">
-                <Button onClick={onDeployFromSource} size="sm" variant="accent">Deploy from source</Button>
-              </Inline>
-            </Rows>
-          </Banner>
-        ) : (
-          <Banner tone="warning" title="Nothing admits a deployment here yet">
-            <Rows gap="tight">
-              <Body size="sm">
-                No platform definition is chosen, so this controller refuses every browser deployment. Choosing one
-                takes a click: the default is this namespace, GitHub Container Registry and the nodes measured from
-                the cluster, with no slots — the first deployment declares its own.
-              </Body>
-              <Inline gap="tight">
-                <UseDefaultPlatformDefinition onApplied={(next) => { setPlatform(next); void refresh().catch((reason) => setError(messageOf(reason))) }} toast={toast} />
-                {onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Review it first</Button> : null}
-              </Inline>
-            </Rows>
-          </Banner>
-        )
-      ) : null}
-
       {error && !composing ? <Banner tone="danger" title="Application data could not be refreshed">{error}</Banner> : null}
       <Inline>
         <Input label="Find an application" placeholder="Name, image, or domain" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -347,7 +348,7 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
           columns={columns}
           empty={applications.length ? <EmptyState title="No matching applications" description="Try another name or clear the state filter." actions={<Button onClick={() => { setQuery(''); setStateFilter('all') }}>Clear filters</Button>} /> : <EmptyState actions={<Button onClick={onDeployFromSource} variant="accent">Deploy from source</Button>} description="Point SwarmOps at a repository and it will build, render, route, and roll out the result." icon="layers" title="No applications yet" />}
           rowKey={(status) => status.spec.name}
-          rows={applications.filter((status) => `${status.spec.name} ${status.spec.image} ${status.spec.domain ?? ''}`.toLowerCase().includes(query.toLowerCase()) && (stateFilter === 'all' || (stateFilter === 'serving' ? status.deployed && status.runningTasks >= status.spec.replicas : !status.deployed || status.runningTasks < status.spec.replicas)))}
+          rows={applications.filter((status) => `${status.spec.name} ${status.spec.image} ${status.spec.domain ?? ''}`.toLowerCase().includes(query.toLowerCase()) && (stateFilter === 'all' || (stateFilter === 'serving' ? status.deployed && status.runningTasks >= (status.spec.replicas ?? 1) : !status.deployed || status.runningTasks < (status.spec.replicas ?? 1))))}
         />
       </Panel>
 
@@ -365,24 +366,32 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
         <Rows>
           <Columns>
             <Rows>
-              <Select
-                label="Approved slot"
+              <Input
+                hint="The application name, and the stack it deploys into. A name already deployed is redeployed."
+                label="Application name"
                 onChange={(event) => setSelected(event.target.value)}
-                options={approved.map((workload) => ({ label: workload.domain ? `${workload.name} — ${workload.domain}` : workload.name, value: workload.name }))}
+                placeholder="invoices"
                 value={selected}
               />
-              {slot ? (
-                <Facts items={[
-                  { label: 'Domain', value: slot.domain || 'Internal only' },
-                  { label: 'Certificate resolver', value: slot.resolver || 'None configured' },
-                  { label: 'Budget', value: `${slot.cpuCores} vCPU · ${slot.memoryMiB} MiB` },
-                ]} />
-              ) : null}
               <Input hint="An already-pushed, immutable image tag. SwarmOps deploys images; it does not build here." label="Image" onChange={(event) => setImage(event.target.value)} placeholder="ghcr.io/org/app:2026.08.25" value={image} />
               <Columns>
                 <Input label="Container port" min="1" onChange={(event) => setPort(event.target.value)} type="number" value={port} />
                 <Input hint="Probed inside the container; the image needs a shell with wget or curl." label="Health path" onChange={(event) => setHealthPath(event.target.value)} value={healthPath} />
               </Columns>
+              {/* Picking a size fills the two numbers below rather than
+                  hiding them: a size that is not offered is stated outright. */}
+              <Select
+                label="Size"
+                onChange={(event) => {
+                  const chosen = plans.find((candidate) => candidate.name === event.target.value)
+                  if (!chosen) return
+                  setCPUs(String(chosen.cpuCores))
+                  setMemoryMiB(String(chosen.memoryMiB))
+                }}
+                options={plans.map((candidate) => ({ label: `${candidate.name} · ${candidate.cpuCores} vCPU · ${candidate.memoryMiB} MiB`, value: candidate.name }))}
+                placeholder="Choose a size"
+                value={plans.find((candidate) => String(candidate.cpuCores) === cpus && String(candidate.memoryMiB) === memoryMiB)?.name ?? ''}
+              />
               <Columns>
                 <Input label="Replicas" min="1" onChange={(event) => setReplicas(event.target.value)} type="number" value={replicas} />
                 <Input label="vCPU" min="0.1" onChange={(event) => setCPUs(event.target.value)} step="0.1" type="number" value={cpus} />
@@ -430,12 +439,22 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
               <Switch checked={metrics} description="Prometheus discovers the application and starts scraping it without a configuration change." onChange={(event) => setMetrics(event.target.checked)}>Collect metrics</Switch>
               {metrics ? <Input label="Metrics path" onChange={(event) => setMetricsPath(event.target.value)} value={metricsPath} /> : null}
               <Switch checked={tracing} description="Connects the rendered application to the shared Jaeger OpenTelemetry endpoint; no provider Compose telemetry service is deployed." onChange={(event) => setTracing(event.target.checked)}>Send traces to shared Jaeger</Switch>
+              <Rows gap="tight">
+                <Label>Environment</Label>
+                <Body size="sm" tone="muted">Set on the service itself. A managed database delivers its own connection URI and does not belong here.</Body>
+                <EnvironmentEditor onChange={setEnvironment} reserved={reservedEnvironmentNames} value={environment} />
+              </Rows>
             </Rows>
           </Columns>
 
+          {environmentProblems.length > 0 ? (
+            <Banner tone="warning" title="The environment is not deployable yet">{environmentProblems.join(' ')}</Banner>
+          ) : null}
+          {pending && progress ? <Banner tone="info" title="The deployment is running">{progress}. This screen watches it for ten minutes; the command outlives the screen either way.</Banner> : null}
+          {outcome ? <Banner tone={commandOutcomeTone(outcome)} title={commandOutcomeTitle(outcome)}>{commandFailureText(outcome)}</Banner> : null}
           {error ? <Banner tone="danger" title="This application cannot be deployed">{error}</Banner> : null}
           <Inline>
-            <Button disabled={pending || !selected || !image} loading={pending} onClick={() => void plan()} variant="secondary">Preview the rendered Compose</Button>
+            <Button disabled={pending || !selected || !image || environmentProblems.length > 0} loading={pending} onClick={() => void plan()} variant="secondary">Preview the rendered Compose</Button>
             <Button disabled={pending || !selected || !image || !preview || previewSpec !== JSON.stringify(specOf())} loading={pending} onClick={() => void deploy()} variant="accent">Deploy reviewed application</Button>
           </Inline>
           {preview && previewSpec === JSON.stringify(specOf()) ? <CodeBlock label="Reviewed Compose for the current fields" wrap>{preview}</CodeBlock> : <Body size="sm" tone="muted">Preview the current configuration before deploying. Changing a field requires a new preview.</Body>}
@@ -453,7 +472,6 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
             application={domainFor}
             onSave={(value) => void saveDomain(domainFor, value)}
             pending={pending}
-            policy={approved.find((workload) => workload.name === domainFor.spec.name)}
             setValue={setDomainValue}
             value={domainValue}
           />
@@ -463,11 +481,10 @@ export function ApplicationsPage({ commands, onDeployFromSource, onOpenPlatform,
   )
 }
 
-function DomainEditor({ application, onSave, pending, policy, setValue, value }: {
+function DomainEditor({ application, onSave, pending, setValue, value }: {
   application: ApplicationStatus
   onSave: (value: string) => void
   pending: boolean
-  policy?: ApprovedWorkload
   setValue: (value: string) => void
   value: string
 }) {
@@ -475,16 +492,13 @@ function DomainEditor({ application, onSave, pending, policy, setValue, value }:
     <Rows>
       <Facts items={[
         { label: 'Current domain', value: application.spec.domain || 'Internal only' },
-        { label: 'Certificate resolver', value: policy?.resolver || 'None configured' },
-        { label: 'Allowed policy', value: policy?.domainSuffixes?.length ? `One hostname under ${policy.domainSuffixes.join(', ')}` : 'Optional route' },
+        { label: 'Certificate resolver', value: application.spec.resolver || 'http (default)' },
       ]} />
       <Input
-        hint={policy?.domainSuffixes?.length
-          ? `Use one hostname under ${policy.domainSuffixes.join(' or ')}.`
-          : 'Leave the field empty and confirm below to withdraw the public route.'}
+        hint="Any hostname you control. Leave the field empty and confirm below to withdraw the public route."
         label="Domain"
         onChange={(event) => setValue(event.target.value)}
-        placeholder={policy?.domainSuffixes?.[0] || 'app.example.com'}
+        placeholder="app.example.com"
         value={value}
       />
       {value.trim() ? (

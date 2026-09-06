@@ -23,15 +23,29 @@ const (
 	DefaultCapacity  = int64(20 * 1024 * 1024 * 1024)
 	MaxResponseBytes = 2 * 1024 * 1024
 	maxLineBytes     = 64 * 1024
+	// Eviction evidence has to outlive the process that produced it. Retention
+	// and capacity trimming run in the collector, but the console reads status
+	// through the machine agent, which opens the same volume read-only in a
+	// different process. Without a file on the volume, "older records were
+	// evicted" would be invisible to the only reader that reports it.
+	stateFileName = "state.json"
 )
 
 type Store struct {
 	root      string
 	retention time.Duration
 	capacity  int64
+	readOnly  bool
 	mu        sync.RWMutex
 	status    agentcontrol.LogStatus
 	malformed atomic.Uint64
+}
+
+// persistedState is the part of the status that cannot be derived by looking
+// at the records: what trimming has already removed, and when it last ran.
+type persistedState struct {
+	CapacityEvictions uint64    `json:"capacityEvictions"`
+	LastCleanupAt     time.Time `json:"lastCleanupAt"`
 }
 
 func New(root string, retention time.Duration, capacity int64) (*Store, error) {
@@ -48,7 +62,39 @@ func New(root string, retention time.Duration, capacity int64) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(root, "records"), 0750); err != nil {
 		return nil, err
 	}
-	return &Store{root: root, retention: retention, capacity: capacity, status: agentcontrol.LogStatus{Healthy: true, RetentionSeconds: int64(retention.Seconds()), CapacityBytes: capacity}}, nil
+	return newStore(root, retention, capacity, false), nil
+}
+
+// OpenReader opens an EXISTING store for reading only.
+//
+// The machine agent uses this to answer log queries straight from the
+// collector's volume, with no HTTP hop and nothing published on the node. It
+// creates no directory: a root that is not there yet is a cluster that is not
+// collecting, and inventing an empty store would report that as "no records"
+// instead of as an absent pipeline.
+func OpenReader(root string) (*Store, error) {
+	root = filepath.Clean(root)
+	if !filepath.IsAbs(root) {
+		return nil, fmt.Errorf("log root must be absolute")
+	}
+	info, err := os.Stat(filepath.Join(root, "records"))
+	if err != nil {
+		return nil, fmt.Errorf("open log store for reading: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("log store records path is not a directory")
+	}
+	return newStore(root, DefaultRetention, DefaultCapacity, true), nil
+}
+
+func newStore(root string, retention time.Duration, capacity int64, readOnly bool) *Store {
+	return &Store{
+		root:      root,
+		retention: retention,
+		capacity:  capacity,
+		readOnly:  readOnly,
+		status:    agentcontrol.LogStatus{Healthy: true, RetentionSeconds: int64(retention.Seconds()), CapacityBytes: capacity},
+	}
 }
 
 type cursor struct {
@@ -148,6 +194,9 @@ func (s *Store) recordFiles() ([]string, error) {
 }
 
 func (s *Store) Cleanup(now time.Time) error {
+	if s.readOnly {
+		return fmt.Errorf("log store is open for reading only")
+	}
 	paths, err := filepath.Glob(filepath.Join(s.root, "records", "log.*.jsonl"))
 	if err != nil {
 		return err
@@ -186,8 +235,40 @@ func (s *Store) Cleanup(now time.Time) error {
 	s.mu.Lock()
 	s.status.LastCleanupAt = now.UTC()
 	s.status.CapacityEvictions += evicted
+	state := persistedState{CapacityEvictions: s.status.CapacityEvictions, LastCleanupAt: s.status.LastCleanupAt}
 	s.mu.Unlock()
+	// Written before the refresh below reads it back, so the in-memory count
+	// and the file cannot disagree.
+	if err := s.writeState(state); err != nil {
+		return err
+	}
 	return s.refreshStatus()
+}
+
+func (s *Store) writeState(state persistedState) error {
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	temporary := filepath.Join(s.root, stateFileName+".tmp")
+	if err := os.WriteFile(temporary, encoded, 0640); err != nil {
+		return err
+	}
+	return os.Rename(temporary, filepath.Join(s.root, stateFileName))
+}
+
+// readState is best effort. A store that has never been trimmed has no file,
+// and that is reported as "nothing evicted" rather than as a failure.
+func (s *Store) readState() (persistedState, bool) {
+	encoded, err := os.ReadFile(filepath.Join(s.root, stateFileName))
+	if err != nil {
+		return persistedState{}, false
+	}
+	var state persistedState
+	if json.Unmarshal(encoded, &state) != nil {
+		return persistedState{}, false
+	}
+	return state, true
 }
 
 func (s *Store) Status() agentcontrol.LogStatus {
@@ -235,8 +316,13 @@ func (s *Store) refreshStatus() error {
 		}
 		return nil
 	})
+	state, hasState := s.readState()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if hasState {
+		s.status.CapacityEvictions = state.CapacityEvictions
+		s.status.LastCleanupAt = state.LastCleanupAt
+	}
 	s.status.RetainedBytes = retained
 	s.status.BufferBytes = buffers
 	s.status.Oldest = oldest

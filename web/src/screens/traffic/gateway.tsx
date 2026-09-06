@@ -29,6 +29,7 @@ import { sentence } from '../../lib/format'
 import type { WorkspacePage } from '../../navigation/navigation'
 import { Screen } from '../../components/screen'
 import type { Insight } from '../../components/screen'
+import { commandFailureText } from '../../lib/command-outcome'
 import { commandFailed, normalizeDashboardHostname, queuedToast, validDashboardHostname } from './lib'
 import { TraefikPreflightPanel } from './preflight'
 import { TrafficOverview } from './overview'
@@ -138,7 +139,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
         toast({ message: `Gateway installation completed (${completed.id.slice(0, 12)})`, tone: 'success' })
         await load(true)
       } else if (commandFailed(completed)) {
-        toast({ duration: 0, message: completed.failureSummary ?? completed.lastError ?? 'Gateway installation needs attention.', tone: 'danger' })
+        toast({ duration: 0, message: commandFailureText(completed), tone: 'danger' })
       }
     } catch (reason) {
       setInstallError(messageOf(reason))
@@ -165,7 +166,7 @@ export function TraefikControlPage({ initialTab = 'overview', status, toast }: {
         toast({ message: 'Traefik prerequisites are complete.', tone: 'success' })
         await load(false)
       } else if (commandFailed(completed)) {
-        toast({ duration: 0, message: completed.failureSummary ?? completed.lastError ?? 'Prerequisite repair needs attention.', tone: 'danger' })
+        toast({ duration: 0, message: commandFailureText(completed), tone: 'danger' })
       }
     } catch (reason) {
       setRepairError(messageOf(reason))

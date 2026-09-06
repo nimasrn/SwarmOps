@@ -11,12 +11,14 @@ import (
 	"net/netip"
 	"net/url"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/agentcontrol"
+	"github.com/nimasrn/SwarmOps/internal/logstore"
 )
 
 const routingRequestLimit = 64 << 10
@@ -425,6 +427,12 @@ func truncateForLog(value string, limit int) string {
 	return value[:limit] + "…"
 }
 
+// runRoutingDocker keeps stdout and stderr apart. The Docker CLI writes
+// warnings to stderr — for example when the agent's ProtectHome sandbox makes
+// /root/.docker/config.json unreadable — and folding those into stdout put a
+// "WARNING: ..." line in front of every JSON document the routing code parses,
+// so each of these operations failed on a healthy host. Diagnostics still get
+// both streams; only the returned value is stdout.
 // runRoutingDockerQuiet is runRoutingDocker for probes whose failure is an
 // expected outcome rather than a fault.
 func runRoutingDockerQuiet(ctx context.Context, input io.Reader, args ...string) (string, error) {
@@ -435,12 +443,6 @@ func runRoutingDocker(ctx context.Context, input io.Reader, args ...string) (str
 	return routingDocker(ctx, true, input, args...)
 }
 
-// routingDocker keeps stdout and stderr apart. The Docker CLI writes warnings
-// to stderr — for example when the agent's ProtectHome sandbox makes
-// /root/.docker/config.json unreadable — and folding those into stdout put a
-// "WARNING: ..." line in front of every JSON document the routing code parses,
-// so each of these operations failed on a healthy host. Diagnostics still get
-// both streams; only the returned value is stdout.
 func routingDocker(ctx context.Context, report bool, input io.Reader, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
@@ -618,22 +620,55 @@ func (s *Server) logsStatus(response http.ResponseWriter, request *http.Request)
 		http.Error(response, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	var status agentcontrol.LogStatus
-	endpoint := strings.TrimSuffix(s.config.LogsBaseURL, "/") + "/v1/status"
-	if err := fixedInternalJSON(request.Context(), s.internalHTTPClient(), endpoint, &status); err != nil {
+	store, err := s.logStore(request.Context())
+	if err != nil {
 		http.Error(response, "log collection unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(response, status)
+	writeJSON(response, store.Status())
 }
 
 func (s *Server) queryLogs(ctx context.Context, query agentcontrol.LogQuery) (agentcontrol.LogPage, error) {
-	var page agentcontrol.LogPage
-	endpoint := strings.TrimSuffix(s.config.LogsBaseURL, "/") + "/v1/query"
-	if err := fixedInternalPostJSON(ctx, s.internalHTTPClient(), endpoint, query, &page); err != nil {
-		return page, fmt.Errorf("query fixed Fluentd adapter: %w", err)
+	store, err := s.logStore(ctx)
+	if err != nil {
+		return agentcontrol.LogPage{}, err
 	}
-	return page, nil
+	return store.Query(ctx, query)
+}
+
+// logStore opens the collector's record volume for reading.
+//
+// It is opened per request rather than cached because the collector's stack can
+// be deployed, removed, and deployed again underneath a running agent, and a
+// handle kept across that would answer from a volume that no longer backs the
+// pipeline.
+func (s *Server) logStore(ctx context.Context) (*logstore.Store, error) {
+	root := strings.TrimSpace(s.config.LogsRoot)
+	if root == "" {
+		volume := strings.TrimSpace(s.config.LogsVolume)
+		if volume == "" {
+			return nil, fmt.Errorf("no log volume is configured on this machine")
+		}
+		if s.config.Docker == nil {
+			return nil, fmt.Errorf("this machine has no Docker engine to resolve the log volume")
+		}
+		inspected, err := s.config.Docker.InspectVolume(ctx, volume)
+		if err != nil {
+			return nil, fmt.Errorf("resolve log volume %q: %w", volume, err)
+		}
+		root = strings.TrimSpace(inspected.Mountpoint)
+		if root == "" {
+			return nil, fmt.Errorf("log volume %q reports no mount path", volume)
+		}
+		// The engine answers with a path in the HOST filesystem. An agent
+		// running in a container sees that filesystem under its read-only host
+		// mount, so the two have to be joined; a host-native agent has HostRoot
+		// "/" and the path is already correct.
+		if hostRoot := strings.TrimSpace(s.config.HostRoot); hostRoot != "" && hostRoot != "/" {
+			root = filepath.Join(hostRoot, root)
+		}
+	}
+	return logstore.OpenReader(root)
 }
 
 func sanitizeTraefikLogLine(line string) agentcontrol.TraefikLogEntry {
@@ -675,7 +710,12 @@ func (s *Server) traefikPrometheus(response http.ResponseWriter, request *http.R
 		} `json:"data"`
 		Status string `json:"status"`
 	}
-	endpoint := strings.TrimSuffix(s.config.PrometheusBaseURL, "/") + "/api/v1/targets?state=active"
+	base, err := s.prometheusBaseURL(request.Context())
+	if err != nil {
+		http.Error(response, "Prometheus target status unavailable", http.StatusBadGateway)
+		return
+	}
+	endpoint := strings.TrimSuffix(base, "/") + "/api/v1/targets?state=active"
 	if err := fixedInternalJSON(request.Context(), s.internalHTTPClient(), endpoint, &payload); err != nil || payload.Status != "success" {
 		http.Error(response, "Prometheus target status unavailable", http.StatusBadGateway)
 		return

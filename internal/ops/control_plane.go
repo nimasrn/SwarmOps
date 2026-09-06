@@ -24,15 +24,10 @@ type ControlPlane struct {
 	// production model — left every node with no memory, disk, OS, or engine
 	// reading, and platform admission refused every deployment on
 	// live-agent/live-memory-available/live-disk-available.
-	HostSnapshot   func(context.Context) (agent.Snapshot, error)
-	AgentStackFile string
-	Admission      *PlatformAdmission
-	Apps           *ApplicationStore
-	Audit          *audit.Store
-	// Platform is the sealed, console-owned platform definition. It is
-	// consulted before the startup Admission so a panel change reaches the
-	// next deployment without restarting the controller.
-	Platform                 *PlatformStore
+	HostSnapshot             func(context.Context) (agent.Snapshot, error)
+	AgentStackFile           string
+	Apps                     *ApplicationStore
+	Audit                    *audit.Store
 	CLI                      DockerCLI
 	CoreService              string
 	Credentials              *CredentialStore
@@ -60,10 +55,8 @@ type ControlPlaneOptions struct {
 	AgentService             string
 	HostSnapshot             func(context.Context) (agent.Snapshot, error)
 	AgentStackFile           string
-	Admission                *PlatformAdmission
 	Apps                     *ApplicationStore
 	CoreService              string
-	Platform                 *PlatformStore
 	Credentials              *CredentialStore
 	DatabaseSettings         DatabaseSettings
 	DataDir                  string
@@ -100,9 +93,7 @@ func NewControlPlane(docker *dockerapi.Client, cli DockerCLI, auditStore *audit.
 		AgentService:             options.AgentService,
 		HostSnapshot:             options.HostSnapshot,
 		AgentStackFile:           options.AgentStackFile,
-		Admission:                options.Admission,
 		Apps:                     options.Apps,
-		Platform:                 options.Platform,
 		Audit:                    auditStore,
 		CLI:                      cli,
 		CoreService:              options.CoreService,
@@ -435,10 +426,7 @@ func (c *ControlPlane) ValidateStack(name string, raw []byte, targetNodeID strin
 	if err != nil {
 		return domain.ComposePlan{}, err
 	}
-	if c.admission() == nil {
-		return domain.ComposePlan{}, fmt.Errorf("browser stack deployment requires a reviewed platform manifest")
-	}
-	if err := c.admission().ValidateStack(name, effective); err != nil {
+	if err := ValidateApplicationStack(name, effective); err != nil {
 		return domain.ComposePlan{}, err
 	}
 	plan, err := c.StackDeployer.Validate(effective)
@@ -457,21 +445,7 @@ func (c *ControlPlane) DeployStack(ctx context.Context, actor, requestID, name s
 	}
 	effective, err := PinComposeToNode(raw, targetNodeID)
 	if err == nil {
-		if c.admission() == nil {
-			err = fmt.Errorf("browser stack deployment requires a reviewed platform manifest")
-		} else {
-			err = c.admission().ValidateStack(name, effective)
-		}
-	}
-	if err == nil {
-		var nodes []domain.Node
-		nodes, err = c.Nodes(ctx)
-		if err == nil {
-			report := c.admission().CheckLive(nodes)
-			if !report.Valid() {
-				err = fmt.Errorf("fresh platform admission failed: %s", summarizeFindings(report))
-			}
-		}
+		err = ValidateApplicationStack(name, effective)
 	}
 	if err == nil {
 		var plan domain.ComposePlan
@@ -653,12 +627,12 @@ func (c *ControlPlane) CoreObservability(ctx context.Context, actor, requestID s
 		if routeErr == nil && serviceExists(ctx, c.Docker, "swarmops-agent_agent") {
 			routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-agent_agent", Delivery: DependencyExisting, TargetRoute: "swarmops-prometheus", Version: RoutingSchemaVersion})
 		}
-		if routeErr == nil && c.Apps != nil && c.admission() != nil {
+		if routeErr == nil && c.Apps != nil {
 			for _, application := range c.Apps.List() {
 				if !application.Metrics {
 					continue
 				}
-				targetRoute := defaultRouteKey(application.ServiceDNSName(c.admission().Namespace()))
+				targetRoute := defaultRouteKey(application.ServiceDNSName(ApplicationNamespace))
 				if routeErr = c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: targetRoute, Version: RoutingSchemaVersion}); routeErr != nil {
 					break
 				}
@@ -994,57 +968,3 @@ func min(left, right uint64) uint64 {
 	}
 	return right
 }
-
-// admission is the platform admission in force for this control plane. A
-// mounted manifest stays authoritative; otherwise the console-owned definition
-// answers, which is nil until an operator has made a choice.
-// ensurePlatformDefinition lets a controller that has never been given one
-// deploy anyway, by recording that this install is manifest-free.
-//
-// A platform manifest is a review gate: it pins the registry namespace, the
-// certificate resolvers and a capacity snapshot of every node, and admission
-// holds each deployment against it. That is worth having on a fleet somebody
-// signs off. Requiring it before the FIRST deployment is a different thing —
-// it means a working cluster refuses every application until an operator
-// hand-writes a capacity snapshot and then keeps it current, because the
-// snapshot is compared against live readings that move on their own.
-//
-// So the default is no manifest, confined to one namespace. Deployments work
-// immediately, and an operator who wants the gate authors it in
-// Platform → Platform definition, which replaces this.
-//
-// A mounted manifest file, an authored definition and an install already
-// declared manifest-free are all left exactly as they are.
-func (c *ControlPlane) ensurePlatformDefinition(actor string) error {
-	if c == nil || c.Platform == nil || c.admission() != nil {
-		return nil
-	}
-	if c.Platform.FileManaged() || c.Platform.State().Mode != PlatformModeUnset {
-		return nil
-	}
-	_, err := c.Platform.Save(actor, PlatformInput{
-		Confirmation: UnmanagedConfirmation,
-		Mode:         PlatformModeUnmanaged,
-		Namespace:    defaultPlatformNamespace,
-	}, c.now())
-	if err != nil {
-		return fmt.Errorf("record this install as manifest-free: %w", err)
-	}
-	return nil
-}
-
-func (c *ControlPlane) admission() *PlatformAdmission {
-	if c == nil {
-		return nil
-	}
-	if c.Platform != nil {
-		if resolved := c.Platform.Admission(); resolved != nil {
-			return resolved
-		}
-	}
-	return c.Admission
-}
-
-// PlatformUnmanaged reports whether this controller deploys without slot
-// enforcement because the operator declared the install manifest-free.
-func (c *ControlPlane) PlatformUnmanaged() bool { return c.admission().Unmanaged() }

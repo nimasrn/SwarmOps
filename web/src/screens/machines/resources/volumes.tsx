@@ -21,8 +21,9 @@ import { api } from '../../../data/api'
 import type {
   VolumeSummary,
 } from '../../../data/types'
-import { formatBytes, formatDateTime, shortID } from '../../../lib/format'
+import { formatBytes, formatDateTime } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
+import { followQueuedCommand, succeeded } from '../../../lib/command-follow'
 import { useResource } from '../../../data/hooks'
 import { ConfirmPhrase } from '../../../components/confirm-phrase'
 
@@ -56,9 +57,7 @@ export function VolumesTab({ toast }: { toast: Toast }) {
     setPending('create')
     try {
       const command = await api.createVolume(name.trim())
-      toast({ message: `Volume creation queued (${shortID(command.id)})`, tone: 'success' })
-      setName('')
-      await api.waitForCommand(command.id)
+      if (succeeded(await followQueuedCommand(command, { label: 'Volume creation', toast }))) setName('')
       await reload()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -81,8 +80,7 @@ export function VolumesTab({ toast }: { toast: Toast }) {
             setPending(volume.Name)
             try {
               const command = await api.removeVolume(volume.Name, confirmation)
-              toast({ message: `Volume removal queued (${shortID(command.id)})`, tone: 'success' })
-              await api.waitForCommand(command.id)
+              await followQueuedCommand(command, { label: `Removing ${volume.Name}`, toast })
               await reload()
             } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
           }}

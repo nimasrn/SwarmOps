@@ -11,6 +11,8 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/auth"
 )
 
+const logsReadTimeout = 10 * time.Second
+
 func (s *Server) logs(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
 	query, err := parseLogQuery(request)
 	if err != nil {
@@ -21,8 +23,11 @@ func (s *Server) logs(response http.ResponseWriter, request *http.Request, _ aut
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
+	// Two hops share this budget: locating the node that holds the records,
+	// then reading them from that node's agent.
+	ctx, cancel := context.WithTimeout(request.Context(), logsReadTimeout)
 	defer cancel()
+	target = s.logsHostTarget(ctx, target)
 	page, err := target.Control.Logs(ctx, query)
 	if err != nil {
 		s.operationError(response, request, err)
@@ -36,8 +41,11 @@ func (s *Server) logsStatus(response http.ResponseWriter, request *http.Request,
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(request.Context(), 5*time.Second)
+	// Two hops share this budget: locating the node that holds the records,
+	// then reading them from that node's agent.
+	ctx, cancel := context.WithTimeout(request.Context(), logsReadTimeout)
 	defer cancel()
+	target = s.logsHostTarget(ctx, target)
 	status, err := target.Control.LogsStatus(ctx)
 	if err != nil {
 		s.operationError(response, request, err)

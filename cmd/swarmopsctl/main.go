@@ -1,604 +1,162 @@
-// Command swarmops is the trusted-workstation companion for operations
-// that need a local path, most notably a resource-capped image build context.
+// Command swarmops drives a SwarmOps control plane from a terminal.
+//
+// The happy path is four commands — login, init, deploy, logs — and it is the
+// only path most operators need. Everything below it (nodes, stacks, routing,
+// the Core itself) is reachable but grouped out of the default help, because a
+// platform that makes an operator meet the scheduler before their first deploy
+// has already lost the thing that made it worth using.
 package main
 
 import (
-	"archive/tar"
-	"bytes"
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"crypto/tls"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"os"
-	"path/filepath"
+	"sort"
 	"strings"
-	"time"
-
-	"github.com/moby/patternmatcher"
-	"github.com/moby/patternmatcher/ignorefile"
-	"github.com/nimasrn/SwarmOps/internal/domain"
-	"github.com/nimasrn/SwarmOps/internal/preflight"
-	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/term"
 )
 
-const defaultContextLimit = 480 << 20
+// group orders the help. Everything an operator needs on day one is in
+// groupApp; the rest exists for the day something is wrong.
+type group int
+
+const (
+	groupApp group = iota
+	groupResource
+	groupRouting
+	groupCluster
+	groupWorkstation
+)
+
+var groupTitles = map[group]string{
+	groupApp:         "Applications",
+	groupResource:    "Attached resources",
+	groupRouting:     "Domains and routing",
+	groupCluster:     "Cluster and controller",
+	groupWorkstation: "Workstation",
+}
+
+type command struct {
+	Group   group
+	Name    string
+	Run     func(arguments []string) error
+	Summary string
+	Usage   string
+}
+
+func commands() []command {
+	registry := []command{
+		{Group: groupApp, Name: "login", Summary: "Authenticate against a Core and store the session", Run: runLogin, Usage: "login --url <core-url> --username <name> [--core-fingerprint SHA256:...] [--profile <name>]"},
+		{Group: groupApp, Name: "logout", Summary: "End the stored session", Run: runLogout, Usage: "logout [--profile <name>]"},
+		{Group: groupApp, Name: "whoami", Summary: "Show who the stored session belongs to", Run: runWhoami, Usage: "whoami [--profile <name>]"},
+		{Group: groupApp, Name: "profile", Summary: "List, select, and remove stored Cores", Run: runProfile, Usage: "profile list|use <name>|remove <name>"},
+		{Group: groupApp, Name: "server", Summary: "List enrolled machines and choose the one commands run on", Run: runServer, Usage: "server list|use <id>|connect <id> [--api-key-file <path>]|disconnect <id>"},
+		{Group: groupApp, Name: "init", Summary: "Write a swarmops.json for this directory", Run: runInit, Usage: "init [--name <app>] [--port <n>] [--plan <size>] [--domain <host>] [--from <deployed-app>] [--force]"},
+		{Group: groupApp, Name: "deploy", Summary: "Deploy this directory's application", Run: runDeploy, Usage: "deploy [--image <ref>] [--local] [--service <name>] [--detach]"},
+		{Group: groupApp, Name: "plan", Summary: "Render the Compose a deploy would produce, without deploying", Run: runPlan, Usage: "plan [--json]"},
+		{Group: groupApp, Name: "plans", Summary: "List the sizes an application may be deployed at", Run: runPlans, Usage: "plans [--json]"},
+		{Group: groupApp, Name: "app", Summary: "Inspect, scale, re-domain, and remove applications", Run: runApp, Usage: "app list|show <name>|scale <name> <n>|domain <name> <host>|remove <name>"},
+		{Group: groupApp, Name: "env", Summary: "Read and change an application's environment", Run: runEnv, Usage: "env list|set KEY=VALUE...|unset KEY... [--app <name>]"},
+		{Group: groupApp, Name: "logs", Summary: "Read collected logs", Run: runLogs, Usage: "logs [--app <name>] [--service <name>] [--level <level>] [--search <text>] [-f]"},
+		{Group: groupApp, Name: "restart", Summary: "Restart an application's service", Run: runRestart, Usage: "restart [--app <name>]"},
+		{Group: groupApp, Name: "status", Summary: "Show the cluster overview", Run: runStatus, Usage: "status [--json]"},
+		{Group: groupApp, Name: "command", Summary: "Follow queued commands", Run: runCommand, Usage: "command list|show <id>|retry <id>|follow <id>"},
+
+		{Group: groupWorkstation, Name: "build", Summary: "Build an image from a local directory", Run: build, Usage: "build --url <core-url> --username <name> --cluster-id default --server-id <id> --context <dir> --image <ref>"},
+		{Group: groupWorkstation, Name: "password-hash", Summary: "Hash an admin password for the installer", Run: passwordHash, Usage: "password-hash --stdin"},
+	}
+	registry = append(registry, resourceCommands()...)
+	registry = append(registry, routingCommands()...)
+	registry = append(registry, clusterCommands()...)
+	sort.SliceStable(registry, func(left, right int) bool { return registry[left].Group < registry[right].Group })
+	return registry
+}
 
 func main() {
 	if len(os.Args) < 2 {
-		usage(os.Stderr)
+		usage(os.Stderr, false)
 		os.Exit(2)
 	}
-	switch os.Args[1] {
-	case "build":
-		if err := build(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmops:", err)
-			os.Exit(1)
-		}
-	case "preflight":
-		if err := preflightCommand(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmops:", err)
-			os.Exit(1)
-		}
-	case "password-hash":
-		if err := passwordHash(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "swarmops:", err)
-			os.Exit(1)
-		}
+	name := os.Args[1]
+	switch name {
 	case "help", "--help", "-h":
-		usage(os.Stdout)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
-		usage(os.Stderr)
-		os.Exit(2)
+		usage(os.Stdout, len(os.Args) > 2 && os.Args[2] == "all")
+		return
+	case "version", "--version":
+		fmt.Println("swarmops " + version)
+		return
 	}
-}
-
-func passwordHash(arguments []string) error {
-	flags := flag.NewFlagSet("password-hash", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	stdin := flags.Bool("stdin", false, "read the password once from stdin")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	if !*stdin || flags.NArg() != 0 {
-		return errors.New("password-hash requires --stdin and no positional arguments")
-	}
-	input, err := io.ReadAll(io.LimitReader(os.Stdin, 4097))
-	if err != nil {
-		return fmt.Errorf("read password: %w", err)
-	}
-	password := bytes.TrimSuffix(input, []byte("\n"))
-	password = bytes.TrimSuffix(password, []byte("\r"))
-	defer func() {
-		for index := range input {
-			input[index] = 0
+	for _, candidate := range commands() {
+		if candidate.Name != name {
+			continue
 		}
-	}()
-	if len(password) < 16 {
-		return errors.New("password must contain at least 16 bytes")
+		if err := candidate.Run(os.Args[2:]); err != nil {
+			if errors.Is(err, errCancelled) {
+				fmt.Fprintln(os.Stderr, "Cancelled.")
+				return
+			}
+			if errors.Is(err, errUsage) {
+				fmt.Fprintf(os.Stderr, "Usage: swarmops %s\n", candidate.Usage)
+				os.Exit(2)
+			}
+			fmt.Fprintln(os.Stderr, "swarmops:", err)
+			os.Exit(1)
+		}
+		return
 	}
-	hash, err := hashPassword(password)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(os.Stdout, hash)
-	return err
+	fmt.Fprintf(os.Stderr, "unknown command %q\n", name)
+	usage(os.Stderr, false)
+	os.Exit(2)
 }
 
-func hashPassword(password []byte) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("hash password: %w", err)
-	}
-	return string(hash), nil
-}
+// version is stamped at release time; an unstamped build says so rather than
+// claiming a number it does not have.
+var version = "dev"
 
-func usage(writer io.Writer) {
-	fmt.Fprint(writer, `SwarmOps trusted-workstation CLI
+// errUsage asks main to print the command's own usage line. A command returns
+// it instead of printing, so every wrong invocation is reported identically.
+var errUsage = errors.New("usage")
+
+// errCancelled is a person declining a prompt. It is not a failure, so it
+// leaves the exit status at zero.
+var errCancelled = errors.New("cancelled")
+
+func usage(writer io.Writer, all bool) {
+	fmt.Fprint(writer, `SwarmOps — deploy an application without meeting the cluster.
+
+  swarmops login --url https://swarmops.example.com --username operator
+  swarmops init --name api --port 8080
+  swarmops deploy
+  swarmops logs -f
 
 Usage:
-  swarmops build --url https://swarmops.example.com --username operator \
-    --cluster-id default --server-id <server-id> --context ./service --image ghcr.io/example/service:2026.08.23 [options]
+  swarmops <command> [options]
 
-  swarmops preflight --manifest deploy/swarmops/platform.yml [--json]
-  swarmops preflight --manifest deploy/swarmops/platform.yml \
-    --url https://swarmops.example.com --username operator --server-id <server-id>
-
-  swarmops password-hash --stdin
-
-The password is prompted without echo from a terminal, or read only from stdin
-when --password-stdin is supplied. It is never accepted as a command argument.
-The local context honours .dockerignore, rejects symlinks/devices, and streams
-an archive to SwarmOps; it is never interpreted as a manager filesystem path.
-SwarmOps acknowledges a durable build command ID rather than returning remote
-build output to the workstation.
-
-Build options:
-  --cluster-id <id>         Explicit cluster target (v1 requires default)
-  --dockerfile <path>       Dockerfile path within the context (default Dockerfile)
-  --cpus <n>                Requested build vCPU cap (default 2)
-  --memory-mib <n>          Requested RAM cap in MiB (default 2048)
-  --push                    Request registry push after a successful build
-  --core-fingerprint <pin>  Exact SHA256:<64-hex> Core certificate pin
-  --password-stdin          Read password once from standard input
-  --max-context-mib <n>     Local preflight source-content cap (default 480)
-
-Preflight options:
-  --manifest <path>         Reviewed non-secret platform manifest
-  --json                    Emit the report as JSON for CI or a UI
-  --url <URL>               Check the manifest against live node inventory
-  --username <name>         SwarmOps operator for --url
-  --server-id <id>          Connected remote server profile for --url
-  --core-fingerprint <pin>  Exact SHA256:<64-hex> Core certificate pin
-  --password-stdin          Read the operator password once from standard input
 `)
-}
-
-func preflightCommand(arguments []string) error {
-	flags := flag.NewFlagSet("preflight", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	manifestPath := flags.String("manifest", "", "platform manifest path")
-	jsonOutput := flags.Bool("json", false, "emit JSON")
-	baseURL := flags.String("url", "", "SwarmOps URL for live node validation")
-	serverID := flags.String("server-id", "", "connected remote server profile for live validation")
-	coreFingerprint := flags.String("core-fingerprint", "", "exact SHA-256 Core certificate fingerprint")
-	username := flags.String("username", "", "SwarmOps username for live node validation")
-	passwordStdin := flags.Bool("password-stdin", false, "read SwarmOps password once from stdin")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	if strings.TrimSpace(*manifestPath) == "" {
-		return errors.New("--manifest is required")
-	}
-	manifest, err := preflight.LoadFile(*manifestPath)
-	if err != nil {
-		return err
-	}
-	report := preflight.Check(manifest)
-	if *baseURL != "" {
-		if strings.TrimSpace(*username) == "" || strings.TrimSpace(*serverID) == "" {
-			return errors.New("--username and --server-id are required with --url")
+	shown := map[group]bool{groupApp: true, groupWorkstation: true}
+	for _, current := range []group{groupApp, groupResource, groupRouting, groupCluster, groupWorkstation} {
+		if !all && !shown[current] {
+			continue
 		}
-		endpoint, err := parseBaseURL(*baseURL)
-		if err != nil {
-			return err
-		}
-		password, err := readPassword(*passwordStdin)
-		if err != nil {
-			return err
-		}
-		observed, err := preflightNodesHTTP(endpoint, *username, password, *serverID, *coreFingerprint)
-		if err != nil {
-			return err
-		}
-		report = preflight.CheckObserved(manifest, observed)
-	} else if strings.TrimSpace(*username) != "" || strings.TrimSpace(*serverID) != "" || strings.TrimSpace(*coreFingerprint) != "" || *passwordStdin {
-		return errors.New("--username, --server-id, --core-fingerprint, and --password-stdin require --url")
-	}
-	if *jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(report); err != nil {
-			return fmt.Errorf("write preflight report: %w", err)
-		}
-	} else {
-		state := "PASS"
-		if !report.Valid() {
-			state = "FAIL"
-		}
-		fmt.Printf("SwarmOps preflight: %s\n", state)
-		fmt.Printf("Namespace: %s\n", report.Namespace)
-		fmt.Printf("Reservations: %.2f CPU / %d MiB RAM / %d GiB disk\n", report.Totals.Requested.CPUCores, report.Totals.Requested.MemoryMiB, report.Totals.Requested.DiskGiB)
-		fmt.Printf("Available: %.2f CPU / %d MiB RAM / %d GiB disk\n", report.Totals.Available.CPUCores, report.Totals.Available.MemoryMiB, report.Totals.Available.DiskGiB)
-		for _, finding := range report.Findings {
-			fmt.Printf("%s %s: %s\n", strings.ToUpper(finding.Level), finding.Code, finding.Message)
-		}
-	}
-	return report.Error()
-}
-
-func preflightNodesHTTP(endpoint *url.URL, username, password, serverID, coreFingerprint string) ([]preflight.ObservedNode, error) {
-	client, err := swarmOpsHTTPClient(endpoint, coreFingerprint, 8*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := login(client, endpoint, username, password); err != nil {
-		return nil, err
-	}
-	nodesURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/nodes"})
-	request, err := http.NewRequest(http.MethodGet, nodesURL.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("create live node request: %w", err)
-	}
-	request.Header.Set("X-SwarmOps-Server-ID", serverID)
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("read live node inventory: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, responseError(response)
-	}
-	var nodes []domain.Node
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&nodes); err != nil {
-		return nil, fmt.Errorf("decode live node inventory: %w", err)
-	}
-	return observedNodes(nodes), nil
-}
-
-func observedNodes(nodes []domain.Node) []preflight.ObservedNode {
-	const bytesPerMiB = 1024 * 1024
-	const bytesPerGiB = 1024 * 1024 * 1024
-	result := make([]preflight.ObservedNode, 0, len(nodes))
-	for _, node := range nodes {
-		result = append(result, preflight.ObservedNode{
-			AgentHealthy:       node.Agent.Healthy,
-			AvailableDiskGiB:   node.Disk.Available / bytesPerGiB,
-			AvailableMemoryMiB: node.Memory.Available / bytesPerMiB,
-			CPUCores:           float64(node.CPU.Capacity),
-			Labels:             node.Labels,
-			MemoryMiB:          node.Memory.Capacity / bytesPerMiB,
-			Name:               node.Hostname,
-			State:              node.State,
-		})
-	}
-	return result
-}
-
-func build(arguments []string) error {
-	flags := flag.NewFlagSet("build", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	baseURL := flags.String("url", "", "SwarmOps URL")
-	serverID := flags.String("server-id", "", "connected remote server profile")
-	coreFingerprint := flags.String("core-fingerprint", "", "exact SHA-256 Core certificate fingerprint")
-	clusterID := flags.String("cluster-id", "", "explicit cluster target")
-	username := flags.String("username", "", "SwarmOps username")
-	contextDir := flags.String("context", "", "local build context directory")
-	image := flags.String("image", "", "immutable image reference")
-	dockerfile := flags.String("dockerfile", "Dockerfile", "Dockerfile path")
-	cpus := flags.Float64("cpus", 2, "build vCPU cap")
-	memoryMiB := flags.Int64("memory-mib", 2048, "build RAM cap")
-	push := flags.Bool("push", false, "push image after build")
-	passwordStdin := flags.Bool("password-stdin", false, "read password from stdin")
-	maxContextMiB := flags.Int64("max-context-mib", 480, "local source-content cap")
-	if err := flags.Parse(arguments); err != nil {
-		return err
-	}
-	if strings.TrimSpace(*baseURL) == "" || strings.TrimSpace(*username) == "" || strings.TrimSpace(*clusterID) == "" || strings.TrimSpace(*serverID) == "" || strings.TrimSpace(*contextDir) == "" || strings.TrimSpace(*image) == "" {
-		return errors.New("--url, --username, --cluster-id, --server-id, --context, and --image are required")
-	}
-	if *clusterID != "default" {
-		return errors.New("v1 requires --cluster-id default")
-	}
-	if *cpus <= 0 || *memoryMiB <= 0 || *maxContextMiB <= 0 {
-		return errors.New("build resource and context limits must be positive")
-	}
-	endpoint, err := parseBaseURL(*baseURL)
-	if err != nil {
-		return err
-	}
-	password, err := readPassword(*passwordStdin)
-	if err != nil {
-		return err
-	}
-	client, err := swarmOpsHTTPClient(endpoint, *coreFingerprint, 35*time.Minute)
-	if err != nil {
-		return err
-	}
-	csrf, err := login(client, endpoint, *username, password)
-	if err != nil {
-		return err
-	}
-	archive, finished, err := archiveContext(*contextDir, *dockerfile, *maxContextMiB<<20)
-	if err != nil {
-		return err
-	}
-	defer archive.Close()
-	buildURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/builds"})
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, buildURL.String(), archive)
-	if err != nil {
-		return fmt.Errorf("create build request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/x-tar")
-	request.Header.Set("X-CSRF-Token", csrf)
-	request.Header.Set("X-SwarmOps-Cluster-ID", *clusterID)
-	request.Header.Set("X-SwarmOps-Server-ID", *serverID)
-	request.Header.Set("X-SwarmOps-CPUs", fmt.Sprintf("%.4g", *cpus))
-	request.Header.Set("X-SwarmOps-Dockerfile", *dockerfile)
-	request.Header.Set("X-SwarmOps-Image", *image)
-	request.Header.Set("X-SwarmOps-Memory-MiB", fmt.Sprint(*memoryMiB))
-	request.Header.Set("X-SwarmOps-Push", fmt.Sprint(*push))
-	idempotencyKey, err := newCommandIdempotencyKey()
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Idempotency-Key", idempotencyKey)
-	response, err := client.Do(request)
-	archiveErr := <-finished
-	if err != nil {
-		return fmt.Errorf("send build context: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusAccepted {
-		return responseError(response)
-	}
-	var command domain.Command
-	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&command); err != nil {
-		return fmt.Errorf("decode queued build response: %w", err)
-	}
-	if archiveErr != nil {
-		return fmt.Errorf("build input did not finish; SwarmOps retained command %s for operator attention: %w", command.ID, archiveErr)
-	}
-	fmt.Printf("Build command queued: %s\n", command.ID)
-	return nil
-}
-
-func swarmOpsHTTPClient(endpoint *url.URL, fingerprint string, timeout time.Duration) (*http.Client, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, fmt.Errorf("create cookie jar: %w", err)
-	}
-	client := &http.Client{Jar: jar, Timeout: timeout}
-	fingerprint = strings.TrimSpace(fingerprint)
-	if fingerprint == "" {
-		return client, nil
-	}
-	if endpoint == nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" {
-		return nil, fmt.Errorf("--core-fingerprint requires an absolute HTTPS Core URL")
-	}
-	expected, err := parseCoreCertificateFingerprint(fingerprint)
-	if err != nil {
-		return nil, err
-	}
-	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		ServerName:         endpoint.Hostname(),
-		InsecureSkipVerify: true, // the exact leaf pin below is the trust root
-		VerifyConnection: func(state tls.ConnectionState) error {
-			if len(state.PeerCertificates) == 0 {
-				return fmt.Errorf("Core did not present a certificate")
-			}
-			actual := sha256.Sum256(state.PeerCertificates[0].Raw)
-			if subtle.ConstantTimeCompare(actual[:], expected) != 1 {
-				return fmt.Errorf("Core certificate fingerprint does not match the pinned identity")
-			}
-			return nil
-		},
-	}}
-	return client, nil
-}
-
-func parseCoreCertificateFingerprint(value string) ([]byte, error) {
-	value = strings.TrimSpace(value)
-	const prefix = "SHA256:"
-	if len(value) != len(prefix)+sha256.Size*2 || !strings.EqualFold(value[:len(prefix)], prefix) {
-		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
-	}
-	digest, err := hex.DecodeString(value[len(prefix):])
-	if err != nil || len(digest) != sha256.Size {
-		return nil, fmt.Errorf("Core fingerprint must use SHA256:<64-hex>")
-	}
-	return digest, nil
-}
-
-func newCommandIdempotencyKey() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("generate command idempotency key: %w", err)
-	}
-	return "build-" + hex.EncodeToString(bytes), nil
-}
-
-func parseBaseURL(value string) (*url.URL, error) {
-	parsed, err := url.Parse(strings.TrimRight(strings.TrimSpace(value), "/"))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-		return nil, errors.New("--url must be an http or https URL")
-	}
-	return parsed, nil
-}
-
-func readPassword(fromStdin bool) (string, error) {
-	if fromStdin {
-		value, err := io.ReadAll(io.LimitReader(os.Stdin, 4097))
-		if err != nil {
-			return "", fmt.Errorf("read password: %w", err)
-		}
-		password := strings.TrimRight(string(value), "\r\n")
-		if password == "" || len(password) > 4096 {
-			return "", errors.New("password from standard input is empty or too long")
-		}
-		return password, nil
-	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return "", errors.New("standard input is not a terminal; use --password-stdin")
-	}
-	fmt.Fprint(os.Stderr, "SwarmOps password: ")
-	value, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		return "", fmt.Errorf("read password: %w", err)
-	}
-	password := string(value)
-	if password == "" {
-		return "", errors.New("password is required")
-	}
-	return password, nil
-}
-
-func login(client *http.Client, endpoint *url.URL, username, password string) (string, error) {
-	payload, err := json.Marshal(map[string]string{"username": username, "password": password})
-	if err != nil {
-		return "", err
-	}
-	loginURL := endpoint.ResolveReference(&url.URL{Path: strings.TrimSuffix(endpoint.Path, "/") + "/api/v1/auth/login"})
-	request, err := http.NewRequest(http.MethodPost, loginURL.String(), bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("create login request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("log in to SwarmOps: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return "", responseError(response)
-	}
-	var session struct {
-		CSRFToken string `json:"csrfToken"`
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 32<<10)).Decode(&session); err != nil {
-		return "", fmt.Errorf("decode login response: %w", err)
-	}
-	if session.CSRFToken == "" {
-		return "", errors.New("login response did not include a request token")
-	}
-	return session.CSRFToken, nil
-}
-
-func responseError(response *http.Response) error {
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
-	var payload struct {
-		Error string `json:"error"`
-	}
-	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-		return fmt.Errorf("SwarmOps returned %s: %s", response.Status, payload.Error)
-	}
-	return fmt.Errorf("SwarmOps returned %s", response.Status)
-}
-
-func archiveContext(root, dockerfile string, limit int64) (io.ReadCloser, <-chan error, error) {
-	absoluteRoot, err := filepath.Abs(root)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve context path: %w", err)
-	}
-	info, err := os.Stat(absoluteRoot)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read context path: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, nil, errors.New("--context must name a directory")
-	}
-	if filepath.IsAbs(dockerfile) {
-		return nil, nil, errors.New("--dockerfile must be a path within --context")
-	}
-	cleanDockerfile := filepath.ToSlash(filepath.Clean(dockerfile))
-	if cleanDockerfile == "." || cleanDockerfile == ".." || strings.HasPrefix(cleanDockerfile, "../") {
-		return nil, nil, errors.New("--dockerfile must be a path within --context")
-	}
-	matcher, err := dockerignore(absoluteRoot)
-	if err != nil {
-		return nil, nil, err
-	}
-	reader, writer := io.Pipe()
-	finished := make(chan error, 1)
-	go func() {
-		err := writeArchive(writer, absoluteRoot, cleanDockerfile, limit, matcher)
-		_ = writer.CloseWithError(err)
-		finished <- err
-	}()
-	return reader, finished, nil
-}
-
-func dockerignore(root string) (*patternmatcher.PatternMatcher, error) {
-	file, err := os.Open(filepath.Join(root, ".dockerignore"))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read .dockerignore: %w", err)
-	}
-	defer file.Close()
-	patterns, err := ignorefile.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("parse .dockerignore: %w", err)
-	}
-	matcher, err := patternmatcher.New(patterns)
-	if err != nil {
-		return nil, fmt.Errorf("compile .dockerignore: %w", err)
-	}
-	return matcher, nil
-}
-
-func writeArchive(writer *io.PipeWriter, root, dockerfile string, limit int64, matcher *patternmatcher.PatternMatcher) error {
-	archive := tar.NewWriter(writer)
-	defer archive.Close()
-	var contentBytes int64
-	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if relative == "." {
-			return nil
-		}
-		name := filepath.ToSlash(relative)
-		ignored := false
-		if matcher != nil && name != ".dockerignore" && name != dockerfile {
-			ignored, err = matcher.MatchesOrParentMatches(name)
-			if err != nil {
-				return fmt.Errorf("match .dockerignore for %q: %w", name, err)
+		lines := make([]string, 0, 8)
+		for _, candidate := range commands() {
+			if candidate.Group == current {
+				lines = append(lines, fmt.Sprintf("  %-14s %s", candidate.Name, candidate.Summary))
 			}
 		}
-		if ignored {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
+		if len(lines) == 0 {
+			continue
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode()&os.ModeType != 0 && !info.IsDir() {
-			return fmt.Errorf("build context rejects symlink or special file %q", name)
-		}
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = name
-		if info.IsDir() {
-			header.Name += "/"
-		}
-		if err := archive.WriteHeader(header); err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		copied, copyErr := io.Copy(archive, io.LimitReader(file, limit-contentBytes+1))
-		closeErr := file.Close()
-		contentBytes += copied
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if contentBytes > limit {
-			return fmt.Errorf("build context exceeds the local %d MiB cap", limit>>20)
-		}
-		return nil
-	})
+		fmt.Fprintf(writer, "%s:\n%s\n\n", groupTitles[current], strings.Join(lines, "\n"))
+	}
+	if !all {
+		fmt.Fprint(writer, "Run `swarmops help all` for cluster, routing, and resource commands.\n")
+	}
+	fmt.Fprint(writer, `
+Configuration:
+  ~/.swarmops/config.json holds one profile per Core: its URL, the selected
+  machine, an optional pinned certificate, and the session `+"`login`"+` obtained.
+  The password is never stored. SWARMOPS_PROFILE, SWARMOPS_URL, and
+  SWARMOPS_SERVER_ID override the selected profile for one invocation.
+`)
 }

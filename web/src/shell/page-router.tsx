@@ -175,7 +175,7 @@ function PageRouterContent(props: PageRouterProps) {
           managerID={activeServer?.id ?? ''}
           managerName={activeServer?.name}
           onOpenImages={() => onOpen('images')}
-          onOpenPlatform={() => onOpen('platform-definition')}
+          onOpenRuns={() => onOpen('runs')}
           onOpenWorkloads={() => onOpen('workloads')}
           toast={toast}
         />
@@ -245,10 +245,8 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
     case 'workloads':
       return <WorkloadsPage data={data} onOpen={onOpen} toast={toast} />
     case 'platform':
-    case 'platform-definition':
       return (
         <PlatformServicesPage
-          initialTab={workspace === 'platform-definition' ? 'admission' : 'data'}
           nodes={data.nodes}
           onOpen={onOpen}
           status={data.observability}
@@ -257,7 +255,7 @@ function ClusterScreen({ commands, data, onOpen, serverID, toast, workspace }: {
         />
       )
     case 'applications':
-      return <ApplicationsPage commands={commands.filter(command => command.serverId === serverID)} onDeployFromSource={() => onOpen('deploy')} onOpenPlatform={() => onOpen('platform-definition')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
+      return <ApplicationsPage commands={commands.filter(command => command.serverId === serverID)} onDeployFromSource={() => onOpen('deploy')} onOpenRoutes={() => onOpen('routes')} toast={toast} />
     case 'images':
       return <ImagesPage onDeployFromSource={() => onOpen('deploy')} toast={toast} />
     case 'gateway':

@@ -27,8 +27,9 @@ import type {
   NetworkDetail,
   NetworkSummary,
 } from '../../../data/types'
-import { formatDateTime, shortID } from '../../../lib/format'
+import { formatDateTime } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
+import { followQueuedCommand, succeeded } from '../../../lib/command-follow'
 import { useResource } from '../../../data/hooks'
 import { ConfirmPhrase } from '../../../components/confirm-phrase'
 
@@ -64,9 +65,7 @@ export function NetworksTab({ toast }: { toast: Toast }) {
     setPending('create')
     try {
       const command = await api.createNetwork({ attachable, driver, internal, name: name.trim() })
-      toast({ message: `Network creation queued (${shortID(command.id)})`, tone: 'success' })
-      setName('')
-      await api.waitForCommand(command.id)
+      if (succeeded(await followQueuedCommand(command, { label: 'Network creation', toast }))) setName('')
       await reload()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -90,8 +89,7 @@ export function NetworksTab({ toast }: { toast: Toast }) {
             setPending(network.Name)
             try {
               const command = await api.removeNetwork(network.Name, confirmation)
-              toast({ message: `Network removal queued (${shortID(command.id)})`, tone: 'success' })
-              await api.waitForCommand(command.id)
+              await followQueuedCommand(command, { label: `Removing ${network.Name}`, toast })
               await reload()
             } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
           }}

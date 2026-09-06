@@ -14,8 +14,9 @@ import { api } from '../../../data/api'
 import type {
   SwarmObjectMeta,
 } from '../../../data/types'
-import { formatDateTime, shortID } from '../../../lib/format'
+import { formatDateTime } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
+import { followQueuedCommand } from '../../../lib/command-follow'
 import { useResource } from '../../../data/hooks'
 import { ConfirmPhrase } from '../../../components/confirm-phrase'
 
@@ -44,8 +45,7 @@ export function SwarmObjectsTab({ kind, toast }: { kind: 'configs' | 'secrets'; 
               setPending(item.Spec.Name)
               try {
                 const command = await api.removeConfig(item.Spec.Name, confirmation)
-                toast({ message: `Config removal queued (${shortID(command.id)})`, tone: 'success' })
-                await api.waitForCommand(command.id)
+                await followQueuedCommand(command, { label: `Removing config ${item.Spec.Name}`, toast })
                 await reload()
               } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
             }}

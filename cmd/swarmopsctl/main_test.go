@@ -3,8 +3,6 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -70,81 +68,6 @@ func TestArchiveContextHonorsDockerignoreButKeepsDockerfile(t *testing.T) {
 	}
 	if entries["ignored.txt"] {
 		t.Fatalf("ignored file was included: %#v", entries)
-	}
-}
-
-func TestPreflightNodesHTTPMapsAuthenticatedInventory(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/api/v1/auth/login":
-			if request.Method != http.MethodPost {
-				t.Fatalf("login method = %s", request.Method)
-			}
-			http.SetCookie(response, &http.Cookie{Name: "swarmops_session", Value: "session", Path: "/"})
-			_ = json.NewEncoder(response).Encode(map[string]string{"csrfToken": "csrf"})
-		case "/api/v1/nodes":
-			if _, err := request.Cookie("swarmops_session"); err != nil {
-				t.Fatalf("missing session cookie: %v", err)
-			}
-			if got := request.Header.Get("X-SwarmOps-Server-ID"); got != "server-test" {
-				t.Fatalf("server header = %q", got)
-			}
-			nodes := []domain.Node{{Hostname: "node-01", State: "ready", Agent: domain.NodeAgent{Healthy: true}, Labels: map[string]string{"nim.mongo": "true"}}}
-			nodes[0].CPU.Capacity = 8
-			nodes[0].Memory.Capacity = 16 * 1024 * 1024 * 1024
-			nodes[0].Memory.Available = 12 * 1024 * 1024 * 1024
-			nodes[0].Disk.Available = 400 * 1024 * 1024 * 1024
-			_ = json.NewEncoder(response).Encode(nodes)
-		default:
-			t.Fatalf("unexpected path %s", request.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	endpoint, err := parseBaseURL(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	observed, err := preflightNodesHTTP(endpoint, "operator", "password", "server-test", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(observed) != 1 || observed[0].Name != "node-01" || observed[0].AvailableMemoryMiB != 12288 || observed[0].AvailableDiskGiB != 400 {
-		t.Fatalf("observed = %#v", observed)
-	}
-}
-
-func TestPreflightNodesHTTPAcceptsExactSelfSignedCorePin(t *testing.T) {
-	t.Parallel()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/api/v1/auth/login":
-			http.SetCookie(response, &http.Cookie{Name: "swarmops_session", Value: "session", Path: "/"})
-			_ = json.NewEncoder(response).Encode(map[string]string{"csrfToken": "csrf"})
-		case "/api/v1/nodes":
-			_ = json.NewEncoder(response).Encode([]domain.Node{{Hostname: "pinned-node", State: "ready"}})
-		default:
-			t.Fatalf("unexpected path %s", request.URL.Path)
-		}
-	}))
-	defer server.Close()
-	endpoint, err := parseBaseURL(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := sha256.Sum256(server.Certificate().Raw)
-	fingerprint := "SHA256:" + hex.EncodeToString(digest[:])
-	observed, err := preflightNodesHTTP(endpoint, "operator", "password", "server-test", fingerprint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(observed) != 1 || observed[0].Name != "pinned-node" {
-		t.Fatalf("observed = %#v", observed)
-	}
-	wrong := "SHA256:" + strings.Repeat("0", 64)
-	if _, err := preflightNodesHTTP(endpoint, "operator", "password", "server-test", wrong); err == nil || !strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("wrong pin error = %v", err)
 	}
 }
 

@@ -32,13 +32,13 @@ import type {
   ServiceRouteRole,
 } from '../../data/types'
 import { messageOf } from '../../lib/errors'
+import { FOLLOW_TRANSFER_MS, followQueuedCommand } from '../../lib/command-follow'
 import {
   cloneRoute,
   commaValues,
   filterOptions,
   option,
   protocolPatch,
-  queuedToast,
   roleVariant,
   routeConfirmation,
   routeConfirmationHint,
@@ -107,8 +107,8 @@ export function RoutesTab({ cutover, onQueued, routes, state, toast }: { cutover
     setPending('route')
     try {
       const command = await api.applyTraefikRoute(plan.route, confirmation)
-      queuedToast(toast, command, 'Route reconciliation')
       setConfirmation('')
+      await followQueuedCommand(command, { label: 'Route reconciliation', toast })
       onQueued()
     } catch (reasonValue) { toast({ message: messageOf(reasonValue), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -118,7 +118,7 @@ export function RoutesTab({ cutover, onQueued, routes, state, toast }: { cutover
     setPending('role')
     try {
       const command = await api.declareTraefikServiceRole(selected.route.serviceKey, role, reason)
-      queuedToast(toast, command, 'Service role')
+      await followQueuedCommand(command, { label: 'Service role', toast })
       onQueued()
     } catch (reasonValue) { toast({ message: messageOf(reasonValue), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -127,7 +127,7 @@ export function RoutesTab({ cutover, onQueued, routes, state, toast }: { cutover
     setPending('binding')
     try {
       const command = await api.applyTraefikBinding({ ...binding, name: binding.delivery === 'existing' ? '' : binding.name.toUpperCase() })
-      queuedToast(toast, command, 'Dependency binding')
+      await followQueuedCommand(command, { label: 'Dependency binding', toast })
       onQueued()
     } catch (reasonValue) { toast({ message: messageOf(reasonValue), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -136,8 +136,10 @@ export function RoutesTab({ cutover, onQueued, routes, state, toast }: { cutover
     setPending('cutover')
     try {
       const command = await api.applyTraefikCutover(cutoverConfirmation)
-      queuedToast(toast, command, 'Cluster cutover')
       setCutoverConfirmation('')
+      // A cutover moves every published route onto the gateway; it is the one
+      // traffic command worth waiting minutes for rather than seconds.
+      await followQueuedCommand(command, { label: 'Cluster cutover', timeoutMs: FOLLOW_TRANSFER_MS, toast })
       onQueued()
     } catch (reasonValue) { toast({ message: messageOf(reasonValue), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }

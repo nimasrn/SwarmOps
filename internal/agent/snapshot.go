@@ -27,13 +27,33 @@ type Config struct {
 	BuildMaxCPUs         float64
 	BuildMaxMemoryMiB    int64
 	Docker               *dockerapi.Client
-	// InternalHTTP reaches only the fixed Traefik, Fluentd-query, and Prometheus
-	// adapters below. Their base URLs come from the agent's trusted startup
+	// InternalHTTP reaches only the fixed Traefik and Prometheus adapters
+	// below. Their base URLs come from the agent's trusted startup
 	// configuration, never from an API request.
 	InternalHTTP      *http.Client
-	LogsBaseURL       string
-	PrometheusBaseURL string
 	TraefikAPIBaseURL string
+	// PrometheusBaseURL overrides discovery. Left empty, the agent locates the
+	// Prometheus task itself; see prometheusBaseURL.
+	PrometheusBaseURL string
+	// PrometheusService is the Swarm service whose task this agent reads.
+	// Prometheus publishes no port and its overlay is reachable only from
+	// inside the cluster, but a task on a non-internal overlay is also attached
+	// to docker_gwbridge — a node-local bridge the host itself sits on. Reading
+	// it there needs nothing published on any node interface and no firewall
+	// rule to keep it private.
+	PrometheusService string
+	PrometheusPort    uint16
+	// LogsVolume is the Docker volume the collector writes records into. The
+	// agent reads that volume DIRECTLY rather than calling a log service over
+	// the network: the collector is placed on one node, publishes no port, and
+	// the controller already sends log reads to that node's agent. Resolving
+	// the volume through the Docker API keeps the mount path an engine
+	// answer instead of a guess about Docker's on-disk layout.
+	LogsVolume string
+	// LogsRoot overrides the resolved mount path. It exists for a host that
+	// stores records outside a Docker volume; when it is set the volume is not
+	// consulted at all.
+	LogsRoot string
 	// EnrollmentSecret is the installer's one-time secret. When present the
 	// agent serves a single enrollment exchange that hands the controller the
 	// machine API key; EnrollmentSecretFile is removed once it is spent.

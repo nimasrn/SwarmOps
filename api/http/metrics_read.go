@@ -64,12 +64,11 @@ func (s *Server) metricsRange(response http.ResponseWriter, request *http.Reques
 	}
 
 	// A container or machine reading is about a machine; the cluster, gateway
-	// and application readings are about the selected cluster's manager. Both
-	// resolve through the same target, because the manager is the machine that
-	// can reach the cluster's Prometheus.
+	// and application readings are about the selected cluster.
+	clusterID := strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
 	targetID := strings.TrimSpace(query.Machine)
 	if query.Scope != agentcontrol.MetricScopeMachine && query.Scope != agentcontrol.MetricScopeContainer {
-		targetID = strings.TrimSpace(request.Header.Get("X-SwarmOps-Server-ID"))
+		targetID = clusterID
 	}
 	if targetID == "" {
 		writeError(response, http.StatusUnprocessableEntity, "Choose a machine before reading a metric")
@@ -79,6 +78,16 @@ func (s *Server) metricsRange(response http.ResponseWriter, request *http.Reques
 	if err != nil || target.Metrics == nil {
 		writeJSON(response, http.StatusOK, unavailableRange(query, "This machine is not connected, so its history cannot be read."))
 		return
+	}
+
+	// The addressed machine identifies WHAT is being read; it is not
+	// necessarily a machine that can read it. Prometheus binds to loopback on
+	// the single node it is placed on, so the query runs from that node's
+	// agent. This does not change the answer: Prometheus holds every machine's
+	// series, and each expression already carries its own `machine` selector.
+	cluster, clusterErr := s.targets.Resolve(clusterID)
+	if clusterErr == nil {
+		target = s.metricsHostTarget(request.Context(), cluster.Control, target)
 	}
 
 	result, err := target.Metrics.MetricRange(request.Context(), query)

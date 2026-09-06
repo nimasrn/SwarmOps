@@ -355,16 +355,6 @@ func (s *Server) submitApplicationDeploy(response http.ResponseWriter, request *
 		return
 	}
 	spec = spec.Normalize()
-	// The slot is declared before the plan is checked against it, exactly as
-	// the source-to-deploy path does. Without this a first deployment from the
-	// applications screen was refused with "stack is not declared in the
-	// reviewed platform manifest" — for a slot the execution step would have
-	// declared a moment later — so the same first deployment succeeded through
-	// one screen and failed through the other.
-	if err := target.Control.EnsureApplicationSlot(claims.Username, requestID(request), spec); err != nil {
-		writeError(response, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
 	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -459,19 +449,9 @@ func (s *Server) submitSourceDeploy(response http.ResponseWriter, request *http.
 		}
 		commandInput.Build = &buildRequest
 	}
-	// A repository being deployed for the first time names a slot the platform
-	// definition does not have yet, and declaring it is what makes that
-	// deployable from this screen instead of refused with an instruction to go
-	// and author a workload. It comes after every check that can refuse this
-	// submission on its own evidence, so a build that was never going to run
-	// does not leave a slot — and a domain — declared behind it.
-	if err := target.Control.EnsureApplicationSlot(claims.Username, requestID(request), spec); err != nil {
-		writeError(response, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	// The plan is validated against the definition the line above may have
-	// just written, so the deployment is admitted by the same rules every
-	// later one into this slot will be.
+	// The rendered Compose is put through the whole admission path before the
+	// command is queued, so a spec that cannot deploy is refused here rather
+	// than failing later in a worker.
 	if _, err := target.Control.PlanApplication(request.Context(), spec); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, err.Error())
 		return

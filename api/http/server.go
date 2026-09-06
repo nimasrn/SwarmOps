@@ -141,7 +141,6 @@ type Server struct {
 	sources        *source.Service
 	sourceSettings *source.SettingsStore
 	apps           *ops.ApplicationStore
-	platform       *ops.PlatformStore
 	agentBroker    *agentpull.Broker
 	agentRegistry  *agentpull.Registry
 	namespace      string
@@ -283,13 +282,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/observability/node-agent", s.withActiveAuth(s.nodeAgentCollection))
 	mux.HandleFunc("POST /api/v1/observability/core", s.withActiveAuth(s.coreObservability))
 	mux.HandleFunc("POST /api/v1/observability/logs", s.withActiveAuth(s.logsCollection))
-	mux.HandleFunc("GET /api/v1/platform", s.withAuth(false, s.platformRead))
-	mux.HandleFunc("PUT /api/v1/platform", s.withActiveAuth(s.platformApply))
-	mux.HandleFunc("POST /api/v1/platform/check", s.withAuth(false, s.platformCheck))
-	mux.HandleFunc("GET /api/v1/platform/nodes", s.withAuth(false, s.platformNodes))
-	mux.HandleFunc("GET /api/v1/platform/ingress-candidates", s.withAuth(false, s.platformIngressCandidates))
 	mux.HandleFunc("GET /api/v1/applications", s.withAuth(false, s.applications))
-	mux.HandleFunc("GET /api/v1/applications/approved", s.withAuth(false, s.approvedApplications))
 	mux.HandleFunc("GET /api/v1/applications/plans", s.withAuth(false, s.applicationPlans))
 	mux.HandleFunc("POST /api/v1/applications/plan", s.withActiveAuth(s.applicationPlan))
 	mux.HandleFunc("POST /api/v1/applications", s.withActiveAuth(s.applicationDeploy))
@@ -947,15 +940,8 @@ func (s *Server) SetApplicationDiscovery(apps *ops.ApplicationStore, namespace s
 // duty says it lives.
 func (s *Server) SetVersion(version string) { s.version = version }
 
-// discoveryNamespace prefers the namespace currently admitting deployments, so
-// discovery follows a namespace an operator changes from the panel rather than
-// the one this process happened to start with.
-func (s *Server) discoveryNamespace() string {
-	if namespace := s.platform.Admission().Namespace(); namespace != "" {
-		return namespace
-	}
-	return s.namespace
-}
+// discoveryNamespace is the namespace applications are deployed into.
+func (s *Server) discoveryNamespace() string { return ops.ApplicationNamespace }
 
 // SetSourceService enables the optional sealed Git-provider boundary. Keeping
 // it out of New preserves the default-off posture for existing deployments.
@@ -1230,24 +1216,13 @@ func (s *Server) applications(response http.ResponseWriter, request *http.Reques
 	writeJSON(response, http.StatusOK, statuses)
 }
 
-// approvedApplications tells the console which application names, domains,
-// resolvers, and resource ceilings the reviewed manifest allows. The console
-// offers these rather than free-form input.
-// applicationPlans lists the reviewed sizes a deployment may choose from, so
-// the console offers the same set the controller enforces.
+// applicationPlans lists the sizes a deployment may choose from, so the
+// console offers the same set the controller enforces.
 func (s *Server) applicationPlans(response http.ResponseWriter, _ *http.Request, _ auth.Claims) {
 	writeJSON(response, http.StatusOK, map[string]any{
 		"default": ops.DefaultResourcePlan,
 		"plans":   ops.ResourcePlans(),
 	})
-}
-
-func (s *Server) approvedApplications(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
-	target, ok := s.targetFor(response, request)
-	if !ok {
-		return
-	}
-	writeJSON(response, http.StatusOK, target.Control.ApprovedApplications())
 }
 
 // applicationPlan renders and fully validates without deploying, so an

@@ -19,7 +19,7 @@ export function ApplicationDetailView({ onBack, onDeploy, onOpenRoutes, status, 
   const [tab, setTab] = useRecordView()
   const [inspector, setInspector] = useState(true)
   const [windowSeconds, setWindowSeconds] = useState(21_600)
-  const healthy = status.deployed && status.runningTasks >= status.spec.replicas
+  const healthy = status.deployed && status.runningTasks >= (status.spec.replicas ?? 1)
   const relatedRuns = commands.filter(command => command.target === `application/${status.spec.name}` && (command.action === 'application.deploy' || command.action === 'source.deploy')).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
   const tabs = pageEntry('applications').views!.map(value => ({ value, label: capitalize(value) }))
   const configuration = [

@@ -22,11 +22,7 @@ type MetricsTarget struct {
 // that publishes metrics. The target is the service's typed Traefik alias;
 // Prometheus never joins an application overlay or reaches a backend directly.
 func (c *ControlPlane) MetricsTargets() []MetricsTarget {
-	namespace := ""
-	if c.admission() != nil {
-		namespace = c.admission().Namespace()
-	}
-	return MetricsTargetsFor(c.Apps, namespace)
+	return MetricsTargetsFor(c.Apps, ApplicationNamespace)
 }
 
 // MetricsTargetsFor is the same rendering without a connected server. The

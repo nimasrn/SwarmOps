@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { BadgeVariant, useToast } from '@nim.zone/ui'
+import { isTerminal } from '../../lib/command-outcome'
 import type {
   Command,
   DNSCredentialMetadata,
@@ -119,8 +120,13 @@ export function commaValues(value: string) { return value.split(',').map((item) 
 export function unique(values: string[]) { return [...new Set(values)].sort() }
 export function roleVariant(role: ServiceRouteRole): BadgeVariant { return role === 'routed' ? 'success' : role === 'needs-configuration' ? 'warning' : role === 'platform-exception' ? 'info' : 'neutral' }
 export function statusVariant(status: string): BadgeVariant { return status === 'active' ? 'success' : status === 'drift' || status === 'service-missing' ? 'danger' : status === 'desired' ? 'info' : 'neutral' }
+/** The gateway screen queues, then renders the command's progress in its own
+    banner rather than in a toast, so it announces the queueing itself. Every
+    other traffic action reports through followQueuedCommand. */
 export function queuedToast(toast: Toast, command: Command, label: string) { toast({ message: `${label} queued (${command.id.slice(0, 12)})`, tone: 'success' }) }
 
+/** One definition of "this command stopped, and not well". It used to be
+    written out here as four state comparisons and again in the deploy paths. */
 export function commandFailed(command: Command) {
-  return command.state === 'failed' || command.state === 'needs_attention' || command.state === 'superseded' || command.state === 'cancelled'
+  return isTerminal(command.state) && command.state !== 'succeeded'
 }

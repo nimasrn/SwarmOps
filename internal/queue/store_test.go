@@ -767,8 +767,7 @@ func TestPolicyRefusalIsNotReportedAsAnUnconfirmedChange(t *testing.T) {
 		message string
 		code    string
 	}{
-		{"browser stack deployment requires a reviewed platform manifest", "platform_manifest_required"},
-		{`stack "shop" is not declared in the reviewed platform manifest`, "stack_not_declared"},
+		{`stack "shop" must use the "production-" namespace prefix`, "stack_outside_namespace"},
 	} {
 		code, summary, hint := commandFailureDiagnostic("stack.deploy", errors.New(sample.message))
 		if code != sample.code {

@@ -17,7 +17,7 @@ import { api } from '../../data/api'
 import type { CertificateStatus, RouteInventoryRow } from '../../data/types'
 import { formatDateTime } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
-import { queuedToast } from './lib'
+import { FOLLOW_TRANSFER_MS, followQueuedCommand } from '../../lib/command-follow'
 
 type Toast = ReturnType<typeof useToast>
 
@@ -29,7 +29,8 @@ export function CertificatesTab({ certificates, onQueued, routes, toast }: { cer
     setPending(key)
     try {
       const command = await api.retryTraefikCertificate(key)
-      queuedToast(toast, command, 'Safe certificate retry')
+      // Issuance is an ACME round trip, not a local change.
+      await followQueuedCommand(command, { label: 'Safe certificate retry', timeoutMs: FOLLOW_TRANSFER_MS, toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }

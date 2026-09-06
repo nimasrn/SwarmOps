@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
 )
@@ -14,10 +13,6 @@ import (
 func newApplicationControlPlane(t *testing.T, runner *recordingRunner) *ControlPlane {
 	t.Helper()
 	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	admission, err := NewPlatformAdmission(routedApplicationManifest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +26,6 @@ func newApplicationControlPlane(t *testing.T, runner *recordingRunner) *ControlP
 		t.Fatal(err)
 	}
 	return NewControlPlane(nil, DockerCLI{Runner: runner}, store, ControlPlaneOptions{
-		Admission:   admission,
 		Apps:        applications,
 		Credentials: credentials,
 		DataDir:     dataDir,
@@ -184,53 +178,34 @@ func TestSealedDatabaseCredentialsAreNotStoredInTheClear(t *testing.T) {
 
 func readFileBytes(path string) ([]byte, error) { return os.ReadFile(path) }
 
-// Deploying a repository the platform definition has never heard of is the
-// first thing an operator does with a new application. The slot is declared
-// from the deployment, and the same admission that refused it a moment earlier
-// then admits it — nothing is skipped, something is written down.
-func TestEnsureApplicationSlotMakesANewApplicationDeployable(t *testing.T) {
+// Deploying a repository this controller has never heard of is the first
+// thing an operator does with a new application, and it is the whole of what
+// they have to do: name the image and the project, and it plans. Nothing has
+// to be declared anywhere first.
+func TestANewApplicationPlansWithNothingDeclaredInAdvance(t *testing.T) {
 	control := newApplicationControlPlane(t, &recordingRunner{})
-	store, err := NewPlatformStore(t.TempDir(), bytes.Repeat([]byte{13}, 32), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Save("admin", PlatformInput{Manifest: routedApplicationManifest(), Mode: PlatformModeManifest}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	control.Platform = store
 	spec := ApplicationSpec{
-		CPUs:       0.5,
 		Domain:     "invoices.vlora.ir",
 		HealthPath: "/healthz",
 		Image:      "ghcr.io/nimasrn/invoices:2026.09.01",
-		MemoryMiB:  512,
 		Name:       "invoices",
 		Port:       8080,
-		Replicas:   1,
-		Resolver:   "le",
 	}
-	if _, err := control.PlanApplication(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "not declared") {
-		t.Fatalf("undeclared application error = %v", err)
+	rendered, err := control.PlanApplication(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("plan a never-seen application: %v", err)
 	}
-	if err := control.EnsureApplicationSlot("admin", "request-1", spec); err != nil {
-		t.Fatalf("declare slot: %v", err)
+	if !strings.Contains(string(rendered), "production-invoices-app.swarmops.internal") {
+		t.Fatalf("planned stack has no route at all:\n%s", rendered)
 	}
-	if _, err := control.PlanApplication(context.Background(), spec); err != nil {
-		t.Fatalf("plan after declaration: %v", err)
+	// The size and the certificate resolver the operator never stated are
+	// filled in from the defaults rather than demanded from them.
+	normalized := spec.Normalize()
+	plan, err := LookupResourcePlan("")
+	if err != nil {
+		t.Fatal(err)
 	}
-	declared := control.ApprovedApplications()
-	if len(declared) != 3 {
-		t.Fatalf("slots after declaration = %#v", declared)
-	}
-	// A hostname a reviewed workload already owns stays refused, and leaves
-	// the definition as it was.
-	taken := spec
-	taken.Name = "billing"
-	taken.Domain = "api.vlora.ir"
-	if err := control.EnsureApplicationSlot("admin", "request-2", taken); err == nil || !strings.Contains(err.Error(), "already belongs") {
-		t.Fatalf("colliding declaration error = %v", err)
-	}
-	if len(control.ApprovedApplications()) != 3 {
-		t.Fatalf("refused declaration changed the slots in force: %#v", control.ApprovedApplications())
+	if normalized.Resolver != DefaultResolver || normalized.CPUs != plan.CPUCores || normalized.MemoryMiB != plan.MemoryMiB {
+		t.Fatalf("defaults were not applied: %#v", normalized)
 	}
 }

@@ -24,11 +24,7 @@ import type {
   SwarmSettings,
   VolumeSummary,
   ApplicationStatus,
-  ApprovedWorkload,
-  PlatformDefinition,
-  PlatformInput,
-  PlatformNode,
-  PreflightReport,
+  ResourcePlanSet,
   AuditEvent,
   Command,
   ComposePlan,
@@ -461,13 +457,33 @@ export class SwarmOpsAPI {
   }
   commands() { return this.request<Command[]>('/api/v1/commands?limit=100') }
   command(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}`) }
-  async waitForCommand(id: string, timeoutMs = 8000) {
+  /**
+   * Poll a queued command until it stops moving, reporting each state change.
+   *
+   * The interval backs off because the two callers want different things: a
+   * volume is created in under a second, and a source deployment builds an
+   * image first. A fixed 200ms poll served the first and would have made
+   * several thousand requests waiting out the second.
+   *
+   * A command that outlives the budget is RETURNED, not thrown: it is still
+   * running on the machine, and the caller has to say so rather than report a
+   * timeout as a failure.
+   */
+  async waitForCommand(id: string, timeoutMs = 8000, onState?: (command: Command) => void) {
     const terminal = new Set<Command['state']>(['succeeded', 'failed', 'needs_attention', 'superseded', 'cancelled'])
     const deadline = Date.now() + timeoutMs
     let command = await this.command(id)
+    let state = command.state
+    onState?.(command)
+    let interval = 200
     while (!terminal.has(command.state) && Date.now() < deadline) {
-      await new Promise((resolve) => window.setTimeout(resolve, 200))
+      await new Promise((resolve) => window.setTimeout(resolve, interval))
+      interval = Math.min(interval * 1.5, 2000)
       command = await this.command(id)
+      if (command.state !== state) {
+        state = command.state
+        onState?.(command)
+      }
     }
     return command
   }
@@ -476,19 +492,8 @@ export class SwarmOpsAPI {
   observability() { return this.request<ObservabilityStatus>('/api/v1/observability/status') }
   databases() { return this.request<DatabaseStatus[]>('/api/v1/databases') }
   applications() { return this.request<ApplicationStatus[]>('/api/v1/applications') }
-  approvedApplications() { return this.request<ApprovedWorkload[]>('/api/v1/applications/approved') }
-  platform() { return this.request<PlatformDefinition>('/api/v1/platform') }
-
-  savePlatform(input: PlatformInput) {
-    return this.request<PlatformDefinition>('/api/v1/platform', { method: 'PUT', body: JSON.stringify(input) })
-  }
-
-  checkPlatform(input: PlatformInput) {
-    return this.request<PreflightReport>('/api/v1/platform/check', { method: 'POST', body: JSON.stringify(input) })
-  }
-
-  /** The live cluster's nodes, projected into measured manifest declarations. */
-  platformNodes() { return this.request<PlatformNode[]>('/api/v1/platform/nodes') }
+  /** The named sizes a deployment may choose from, and which one it defaults to. */
+  applicationPlans() { return this.request<ResourcePlanSet>('/api/v1/applications/plans') }
   sourceStatus() { return this.request<SourceStatus>('/api/v1/sources/status') }
   sourceSettings() { return this.request<SourceSettings>('/api/v1/sources/settings') }
 

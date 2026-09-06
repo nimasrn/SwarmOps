@@ -24,6 +24,7 @@ import type {
 } from '../../../data/types'
 import { formatBytes, formatDateTime, formatTimestamp, shortID } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
+import { FOLLOW_TRANSFER_MS, followQueuedCommand, succeeded } from '../../../lib/command-follow'
 import { useResource } from '../../../data/hooks'
 
 type Toast = ReturnType<typeof useToast>
@@ -56,9 +57,8 @@ export function ImagesTab({ toast }: { toast: Toast }) {
     setPending('pull')
     try {
       const command = await api.pullImage(reference.trim())
-      toast({ message: `Image pull queued (${shortID(command.id)})`, tone: 'success' })
-      setReference('')
-      await api.waitForCommand(command.id)
+      // A pull crosses the network; thirty seconds is not a budget for it.
+      if (succeeded(await followQueuedCommand(command, { label: `Pulling ${reference.trim()}`, timeoutMs: FOLLOW_TRANSFER_MS, toast }))) setReference('')
       await reload()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -68,8 +68,7 @@ export function ImagesTab({ toast }: { toast: Toast }) {
     setPending(target)
     try {
       const command = await api.removeImage(target)
-      toast({ message: `Image removal queued (${shortID(command.id)})`, tone: 'success' })
-      await api.waitForCommand(command.id)
+      await followQueuedCommand(command, { label: `Removing ${target}`, toast })
       await reload()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }

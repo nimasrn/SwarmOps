@@ -33,8 +33,8 @@ const version = "0.19.8"
 
 // hostSnapshotFor exposes the enrolled machine agent's own host reading to the
 // control plane. Without it a host-native agent contributed nothing to node
-// inventory, and platform admission refused every deployment for want of a
-// live memory, disk, and agent reading.
+// inventory, so the console showed a node with no memory, disk, or agent
+// reading at all.
 func hostSnapshotFor(runner any) func(context.Context) (agent.Snapshot, error) {
 	inspector, ok := runner.(apihttp.HostInspector)
 	if !ok {
@@ -93,21 +93,6 @@ func main() {
 			logger.Warn("resume machine API connection", "error", failure)
 		}
 		startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
-	}
-	admission, err := ops.LoadPlatformAdmission(cfg.PlatformManifestFile)
-	if err != nil {
-		logger.Error("load platform admission", "error", err)
-		os.Exit(1)
-	}
-	// The panel-owned platform definition is always constructed. A mounted
-	// manifest still wins and makes the console view read-only; without one,
-	// this is where an operator authors the platform or declares the install
-	// manifest-free, neither of which they could do by editing controller
-	// environment they cannot reach from a browser.
-	platform, err := ops.NewPlatformStore(cfg.DataDir, cfg.DataEncryptionKey, admission)
-	if err != nil {
-		logger.Error("load sealed platform definition", "error", err)
-		os.Exit(1)
 	}
 	credentials, err := ops.NewCredentialStore(cfg.DataDir, cfg.DataEncryptionKey)
 	if err != nil {
@@ -242,9 +227,7 @@ func main() {
 		// filesystem path; remote nodes retain their own reviewed pull credentials.
 		cli := ops.DockerCLI{Runner: connection.Runner}
 		control := ops.NewControlPlane(connection.Docker, cli, auditStore, ops.ControlPlaneOptions{
-			Admission:   admission,
 			Apps:        applications,
-			Platform:    platform,
 			Credentials: credentials,
 			DatabaseSettings: ops.DatabaseSettings{
 				MongoImage:               cfg.MongoImage,
@@ -291,8 +274,7 @@ func main() {
 	api, err := apihttp.New(cfg, targets, servers, auditStore, logger)
 	if err == nil {
 		api.SetVersion(version)
-		api.SetApplicationDiscovery(applications, admission.Namespace())
-		api.SetPlatformStore(platform)
+		api.SetApplicationDiscovery(applications, ops.ApplicationNamespace)
 		api.SetSourceService(sourceService)
 		api.SetSourceSettings(sourceSettings)
 	}

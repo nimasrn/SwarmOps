@@ -72,8 +72,18 @@ func main() {
 		BuildMaxCPUs:         runtime.buildMaxCPUs,
 		BuildMaxMemoryMiB:    runtime.buildMaxMemoryMiB,
 		Docker:               docker,
-		LogsBaseURL:          env("SWARMOPS_LOGS_INTERNAL_URL", "http://swarmops-fluentd-query.swarmops.internal:8081"),
-		PrometheusBaseURL:    env("SWARMOPS_PROMETHEUS_INTERNAL_URL", "http://swarmops-prometheus.swarmops.internal:8081"),
+		// Records are read from the collector's volume on this node, and
+		// Prometheus over loopback on the node it is placed on. The controller
+		// sends both reads to that node's agent. The previous
+		// `*.swarmops.internal` defaults were Docker overlay aliases behind
+		// Traefik's internal-http entrypoint, which is deliberately never
+		// published to a host — so a host-native agent could resolve neither
+		// name nor reach the port, and every log and chart read failed.
+		LogsVolume:        env("SWARMOPS_LOGS_VOLUME", "swarmops-logs_swarmops_logs"),
+		LogsRoot:          os.Getenv("SWARMOPS_LOGS_ROOT"),
+		PrometheusService: env("SWARMOPS_PROMETHEUS_SERVICE", "swarmops-observability_prometheus"),
+		PrometheusPort:    9090,
+		PrometheusBaseURL: os.Getenv("SWARMOPS_PROMETHEUS_INTERNAL_URL"),
 		// A host-native agent cannot resolve or route to the overlay service
 		// name, which is the documented production model; the node's own
 		// address works for both a host-native agent and a containerised one.

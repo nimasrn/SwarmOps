@@ -2,7 +2,6 @@ package ops
 
 import (
 	"fmt"
-	"github.com/nimasrn/SwarmOps/internal/preflight"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,7 +14,7 @@ import (
 // operator supplies a small, closed spec — image, domain, port, health path,
 // which managed databases to attach — and SwarmOps renders the Compose. The
 // rendered document is then put through exactly the same ValidateCompose and
-// platform-admission checks as hand-written Compose, so generation is a
+// stack-admission checks as hand-written Compose, so generation is a
 // convenience over the policy rather than a way around it.
 const (
 	// ApplicationServiceName is fixed so router names, DNS names, and metrics
@@ -27,6 +26,12 @@ const (
 	// anyone who can run `docker service inspect` can read it.
 	DeliverySecret = "secret"
 	DeliveryEnv    = "env"
+
+	// DefaultResolver is the certificate resolver a routed application takes
+	// when it names none. HTTP-01 needs no DNS credential and is what such a
+	// hostname would be issued through anyway, so a domain never has to wait
+	// for a DNS provider to be configured first.
+	DefaultResolver = "http"
 
 	defaultHealthPath  = "/healthz"
 	defaultMetricsPath = "/metrics"
@@ -109,7 +114,7 @@ func (s ApplicationSpec) Normalize() ApplicationSpec {
 	// credential. Refusing instead made every domain require a DNS section the
 	// install may never have.
 	if s.Domain != "" && s.Resolver == "" {
-		s.Resolver = preflight.DefaultResolver
+		s.Resolver = DefaultResolver
 	}
 	if s.DatabaseDelivery == "" {
 		s.DatabaseDelivery = DeliverySecret

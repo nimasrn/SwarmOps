@@ -6,28 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/nimasrn/SwarmOps/internal/preflight"
 )
 
-// This drives the repository's own checked-in example files — the platform
-// manifest and the vlora application specs — through the real renderer, the
-// real Compose policy, and the real platform admission. It is the closest this
-// repository can get to the end-to-end claim without a live cluster: it proves
-// the documents are mutually consistent and that the rendered stacks would be
-// admitted. It does not prove that a cluster accepted them, that DNS resolved,
-// or that a certificate was issued.
+// This drives the repository's own checked-in example application specs
+// through the real renderer, the real Compose policy, and the real stack
+// admission. It is the closest this repository can get to the end-to-end claim
+// without a live cluster: it proves the documents are mutually consistent and
+// that the rendered stacks would be admitted. It does not prove that a cluster
+// accepted them, that DNS resolved, or that a certificate was issued.
 func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
 	root := filepath.Join("..", "..", "deploy", "swarmops")
-	manifest, err := preflight.LoadFile(filepath.Join(root, "platform.example.yml"))
-	if err != nil {
-		t.Fatalf("load example platform manifest: %v", err)
-	}
-	admission, err := NewPlatformAdmission(manifest)
-	if err != nil {
-		t.Fatalf("example platform manifest is not admissible: %v", err)
-	}
-
 	raw, err := os.ReadFile(filepath.Join(root, "applications.example.json"))
 	if err != nil {
 		t.Fatalf("read example applications: %v", err)
@@ -54,7 +42,7 @@ func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
 	for _, spec := range file.Applications {
 		spec = spec.Normalize()
 		t.Run(spec.Name, func(t *testing.T) {
-			input := ApplicationRenderInput{DatabaseURIs: uris, Namespace: manifest.Namespace, Spec: spec}
+			input := ApplicationRenderInput{DatabaseURIs: uris, Namespace: ApplicationNamespace, Spec: spec}
 			if spec.Backend != "" {
 				backend, found := specs[spec.Backend]
 				if !found {
@@ -70,13 +58,13 @@ func TestCheckedInVloraExamplesRenderAndAreAdmitted(t *testing.T) {
 			if _, err := ValidateCompose(rendered); err != nil {
 				t.Fatalf("compose policy refused the example: %v\n%s", err, rendered)
 			}
-			stack := spec.StackName(manifest.Namespace)
-			if err := admission.ValidateStack(stack, rendered); err != nil {
-				t.Fatalf("platform admission refused the example: %v\n%s", err, rendered)
+			stack := spec.StackName(ApplicationNamespace)
+			if err := ValidateApplicationStack(stack, rendered); err != nil {
+				t.Fatalf("stack admission refused the example: %v\n%s", err, rendered)
 			}
 
 			document := string(rendered)
-			serviceKey := spec.ServiceDNSName(manifest.Namespace)
+			serviceKey := spec.ServiceDNSName(ApplicationNamespace)
 			internalHost := defaultRouteKey(serviceKey) + ".swarmops.internal"
 			if !strings.Contains(document, "Host(`"+internalHost+"`)") {
 				t.Fatalf("%s has no fail-closed internal route", spec.Name)

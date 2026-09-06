@@ -20,7 +20,6 @@ import {
 } from '@nim.zone/ui'
 import type { BadgeVariant, TableColumn } from '@nim.zone/ui'
 import type {
-  ApprovedWorkload,
   SourceClassification,
   SourceConnection,
   SourceEvidenceFile,
@@ -137,7 +136,7 @@ export function DiscoveryEvidence({ onChooseService, plan, selectedService, serv
           <Accordion items={[{ content: <Columns><Rows><Label>Compose files</Label><EvidenceTable empty="No Compose files were found; standalone Dockerfiles were inspected." files={plan.composeFiles} /></Rows><Rows><Label>Dockerfiles</Label><EvidenceTable empty="No Dockerfiles were found." files={plan.dockerfiles} /></Rows></Columns>, id: 'evidence', title: 'View all evidence' }]} variant="plain" />
         </Rows>
       </Panel>
-      {!selectedService && applications.length > 0 ? <Banner title="Choose one application" tone="info">A source discovery can find several deployable services in a monorepo. Select exactly one service and map it to one approved platform slot for each deployment.</Banner> : null}
+      {!selectedService && applications.length > 0 ? <Banner title="Choose one application" tone="info">A source discovery can find several deployable services in a monorepo. Select exactly one service per deployment.</Banner> : null}
     </>
   )
 }
@@ -239,36 +238,15 @@ export function connectionColumns(onEdit: (connection: SourceConnection) => void
   ]
 }
 
-export function deploymentBlocks({ blockers, managerID, selectedService, selectedSlot, slotCreatable, status }: { blockers: SourceFinding[]; managerID: string; selectedService?: SourceServicePlan; selectedSlot?: ApprovedWorkload; slotCreatable?: boolean; status: SourceStatus }) {
+export function deploymentBlocks({ applicationName, blockers, environmentProblems = [], managerID, selectedService, status }: { applicationName: string; blockers: SourceFinding[]; environmentProblems?: string[]; managerID: string; selectedService?: SourceServicePlan; status: SourceStatus }) {
   const result: string[] = []
   if (!managerID) result.push('Select a connected Swarm manager before queuing a deployment.')
   if (!selectedService) result.push('Select one deployable source service.')
-  if (!selectedSlot) result.push(slotCreatable ? 'Name the application this deployment becomes.' : 'Choose an approved application slot from the selected manager.')
+  if (!applicationName.trim()) result.push('Name the application this deployment becomes.')
+  if (environmentProblems.length) result.push('Correct the environment variables this deployment declares.')
   if (blockers.length) result.push('Resolve the selected service’s blocking discovery findings.')
   if (selectedService?.build?.required && !status.buildEnabled) result.push('Source builds are disabled on this controller.')
   return result
-}
-
-// A slot with one fixed hostname owns it outright. When the slot instead
-// permits a hostname under reviewed suffixes, the host the repository already
-// routes itself on is a better proposal than an empty field: the operator
-// still reviews it, and platform admission still checks it against the slot.
-export function selectSlot(name: string, slots: ApprovedWorkload[], setSlotName: (name: string) => void, setDomain: (domain: string) => void, discovered?: string) {
-  const slot = slots.find((candidate) => candidate.name === name)
-  setSlotName(name)
-  if (!slot) {
-    // A name no reviewed slot owns brings no domain policy to apply, and this
-    // runs on every keystroke of one: rewriting the domain here is how the
-    // hostname the operator just typed disappeared as they named the slot.
-    return
-  }
-  if (slot.domain) {
-    setDomain(slot.domain)
-    return
-  }
-  const suffixes = slot.domainSuffixes ?? []
-  const host = (discovered ?? '').trim().toLowerCase()
-  setDomain(host && suffixes.some((suffix) => host === suffix || host.endsWith(`.${suffix}`)) ? host : '')
 }
 
 export function sourceServiceKey(service: SourceServicePlan) { return `${service.composePath}\u0000${service.service}` }
@@ -288,8 +266,6 @@ export function providerLabel(kind: SourceProviderKind) { return kind === 'githu
 export function defaultConnectionName(kind: SourceProviderKind) { return kind === 'github' ? 'GitHub source' : kind === 'gitlab' ? 'GitLab source' : 'Gitea source' }
 export function providerBaseURLPlaceholder(kind: SourceProviderKind) { return kind === 'github' ? 'https://github.example.com/api/v3' : kind === 'gitlab' ? 'https://gitlab.example.com/api/v4' : 'https://git.example.com/api/v1' }
 export function providerBaseURLHint(kind: SourceProviderKind) { return kind === 'github' ? 'Leave blank for github.com. GitHub Enterprise usually ends in /api/v3.' : kind === 'gitlab' ? 'Leave blank for gitlab.com. Self-managed GitLab usually ends in /api/v4.' : 'Leave blank for gitea.com. Private Gitea and Forgejo usually end in /api/v1.' }
-export function sourceDomainPolicy(slot: ApprovedWorkload) { return slot.domainOptional ? `Optional${slot.domainSuffixes?.length ? ` under ${slot.domainSuffixes.join(', ')}` : ''}` : slot.domainSuffixes?.length ? `One hostname under ${slot.domainSuffixes.join(', ')}` : slot.domain || 'Internal only' }
-export function dynamicDomainHint(slot: ApprovedWorkload) { return slot.domainSuffixes?.length ? `Use one hostname under ${slot.domainSuffixes.join(' or ')}. Leave empty only when the slot permits no route.` : 'Leave empty to deploy without a public route.' }
 export function telemetryStacks(service: SourceServicePlan) { return service.metrics || service.tracing ? 'swarmops-observability' : '' }
 export function removalPhrase(connection?: SourceConnection) { return connection ? `REMOVE_SOURCE_${connection.id.slice(0, 8).toUpperCase()}` : '' }
 export function normalizeArray<T>(value: T[] | null | undefined) { return Array.isArray(value) ? value : [] }

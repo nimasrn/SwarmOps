@@ -4,31 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nimasrn/SwarmOps/internal/preflight"
 	"gopkg.in/yaml.v3"
 )
-
-// applicationManifest mirrors a reviewed platform manifest with two routed
-// application workloads, so a rendered stack can be put through real admission.
-func routedApplicationManifest() preflight.Manifest {
-	return preflight.Manifest{
-		APIVersion: preflight.APIVersion,
-		Kind:       preflight.Kind,
-		Namespace:  "production",
-		Registry:   preflight.Registry{Mode: "ghcr", Host: "ghcr.io", Namespace: "nimasrn"},
-		DNS: preflight.DNS{
-			Providers: []preflight.DNSProvider{{Name: "cloudflare", Type: "cloudflare", CredentialSecret: "traefik_cf_dns_token_v1"}},
-			Resolvers: []preflight.CertificateResolver{{Name: "le", Challenge: "dns", Provider: "cloudflare"}},
-		},
-		Nodes: []preflight.Node{{
-			Name: "node-01", CPUCores: 8, AvailableCPUCores: 6, MemoryMiB: 16384, AvailableMemoryMiB: 12288, AvailableDiskGiB: 200, Labels: map[string]string{},
-		}},
-		Workloads: []preflight.Workload{
-			{Name: "vlora-backend", Profile: "application", Replicas: 1, Domain: "api.vlora.ir", Resolver: "le", Resources: preflight.Resources{CPUCores: 2, MemoryMiB: 1024, DiskGiB: 10}},
-			{Name: "vlora-app", Profile: "application", Replicas: 1, Domain: "vlora.ir", Resolver: "le", Resources: preflight.Resources{CPUCores: 1, MemoryMiB: 512, DiskGiB: 5}},
-		},
-	}
-}
 
 func vloraBackendSpec() ApplicationSpec {
 	return ApplicationSpec{
@@ -50,10 +27,6 @@ func vloraBackendSpec() ApplicationSpec {
 // the Compose, but the rendered document still has to survive the same policy
 // and admission a hand-written one does.
 func TestRenderedApplicationPassesComposePolicyAndAdmission(t *testing.T) {
-	admission, err := NewPlatformAdmission(routedApplicationManifest())
-	if err != nil {
-		t.Fatalf("admission: %v", err)
-	}
 	rendered, err := RenderApplication(ApplicationRenderInput{
 		DatabaseURIs: map[string]string{
 			DatabaseMongo: "mongodb://swarmops:pw@swarmops-mongo_mongo:27017/swarmops?authSource=admin",
@@ -72,7 +45,7 @@ func TestRenderedApplicationPassesComposePolicyAndAdmission(t *testing.T) {
 	if len(plan.Services) != 1 || plan.Services[0] != ApplicationServiceName {
 		t.Fatalf("unexpected rendered services %v", plan.Services)
 	}
-	if err := admission.ValidateStack("production-vlora-backend", rendered); err != nil {
+	if err := ValidateApplicationStack("production-vlora-backend", rendered); err != nil {
 		t.Fatalf("rendered compose was refused by admission: %v\n%s", err, rendered)
 	}
 }
@@ -136,11 +109,7 @@ func TestRenderedApplicationUsesOnlyItsDedicatedRouteNetworkAndRoutedTracing(t *
 	if got := service.Environment["OTEL_EXPORTER_OTLP_ENDPOINT"]; got != "http://swarmops-jaeger-otlp.swarmops.internal:8081" {
 		t.Fatalf("OTEL endpoint = %q", got)
 	}
-	admission, err := NewPlatformAdmission(routedApplicationManifest())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := admission.ValidateStack("production-vlora-backend", rendered); err != nil {
+	if err := ValidateApplicationStack("production-vlora-backend", rendered); err != nil {
 		t.Fatalf("isolated routed application was refused: %v", err)
 	}
 }
@@ -172,11 +141,7 @@ func TestRenderedFrontendPointsAtItsBackend(t *testing.T) {
 	if environment["BACKEND_PUBLIC_URL"] != "https://api.vlora.ir" {
 		t.Fatalf("frontend did not receive the public backend URL: %#v", environment)
 	}
-	admission, err := NewPlatformAdmission(routedApplicationManifest())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := admission.ValidateStack("production-vlora-app", rendered); err != nil {
+	if err := ValidateApplicationStack("production-vlora-app", rendered); err != nil {
 		t.Fatalf("rendered frontend was refused by admission: %v\n%s", err, rendered)
 	}
 }
@@ -267,8 +232,8 @@ func TestApplicationDefaultsToTheHTTPResolverAndAPlan(t *testing.T) {
 		Name:   "nim",
 		Port:   80,
 	}.Normalize()
-	if spec.Resolver != preflight.DefaultResolver {
-		t.Fatalf("resolver = %q, want %q", spec.Resolver, preflight.DefaultResolver)
+	if spec.Resolver != DefaultResolver {
+		t.Fatalf("resolver = %q, want %q", spec.Resolver, DefaultResolver)
 	}
 	if err := spec.Validate(); err != nil {
 		t.Fatalf("routed application without a named resolver was refused: %v", err)

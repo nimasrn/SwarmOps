@@ -87,7 +87,6 @@ type Config struct {
 	RedisAppBootstrapFile         string
 	RedisStackFile                string
 	RetainMachineKeys             bool
-	PlatformManifestFile          string
 	RegistryAuth                  []byte
 	SecureCookies                 bool
 	SessionKey                    []byte
@@ -197,7 +196,6 @@ func Load() (Config, error) {
 		// copy is what lets a restarted controller reconnect. Set this to false
 		// to restore the memory-only posture and reconnect each host by hand.
 		RetainMachineKeys:             envBool("SWARMOPS_RETAIN_MACHINE_KEYS", true),
-		PlatformManifestFile:          env("SWARMOPS_PLATFORM_MANIFEST_FILE", ""),
 		SecureCookies:                 envBool("SWARMOPS_SECURE_COOKIES", true),
 		SessionTTL:                    envDuration("SWARMOPS_SESSION_TTL", 12*time.Hour),
 		SourceAllowedHosts:            csv(env("SWARMOPS_SOURCE_ALLOWED_HOSTS", "")),

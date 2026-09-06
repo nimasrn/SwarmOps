@@ -13,6 +13,11 @@ services:
       SWARMOPS_HOST_OS: /host/etc/os-release
       SWARMOPS_HOST_PROC: /host/proc
       SWARMOPS_HOST_ROOT: /host
+      # This agent runs IN the cluster, so it reaches Prometheus over the
+      # routed overlay it is bound to. A host-native agent has no such path and
+      # locates the task on its own node instead; leaving this unset there is
+      # what makes the same binary work in both topologies.
+      SWARMOPS_PROMETHEUS_INTERNAL_URL: http://swarmops-prometheus.swarmops.internal:8081
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Host root is read only and is used only for capacity measurement. The

@@ -11,11 +11,9 @@ import {
   ListRow,
   Rail,
   RailSection,
-  Select,
   Switch,
 } from '@nim.zone/ui'
 import type {
-  ApprovedWorkload,
   SourceFinding,
   SourcePlan,
   SourceServicePlan,
@@ -35,7 +33,7 @@ import {
  *
  * It is a rail rather than a step because it is read WHILE the stages on the
  * left are worked through, not after them — an operator choosing a service
- * needs to see, at that moment, that the slot they picked has no domain.
+ * needs to see, at that moment, that it has no domain.
  */
 
 // databaseDelivery says, per engine, exactly which variables this application
@@ -49,41 +47,38 @@ function databaseDelivery(service: SourceServicePlan | undefined, engine: string
 }
 
 export function DeploymentPlan({
-  approved,
+  applicationName,
   blocks,
   domain,
   draftSavedAt,
   findings,
   metrics,
-  onChooseSlot,
   onDeploy,
+  onRenameApplication,
   onSaveDraft,
   onToggleMetrics,
   pending,
   plan,
+  resolver,
   selectedService,
-  selectedSlot,
-  slotCreatable,
-  slotName,
+  size,
 }: {
-  approved: ApprovedWorkload[]
+  applicationName: string
   blocks: string[]
   domain: string
   draftSavedAt: string
   findings: SourceFinding[]
   metrics: boolean
-  onChooseSlot: (name: string) => void
   onDeploy: () => void
+  onRenameApplication: (name: string) => void
   onSaveDraft: () => void
   onToggleMetrics: (next: boolean) => void
   pending: string
   plan: SourcePlan | null
+  resolver: string
   selectedService?: SourceServicePlan
-  selectedSlot?: ApprovedWorkload
-  /** True when this controller can declare the slot itself, so a name that no
-      reviewed slot owns is a new slot rather than a refused deployment. */
-  slotCreatable?: boolean
-  slotName: string
+  /** The chosen size, already resolved to the numbers it will deploy at. */
+  size: string
 }) {
   // A finding the scanner marked "info" is what it READ — the health path it
   // took from a HEALTHCHECK, the router it found in Compose. Listing it under
@@ -94,7 +89,7 @@ export function DeploymentPlan({
   const blockers = findings.filter((finding) => finding.level === 'blocker')
   const databases = selectedService?.databases ?? []
   // The rail names the stacks the way the discovery found them — Prometheus,
-  // Jaeger and logging collectors — rather than the reviewed platform stacks they are
+  // Jaeger and logging collectors — rather than the shared stacks they are
   // reconciled into. What SwarmOps owns is one stack; what an operator is
   // deciding about is the three signals they wrote into their Compose.
   const stacks = plan
@@ -122,14 +117,8 @@ export function DeploymentPlan({
               title={selectedService.name}
               trailing={
                 <Inline gap="tight">
-                  <Label>Slot</Label>
-                  {approved.length > 0 ? <Select aria-label="Approved slot" onChange={(event) => onChooseSlot(event.target.value)} options={approved.map((slot) => ({ label: slot.name, value: slot.name }))} placeholder={slotCreatable ? 'Reviewed slot' : 'Slot'} value={approved.some((slot) => slot.name === slotName) ? slotName : ''} /> : null}
-                  {slotCreatable ? <Input aria-label="Application name" onChange={(event) => onChooseSlot(event.target.value)} placeholder="Name" value={slotName} /> : null}
-                  {/* Neither control renders when no slot is approved and none
-                      may be declared. A bare "Slot" label there reads as a
-                      control that failed to load, and the review step used to
-                      send the operator here to use it. */}
-                  {approved.length === 0 && !slotCreatable ? <Body size="sm">None to choose — see Review</Body> : null}
+                  <Label>Name</Label>
+                  <Input aria-label="Application name" onChange={(event) => onRenameApplication(event.target.value)} placeholder="Name" value={applicationName} />
                 </Inline>
               }
             />
@@ -202,8 +191,8 @@ export function DeploymentPlan({
       </RailSection>
 
       <RailSection meta={<EditLink label="Edit domain" target={DOMAIN_FIELD_ID} />} title="Route">
-        <Body size="sm">{domain || selectedSlot?.domain || 'Internal only — no public route'}</Body>
-        <Body size="sm" tone="muted">{selectedSlot ? `Certificate resolver: ${selectedSlot.resolver || 'none'}` : 'A reviewed slot owns the domain policy.'}</Body>
+        <Body size="sm">{domain || 'Internal only — no public route'}</Body>
+        <Body size="sm" tone="muted">{domain ? `Certificate resolver: ${resolver || 'http'} · size: ${size}` : `Size: ${size}`}</Body>
         {/* Where the hostname came from is the operator's cue for whether to
             trust the prefilled value or replace it. */}
         {selectedService?.route ? (
@@ -221,7 +210,7 @@ export function DeploymentPlan({
         {metrics && selectedService?.telemetry?.metricsPath ? <Body size="sm" tone="muted">Scraped at {selectedService.telemetry.metricsPath}{selectedService.telemetry.metricsPort ? ` on port ${selectedService.telemetry.metricsPort}` : ''}, read from this repository's own Prometheus annotations.</Body> : null}
         {/* Traces and logs are reported, not switched. Both are cluster-wide
             reviewed stacks: turning one on from a deployment plan would queue
-            a platform change under the heading of one application. */}
+            a shared-stack change under the heading of one application. */}
         <Switch checked={Boolean(selectedService?.tracing)} disabled readOnly>Traces (OpenTelemetry)</Switch>
         {selectedService?.tracing ? <Body size="sm" tone="muted">{selectedService.telemetry?.tracingEnvVars?.length ? `${selectedService.telemetry.tracingEnvVars.join(', ')} is repointed at the managed Jaeger OTLP collector.` : 'Traces are sent to the managed Jaeger OTLP collector.'}</Body> : null}
         <Switch checked={stacks.some((stack) => ['loki','alloy','promtail','fluentd','fluent-bit'].some(name => stack.toLowerCase().includes(name)))} disabled readOnly>Logs (replaced by SwarmOps Fluentd)</Switch>

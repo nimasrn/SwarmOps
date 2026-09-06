@@ -28,6 +28,7 @@ const (
 	// BODY rather than on the point count so a malformed or hostile response
 	// cannot be read into memory before it is counted.
 	prometheusMaxResponse = 8 << 20
+	defaultPrometheusPort = uint16(9090)
 )
 
 func (s *Server) metricsQuery(response http.ResponseWriter, request *http.Request) {
@@ -69,9 +70,9 @@ func (s *Server) metricsQuery(response http.ResponseWriter, request *http.Reques
 }
 
 func (s *Server) readMetricRange(ctx context.Context, query agentcontrol.MetricQuery) (agentcontrol.MetricRange, error) {
-	base := strings.TrimSpace(s.config.PrometheusBaseURL)
-	if base == "" {
-		return agentcontrol.MetricRange{}, fmt.Errorf("no Prometheus is configured on this machine")
+	base, err := s.prometheusBaseURL(ctx)
+	if err != nil {
+		return agentcontrol.MetricRange{}, err
 	}
 	expression, err := query.Expression()
 	if err != nil {
@@ -152,4 +153,52 @@ func decodePrometheusSample(pair [2]json.RawMessage) (agentcontrol.MetricPoint, 
 		return agentcontrol.MetricPoint{}, false
 	}
 	return agentcontrol.MetricPoint{At: time.Unix(int64(seconds), 0).UTC(), Value: value}, true
+}
+
+// gatewayBridgeNetwork is the node-local bridge Docker attaches every task on a
+// non-internal overlay to. The host is on it, so an agent can read a service
+// that publishes nothing and is otherwise reachable only from inside the
+// cluster.
+const gatewayBridgeNetwork = "docker_gwbridge"
+
+// swarmServiceLabel is the label Swarm stamps on a task's container.
+const swarmServiceLabel = "com.docker.swarm.service.name"
+
+// prometheusBaseURL locates the Prometheus this machine can read.
+//
+// The address is asked of the engine rather than assumed, and it is resolved
+// per read: Prometheus is a single replica that Swarm may reschedule, and a
+// remembered address would outlive the container it named. A machine that is
+// not running the replica has no Prometheus to read — which is correct, and is
+// why the controller sends metric reads to the node that is.
+func (s *Server) prometheusBaseURL(ctx context.Context) (string, error) {
+	if base := strings.TrimSpace(s.config.PrometheusBaseURL); base != "" {
+		return base, nil
+	}
+	service := strings.TrimSpace(s.config.PrometheusService)
+	if service == "" {
+		return "", fmt.Errorf("no Prometheus service is configured on this machine")
+	}
+	if s.config.Docker == nil {
+		return "", fmt.Errorf("this machine has no Docker engine to locate Prometheus")
+	}
+	containers, err := s.config.Docker.ListContainers(ctx, false)
+	if err != nil {
+		return "", err
+	}
+	port := s.config.PrometheusPort
+	if port == 0 {
+		port = defaultPrometheusPort
+	}
+	for _, container := range containers {
+		if container.Labels[swarmServiceLabel] != service {
+			continue
+		}
+		address := strings.TrimSpace(container.NetworkSettings.Networks[gatewayBridgeNetwork].IPAddress)
+		if address == "" {
+			continue
+		}
+		return fmt.Sprintf("http://%s:%d", address, port), nil
+	}
+	return "", fmt.Errorf("no Prometheus task is running on this machine")
 }

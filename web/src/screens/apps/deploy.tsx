@@ -12,6 +12,7 @@ import {
   Icon,
   Inline,
   Input,
+  Label,
   Mono,
   Panel,
   Select,
@@ -26,8 +27,8 @@ import type { Stage } from '@nim.zone/ui'
 import { api } from '../../data/api'
 import type {
   ApplicationSpec,
-  ApprovedWorkload,
-  PlatformDefinition,
+  Command,
+  ResourcePlan,
   SourceConnection,
   SourcePlan,
   SourceProviderKind,
@@ -38,7 +39,9 @@ import { formatDateTime, shortID } from '../../lib/format'
 import { messageOf } from '../../lib/errors'
 import { Screen } from '../../components/screen'
 import { ConfirmPhrase } from '../../components/confirm-phrase'
-import { UseDefaultPlatformDefinition } from '../../components/default-platform-definition'
+import { EnvironmentEditor } from '../../components/environment-editor'
+import { environmentErrors, reservedDatabaseNames } from '../../lib/environment'
+import { commandFailureText, commandOutcomeTitle, commandOutcomeTone, commandProgressText, isTerminal } from '../../lib/command-outcome'
 import { DeploymentPlan } from './deploy-parts/plan'
 import { SourceSetupPanel } from './deploy-parts/setup'
 import { SOURCE_DOCS_URL } from './source-settings'
@@ -57,12 +60,9 @@ import {
   providerLabel,
   providerOrigin,
   removalPhrase,
-  selectSlot,
-  sourceDomainPolicy,
   sourceLocation,
   sourceServiceKey,
   telemetryStacks,
-  dynamicDomainHint,
   DOMAIN_FIELD_ID,
   type SourceDraft,
 } from './deploy-parts/parts'
@@ -73,8 +73,8 @@ interface DeployPageProps {
   /** Where the push registry is configured, now that it is not part of the
       source boundary. */
   onOpenImages?: () => void
-  /** Where a slot is declared, for the install whose plan cannot offer one. */
-  onOpenPlatform?: () => void
+  /** Where a deployment that outlives this screen is watched to its end. */
+  onOpenRuns?: () => void
   /** Where the Kubernetes reader hands its generated Compose off to. */
   onOpenWorkloads?: () => void
   toast: ReturnType<typeof useToast>
@@ -94,19 +94,23 @@ const DEPLOY_SOURCES: { hint: string; label: string; value: DeploySource }[] = [
   { hint: 'Connect a Git provider and build a pinned revision', label: 'Git repository', value: 'repository' },
   { hint: 'Read manifests and see what Swarm can run, and what it cannot', label: 'Kubernetes manifests', value: 'kubernetes' },
 ]
+/** How long this screen watches a deployment before handing it to Activity →
+    Runs. A source deployment builds an image first, so the budget is minutes,
+    not the seconds a resource command takes. */
+const DEPLOY_FOLLOW_MS = 10 * 60 * 1000
+
 const PROVIDERS: { label: string; value: SourceProviderKind }[] = [
   { label: 'GitHub or GitHub Enterprise', value: 'github' },
   { label: 'GitLab or self-managed GitLab', value: 'gitlab' },
   { label: 'Gitea or Forgejo', value: 'gitea' },
 ]
 
-export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatform, onOpenWorkloads, toast }: DeployPageProps) {
+export function DeployPage({ managerID, managerName, onOpenImages, onOpenRuns, onOpenWorkloads, toast }: DeployPageProps) {
   const [source, setSource] = useState<DeploySource>('repository')
   const [status, setStatus] = useState<SourceStatus | null>(null)
   const [connections, setConnections] = useState<SourceConnection[]>([])
   const [repositories, setRepositories] = useState<SourceRepository[]>([])
-  const [approved, setApproved] = useState<ApprovedWorkload[]>([])
-  const [platform, setPlatform] = useState<PlatformDefinition | null>(null)
+  const [plans, setPlans] = useState<ResourcePlan[]>([])
   const [plan, setPlan] = useState<SourcePlan | null>(null)
   const [error, setError] = useState('')
   const [pending, setPending] = useState('')
@@ -122,18 +126,22 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
   const [repositoryID, setRepositoryID] = useState('')
   const [ref, setRef] = useState('')
   const [serviceKey, setServiceKey] = useState('')
-  const [slotName, setSlotName] = useState('')
+  const [applicationName, setApplicationName] = useState('')
   const [domain, setDomain] = useState('')
   const [port, setPort] = useState('8080')
   const [healthPath, setHealthPath] = useState('/healthz')
   const [metricsEnabled, setMetricsEnabled] = useState(false)
-  // An install with no manifest has no slot list to pick from, so the operator
-  // states the ceiling this deployment should run under instead of inheriting
-  // a reviewed one. These are ignored entirely when slots exist.
-  const [freeReplicas, setFreeReplicas] = useState('1')
-  const [freeCPU, setFreeCPU] = useState('0.5')
-  const [freeMemory, setFreeMemory] = useState('512')
-  const [freeResolver, setFreeResolver] = useState('le')
+  // Size is a named plan chosen here, per deployment, and changed on the next
+  // one. Nothing has to declare it in advance and nothing outside this screen
+  // has an opinion about it.
+  const [sizeName, setSizeName] = useState('')
+  const [replicas, setReplicas] = useState('1')
+  const [resolver, setResolver] = useState('http')
+  const [environment, setEnvironment] = useState<Record<string, string>>({})
+  // What the queued command is doing, and how it ended. A deployment used to
+  // be reported as "queued" and nothing else, which reads as done.
+  const [progress, setProgress] = useState('')
+  const [outcome, setOutcome] = useState<Command | null>(null)
   const [draftSavedAt, setDraftSavedAt] = useState('')
   const [managing, setManaging] = useState(false)
   const [changingRepository, setChangingRepository] = useState(false)
@@ -151,32 +159,20 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     () => deployableServices.find((service) => sourceServiceKey(service) === serviceKey),
     [deployableServices, serviceKey],
   )
-  const unmanaged = Boolean(platform?.unmanaged)
-  // A repository nobody has deployed yet has no slot, and sending the operator
-  // away to author one before the first deployment is refused reviewed
-  // nothing. The controller declares the slot from what is chosen here, so the
-  // name is free-form wherever this controller owns its own definition.
-  const slotCreatable = unmanaged || Boolean(platform?.editable && platform?.mode === 'manifest')
-  const reviewedSlot = approved.find((slot) => slot.name === slotName)
-  // Downstream, a slot is a slot: the review card, the blockers, and the
-  // deployment all read the same shape whether a manifest approved it or the
-  // operator just typed it.
-  const selectedSlot = reviewedSlot ?? (slotCreatable && slotName.trim()
-    ? {
-      cpuCores: Number(freeCPU) || 0.25,
-      domainOptional: true,
-      memoryMiB: Number(freeMemory) || 256,
-      name: slotName.trim(),
-      replicas: Number(freeReplicas) || 1,
-      resolver: freeResolver.trim(),
-    } satisfies ApprovedWorkload
-    : undefined)
-  // The slot this deployment will bring into existence, as opposed to one a
-  // manifest already reviewed: it is the operator who states its ceiling.
-  const newSlot = Boolean(selectedSlot && !reviewedSlot)
+  const selectedSize = plans.find((candidate) => candidate.name === sizeName)
   const selectedServiceFindings = selectedService?.findings ?? []
   const blockers = selectedServiceFindings.filter((finding) => finding.level === 'blocker')
-  const canEditDomain = newSlot || Boolean(selectedSlot?.domainOptional || selectedSlot?.domainSuffixes?.length)
+  // A detected engine delivers its URI under the names the scanner found in
+  // the repository's own Compose, plus <ENGINE>_URL. Reserving them here shows
+  // a collision on the field instead of returning it as a refusal.
+  const reservedEnvironmentNames = useMemo(
+    () => reservedDatabaseNames(
+      selectedService?.databases ?? [],
+      (selectedService?.databaseRequirements ?? []).map((requirement) => requirement.envVars ?? []),
+    ),
+    [selectedService],
+  )
+  const environmentProblems = environmentErrors(environment, reservedEnvironmentNames)
 
   const loadSource = useCallback(async () => {
     setError('')
@@ -217,32 +213,24 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     }
   }, [])
 
-  const loadApprovedSlots = useCallback(async () => {
-    if (!managerID) {
-      setApproved([])
-      setPlatform(null)
-      return
-    }
+  // The sizes come from the controller rather than from a list typed into this
+  // file, so the console offers exactly what the controller will accept.
+  const loadPlans = useCallback(async () => {
     try {
-      const [slots, definition] = await Promise.all([api.approvedApplications(), api.platform()])
-      setApproved(normalizeArray(slots))
-      setPlatform(definition)
-      // A new slot has to name a resolver the definition actually declares, so
-      // the field starts on one instead of on a guess the operator would only
-      // find out was wrong when the deployment was refused.
-      const declared = normalizeArray(definition?.manifest?.dns?.resolvers)[0]?.name
-      if (declared) setFreeResolver(declared)
+      const offered = await api.applicationPlans()
+      const list = normalizeArray(offered?.plans)
+      setPlans(list)
+      setSizeName((current) => list.some((candidate) => candidate.name === current) ? current : offered?.default ?? list[0]?.name ?? '')
     } catch (reason) {
-      setApproved([])
-      setPlatform(null)
+      setPlans([])
       setError(messageOf(reason))
     }
-  }, [managerID])
+  }, [])
 
   useEffect(() => { void loadSource().catch((reason) => setError(messageOf(reason))) }, [loadSource])
-  useEffect(() => { void loadApprovedSlots() }, [loadApprovedSlots])
+  useEffect(() => { void loadPlans() }, [loadPlans])
   useEffect(() => {
-    setSlotName('')
+    setApplicationName('')
     setDomain('')
   }, [managerID])
   useEffect(() => {
@@ -258,20 +246,13 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     if (!draft || draft.connectionID !== connectionID) setServiceKey('')
     void loadRepositories(connectionID, draft && draft.connectionID === connectionID ? { ref: draft.ref, repositoryID: draft.repositoryID } : undefined)
   }, [connectionID, loadRepositories, status?.enabled])
-  // The service names itself. A reviewed slot of the same name is what it maps
-  // to; otherwise the deployment proposes a new slot under that name rather
-  // than silently landing in whichever slot happens to sort first.
+  // The service names itself, and the hostname it already routes on is a
+  // better proposal than an empty field. Both stay editable.
   useEffect(() => {
-    if (!selectedService || slotName) return
-    const matching = approved.find((slot) => slot.name === selectedService.name)
-    if (matching) {
-      selectSlot(matching.name, approved, setSlotName, setDomain, selectedService.route?.hosts?.[0])
-      return
-    }
-    if (!slotCreatable) return
-    setSlotName(selectedService.name)
+    if (!selectedService || applicationName) return
+    setApplicationName(selectedService.name)
     setDomain(selectedService.route?.hosts?.[0] ?? '')
-  }, [approved, selectedService, slotCreatable, slotName])
+  }, [applicationName, selectedService])
 
   const chooseProvider = (next: SourceProviderKind) => {
     setProvider(next)
@@ -285,7 +266,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     setRef('')
     setPlan(null)
     setServiceKey('')
-    setSlotName('')
+    setApplicationName('')
   }
 
   const chooseRepository = (next: string) => {
@@ -294,7 +275,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     setRef(repository?.defaultBranch ?? '')
     setPlan(null)
     setServiceKey('')
-    setSlotName('')
+    setApplicationName('')
   }
 
   const beginConnectionEdit = (connection: SourceConnection) => {
@@ -366,7 +347,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
       setPlan(nextPlan)
       const first = nextPlan.services.find((service) => service.classification === 'application')
       setServiceKey(first ? sourceServiceKey(first) : '')
-      setSlotName('')
+      setApplicationName('')
       if (first) {
         setPort(String(first.port || 8080))
         setHealthPath(first.healthPath || '/healthz')
@@ -385,7 +366,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
   const chooseService = (nextKey: string) => {
     const service = deployableServices.find((candidate) => sourceServiceKey(candidate) === nextKey)
     setServiceKey(nextKey)
-    setSlotName('')
+    setApplicationName('')
     if (service) {
       setPort(String(service.route?.targetPort || service.port || 8080))
       setHealthPath(service.healthPath || '/healthz')
@@ -393,14 +374,14 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     }
   }
 
-  const chooseSlotName = (next: string) => selectSlot(next, approved, setSlotName, setDomain, selectedService?.route?.hosts?.[0])
-
   // A draft is the selection, never the evidence: no path, digest, finding, or
   // provider response is written to browser storage, so a saved draft cannot
-  // become a copy of someone's repository sitting in localStorage.
+  // become a copy of someone's repository sitting in localStorage. The
+  // environment is left out for the same reason — its values are whatever the
+  // operator pasted, and this console has no business keeping them on disk.
   const writeDraft = useCallback(() => {
     if (!managerID) return false
-    const draft: SourceDraft = { connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, savedAt: new Date().toISOString(), serviceKey, slotName, source }
+    const draft: SourceDraft = { connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, savedAt: new Date().toISOString(), serviceKey, slotName: applicationName, source }
     try {
       window.localStorage.setItem(draftKey(managerID), JSON.stringify(draft))
       setDraftSavedAt(draft.savedAt)
@@ -408,7 +389,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
     } catch {
       return false
     }
-  }, [connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, serviceKey, slotName, source])
+  }, [applicationName, connectionID, domain, healthPath, managerID, metricsEnabled, port, ref, repositoryID, serviceKey, source])
 
   const saveDraft = () => {
     if (!managerID) return
@@ -445,7 +426,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
       setConnectionID(draft.connectionID)
       setRepositoryID(draft.repositoryID)
       setRef(draft.ref)
-      setSlotName(draft.slotName)
+      setApplicationName(draft.slotName)
       setDomain(draft.domain)
       setPort(draft.port)
       setHealthPath(draft.healthPath)
@@ -465,21 +446,28 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
   useEffect(() => { restoreDraft() }, [restoreDraft])
 
   const deploy = async () => {
-    if (!plan || !selectedService || !selectedSlot || !connectionID || !repositoryID || blockers.length > 0 || !managerID) return
+    if (!plan || !selectedService || !applicationName.trim() || !connectionID || !repositoryID || blockers.length > 0 || !managerID) return
+    if (environmentProblems.length > 0) return
     setPending('deploy')
     setError('')
+    setOutcome(null)
+    setProgress('')
     try {
+      // Size is sent as a plan name. The controller resolves it, so the
+      // console never has to hold the numbers a plan stands for.
       const application: ApplicationSpec = {
-        cpus: selectedSlot.cpuCores,
         domain: domain.trim(),
         healthPath: healthPath.trim(),
         image: '',
-        memoryMiB: selectedSlot.memoryMiB,
         metrics: metricsEnabled,
-        name: selectedSlot.name,
+        name: applicationName.trim(),
+        plan: sizeName,
         port: Number(port),
-        replicas: selectedSlot.replicas,
-        resolver: domain.trim() ? selectedSlot.resolver : '',
+        replicas: Number(replicas) || 1,
+        resolver: domain.trim() ? resolver.trim() : '',
+        // The spec field carries no JSON tag, so the wire name is the Go
+        // field name. Sending "env" would deploy with no environment at all.
+        Env: Object.keys(environment).length > 0 ? environment : undefined,
       }
       const command = await api.deploySource({
         composePath: selectedService.composePath,
@@ -493,13 +481,23 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
       // source input failed, deliberately: a durable attention record is
       // better than an opaque error. Reporting that record as "queued" is
       // what turned a stated failure into a deployment the operator believed
-      // was running.
-      if (command.state === 'needs_attention' || command.state === 'failed') {
-        const reason = command.failureSummary ?? command.lastError ?? 'The controller could not queue this deployment.'
-        setError(`${reason}${command.recoveryHint ? ` ${command.recoveryHint}` : ''}`)
+      // was running — so the command is followed to whatever it becomes.
+      const final = isTerminal(command.state)
+        ? command
+        : await api.waitForCommand(command.id, DEPLOY_FOLLOW_MS, (update) => setProgress(commandProgressText(update)))
+      setProgress('')
+      setOutcome(final)
+      if (final.state === 'succeeded') {
+        toast({ message: `${applicationName.trim()} is deployed (${shortID(final.id)})`, tone: 'success' })
+      } else if (isTerminal(final.state)) {
+        const reason = commandFailureText(final)
+        setError(reason)
         toast({ duration: 0, message: reason, tone: 'danger' })
       } else {
-        toast({ message: `${selectedSlot.name} source deployment queued (${shortID(command.id)})`, tone: 'success' })
+        // The budget ran out; the command did not. Saying so is the honest
+        // report — a timeout here is this screen giving up watching, not the
+        // deployment failing.
+        toast({ message: `${applicationName.trim()} is still deploying as ${shortID(final.id)}. It continues without this screen.`, tone: 'neutral' })
       }
     } catch (reason) {
       setError(messageOf(reason))
@@ -525,20 +523,25 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
   }
 
   const deployBlocks = deploymentBlocks({
+    applicationName,
+    environmentProblems,
     managerID,
     selectedService,
-    selectedSlot,
     status,
     blockers,
-    slotCreatable,
   })
   const discovered = Boolean(plan)
 
   const stages: Stage[] = [
     { caption: 'Provider and repository', id: 'source', label: 'Source', status: repositoryID ? 'done' : 'active' },
     { caption: 'Scan complete tree', id: 'discover', label: 'Discovery', status: discovered ? 'done' : repositoryID ? 'active' : 'pending' },
-    { caption: 'Map and validate', id: 'review', label: 'Review', status: blockers.length ? 'blocked' : selectedService && selectedSlot ? 'done' : discovered ? 'active' : 'pending' },
-    { caption: 'Build and start first', id: 'release', label: 'Release', status: deployBlocks.length === 0 ? 'active' : 'pending' },
+    { caption: 'Name and validate', id: 'review', label: 'Review', status: blockers.length ? 'blocked' : selectedService && applicationName.trim() ? 'done' : discovered ? 'active' : 'pending' },
+    {
+      caption: outcome && outcome.state !== 'succeeded' ? 'Ended without serving' : pending === 'deploy' ? progress || 'Queued' : 'Build and start first',
+      id: 'release',
+      label: 'Release',
+      status: outcome?.state === 'succeeded' ? 'done' : outcome ? 'blocked' : pending === 'deploy' ? 'active' : deployBlocks.length === 0 ? 'active' : 'pending',
+    },
   ]
 
   /* Connecting a provider and scanning a repository need only the source
@@ -592,7 +595,7 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
           <DetailLayout
             aside={
               <DeploymentPlan
-                approved={approved}
+                applicationName={applicationName}
                 draftSavedAt={draftSavedAt}
                 onSaveDraft={saveDraft}
                 plan={plan}
@@ -600,14 +603,13 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
                 domain={domain}
                 findings={[...(plan?.findings ?? []), ...selectedServiceFindings]}
                 metrics={metricsEnabled}
-                onChooseSlot={chooseSlotName}
                 onDeploy={() => void deploy()}
+                onRenameApplication={setApplicationName}
                 onToggleMetrics={setMetricsEnabled}
                 pending={pending}
+                resolver={resolver}
                 selectedService={selectedService}
-                selectedSlot={selectedSlot}
-                slotCreatable={slotCreatable}
-                slotName={slotName}
+                size={selectedSize ? `${selectedSize.name} · ${selectedSize.cpuCores} vCPU · ${selectedSize.memoryMiB} MiB` : sizeName || 'default'}
               />
             }
           >
@@ -762,46 +764,33 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
             ) : (
               <Panel caption="Review and map services" marker="3" title="Review">
                 <Rows>
-                  {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to load the reviewed application slots and queue a deployment.</Banner> : null}
-                  {managerID && !slotCreatable && approved.length === 0 ? (
-                    <Banner
-                      action={platform?.fileManaged ? undefined : (
-                        <Inline gap="tight">
-                          <UseDefaultPlatformDefinition onApplied={(next) => setPlatform(next)} toast={toast} />
-                          {onOpenPlatform ? <Button onClick={onOpenPlatform} size="sm" variant="secondary">Review it first</Button> : null}
-                        </Inline>
-                      )}
-                      title="There is no slot to map this service to"
-                      tone="warning"
-                    >
-                      {platform?.fileManaged
-                        ? <>This controller loads its manifest from <Mono>{platform.manifestPath || 'a mounted file'}</Mono>, so a slot can only be declared there. Add an application-profile workload to that file, then reconnect the selected manager.</>
-                        : <>This controller has no platform definition, so nothing decides what a browser deployment may be named, claim, or reserve — and the plan has no slot to offer and no name it may declare. Two answers unblock it, both on Platform definition: author a manifest here, and this deployment declares its own slot inside it; or declare this install manifest-free with the typed confirmation, and slot enforcement is deliberately off.</>}
-                    </Banner>
-                  ) : null}
-                  {managerID && !unmanaged && slotCreatable && !reviewedSlot && selectedSlot ? <Banner title="This deployment declares a new slot" tone="info">No reviewed slot is named <Mono>{selectedSlot.name}</Mono>, so releasing writes one into the platform definition with the domain and ceiling below. It is checked like any other: a hostname another workload owns is refused rather than taken.</Banner> : null}
-                  {unmanaged ? <Banner title="This install has no platform manifest" tone="warning">Slot enforcement is off by declaration, so the name, domain, and reservation below are not checked against a reviewed list. Everything deploys inside the <Mono>{platform?.namespace}</Mono> namespace.</Banner> : null}
+                  {!managerID ? <Banner title="Select a manager before deployment review" tone="warning">You can safely connect providers and inspect source evidence without a manager. Select a connected Swarm manager to queue a deployment.</Banner> : null}
                   <Columns>
                     <Rows>
-                      {selectedSlot ? <Facts columns={1} items={[
-                        { label: newSlot ? 'New slot' : 'Reviewed slot', value: `${selectedSlot.name} · ${managerName ?? managerID}` },
-                        { label: 'Resource ceiling', value: `${selectedSlot.replicas} replica${selectedSlot.replicas === 1 ? '' : 's'} · ${selectedSlot.cpuCores} vCPU · ${selectedSlot.memoryMiB} MiB` },
-                        { label: 'Certificate resolver', value: selectedSlot.resolver || 'None configured' },
-                        { label: 'Domain policy', value: sourceDomainPolicy(selectedSlot) },
-                      ]} /> : approved.length === 0 && !slotCreatable ? null : <Banner title={slotCreatable ? 'Name the application' : 'Map the service to a slot'} tone="info">{slotCreatable ? 'Name this deployment in the deployment plan beside this page. An existing slot is reused; any other name becomes a new one.' : 'Choose an approved application slot from the Slot list in the deployment plan beside this page.'}</Banner>}
-                      {newSlot ? (
-                        <Columns>
-                          <Input hint={unmanaged ? "Nothing reviews this ceiling; the cluster's own capacity decides whether Swarm can schedule it." : 'This becomes the new slot’s reviewed ceiling, and every later deployment into it is held to exactly this.'} label="Replicas" min="1" onChange={(event) => setFreeReplicas(event.target.value)} type="number" value={freeReplicas} />
-                          <Input label="vCPU per replica" min="0.1" onChange={(event) => setFreeCPU(event.target.value)} step="0.1" type="number" value={freeCPU} />
-                          <Input label="Memory (MiB)" min="64" onChange={(event) => setFreeMemory(event.target.value)} type="number" value={freeMemory} />
-                          <Input hint="The Traefik certificate resolver a public domain is issued through." label="Certificate resolver" onChange={(event) => setFreeResolver(event.target.value)} value={freeResolver} />
-                        </Columns>
-                      ) : null}
-                      {selectedSlot ? <Input disabled={!canEditDomain && Boolean(selectedSlot.domain)} id={DOMAIN_FIELD_ID} hint={unmanaged ? 'Any hostname. Nothing checks it against a reviewed list on this install.' : newSlot ? 'The hostname the new slot will own. Leave it empty to deploy with no public route.' : canEditDomain ? dynamicDomainHint(selectedSlot) : 'This reviewed slot owns one fixed hostname.'} label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder={selectedSlot.domain || selectedSlot.domainSuffixes?.[0] || 'Internal only'} value={domain} /> : null}
+                      <Facts columns={1} items={[
+                        { label: 'Application', value: `${applicationName || selectedService.name} · ${managerName ?? managerID}` },
+                        { label: 'Size', value: selectedSize ? `${selectedSize.cpuCores} vCPU · ${selectedSize.memoryMiB} MiB per replica` : 'Default' },
+                      ]} />
+                      {/* Nothing here has to exist before the deployment. The
+                          name is the service's own, the size is a named plan,
+                          and the hostname is whatever the operator types. */}
+                      <Input hint="This is the application name, and the stack it deploys into. It is taken from the source service and can be changed." label="Application name" onChange={(event) => setApplicationName(event.target.value)} value={applicationName} />
+                      <Columns>
+                        <Select hint={selectedSize?.summary} label="Size" onChange={(event) => setSizeName(event.target.value)} options={plans.map((candidate) => ({ label: `${candidate.name} · ${candidate.cpuCores} vCPU · ${candidate.memoryMiB} MiB`, value: candidate.name }))} value={sizeName} />
+                        <Input label="Replicas" min="1" onChange={(event) => setReplicas(event.target.value)} type="number" value={replicas} />
+                      </Columns>
+                      <Input id={DOMAIN_FIELD_ID} hint="Any hostname you control. Leave it empty to deploy with no public route." label="Application domain" onChange={(event) => setDomain(event.target.value)} placeholder="Internal only" value={domain} />
+                      {domain.trim() ? <Input hint="HTTP-01 needs no DNS credential and is the default. Name another Traefik resolver only if you configured one." label="Certificate resolver" onChange={(event) => setResolver(event.target.value)} value={resolver} /> : null}
                       <Columns>
                         <Input label="Container port" min="1" onChange={(event) => setPort(event.target.value)} type="number" value={port} />
                         <Input label="Health path" onChange={(event) => setHealthPath(event.target.value)} value={healthPath} />
                       </Columns>
+                      <Rows gap="tight">
+                        <Label>Environment</Label>
+                        <Body size="sm" tone="muted">Set on the deployed service. A detected managed database delivers its own connection URI; it does not belong here.</Body>
+                        <EnvironmentEditor onChange={setEnvironment} reserved={reservedEnvironmentNames} value={environment} />
+                        {environmentProblems.length > 0 ? <Banner title="The environment is not deployable yet" tone="warning">{environmentProblems.join(' ')}</Banner> : null}
+                      </Rows>
                     </Rows>
                     <Rows>
                       <Facts columns={1} items={[
@@ -833,7 +822,29 @@ export function DeployPage({ managerID, managerName, onOpenImages, onOpenPlatfor
                   { label: 'Built images go to', value: status.imagePrefixConfigured ? 'The configured registry' : 'The deployment host only' },
                   { label: 'Private provider hosts', value: status.privateHostsConfigured ? 'Configured' : 'Not configured' },
                 ]} />
-                <Inline><Button disabled={pending !== ''} onClick={() => { setPlan(null); setServiceKey(''); setSlotName('') }} size="sm" variant="secondary">Start another discovery</Button></Inline>
+                {pending === 'deploy' ? (
+                  <Banner title="The deployment is running" tone="info">
+                    {progress || 'Queued'}. This screen watches it for ten minutes; the command outlives the screen either way.
+                  </Banner>
+                ) : null}
+                {outcome ? (
+                  outcome.state === 'succeeded'
+                    ? (
+                      <Banner title="The application is deployed" tone="success">
+                        Command <Mono>{shortID(outcome.id)}</Mono> succeeded. Open Applications to see it serving.
+                      </Banner>
+                    )
+                    : (
+                      <Banner
+                        action={onOpenRuns ? <Button onClick={onOpenRuns} size="sm" variant="secondary">Open Runs</Button> : null}
+                        title={commandOutcomeTitle(outcome)}
+                        tone={commandOutcomeTone(outcome)}
+                      >
+                        {commandFailureText(outcome)}
+                      </Banner>
+                    )
+                ) : null}
+                <Inline><Button disabled={pending !== ''} onClick={() => { setPlan(null); setServiceKey(''); setApplicationName(''); setOutcome(null) }} size="sm" variant="secondary">Start another discovery</Button></Inline>
               </Rows>
             </Panel>
           </DetailLayout>

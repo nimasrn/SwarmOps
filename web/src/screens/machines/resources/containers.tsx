@@ -36,6 +36,7 @@ import type {
 } from '../../../data/types'
 import { capitalize, formatBytes, formatDateTime, shortID } from '../../../lib/format'
 import { messageOf } from '../../../lib/errors'
+import { followQueuedCommand } from '../../../lib/command-follow'
 import { useResource } from '../../../data/hooks'
 import { useRecordView, useSelectedRecord } from '../../../navigation/use-workspace'
 import { pageEntry } from '../../../navigation/navigation'
@@ -73,8 +74,7 @@ export function ContainersTab({ toast }: { toast: Toast }) {
     try {
       const command = await api.containerAction(id, action, confirmation)
       setReviewAction(null)
-      toast({ message: `Container ${action} queued (${shortID(command.id)})`, tone: 'success' })
-      await api.waitForCommand(command.id)
+      await followQueuedCommand(command, { label: `Container ${action}`, toast })
       await reload()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }

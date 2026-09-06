@@ -26,6 +26,7 @@ import type {
   TraefikSettings,
 } from '../../data/types'
 import { messageOf } from '../../lib/errors'
+import { followQueuedCommand, succeeded } from '../../lib/command-follow'
 import {
   cloneSettings,
   credentialRemovalConfirmation,
@@ -34,7 +35,6 @@ import {
   option,
   latestCredentialVersions,
   providerForCredential,
-  queuedToast,
   removableCredentialVersions,
   updateResolver,
 } from './lib'
@@ -73,8 +73,8 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     setPending('settings')
     try {
       const command = await api.applyTraefikSettings(settings, settingsConfirmation)
-      queuedToast(toast, command, 'Static Traefik settings')
       setSettingsConfirmation('')
+      await followQueuedCommand(command, { label: 'Static Traefik settings', toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -83,18 +83,19 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     try {
       const identity = provider === 'cloudflare' ? { accountId: credentialAccountID.trim().toLowerCase(), email: credentialEmail.trim().toLowerCase() } : {}
       const command = await api.uploadDNSCredential(credentialID, credentialName, provider, credentialValue, identity)
-      queuedToast(toast, command, 'DNS credential rotation')
       setCredentialValue('')
+      await followQueuedCommand(command, { label: 'DNS credential rotation', toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
   const queueDomain = async () => {
     setPending('domain')
     try {
-      const domain: DomainSpec = { createdAt: '', note: domainNote, version: state.version, zone: domainZone }
+      const domain: DomainSpec = { note: domainNote, version: state.version, zone: domainZone }
       const command = await api.registerDomain(domain)
-      queuedToast(toast, command, 'Domain acceptance')
-      setDomainZone(''); setDomainNote('')
+      if (succeeded(await followQueuedCommand(command, { label: `Accepting ${domainZone}`, toast }))) {
+        setDomainZone(''); setDomainNote('')
+      }
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -102,8 +103,9 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     setPending('domain-remove')
     try {
       const command = await api.removeDomain(removeDomainZone, removeDomainConfirmation)
-      queuedToast(toast, command, 'Domain withdrawal')
+      const zone = removeDomainZone
       setRemoveDomainZone(''); setRemoveDomainConfirmation('')
+      await followQueuedCommand(command, { label: `Withdrawing ${zone}`, toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -116,8 +118,7 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     setPending('record')
     try {
       const command = await api.applyDNSRecord(preview.record, protocol)
-      queuedToast(toast, command, 'DNS record change')
-      setPreview(null)
+      if (succeeded(await followQueuedCommand(command, { label: 'DNS record change', toast }))) setPreview(null)
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -132,8 +133,8 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     setPending('delete')
     try {
       const command = await api.deleteDNSRecord(deleteRecordID, deleteRecordConfirmation)
-      queuedToast(toast, command, 'DNS record deletion')
       setDeleteRecordID(''); setDeleteRecordConfirmation('')
+      await followQueuedCommand(command, { label: 'DNS record deletion', toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }
@@ -143,10 +144,10 @@ export function DNSSettingsTab({ onQueued, scope, state, toast }: { onQueued: ()
     setPending('credential-delete')
     try {
       const command = await api.removeDNSCredentialVersion(deleteCredentialID, deleteCredentialVersion, deleteCredentialConfirmation)
-      queuedToast(toast, command, 'DNS credential version removal')
       setDeleteCredentialID('')
       setDeleteCredentialVersion(0)
       setDeleteCredentialConfirmation('')
+      await followQueuedCommand(command, { label: 'DNS credential version removal', toast })
       onQueued()
     } catch (reason) { toast({ message: messageOf(reason), tone: 'danger', duration: 0 }) } finally { setPending('') }
   }

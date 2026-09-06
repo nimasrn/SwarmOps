@@ -20,7 +20,6 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
-	"github.com/nimasrn/SwarmOps/internal/preflight"
 	"github.com/nimasrn/SwarmOps/internal/remote"
 	"github.com/nimasrn/SwarmOps/internal/source"
 	"golang.org/x/crypto/bcrypt"
@@ -177,26 +176,6 @@ func TestApplicationDomainEndpointUsesSelectedManagerAndRequiresRemovalConfirmat
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := preflight.Manifest{
-		APIVersion: preflight.APIVersion,
-		Kind:       preflight.Kind,
-		Namespace:  "production",
-		Registry:   preflight.Registry{Host: "ghcr.io", Mode: "ghcr", Namespace: "nimasrn"},
-		DNS: preflight.DNS{
-			Providers: []preflight.DNSProvider{{Name: "cloudflare", Type: "cloudflare", CredentialSecret: "traefik_cf_dns_token_v1"}},
-			Resolvers: []preflight.CertificateResolver{{Name: "le", Challenge: "dns", Provider: "cloudflare"}},
-		},
-		Nodes: []preflight.Node{{Name: "manager-1", CPUCores: 4, AvailableCPUCores: 3, MemoryMiB: 4096, AvailableMemoryMiB: 3072, AvailableDiskGiB: 100, Labels: map[string]string{}}},
-		Workloads: []preflight.Workload{{
-			Name: "api", Profile: "application", Replicas: 1, Resolver: "le",
-			DomainOptional: true, DomainSuffixes: []string{"apps.example.com"},
-			Resources: preflight.Resources{CPUCores: 1, DiskGiB: 1, MemoryMiB: 256},
-		}},
-	}
-	admission, err := ops.NewPlatformAdmission(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
 	applications, err := ops.NewApplicationStore(directory, key)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +186,7 @@ func TestApplicationDomainEndpointUsesSelectedManagerAndRequiresRemovalConfirmat
 	}); err != nil {
 		t.Fatal(err)
 	}
-	control := ops.NewControlPlane(nil, ops.DockerCLI{}, auditStore, ops.ControlPlaneOptions{Admission: admission, Apps: applications, DataDir: directory})
+	control := ops.NewControlPlane(nil, ops.DockerCLI{}, auditStore, ops.ControlPlaneOptions{Apps: applications, DataDir: directory})
 	serversDirectory := t.TempDir()
 	serverProfiles, err := json.Marshal(map[string]any{
 		"version": 1,

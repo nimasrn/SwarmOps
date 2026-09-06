@@ -474,7 +474,10 @@ export interface DNSRecordSpec {
 
 /** An apex zone the gateway has accepted. Records and routes are refused until one exists. */
 export interface DomainSpec {
-  createdAt: string
+  /** Set by the controller when it accepts the zone. The console reads it and
+      must not send it: an empty string is not a timestamp, and the controller
+      refuses the whole body rather than guess what was meant. */
+  createdAt?: string
   note?: string
   version: number
   zone: string
@@ -630,7 +633,8 @@ export interface CutoverPlan {
 
 export interface ApplicationSpec {
   backend?: string
-  cpus: number
+  /** Stated only for a size the named plans do not offer; otherwise `plan` decides. */
+  cpus?: number
   databaseDelivery?: 'secret' | 'env'
   databases?: string[]
   domain?: string
@@ -638,13 +642,15 @@ export interface ApplicationSpec {
   healthCommand?: string[]
   healthPath?: string
   image: string
-  memoryMiB: number
+  memoryMiB?: number
   metrics: boolean
   metricsPath?: string
   metricsPort?: number
   name: string
+  /** The named size this application runs at. Empty means the default plan. */
+  plan?: string
   port: number
-  replicas: number
+  replicas?: number
   resolver?: string
   tracing?: boolean
 }
@@ -658,103 +664,21 @@ export interface ApplicationStatus {
   url?: string
 }
 
-export interface ApprovedWorkload {
+// The named sizes a deployment may choose from. SwarmOps used to make the
+// operator write a CPU and memory ceiling into a platform definition before an
+// application could exist; there is no definition any more, and a size is
+// picked per deployment from this list — or stated outright as numbers for a
+// size the list does not offer.
+export interface ResourcePlan {
   cpuCores: number
-  domain?: string
-  domainOptional: boolean
-  domainSuffixes?: string[]
   memoryMiB: number
   name: string
-  replicas: number
-  resolver?: string
+  summary: string
 }
 
-// The platform definition decides what this controller will deploy. It comes
-// either from a manifest file mounted on the controller, from the manifest an
-// operator authors in the console, or — deliberately — from nothing at all.
-export type PlatformMode = 'unset' | 'manifest' | 'unmanaged' | 'file'
-
-export interface PreflightFinding {
-  code: string
-  level: 'error' | 'warning' | string
-  message: string
-  subject?: string
-}
-
-export interface PreflightResources {
-  cpuCores: number
-  diskGiB: number
-  memoryMiB: number
-}
-
-export interface PreflightReport {
-  findings: PreflightFinding[] | null
-  namespace: string
-  totals: { available: PreflightResources; requested: PreflightResources }
-}
-
-export interface PlatformNode {
-  availableCPUCores: number
-  availableDiskGiB: number
-  availableMemoryMiB: number
-  cpuCores: number
-  labels?: Record<string, string> | null
-  memoryMiB: number
-  name: string
-}
-
-export interface PlatformWorkload {
-  advertiseIP?: string
-  domain?: string
-  domainOptional?: boolean
-  domainSuffixes?: string[] | null
-  name: string
-  objectStorageProvider?: string
-  profile: string
-  replicas: number
-  resolver?: string
-  resources: PreflightResources
-}
-
-export interface PlatformManifest {
-  apiVersion: string
-  backup: { prefix: string; provider: string; schedule: string }
-  build: { cacheNodeLabel: string; nodeLabel: string }
-  dns: {
-    providers: { credentialSecret: string; name: string; type: string }[] | null
-    resolvers: { challenge: string; name: string; provider: string }[] | null
-  }
-  ingress: { publicIPs: string[] | null }
-  kind: string
-  namespace: string
-  nodes: PlatformNode[] | null
-  registry: { authSecret: string; host: string; mode: string; namespace: string }
-  storage: { bucket: string; credentialSecret: string; endpoint: string; name: string }[] | null
-  workloads: PlatformWorkload[] | null
-}
-
-export interface PlatformDefinition {
-  /** The exact phrase that must be typed to deploy without a manifest. */
-  confirmationPhrase: string
-  editable: boolean
-  fileManaged: boolean
-  manifest: PlatformManifest
-  manifestPath: string
-  mode: PlatformMode
-  namespace: string
-  report?: PreflightReport
-  slots: ApprovedWorkload[] | null
-  /** True when this install deploys with slot enforcement deliberately off. */
-  unmanaged: boolean
-  updatedAt: string
-  updatedBy: string
-}
-
-export interface PlatformInput {
-  confirmation?: string
-  manifest?: PlatformManifest
-  mode: PlatformMode
-  namespace?: string
+export interface ResourcePlanSet {
+  default: string
+  plans: ResourcePlan[] | null
 }
 
 export type SourceProviderKind = 'github' | 'gitlab' | 'gitea'
