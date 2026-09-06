@@ -185,9 +185,17 @@ command whose fate is unknown:
 ```
 Queued application.deploy (cmd-e184b37a3fe8a43101e894645c8c4bcb).
   queued
+  · Rendering the Compose for api
+  · Preparing the route network
   retry_scheduled: The managed Traefik gateway is required before this stack can create private routes.
   needs_attention (attempt 8/8)
 swarmops: command cmd-e184b37a… ended needs_attention; code gateway_required; … try: Install and verify Traefik under Gateway, routes & DNS, then retry.
+```
+
+When a build is what failed, its output is kept and named:
+
+```bash
+swarmops command log <command-id>
 ```
 
 `swarmops help` lists the application commands; `swarmops help all` adds the
@@ -476,6 +484,16 @@ It is never included in the command record, in any list, or in a default view,
 because build output can echo build arguments. It is removed with the command it
 belongs to. Nothing else — no Compose body, no service output, no agent stdout —
 is retained.
+A long command also records the steps it passes through, so one that stops says
+where. A source deployment checks the gateway, enables each managed database,
+reconciles each shared stack, builds the image, pushes it and deploys it; those
+steps are written by the controller about its own execution — the agent serves
+requests and has no notion of a command — and read through
+`GET /api/v1/commands/{id}/events`, `swarmops command events <id>`, or the Runs
+feed. A retry starts the trail again, because it describes the attempt being
+watched; the ledger still records that earlier attempts happened and why they
+failed.
+
 For bounded Docker commands, the machine agent reduces failures to an
 allow-listed class such as missing external network/config/secret, unsatisfied
 placement, occupied gateway port, unavailable image, timeout, or output-limit

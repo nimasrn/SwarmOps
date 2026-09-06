@@ -11,6 +11,35 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.21.0 — 2026-09-06
+
+- **A command records the steps it passes through** — it moved from queued to
+  succeeded or needs attention with nothing in between, so a source deployment
+  that checks the gateway, enables each managed database, reconciles each shared
+  stack, builds an image, pushes it and deploys it reported one word for all of
+  it, and a command that stopped somewhere never said where. The steps are now
+  recorded as each is entered, and read through
+  `GET /api/v1/commands/{id}/events`, `swarmops command events <id>`, live
+  during `swarmops deploy` and `swarmops command follow`, and in the console's
+  Runs feed — which until now showed three invented entries, requested,
+  attempted and recorded, and none of the work between them.
+- **The controller is the producer, not the agent** — `CommandEvent` had existed
+  unused, described as supplied by a pull-connected agent, which the
+  architecture cannot do: the transport is a reverse HTTP tunnel where Core
+  calls the agent's own API and receives one buffered response, and the agent
+  has no notion of a command, no identifier for one, and no channel to originate
+  anything about it. Core's worker is the only thing that knows a command exists
+  and which step it is on. That also makes the trail safe by construction —
+  every string is a sentence the controller wrote, never remote output.
+- **A retry starts the trail again** — keeping every attempt turned a command
+  that retried eight times into the same two steps eight times over. The trail
+  describes the attempt being watched; the ledger still records that the earlier
+  attempts happened and why they failed.
+- **`DeployApplication` reports its own phases** — provisioning databases,
+  rendering the Compose, preparing the route network, sealing the connection
+  secrets, and deploying the stack, so a deployment from an already-built image
+  is as legible as one from source.
+
 ## 0.20.2 — 2026-09-06
 
 - **The log of a build that failed is kept** — it was dropped twice, and the
