@@ -68,6 +68,16 @@ export function RunsPage({
 }) {
   const [retrying, setRetrying] = useState('')
   const [selectedID, setSelectedID] = useSelectedRecord()
+  const [log, setLog] = useState<{ error?: string; id: string; pending?: boolean; text?: string }>({ id: '' })
+
+  const readLog = async (id: string) => {
+    setLog({ id, pending: true })
+    try {
+      setLog({ id, text: await api.commandLog(id) })
+    } catch (reason) {
+      setLog({ error: messageOf(reason), id })
+    }
+  }
   const [query, setQuery] = useState('')
   const [stateFilter, setStateFilter] = useState('all')
   const [targetFilter, setTargetFilter] = useState('all')
@@ -201,6 +211,15 @@ export function RunsPage({
                 { label: 'Updated', value: formatDateTime(selected.updatedAt) },
               ]} />
               {selected.lastError ? <CodeBlock label="Latest result summary" wrap>{selected.lastError}</CodeBlock> : null}
+              {/* The machine's own output, read on request for this one
+                  command. It is not in the ledger and not in the list: a build
+                  log can echo build arguments, so it is shown only when an
+                  operator asks for it by name. */}
+              {log.id === selected.id && log.text !== undefined
+                ? <CodeBlock label="Execution log from the machine" wrap>{log.text}</CodeBlock>
+                : log.id === selected.id && log.error
+                  ? <Banner title="No execution log" tone="info">{log.error}</Banner>
+                  : <Inline><Button disabled={log.pending} loading={log.pending} onClick={() => void readLog(selected.id)} size="sm" variant="secondary">Show execution log</Button></Inline>}
               {/* A run whose source input never reached the controller has no
                   build context to retry with: the artifact was removed when the
                   upload failed, and the controller refuses to requeue it. The

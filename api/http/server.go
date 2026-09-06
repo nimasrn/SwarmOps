@@ -349,6 +349,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/audit-events", s.withAuth(false, s.auditEvents))
 	mux.HandleFunc("GET /api/v1/commands", s.withAuth(false, s.commandsList))
 	mux.HandleFunc("GET /api/v1/commands/{id}", s.withAuth(false, s.commandGet))
+	mux.HandleFunc("GET /api/v1/commands/{id}/log", s.withAuth(false, s.commandLog))
 	mux.HandleFunc("POST /api/v1/commands/{id}/retry", s.withActiveAuth(s.commandRetry))
 	mux.Handle("/", web.Handler())
 	return s.middleware(mux)

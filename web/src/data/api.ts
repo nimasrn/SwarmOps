@@ -487,6 +487,14 @@ export class SwarmOpsAPI {
     }
     return command
   }
+  /** One command's retained execution log, as plain text. It is the machine's
+      own output, so it is fetched on request for a single command rather than
+      carried in the ledger or in any list. */
+  async commandLog(id: string) {
+    const response = await fetch(`/api/v1/commands/${encodeURIComponent(id)}/log`, { credentials: 'same-origin' })
+    if (!response.ok) throw new APIError(response.status === 404 ? 'This command retained no execution log.' : 'The execution log could not be read.', response.status)
+    return response.text()
+  }
   retryCommand(id: string) { return this.request<Command>(`/api/v1/commands/${encodeURIComponent(id)}/retry`, { method: 'POST' }) }
   traefik() { return this.request<TraefikStatus>('/api/v1/traefik/status') }
   observability() { return this.request<ObservabilityStatus>('/api/v1/observability/status') }

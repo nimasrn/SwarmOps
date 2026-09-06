@@ -156,6 +156,29 @@ func (c *Client) Post(ctx context.Context, path string, body, out any) error {
 	return c.do(request, out)
 }
 
+// Text reads an endpoint that answers with plain text rather than JSON. Only
+// a command's retained execution log does; it is the machine's own output and
+// is served as-is rather than wrapped in a document.
+func (c *Client) Text(ctx context.Context, path string) (string, error) {
+	request, err := c.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return "", ResponseError(response)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	return string(body), nil
+}
+
 // Delete removes a resource addressed by path.
 func (c *Client) Delete(ctx context.Context, path string, out any) error {
 	request, err := c.newRequest(ctx, http.MethodDelete, path, nil)

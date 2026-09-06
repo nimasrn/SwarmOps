@@ -142,6 +142,33 @@ func (s *Server) commandGet(response http.ResponseWriter, request *http.Request,
 	writeJSON(response, http.StatusOK, command)
 }
 
+// commandLog serves one command's retained execution log.
+//
+// This is the single place raw machine output crosses into an operator's
+// hands, and it is deliberately narrow: one command at a time, named
+// explicitly, authenticated, never included in a list or in the command record
+// itself. A build log can echo build arguments, so it is served as plain text
+// an operator reads rather than as a field the console renders everywhere.
+func (s *Server) commandLog(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	if s.commands == nil {
+		writeError(response, http.StatusServiceUnavailable, "SwarmOps command storage is unavailable")
+		return
+	}
+	id := request.PathValue("id")
+	if _, err := s.commands.Get(id); err != nil {
+		writeError(response, http.StatusNotFound, "Command was not found")
+		return
+	}
+	log, err := s.commands.Output(id)
+	if err != nil {
+		writeError(response, http.StatusNotFound, "This command retained no execution log")
+		return
+	}
+	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	response.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = response.Write([]byte(log))
+}
+
 func (s *Server) commandRetry(response http.ResponseWriter, request *http.Request, claims auth.Claims) {
 	if !s.remoteMutationsEnabled(response) {
 		return
@@ -776,7 +803,9 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return queue.PermanentError(fmt.Errorf("build source input is unavailable"))
 		}
 		defer artifact.Close()
-		_, err = target.Build.Run(ctx, input.Request, artifact, record.Command.RequestID)
+		var result domain.BuildResult
+		result, err = target.Build.Run(ctx, input.Request, artifact, record.Command.RequestID)
+		s.retainBuildLog(record.Command.ID, result)
 		return classifyCommandError(err)
 	case commandTraefikReconcile:
 		var input traefikCommand
@@ -1066,8 +1095,10 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 				return queue.PermanentError(fmt.Errorf("source build input is unavailable"))
 			}
 			defer artifact.Close()
-			if _, err := target.Build.Run(ctx, *input.Build, artifact, record.Command.RequestID); err != nil {
-				return classifyCommandError(err)
+			result, buildErr := target.Build.Run(ctx, *input.Build, artifact, record.Command.RequestID)
+			s.retainBuildLog(record.Command.ID, result)
+			if buildErr != nil {
+				return classifyCommandError(buildErr)
 			}
 		}
 		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec))
@@ -1187,4 +1218,26 @@ func oneOf(value string, options ...string) bool {
 		}
 	}
 	return false
+}
+
+// retainBuildLog keeps what the machine said while it built.
+//
+// Both build call sites discarded the result. The agent runs docker build,
+// returns its output to Core, and Core read it into memory and dropped it — so
+// a Dockerfile that failed on step 7 reported "Docker reported a build error"
+// and the step, the command, and the compiler's own message were gone. The log
+// is sealed beside the command rather than written into it: it is remote
+// output, so it stays out of the ledger and out of every list, and is served
+// only when an operator asks for that one command's log.
+//
+// A failure to retain it is not a failure of the build. The build already
+// happened; losing its log must not change the command's outcome, so this
+// reports nothing upward.
+func (s *Server) retainBuildLog(commandID string, result domain.BuildResult) {
+	if s.commands == nil || strings.TrimSpace(result.Log) == "" {
+		return
+	}
+	if err := s.commands.RetainOutput(commandID, result.Log); err != nil {
+		s.logger.Warn("retain build log", "command_id", commandID, "error", err)
+	}
 }

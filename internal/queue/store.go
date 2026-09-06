@@ -102,6 +102,14 @@ func commandFailureDiagnostic(action string, err error) (code, summary, recovery
 		return "execution_interrupted", "The controller stopped before it could confirm the remote result.", "Verify the target's current state, then retry only if the intended change is still missing."
 	case strings.Contains(message, "server is not connected") || strings.Contains(message, "select a connected server"):
 		return "target_disconnected", "The selected server was not connected when execution started.", "Open Diagnostics, restore the agent connection, then retry this command."
+	// A build that ran and failed is not an unconfirmed change: SwarmOps knows
+	// exactly what happened, and now keeps the machine's own output to prove
+	// it. Saying "could not confirm" sent the operator to inspect Docker when
+	// the answer was already retained against the command.
+	case strings.Contains(message, "docker reported a build error"):
+		return "build_failed", "The image build failed on the machine.", "Read this command's execution log for the failing step and its output, correct it in the repository, then retry."
+	case strings.Contains(message, "docker reported an image push error"), strings.Contains(message, "push built image"):
+		return "image_push_failed", "The image built, but pushing it to the registry failed.", "Read this command's execution log for the push output, check the registry credential and that the namespace accepts this image, then retry."
 	// These five are the gateway's own prerequisites, and the routing store
 	// checks them for every command that touches it — accepting a domain,
 	// applying a record, publishing a route — not only for the installation.
@@ -427,8 +435,12 @@ type Submission struct {
 }
 
 type storedRecord struct {
-	Artifact       bool            `json:"artifact,omitempty"`
-	Command        domain.Command  `json:"command"`
+	Artifact bool           `json:"artifact,omitempty"`
+	Command  domain.Command `json:"command"`
+	// Output records that a bounded execution log was sealed beside this
+	// command. It is not part of domain.Command: the ledger is read whole on
+	// every load, and a build log in every record would grow it without bound.
+	Output         bool            `json:"output,omitempty"`
 	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
 	LeaseID        string          `json:"leaseId,omitempty"`
 	Payload        json.RawMessage `json:"payload,omitempty"`
@@ -548,13 +560,13 @@ func (s *Store) SubmitWithResult(input SubmitInput) (Submission, error) {
 	// in-memory ledger keeps the smaller history while the previous sealed
 	// file still holds everything; the next successful transition persists
 	// the same bounded result.
-	s.pruneTerminalLocked()
+	pruned := s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		s.records = previous
 		return Submission{}, err
 	}
-	for _, id := range artifacts {
-		s.removeArtifact(id)
+	for _, id := range append(artifacts, pruned...) {
+		s.forgetCommandFiles(id)
 	}
 	return Submission{Command: cloneCommand(record.Command), Created: true, Superseded: superseded}, nil
 }
@@ -603,7 +615,7 @@ func (s *Store) SubmitArtifactWithResult(input SubmitInput, body io.Reader) (Sub
 	}
 	s.mu.Unlock()
 	for _, id := range artifacts {
-		s.removeArtifact(id)
+		s.forgetCommandFiles(id)
 	}
 
 	writeErr := s.writeArtifact(record.Command.ID, body, input.MaxArtifactBytes)
@@ -956,13 +968,18 @@ func (s *Store) CompleteLease(id, leaseID string) (domain.Command, error) {
 	artifact := record.Artifact
 	record.Artifact = false
 	command := cloneCommand(record.Command)
-	s.pruneTerminalLocked()
+	pruned := s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		*record = previous
 		return domain.Command{}, err
 	}
+	// The input tar is consumed; the execution log is not, because it is the
+	// only account of what the machine did.
 	if artifact {
 		s.removeArtifact(id)
+	}
+	for _, prunedID := range pruned {
+		s.forgetCommandFiles(prunedID)
 	}
 	return command, nil
 }
@@ -1037,7 +1054,7 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	record.Payload = nil
 	artifact := record.Artifact
 	record.Artifact = false
-	s.pruneTerminalLocked()
+	pruned := s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
 		record.Command.FailureCode = previousFailureCode
@@ -1056,6 +1073,9 @@ func (s *Store) Complete(id string) (domain.Command, error) {
 	s.mu.Unlock()
 	if artifact {
 		s.removeArtifact(id)
+	}
+	for _, prunedID := range pruned {
+		s.forgetCommandFiles(prunedID)
 	}
 	return command, nil
 }
@@ -1099,7 +1119,7 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 	record.Command.UpdatedAt = now
 	record.Command.LeaseExpiresAt = nil
 	record.LeaseID = ""
-	s.pruneTerminalLocked()
+	pruned := s.pruneTerminalLocked()
 	if err := s.saveLocked(); err != nil {
 		record.Command.LastError = previousError
 		record.Command.FailureCode = previousFailureCode
@@ -1110,6 +1130,9 @@ func (s *Store) Fail(id string, executionErr error) (domain.Command, string, err
 		record.Command.RecoveryHint = previousRecoveryHint
 		record.Command.UpdatedAt = previousUpdatedAt
 		return domain.Command{}, "", err
+	}
+	for _, prunedID := range pruned {
+		s.forgetCommandFiles(prunedID)
 	}
 	return cloneCommand(record.Command), event, nil
 }
@@ -1137,6 +1160,90 @@ func (s *Store) Artifact(id string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("open encrypted command input: %w", err)
 	}
 	return artifact, nil
+}
+
+// MaxOutputBytes bounds one retained execution log. A build that loops on a
+// failing step can produce megabytes; what explains the failure is at the end
+// of it, and the head is kept only so the failing step has context.
+const MaxOutputBytes = 256 << 10
+
+// RetainOutput seals a command's execution log beside its input.
+//
+// The log is what the machine actually said — the Docker build output that
+// names the step and the error. Core read it into memory and dropped it, so a
+// Dockerfile failing at step 7 reported "Docker reported a build error" and
+// nothing else. It is sealed rather than written to the ledger because it is
+// remote output: it stays out of the command record and out of any list, and
+// is served only when an operator asks for that one command's log.
+func (s *Store) RetainOutput(id, log string) error {
+	// Emptiness is judged on the trimmed text; what is stored is the bytes the
+	// machine produced. Trimming a log before sealing it would be this
+	// controller editing the evidence it exists to keep.
+	if strings.TrimSpace(log) == "" {
+		return nil
+	}
+	s.mu.Lock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		s.mu.Unlock()
+		return fmt.Errorf("command not found")
+	}
+	if err := s.writeOutput(id, log); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	previous := s.records[index].Output
+	s.records[index].Output = true
+	if err := s.saveLocked(); err != nil {
+		s.records[index].Output = previous
+		s.removeOutput(id)
+		s.mu.Unlock()
+		return err
+	}
+	s.mu.Unlock()
+	return nil
+}
+
+// Output returns a command's retained execution log.
+func (s *Store) Output(id string) (string, error) {
+	s.mu.Lock()
+	index := s.indexLocked(id)
+	if index < 0 || !s.records[index].Output {
+		s.mu.Unlock()
+		return "", fmt.Errorf("command output is unavailable")
+	}
+	s.mu.Unlock()
+	sealed, err := s.sealer.ReadFile(s.outputPath(id), s.outputPurpose(id))
+	if err != nil {
+		return "", fmt.Errorf("read command output: %w", err)
+	}
+	return string(sealed), nil
+}
+
+func (s *Store) outputPath(id string) string {
+	return filepath.Join(s.inputsDir, id+".output.sealed")
+}
+
+func (s *Store) outputPurpose(id string) string {
+	return "command-output:" + id
+}
+
+func (s *Store) writeOutput(id, log string) error {
+	if !commandIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid command output")
+	}
+	// Keep the end, which is where a build says why it stopped, and enough of
+	// the head to name the step it was on.
+	if len(log) > MaxOutputBytes {
+		head := MaxOutputBytes / 4
+		tail := MaxOutputBytes - head
+		log = log[:head] + "\n… (truncated) …\n" + log[len(log)-tail:]
+	}
+	return s.sealer.WriteFile(s.outputPath(id), s.outputPurpose(id), []byte(log))
+}
+
+func (s *Store) removeOutput(id string) {
+	_ = os.Remove(s.outputPath(id))
 }
 
 func (s *Store) recover() error {
@@ -1357,6 +1464,13 @@ func (s *Store) removeArtifact(id string) {
 	_ = os.Remove(s.legacyArtifactPath(id))
 }
 
+// forgetCommandFiles drops everything sealed beside a command that is leaving
+// the ledger, so a retained log cannot outlive the record that explains it.
+func (s *Store) forgetCommandFiles(id string) {
+	s.removeArtifact(id)
+	s.removeOutput(id)
+}
+
 func protectedArtifactFile(path string) (bool, os.FileInfo, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -1386,7 +1500,11 @@ func (s *Store) saveLocked() error {
 // history exceeds the configured bound. Queued, running, retry-scheduled, and
 // needs-attention commands are never removed, so pruning cannot lose pending
 // work or an operator's explicit retry decision.
-func (s *Store) pruneTerminalLocked() {
+// pruneTerminalLocked drops the oldest succeeded records once the history
+// limit is exceeded, and reports the commands that left so their sealed files
+// can be removed with them. Returning nothing left a retained execution log on
+// disk after the record that explained it was gone.
+func (s *Store) pruneTerminalLocked() []string {
 	total := 0
 	for i := range s.records {
 		if s.records[i].Command.State == domain.CommandSucceeded {
@@ -1395,17 +1513,20 @@ func (s *Store) pruneTerminalLocked() {
 	}
 	excess := total - s.historyLimit
 	if excess <= 0 {
-		return
+		return nil
 	}
 	retained := make([]storedRecord, 0, len(s.records)-excess)
+	var pruned []string
 	for _, record := range s.records {
 		if excess > 0 && record.Command.State == domain.CommandSucceeded {
 			excess--
+			pruned = append(pruned, record.Command.ID)
 			continue
 		}
 		retained = append(retained, record)
 	}
 	s.records = retained
+	return pruned
 }
 
 func validateInput(input SubmitInput, artifact bool) error {

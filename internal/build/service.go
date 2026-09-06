@@ -68,11 +68,15 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 	buildContext, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	log, err := s.Docker.Build(buildContext, contextTar, query, headers)
+	// A failed build is the case its log exists for. Returning an empty result
+	// beside the error threw the output away at the one moment it was worth
+	// keeping — the step that failed and what it printed — so the caller was
+	// told "Docker reported a build error" and had nothing to read.
 	if err != nil {
-		return domain.BuildResult{}, err
+		return domain.BuildResult{Image: request.Image, Log: log, RequestID: requestID}, err
 	}
 	if buildLogReportsError(log) {
-		return domain.BuildResult{}, fmt.Errorf("Docker reported a build error")
+		return domain.BuildResult{Image: request.Image, Log: log, RequestID: requestID}, fmt.Errorf("Docker reported a build error")
 	}
 	if request.Push {
 		repository, tag, err := splitImage(request.Image)
@@ -86,12 +90,15 @@ func (s Service) Run(ctx context.Context, request Request, contextTar io.Reader,
 		pushContext, pushCancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer pushCancel()
 		pushLog, err := s.Docker.PushImage(pushContext, repository, tag, authHeader)
+		// The image built; the push is what failed. Both logs are kept, in the
+		// order they happened, so the reader can see which half went wrong.
 		if err != nil {
-			return domain.BuildResult{}, fmt.Errorf("push built image: %w", err)
+			return domain.BuildResult{Image: request.Image, Log: log + pushLog, RequestID: requestID}, fmt.Errorf("push built image: %w", err)
 		}
 		if buildLogReportsError(pushLog) {
-			return domain.BuildResult{}, fmt.Errorf("Docker reported an image push error")
+			return domain.BuildResult{Image: request.Image, Log: log + pushLog, RequestID: requestID}, fmt.Errorf("Docker reported an image push error")
 		}
+		log += pushLog
 	}
 	return domain.BuildResult{Image: request.Image, Log: log, Pushed: request.Push, RequestID: requestID}, nil
 }

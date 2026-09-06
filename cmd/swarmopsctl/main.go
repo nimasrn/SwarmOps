@@ -60,7 +60,7 @@ func commands() []command {
 		{Group: groupApp, Name: "logs", Summary: "Read collected logs", Run: runLogs, Usage: "logs [--app <name>] [--service <name>] [--level <level>] [--search <text>] [-f]"},
 		{Group: groupApp, Name: "restart", Summary: "Restart an application's service", Run: runRestart, Usage: "restart [--app <name>]"},
 		{Group: groupApp, Name: "status", Summary: "Show the cluster overview", Run: runStatus, Usage: "status [--json]"},
-		{Group: groupApp, Name: "command", Summary: "Follow queued commands", Run: runCommand, Usage: "command list|show <id>|retry <id>|follow <id>"},
+		{Group: groupApp, Name: "command", Summary: "Follow queued commands", Run: runCommand, Usage: "command list|show <id>|log <id>|retry <id>|follow <id>"},
 
 		{Group: groupWorkstation, Name: "build", Summary: "Build an image from a local directory", Run: build, Usage: "build --url <core-url> --username <name> --cluster-id default --server-id <id> --context <dir> --image <ref>"},
 		{Group: groupWorkstation, Name: "password-hash", Summary: "Hash an admin password for the installer", Run: passwordHash, Usage: "password-hash --stdin"},

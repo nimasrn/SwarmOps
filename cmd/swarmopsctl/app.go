@@ -534,6 +534,21 @@ func runCommand(arguments []string) error {
 			return err
 		}
 		return cli.WriteJSON(os.Stdout, record)
+	case "log":
+		if len(rest) != 1 {
+			return errUsage
+		}
+		// Plain text, straight through: this is what the machine printed, and
+		// reshaping it would be this CLI editing evidence.
+		log, err := client.Text(ctx, "/api/v1/commands/"+rest[0]+"/log")
+		if err != nil {
+			return err
+		}
+		fmt.Print(log)
+		if !strings.HasSuffix(log, "\n") {
+			fmt.Println()
+		}
+		return nil
 	case "follow":
 		if len(rest) != 1 {
 			return errUsage

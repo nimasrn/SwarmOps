@@ -983,3 +983,162 @@ func TestGatewayPrerequisitesAreNamedForEveryRoutingCommand(t *testing.T) {
 		}
 	}
 }
+
+// What the machine said while it built has to outlive the build.
+//
+// Core ran docker build through the agent, read the output into memory, and
+// dropped it: a Dockerfile that failed on step 7 reported "Docker reported a
+// build error" and the step, the command and the compiler's own message were
+// gone with it.
+func TestARetainedExecutionLogSurvivesTheCommandThatProducedIt(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := "Step 7/9 : RUN go build ./...\n#12 4.301 main.go:14:2: undefined: doesNotExist\n"
+	if err := store.RetainOutput(command.ID, log); err != nil {
+		t.Fatal(err)
+	}
+	// It is not in the command record, and therefore not in any list: the
+	// ledger is read whole, and remote output does not belong in it.
+	listed, err := store.List(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range listed {
+		if strings.Contains(fmt.Sprintf("%#v", record), "undefined: doesNotExist") {
+			t.Fatal("the execution log leaked into the command ledger")
+		}
+	}
+	read, err := store.Output(command.ID)
+	if err != nil || read != log {
+		t.Fatalf("Output = %q, %v", read, err)
+	}
+	// It survives a reload, sealed on disk like every other command file.
+	reopened, err := Open(store.dir[:len(store.dir)-len("/commands")], testDataKey(), testHistoryLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read, err := reopened.Output(command.ID); err != nil || read != log {
+		t.Fatalf("after reload Output = %q, %v", read, err)
+	}
+}
+
+func TestOutputIsRefusedForACommandThatRetainedNone(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Output(command.ID); err == nil {
+		t.Fatal("a command with no retained log returned one")
+	}
+	if _, err := store.Output("cmd-00000000000000000000000000000000"); err == nil {
+		t.Fatal("an unknown command returned a log")
+	}
+	// An empty log is not an error and retains nothing.
+	if err := store.RetainOutput(command.ID, "   \n "); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Output(command.ID); err == nil {
+		t.Fatal("whitespace was retained as a log")
+	}
+}
+
+// A build that loops on a failing step can print megabytes. The end explains
+// the failure and the head names the step, so both are kept and the middle is
+// not.
+func TestARetainedLogIsBounded(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := "HEAD-MARKER" + strings.Repeat("x", MaxOutputBytes*2) + "TAIL-MARKER"
+	if err := store.RetainOutput(command.ID, log); err != nil {
+		t.Fatal(err)
+	}
+	read, err := store.Output(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read) > MaxOutputBytes+64 {
+		t.Fatalf("retained %d bytes, cap is %d", len(read), MaxOutputBytes)
+	}
+	for _, want := range []string{"HEAD-MARKER", "TAIL-MARKER", "(truncated)"} {
+		if !strings.Contains(read, want) {
+			t.Errorf("a bounded log lost %q", want)
+		}
+	}
+}
+
+// A log left on disk after the record that explains it is gone is an orphan
+// nothing will ever read or delete.
+func TestPruningACommandForgetsItsRetainedLog(t *testing.T) {
+	t.Parallel()
+	store, err := Open(t.TempDir(), testDataKey(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first string
+	for index := 0; index < 2; index++ {
+		input := testInput()
+		input.IdempotencyKey = fmt.Sprintf("key-%d", index)
+		input.Target = fmt.Sprintf("stack/app-%d", index)
+		command, _, err := store.Submit(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			first = command.ID
+		}
+		if err := store.RetainOutput(command.ID, fmt.Sprintf("log for %d", index)); err != nil {
+			t.Fatal(err)
+		}
+		record, found, err := store.ClaimDue()
+		if err != nil || !found {
+			t.Fatalf("claim %d found=%t err=%v", index, found, err)
+		}
+		if _, err := store.Complete(record.Command.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.Output(first); err == nil {
+		t.Fatal("the pruned command's log outlived its record")
+	}
+	if _, err := os.Stat(store.outputPath(first)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the sealed log file was left on disk: %v", err)
+	}
+}
+
+// A build that ran and failed is not an unconfirmed change.
+//
+// SwarmOps knows exactly what happened and now keeps the machine's output to
+// prove it, so reporting "could not confirm" sent the operator to inspect
+// Docker when the answer was already retained against the command.
+func TestABuildFailureIsNamedAndPointsAtItsLog(t *testing.T) {
+	t.Parallel()
+	for _, sample := range []struct {
+		code    string
+		message string
+	}{
+		{"build_failed", "Docker reported a build error"},
+		{"image_push_failed", "Docker reported an image push error"},
+		{"image_push_failed", "push built image: unauthorized"},
+	} {
+		code, summary, hint := commandFailureDiagnostic("build.image", errors.New(sample.message))
+		if code != sample.code {
+			t.Errorf("%q classified as %q, want %q", sample.message, code, sample.code)
+		}
+		if strings.Contains(summary, "could not confirm") {
+			t.Errorf("%q is a known outcome, not an unconfirmed one: %q", sample.message, summary)
+		}
+		if !strings.Contains(hint, "execution log") {
+			t.Errorf("%q does not send the operator to the log that explains it: %q", sample.message, hint)
+		}
+	}
+}
