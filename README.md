@@ -450,7 +450,15 @@ returning HTTP `202` with a command ID. The matching console route shows only
 safe metadata: action, target, state, attempt count, next retry, and a bounded
 failure code, operator summary, and recovery hint. Raw remote output and error
 text remain excluded, but the failure class and next action are retained instead
-of collapsing every problem into the same generic sentence.
+of collapsing every problem into the same generic sentence. A failure the
+controller cannot classify still reports the generic sentence — it is the one
+case where SwarmOps genuinely does not know what happened — and its cause is
+written to the controller log with the command's action, target and ID, so it
+can be recovered without being shown to the browser:
+
+```bash
+docker service logs --since 1h swarmops_api 2>&1 | grep "no classified cause"
+```
 For bounded Docker commands, the machine agent reduces failures to an
 allow-listed class such as missing external network/config/secret, unsatisfied
 placement, occupied gateway port, unavailable image, timeout, or output-limit

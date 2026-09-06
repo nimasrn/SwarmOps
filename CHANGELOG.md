@@ -11,6 +11,33 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.20.1 — 2026-09-06
+
+- **A failure SwarmOps cannot name no longer takes its cause with it** — "SwarmOps
+  could not confirm that the requested change completed" is the default bucket
+  of the failure classifier: a statement that the controller does not know what
+  happened, not a description of what did. The error was matched against every
+  known pattern and then dropped, and the command's own last error is rebuilt
+  from that generic summary, so the ledger, the console and the CLI all reported
+  the same empty sentence with nowhere left to look — and the only move the
+  message suggests, retrying, is the one that cannot work for the deterministic
+  conditions that land there. An unclassified failure is now written to the
+  controller log with its action, target, command ID and cause, bounded so a
+  repeating failure cannot fill a disk through its own diagnostics. A classified
+  failure is not logged; it already carries its reason. Raw output still never
+  reaches the ledger or the browser.
+- **A gateway prerequisite is named whichever command met it** — the ACME contact
+  email, the external `traefik` overlay, the `nim.edge=true` label, the dynamic
+  config and the dashboard secret were classified only for `traefik.reconcile`.
+  The routing store checks them for every command that touches it, so accepting
+  a domain, applying a DNS record or publishing a route hit the same guard and
+  reported the unclassified sentence instead of the missing prerequisite and the
+  page that supplies it. Accepting a domain before the gateway had an ACME email
+  was exactly this, and reported nothing an operator could act on.
+- **`swarmops domain add` sent a body the controller could not read** — it passed
+  the zone as flat fields where a nested domain spec is expected and was refused
+  with "Invalid request body" every time.
+
 ## 0.20.0 — 2026-09-06
 
 Deploying an application meant opening a browser, and a queued command that
