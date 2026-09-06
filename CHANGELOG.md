@@ -11,6 +11,37 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.22.0 — 2026-09-06
+
+- **An application that failed to start is kept** — it was stored only after its
+  deployment succeeded, so a failure left nothing behind: not listed, not
+  inspectable, not removable, and no different from an application nobody had
+  ever asked for. The operator who had just requested it saw no trace of it. The
+  spec is stored now whether or not it started, which is safe unconditionally
+  because an invalid spec never reaches execution — submission renders and
+  validates first and refuses with 422, so everything that fails at deployment
+  is a runtime failure worth keeping and fixing.
+- **Three states instead of two** — `deployed: false` covered an application that
+  never started and one that started and later stopped, which need different
+  answers. Applications report `serving`, `stopped`, or `failed`, and having
+  started is sticky: once an application has run it keeps having run, so a later
+  failure reads as stopped rather than as never having started. Each carries the
+  summary of its last failure and the command whose steps, classified failure
+  and execution log explain it.
+- **An application with no stack can be removed** — Docker refuses to remove a
+  stack that was never created, and that refusal was the "could not confirm that
+  the requested change completed" an operator met when removing an application
+  whose first deployment failed. Keeping failed applications would otherwise have
+  become collecting ones that cannot be deleted.
+- **Prometheus is not told about an application that never started** — the
+  discovery document and the dependency bindings both read the stored
+  applications, and advertising a scrape target for a deployment that never
+  happened leaves a permanently down target standing in for it.
+- **The sealed application store moves to version 2** — a version 1 file held
+  specs alone, and every spec in it was written only after a success, so it is
+  read forward as applications that have started. Without that, every existing
+  application would have appeared as failed to start after upgrading.
+
 ## 0.21.1 — 2026-09-06
 
 - **A code host is refused as an image registry** — the image prefix only had to
