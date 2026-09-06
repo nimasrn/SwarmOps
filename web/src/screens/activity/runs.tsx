@@ -24,7 +24,7 @@ import {
 } from '@nim.zone/ui'
 import type { TableColumn } from '@nim.zone/ui'
 import { api } from '../../data/api'
-import type { Command, Server } from '../../data/types'
+import type { Command, CommandEvent, Server } from '../../data/types'
 import type { DashboardData } from '../../data/dashboard'
 import { formatDateTime, sentence, shortID } from '../../lib/format'
 import { isInFlight, isStalled, serverHealth } from '../../lib/health'
@@ -69,6 +69,8 @@ export function RunsPage({
   const [retrying, setRetrying] = useState('')
   const [selectedID, setSelectedID] = useSelectedRecord()
   const [log, setLog] = useState<{ error?: string; id: string; pending?: boolean; text?: string }>({ id: '' })
+  const [steps, setSteps] = useState<{ events: CommandEvent[]; id: string }>({ events: [], id: '' })
+
 
   const readLog = async (id: string) => {
     setLog({ id, pending: true })
@@ -119,6 +121,18 @@ export function RunsPage({
   const beyondWindow = !listed && fetched?.id === selectedID ? fetched : undefined
   const selected = listed ?? beyondWindow?.command
   const guidance = selected ? attentionGuidance(selected, dashboard, servers) : null
+  // The controller's own progress through a long command. A source deployment
+  // installs a gateway, enables databases, reconciles stacks, builds an image
+  // and deploys it; the feed used to show three invented entries — requested,
+  // attempted, recorded — and none of the work in between.
+  useEffect(() => {
+    if (!selectedID) return
+    let live = true
+    void api.commandEvents(selectedID)
+      .then((events) => { if (live) setSteps({ events, id: selectedID }) })
+      .catch(() => { if (live) setSteps({ events: [], id: selectedID }) })
+    return () => { live = false }
+  }, [selectedID, selected?.state, selected?.updatedAt])
   const queued = commands.filter((command) => command.state === 'queued' || command.state === 'uploading').length
   const running = commands.filter(isInFlight).length
   const retryScheduled = commands.filter((command) => command.state === 'retry_scheduled').length
@@ -239,6 +253,15 @@ export function RunsPage({
               <ActivityFeed events={[
                 { action: 'requested command', actor: selected.actor, at: selected.createdAt, id: `${selected.id}-requested`, target: selected.target, tone: 'accent' },
                 ...(selected.lastAttemptAt ? [{ action: `attempt ${selected.attempt} started`, at: selected.lastAttemptAt, id: `${selected.id}-attempt`, target: selected.action, tone: 'warning' as const }] : []),
+                ...(steps.id === selected.id
+                  ? steps.events.map((event) => ({
+                    action: event.evidence || sentence(event.state).toLowerCase(),
+                    at: event.occurredAt,
+                    id: `${selected.id}-step-${event.sequence}`,
+                    target: selected.action,
+                    tone: 'default' as const,
+                  }))
+                  : []),
                 { action: `recorded ${sentence(selected.state).toLowerCase()}`, at: selected.updatedAt, id: `${selected.id}-result`, target: selected.action, tone: selected.state === 'succeeded' ? 'success' : isStalled(selected) ? 'danger' : 'default' },
               ]} />
             </Rows>

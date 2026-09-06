@@ -62,6 +62,11 @@ func requireConfirmation(skip bool, question string) error {
 	}
 }
 
+// reportCommandStep prints one piece of work as the controller enters it.
+func reportCommandStep(event domain.CommandEvent) {
+	fmt.Fprintln(os.Stderr, "  · "+event.Evidence)
+}
+
 // reportCommandState is the progress line a following command prints. It says
 // only what the controller said.
 func reportCommandState(command domain.Command) {
@@ -100,7 +105,7 @@ func submitMethodAndFollow(ctx context.Context, client *cli.Client, method, path
 		fmt.Println(command.ID)
 		return nil
 	}
-	final, err := client.Follow(ctx, command.ID, reportCommandState)
+	final, err := client.FollowWithSteps(ctx, command.ID, reportCommandState, reportCommandStep)
 	if err != nil {
 		return err
 	}

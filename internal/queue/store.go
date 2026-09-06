@@ -437,9 +437,11 @@ type Submission struct {
 type storedRecord struct {
 	Artifact bool           `json:"artifact,omitempty"`
 	Command  domain.Command `json:"command"`
-	// Output records that a bounded execution log was sealed beside this
-	// command. It is not part of domain.Command: the ledger is read whole on
-	// every load, and a build log in every record would grow it without bound.
+	// Events and Output record that a progress trail and a bounded execution
+	// log were sealed beside this command. Neither is part of domain.Command:
+	// the ledger is read whole on every load, and carrying either in every
+	// record would grow it without bound.
+	Events         bool            `json:"events,omitempty"`
 	Output         bool            `json:"output,omitempty"`
 	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
 	LeaseID        string          `json:"leaseId,omitempty"`
@@ -810,6 +812,11 @@ func (s *Store) ClaimDue() (Record, bool, error) {
 	previousState := record.Command.State
 	previousUpdatedAt := record.Command.UpdatedAt
 	record.Command.Attempt++
+	// The trail describes the attempt being watched. Keeping every attempt's
+	// steps turned a command that retried eight times into the same two lines
+	// eight times over, and spent the per-command cap on repetition; what an
+	// operator is looking at is where this attempt has reached.
+	s.resetEventsLocked(record.Command.ID)
 	record.Command.LastAttemptAt = &now
 	record.Command.NextAttemptAt = nil
 	record.Command.State = domain.CommandRunning
@@ -873,6 +880,11 @@ func (s *Store) LeaseDue(serverID string, authorityEpoch uint64, ttl time.Durati
 	previous := *record
 	expires := now.Add(ttl)
 	record.Command.Attempt++
+	// The trail describes the attempt being watched. Keeping every attempt's
+	// steps turned a command that retried eight times into the same two lines
+	// eight times over, and spent the per-command cap on repetition; what an
+	// operator is looking at is where this attempt has reached.
+	s.resetEventsLocked(record.Command.ID)
 	record.Command.AuthorityEpoch = authorityEpoch
 	record.Command.LastAttemptAt = &now
 	record.Command.LeaseExpiresAt = &expires
@@ -1160,6 +1172,116 @@ func (s *Store) Artifact(id string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("open encrypted command input: %w", err)
 	}
 	return artifact, nil
+}
+
+// MaxCommandEvents bounds the progress recorded for one command. A source
+// deployment reports six or seven steps; the cap exists so a future command
+// that loops cannot grow its own record without limit.
+const MaxCommandEvents = 64
+
+// maxEvidenceRunes bounds one step's description. Evidence is written by the
+// controller about its own progress, never copied from a machine, so this is a
+// guard against a long path or image reference rather than against untrusted
+// text.
+const maxEvidenceRunes = 240
+
+// AppendEvent records one step of a command's execution.
+//
+// A command moved from queued to succeeded or needs_attention with nothing in
+// between, so a source deployment that installs a gateway, enables a database,
+// reconciles a stack, builds an image and then deploys it reported one word for
+// all five. The steps are stored beside the command rather than inside it: the
+// ledger is read whole on every load, and a progress trail in every record
+// would grow it for the benefit of the few commands anyone is watching.
+func (s *Store) AppendEvent(id string, state domain.CommandState, evidence string) error {
+	evidence = strings.TrimSpace(evidence)
+	if runes := []rune(evidence); len(runes) > maxEvidenceRunes {
+		evidence = string(runes[:maxEvidenceRunes]) + "…"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	index := s.indexLocked(id)
+	if index < 0 {
+		return fmt.Errorf("command not found")
+	}
+	events, err := s.readEventsLocked(id)
+	if err != nil {
+		return err
+	}
+	if len(events) >= MaxCommandEvents {
+		return nil
+	}
+	events = append(events, domain.CommandEvent{
+		CommandID:  id,
+		Evidence:   evidence,
+		OccurredAt: s.now().UTC(),
+		Sequence:   uint64(len(events)) + 1,
+		State:      state,
+	})
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		return err
+	}
+	if err := s.sealer.WriteFile(s.eventsPath(id), s.eventsPurpose(id), encoded); err != nil {
+		return err
+	}
+	previous := s.records[index].Events
+	s.records[index].Events = true
+	if err := s.saveLocked(); err != nil {
+		s.records[index].Events = previous
+		return err
+	}
+	return nil
+}
+
+// Events returns a command's ordered progress trail.
+func (s *Store) Events(id string) ([]domain.CommandEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.indexLocked(id) < 0 {
+		return nil, fmt.Errorf("command not found")
+	}
+	return s.readEventsLocked(id)
+}
+
+func (s *Store) readEventsLocked(id string) ([]domain.CommandEvent, error) {
+	index := s.indexLocked(id)
+	if index < 0 || !s.records[index].Events {
+		return nil, nil
+	}
+	sealed, err := s.sealer.ReadFile(s.eventsPath(id), s.eventsPurpose(id))
+	if err != nil {
+		return nil, fmt.Errorf("read command events: %w", err)
+	}
+	var events []domain.CommandEvent
+	if err := json.Unmarshal(sealed, &events); err != nil {
+		return nil, fmt.Errorf("decode command events: %w", err)
+	}
+	return events, nil
+}
+
+// resetEventsLocked clears a command's progress trail. The ledger still
+// records that earlier attempts happened, and their failure summary; what is
+// dropped is a repetition of the same steps.
+func (s *Store) resetEventsLocked(id string) {
+	index := s.indexLocked(id)
+	if index < 0 || !s.records[index].Events {
+		return
+	}
+	s.removeEvents(id)
+	s.records[index].Events = false
+}
+
+func (s *Store) eventsPath(id string) string {
+	return filepath.Join(s.inputsDir, id+".events.sealed")
+}
+
+func (s *Store) eventsPurpose(id string) string {
+	return "command-events:" + id
+}
+
+func (s *Store) removeEvents(id string) {
+	_ = os.Remove(s.eventsPath(id))
 }
 
 // MaxOutputBytes bounds one retained execution log. A build that loops on a
@@ -1469,6 +1591,7 @@ func (s *Store) removeArtifact(id string) {
 func (s *Store) forgetCommandFiles(id string) {
 	s.removeArtifact(id)
 	s.removeOutput(id)
+	s.removeEvents(id)
 }
 
 func protectedArtifactFile(path string) (bool, os.FileInfo, error) {

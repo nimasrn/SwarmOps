@@ -27,6 +27,7 @@ import type {
   ResourcePlanSet,
   AuditEvent,
   Command,
+  CommandEvent,
   ComposePlan,
   DatabaseStatus,
   Node,
@@ -487,6 +488,8 @@ export class SwarmOpsAPI {
     }
     return command
   }
+  /** A command's ordered progress trail. */
+  commandEvents(id: string) { return this.request<CommandEvent[]>(`/api/v1/commands/${encodeURIComponent(id)}/events`) }
   /** One command's retained execution log, as plain text. It is the machine's
       own output, so it is fetched on request for a single command rather than
       carried in the ledger or in any list. */

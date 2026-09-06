@@ -534,6 +534,22 @@ func runCommand(arguments []string) error {
 			return err
 		}
 		return cli.WriteJSON(os.Stdout, record)
+	case "events":
+		if len(rest) != 1 {
+			return errUsage
+		}
+		var events []domain.CommandEvent
+		if err := client.Get(ctx, "/api/v1/commands/"+rest[0]+"/events", &events); err != nil {
+			return err
+		}
+		if opts.json {
+			return cli.WriteJSON(os.Stdout, events)
+		}
+		table := cli.Table{Header: []string{"#", "AT", "STATE", "STEP"}}
+		for _, event := range events {
+			table.Add(strconv.FormatUint(event.Sequence, 10), event.OccurredAt.Format(time.RFC3339), string(event.State), event.Evidence)
+		}
+		return table.Write(os.Stdout, "This command recorded no steps.")
 	case "log":
 		if len(rest) != 1 {
 			return errUsage
@@ -553,7 +569,7 @@ func runCommand(arguments []string) error {
 		if len(rest) != 1 {
 			return errUsage
 		}
-		_, err := client.Follow(ctx, rest[0], reportCommandState)
+		_, err := client.FollowWithSteps(ctx, rest[0], reportCommandState, reportCommandStep)
 		return err
 	case "retry":
 		if len(rest) != 1 {

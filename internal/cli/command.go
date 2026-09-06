@@ -89,7 +89,16 @@ func TerminalCommand(state domain.CommandState) bool {
 // the controller's own failure summary and recovery hint — the causes used to
 // be dropped here, leaving an operator with a command ID and nothing else.
 func (c *Client) Follow(ctx context.Context, id string, onChange func(domain.Command)) (domain.Command, error) {
+	return c.FollowWithSteps(ctx, id, onChange, nil)
+}
+
+// FollowWithSteps also reports the controller's own progress through a long
+// command. A source deployment installs a gateway, enables databases,
+// reconciles stacks, builds an image and deploys it; watching only the state
+// showed one word for all of it.
+func (c *Client) FollowWithSteps(ctx context.Context, id string, onChange func(domain.Command), onStep func(domain.CommandEvent)) (domain.Command, error) {
 	previous := domain.CommandState("")
+	reported := uint64(0)
 	for {
 		var command domain.Command
 		if err := c.Get(ctx, "/api/v1/commands/"+id, &command); err != nil {
@@ -99,6 +108,23 @@ func (c *Client) Follow(ctx context.Context, id string, onChange func(domain.Com
 			previous = command.State
 			if onChange != nil {
 				onChange(command)
+			}
+		}
+		if onStep != nil {
+			var events []domain.CommandEvent
+			if err := c.Get(ctx, "/api/v1/commands/"+id+"/events", &events); err == nil {
+				// A retry clears the trail and starts again at one, so a
+				// shorter trail than last time means a new attempt rather
+				// than steps that have already been reported.
+				if uint64(len(events)) < reported {
+					reported = 0
+				}
+				for _, event := range events {
+					if event.Sequence > reported {
+						reported = event.Sequence
+						onStep(event)
+					}
+				}
 			}
 		}
 		if TerminalCommand(command.State) {

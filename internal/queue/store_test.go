@@ -1142,3 +1142,157 @@ func TestABuildFailureIsNamedAndPointsAtItsLog(t *testing.T) {
 		}
 	}
 }
+
+// A command that does five things reported one word for all of them.
+func TestACommandRecordsTheStepsItPassesThrough(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events, err := store.Events(command.ID); err != nil || len(events) != 0 {
+		t.Fatalf("a fresh command has %d events, %v", len(events), err)
+	}
+	for _, step := range []string{"Checking the managed Traefik gateway", "Building swarmops-local/api:abc", "Deploying api"} {
+		if err := store.AppendEvent(command.ID, domain.CommandRunning, step); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := store.Events(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("recorded %d steps", len(events))
+	}
+	for index, event := range events {
+		if event.Sequence != uint64(index+1) {
+			t.Errorf("step %d has sequence %d", index, event.Sequence)
+		}
+		if event.CommandID != command.ID || event.State != domain.CommandRunning || event.OccurredAt.IsZero() {
+			t.Errorf("step %d = %#v", index, event)
+		}
+	}
+	if events[1].Evidence != "Building swarmops-local/api:abc" {
+		t.Errorf("second step = %q", events[1].Evidence)
+	}
+	// The trail is sealed beside the command, not carried inside it: the ledger
+	// is read whole on every load.
+	listed, err := store.List(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", listed), "Checking the managed Traefik") {
+		t.Fatal("the progress trail leaked into the command ledger")
+	}
+	reopened, err := Open(store.dir[:len(store.dir)-len("/commands")], testDataKey(), testHistoryLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events, err := reopened.Events(command.ID); err != nil || len(events) != 3 {
+		t.Fatalf("after reload: %d events, %v", len(events), err)
+	}
+}
+
+func TestStepsAreBoundedInCountAndLength(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < MaxCommandEvents+10; index++ {
+		if err := store.AppendEvent(command.ID, domain.CommandRunning, fmt.Sprintf("step %d", index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := store.Events(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != MaxCommandEvents {
+		t.Fatalf("recorded %d steps, cap is %d", len(events), MaxCommandEvents)
+	}
+	long := strings.Repeat("x", maxEvidenceRunes*2)
+	fresh, _, err := store.Submit(func() SubmitInput { i := testInput(); i.IdempotencyKey = "another"; i.Target = "stack/other"; return i }())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendEvent(fresh.ID, domain.CommandRunning, long); err != nil {
+		t.Fatal(err)
+	}
+	events, err = store.Events(fresh.ID)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events = %d, %v", len(events), err)
+	}
+	if runes := []rune(events[0].Evidence); len(runes) > maxEvidenceRunes+1 {
+		t.Fatalf("evidence kept %d runes", len(runes))
+	}
+}
+
+func TestAnUnknownCommandRecordsNoSteps(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	if err := store.AppendEvent("cmd-00000000000000000000000000000000", domain.CommandRunning, "step"); err == nil {
+		t.Fatal("a step was recorded against a command that does not exist")
+	}
+	if _, err := store.Events("cmd-00000000000000000000000000000000"); err == nil {
+		t.Fatal("an unknown command returned steps")
+	}
+}
+
+// A retry starts the trail again.
+//
+// Keeping every attempt's steps turned a command that retried eight times into
+// the same two lines eight times over, and spent the per-command cap on
+// repetition. The ledger still records that the earlier attempts happened.
+func TestARetryClearsTheStepsOfTheAttemptBeforeIt(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	input := testInput()
+	input.AutoRetry = true
+	input.MaxAttempts = 3
+	command, _, err := store.Submit(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, found, err := store.ClaimDue()
+	if err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	for _, step := range []string{"Rendering the Compose", "Preparing the route network"} {
+		if err := store.AppendEvent(record.Command.ID, domain.CommandRunning, step); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if events, err := store.Events(command.ID); err != nil || len(events) != 2 {
+		t.Fatalf("first attempt recorded %d steps, %v", len(events), err)
+	}
+	if _, _, err := store.Fail(command.ID, errors.New("network unavailable")); err != nil {
+		t.Fatal(err)
+	}
+	// The trail survives the failure: it is what explains where the attempt
+	// stopped, and it is read after the fact as often as during.
+	if events, err := store.Events(command.ID); err != nil || len(events) != 2 {
+		t.Fatalf("after failing, %d steps remain, %v", len(events), err)
+	}
+	store.now = func() time.Time { return time.Now().Add(time.Hour) }
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("second claim found=%t err=%v", found, err)
+	}
+	events, err := store.Events(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("the second attempt inherited %d steps from the first", len(events))
+	}
+	if err := store.AppendEvent(command.ID, domain.CommandRunning, "Rendering the Compose"); err != nil {
+		t.Fatal(err)
+	}
+	events, err = store.Events(command.ID)
+	if err != nil || len(events) != 1 || events[0].Sequence != 1 {
+		t.Fatalf("the new attempt's trail = %#v, %v", events, err)
+	}
+}

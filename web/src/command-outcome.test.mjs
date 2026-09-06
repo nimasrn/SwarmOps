@@ -176,3 +176,21 @@ test('"this command stopped, and not well" has one definition', () => {
   assert.match(source('screens/traffic/gateway.tsx'), /commandFailureText\(completed\)/)
   assert.match(source('screens/traffic/preflight.tsx'), /commandFailureText\(command\)/)
 })
+
+test('a command is followed through its steps, not only its state', () => {
+  // The state alone showed one word for a source deployment that installs a
+  // gateway, enables databases, reconciles stacks, builds an image and deploys
+  // it. The steps come from the controller's own worker: the agent serves
+  // requests and has no notion of a command.
+  assert.match(source('screens/activity/runs.tsx'), /api\.commandEvents\(selectedID\)/)
+  assert.match(source('screens/activity/runs.tsx'), /steps\.events\.map/)
+  assert.match(source('data/api.ts'), /commandEvents\(id: string\)/)
+  assert.match(source('data/types.ts'), /export interface CommandEvent/)
+})
+
+test('a step carries no remote output', () => {
+  // Evidence is a sentence the controller wrote about its own progress. The
+  // type says so, and the producer is Core's worker rather than the agent.
+  const types = source('data/types.ts')
+  assert.match(types, /carries no remote output/)
+})

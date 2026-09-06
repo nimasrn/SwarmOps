@@ -142,6 +142,22 @@ func (s *Server) commandGet(response http.ResponseWriter, request *http.Request,
 	writeJSON(response, http.StatusOK, command)
 }
 
+// commandEvents serves a command's ordered progress trail. Unlike the
+// execution log this is controller-authored and carries no remote output, so
+// it is a plain read with no special handling.
+func (s *Server) commandEvents(response http.ResponseWriter, request *http.Request, _ auth.Claims) {
+	if s.commands == nil {
+		writeError(response, http.StatusServiceUnavailable, "SwarmOps command storage is unavailable")
+		return
+	}
+	events, err := s.commands.Events(request.PathValue("id"))
+	if err != nil {
+		writeError(response, http.StatusNotFound, "Command was not found")
+		return
+	}
+	writeJSON(response, http.StatusOK, events)
+}
+
 // commandLog serves one command's retained execution log.
 //
 // This is the single place raw machine output crosses into an operator's
@@ -1043,7 +1059,7 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
 			return queue.PermanentError(err)
 		}
-		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec))
+		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(s.commandStepRecorder(record.Command))))
 	case commandApplicationRemove:
 		var input applicationRemoveCommand
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
@@ -1061,6 +1077,11 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 		if err := decodeCommandPayload(record.Payload, &input); err != nil {
 			return queue.PermanentError(err)
 		}
+		// A source deployment is five or six distinct pieces of work, and it
+		// reported one word for all of them. Each step is recorded as it is
+		// entered, so a command that stops somewhere says where.
+		step := s.commandStepRecorder(record.Command)
+		step("Checking the managed Traefik gateway")
 		// The routing edge comes first. Every generated application joins its
 		// own encrypted route overlay, which only exists once Traefik does, so
 		// a cluster without it used to fail this deployment after the image
@@ -1069,11 +1090,13 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			return classifyCommandError(err)
 		}
 		for _, engine := range input.Spec.Databases {
+			step("Enabling the managed " + engine + " database")
 			if err := target.Control.SetDatabase(ctx, record.Command.Actor, record.Command.RequestID, engine, true, ""); err != nil {
 				return classifyCommandError(err)
 			}
 		}
 		for _, stack := range input.SharedStacks {
+			step("Reconciling the shared " + stack + " stack")
 			var err error
 			switch stack {
 			case "swarmops-agent":
@@ -1090,6 +1113,7 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			}
 		}
 		if input.Build != nil {
+			step("Building " + input.Build.Image)
 			artifact, err := s.commands.Artifact(record.Command.ID)
 			if err != nil {
 				return queue.PermanentError(fmt.Errorf("source build input is unavailable"))
@@ -1100,8 +1124,11 @@ func (s *Server) ExecuteCommand(ctx context.Context, record queue.Record) error 
 			if buildErr != nil {
 				return classifyCommandError(buildErr)
 			}
+			if result.Pushed {
+				step("Pushed " + result.Image)
+			}
 		}
-		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec))
+		return classifyCommandError(target.Control.DeployApplication(ctx, record.Command.Actor, record.Command.RequestID, input.Spec, ops.StepReporter(step)))
 	default:
 		return queue.PermanentError(fmt.Errorf("unsupported queued command"))
 	}
@@ -1239,5 +1266,27 @@ func (s *Server) retainBuildLog(commandID string, result domain.BuildResult) {
 	}
 	if err := s.commands.RetainOutput(commandID, result.Log); err != nil {
 		s.logger.Warn("retain build log", "command_id", commandID, "error", err)
+	}
+}
+
+// commandStepRecorder returns the function a long command calls as it enters
+// each piece of work.
+//
+// Progress is written by the controller about its own execution, never copied
+// from a machine: the agent serves requests and has no notion of a command, so
+// Core's worker is the only thing that knows what step this is. That also makes
+// the text safe by construction — it is a sentence this process wrote, not
+// remote output.
+//
+// A step that cannot be recorded does not fail the command. The work is what
+// matters; losing a line of its narration must not change its outcome.
+func (s *Server) commandStepRecorder(command domain.Command) func(string) {
+	return func(evidence string) {
+		if s.commands == nil {
+			return
+		}
+		if err := s.commands.AppendEvent(command.ID, domain.CommandRunning, evidence); err != nil {
+			s.logger.Warn("record command step", "command_id", command.ID, "error", err)
+		}
 	}
 }

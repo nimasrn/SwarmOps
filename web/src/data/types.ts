@@ -302,6 +302,18 @@ export interface ComposePlan {
 
 export type CommandState = 'uploading' | 'queued' | 'leased' | 'preparing' | 'running' | 'retry_scheduled' | 'succeeded' | 'failed' | 'needs_attention' | 'superseded' | 'cancelled'
 
+/** One step of a command's execution, written by the controller about its own
+    progress. It carries no remote output: the agent serves requests and has no
+    notion of a command, so Core's worker is the only thing that knows what step
+    this is. */
+export interface CommandEvent {
+  commandId: string
+  evidence?: string
+  occurredAt: string
+  sequence: number
+  state: CommandState
+}
+
 export interface Command {
   action: string
   actor: string

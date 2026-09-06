@@ -25,7 +25,18 @@ func ApplicationDomainRemovalConfirmation(name string) string {
 // stack-admission checks as hand-written Compose. That is the point: the
 // renderer is a convenience for the operator, not a bypass, and a bug in it
 // surfaces as a refused deployment rather than an unreviewed stack.
-func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID string, spec ApplicationSpec) error {
+// StepReporter records one piece of work as it is entered, so a command that
+// stops somewhere says where. It is optional: nothing here depends on being
+// watched, and a nil reporter is the ordinary case for an internal caller.
+type StepReporter func(string)
+
+func (r StepReporter) report(step string) {
+	if r != nil {
+		r(step)
+	}
+}
+
+func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID string, spec ApplicationSpec, step StepReporter) error {
 	if !c.Mutations {
 		return fmt.Errorf("cluster mutations are disabled")
 	}
@@ -40,19 +51,26 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 	// answering, and has an account for it. Rendering afterwards is what lets
 	// the rendered Compose carry the application's own URI rather than the
 	// engine superuser's.
+	if len(spec.Databases) > 0 {
+		step.report("Provisioning " + strings.Join(spec.Databases, ", ") + " for " + spec.Name)
+	}
 	uris, err := c.EnsureApplicationDatabases(ctx, actor, requestID, spec)
 	var rendered []byte
 	var stack string
 	if err == nil {
+		step.report("Rendering the Compose for " + spec.Name)
 		rendered, stack, err = c.renderApplication(ctx, spec, uris, true)
 	}
 	if err == nil {
+		step.report("Preparing the route network")
 		err = c.prepareApplicationRouteNetwork(ctx, spec)
 	}
 	if err == nil && spec.DatabaseDelivery == DeliverySecret {
+		step.report("Sealing the connection secrets")
 		err = c.ensureApplicationSecrets(ctx, stack, spec, uris)
 	}
 	if err == nil {
+		step.report("Deploying the " + stack + " stack")
 		err = c.deployRenderedApplication(ctx, rendered, stack)
 	}
 	if err == nil {
@@ -158,7 +176,7 @@ func (c *ControlPlane) SetApplicationDomain(ctx context.Context, actor, requestI
 	}
 	spec.Domain = domain
 	spec.Resolver = resolver
-	err := c.DeployApplication(ctx, actor, requestID, spec)
+	err := c.DeployApplication(ctx, actor, requestID, spec, nil)
 	c.record(actor, requestID, "application.domain", "application/"+spec.Name, err, map[string]string{"assigned": fmt.Sprint(domain != "")})
 	return err
 }
