@@ -11,6 +11,34 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.20.2 — 2026-09-06
+
+- **The log of a build that failed is kept** — it was dropped twice, and the
+  second drop was the reason the first did not matter. Both call sites discarded
+  the build result, so the output the agent returned was read into memory and
+  thrown away; fixing that alone changed nothing, because the build service
+  returned an *empty* result on every failure path. A Dockerfile that failed at
+  step 7 produced "Docker reported a build error" and no log at all, at the one
+  moment a log is worth having. A failed build now returns its output with the
+  error, and a failed push returns the build log and the push log in the order
+  they happened. The log is sealed beside the command, bounded to 256 KiB — the
+  head so the failing step has context, the tail because that is where the
+  reason is — and removed with the command it belongs to.
+- **One narrow door reads it** — `GET /api/v1/commands/{id}/log`, authenticated,
+  one command at a time, plain text. `swarmops command log <id>` in the terminal
+  and a **Show execution log** action in Activity → Runs, behind a click rather
+  than rendered inline, because build output can echo build arguments. It is
+  never in the command record, never in a list, and never in a default view.
+  This is the only remote output SwarmOps retains; no Compose body, service
+  output or agent stdout is kept.
+- **A build that ran and failed is no longer called an unconfirmed change** — it
+  is classified as `build_failed` or `image_push_failed`, and the recovery hint
+  names the log that explains it. SwarmOps knows exactly what happened in that
+  case and now keeps the machine's own output to prove it.
+- **An aged-out command no longer leaves files behind** — history pruning
+  removed records without reporting what it removed, so a retained log could
+  outlive the record that explained it, with nothing left to read or delete it.
+
 ## 0.20.1 — 2026-09-06
 
 - **A failure SwarmOps cannot name no longer takes its cause with it** — "SwarmOps

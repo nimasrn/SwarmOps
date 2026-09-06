@@ -449,16 +449,33 @@ policy checks, SwarmOps atomically writes an encrypted command record before
 returning HTTP `202` with a command ID. The matching console route shows only
 safe metadata: action, target, state, attempt count, next retry, and a bounded
 failure code, operator summary, and recovery hint. Raw remote output and error
-text remain excluded, but the failure class and next action are retained instead
-of collapsing every problem into the same generic sentence. A failure the
-controller cannot classify still reports the generic sentence — it is the one
-case where SwarmOps genuinely does not know what happened — and its cause is
-written to the controller log with the command's action, target and ID, so it
-can be recovered without being shown to the browser:
+text stay out of that record and out of every list, but the failure class and
+next action are retained instead of collapsing every problem into the same
+generic sentence. A failure the controller cannot classify still reports the
+generic sentence — it is the one case where SwarmOps genuinely does not know
+what happened — and its cause is written to the controller log with the
+command's action, target and ID, so it can be recovered without being shown to
+the browser:
 
 ```bash
 docker service logs --since 1h swarmops_api 2>&1 | grep "no classified cause"
 ```
+
+**One exception, deliberately made.** An image build's output is the only remote
+output SwarmOps retains. A build that failed on a Dockerfile step is a failure
+of your code, not of the cluster, and no bounded failure class can carry the
+compiler's own message — so the log is sealed beside the command, bounded to
+256 KiB, and served through a single authenticated endpoint for one named
+command at a time:
+
+```bash
+swarmops command log <command-id>          # or "Show execution log" in Activity → Runs
+```
+
+It is never included in the command record, in any list, or in a default view,
+because build output can echo build arguments. It is removed with the command it
+belongs to. Nothing else — no Compose body, no service output, no agent stdout —
+is retained.
 For bounded Docker commands, the machine agent reduces failures to an
 allow-listed class such as missing external network/config/secret, unsatisfied
 placement, occupied gateway port, unavailable image, timeout, or output-limit
