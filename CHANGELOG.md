@@ -11,6 +11,28 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.21.1 — 2026-09-06
+
+- **A code host is refused as an image registry** — the image prefix only had to
+  contain a slash, so `github.com/an-org` was accepted and the mistake surfaced
+  three layers later, when the machine agent's own image allow-list refused the
+  generated tag with a message naming neither the prefix nor the setting that
+  produced it. Had it got past that, the push would have gone to a web server
+  and failed on HTML. `github.com` and `gitlab.com` are now refused by name, and
+  the refusal says which registry that site actually runs — `ghcr.io` and
+  `registry.gitlab.com` — and offers the alternative that needs no registry at
+  all: an empty prefix builds on the deployment host and pushes nothing. The
+  check stays narrow, because Docker reads the first component as a registry
+  host only when it carries a dot, a port, or is `localhost`; anything else is a
+  Docker Hub namespace, and `registry:5000` is an ordinary registry to run.
+
+This does not close the underlying gap: the gate that refuses such a prefix in
+practice is the agent's own image allow-list, and Core cannot see it. The poll
+status carries neither the allowed prefixes nor whether builds are enabled, and
+adding them is a protocol change rather than a field, because the poll body is
+decoded with unknown fields disallowed and a newer agent would be rejected by an
+older Core.
+
 ## 0.21.0 — 2026-09-06
 
 - **A command records the steps it passes through** — it moved from queued to
