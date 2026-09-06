@@ -131,3 +131,57 @@ func TestSettingsDisableTurnsOffBuilds(t *testing.T) {
 		t.Fatal("builds stayed enabled while the boundary was off")
 	}
 }
+
+// The site you push code to is not the registry it runs.
+//
+// The prefix only had to contain a slash, so github.com/an-org was accepted and
+// then refused three layers later by the machine agent's own image allow-list,
+// with a message that named neither the prefix nor the setting that produced
+// it. Had it got that far, the push would have gone to a web server.
+func TestACodeHostIsRefusedAsAnImageRegistry(t *testing.T) {
+	t.Parallel()
+	for prefix, want := range map[string]string{
+		"github.com/nimasrn":     "ghcr.io",
+		"GitHub.com/nimasrn":     "ghcr.io",
+		"www.github.com/nimasrn": "ghcr.io",
+		"gitlab.com/acme":        "registry.gitlab.com",
+	} {
+		err := validateSettings(Settings{ImagePrefix: prefix})
+		if err == nil {
+			t.Errorf("%q was accepted as an image registry", prefix)
+			continue
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%q was refused without naming %s: %v", prefix, want, err)
+		}
+		// The refusal has to offer the way out that needs no registry at all.
+		if !strings.Contains(err.Error(), "empty") {
+			t.Errorf("%q was refused without the local alternative: %v", prefix, err)
+		}
+	}
+}
+
+func TestARealRegistryOrDockerHubNamespaceIsAccepted(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{
+		"ghcr.io/nimasrn",
+		"registry.gitlab.com/acme/team",
+		"docker.io/library",
+		"acme/team",         // a bare first component is a Docker Hub namespace
+		"localhost:5000/ci", // a local registry during development
+		"registry:5000/ci",  // and one reached by name and port, which has no dot
+	} {
+		if err := validateSettings(Settings{ImagePrefix: prefix}); err != nil {
+			t.Errorf("%q was refused: %v", prefix, err)
+		}
+	}
+}
+
+func TestAPrefixThatIsNotAHostIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{"ghcr io/acme", "https://ghcr.io/acme", "ghcr.io:notaport/acme"} {
+		if err := validateSettings(Settings{ImagePrefix: prefix}); err == nil {
+			t.Errorf("%q was accepted", prefix)
+		}
+	}
+}

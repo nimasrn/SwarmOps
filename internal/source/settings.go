@@ -218,6 +218,20 @@ func normalizeSettings(settings Settings) Settings {
 	return settings
 }
 
+// registryForCodeHost names the container registry a code-hosting site
+// operates, for the namespace people type when they mean it.
+//
+// Typing the site you push code to, when you mean the registry it runs, is the
+// ordinary mistake and it used to be accepted: the prefix only had to contain a
+// slash. The build was then refused three layers later by the machine agent's
+// own image allow-list, with a message that named neither the prefix nor the
+// setting that produced it — and had it got past that, the push would have gone
+// to a web server and failed on HTML.
+var registryForCodeHost = map[string]string{
+	"github.com": "ghcr.io",
+	"gitlab.com": "registry.gitlab.com",
+}
+
 func validateSettings(settings Settings) error {
 	if settings.ImagePrefix != "" {
 		if strings.ContainsAny(settings.ImagePrefix, " \t\r\n") || strings.Contains(settings.ImagePrefix, "://") {
@@ -225,6 +239,9 @@ func validateSettings(settings Settings) error {
 		}
 		if !strings.Contains(settings.ImagePrefix, "/") {
 			return fmt.Errorf("registry image prefix must include a namespace, such as ghcr.io/your-org")
+		}
+		if err := validateImagePrefixHost(settings.ImagePrefix); err != nil {
+			return err
 		}
 	}
 	for _, host := range settings.PrivateHosts {
@@ -237,6 +254,39 @@ func validateSettings(settings Settings) error {
 	}
 	if (settings.RegistryServer == "") != (settings.RegistryUsername == "") {
 		return fmt.Errorf("a registry credential needs both a server and a username")
+	}
+	return nil
+}
+
+// validateImagePrefixHost checks the first component of an image prefix, which
+// is a registry host only when it carries a dot, a port, or is localhost —
+// Docker reads anything else as a Docker Hub namespace, and that is a valid
+// thing to want.
+func validateImagePrefixHost(prefix string) error {
+	host, _, _ := strings.Cut(prefix, "/")
+	lowered := strings.ToLower(strings.TrimPrefix(host, "www."))
+	if registry, found := registryForCodeHost[lowered]; found {
+		return fmt.Errorf("%s hosts code, not container images; its registry is %s, so the namespace is %s/your-org. Leave the prefix empty to build on the deployment host and push nothing", lowered, registry, registry)
+	}
+	if !strings.Contains(host, ".") && !strings.Contains(host, ":") {
+		// A bare first component is a Docker Hub namespace, which is a
+		// legitimate destination and needs no further checking.
+		return nil
+	}
+	// A registry reached by name and port on an internal network carries no
+	// dot — registry:5000 is an ordinary thing to run — so the port form is
+	// checked on its host part alone.
+	if name, port, found := strings.Cut(host, ":"); found {
+		if port == "" || strings.ContainsAny(port, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/") {
+			return fmt.Errorf("registry image prefix must start with a registry host such as ghcr.io, or a Docker Hub namespace")
+		}
+		if !strings.Contains(name, ".") {
+			return nil
+		}
+		host = name
+	}
+	if !validHostname(host) {
+		return fmt.Errorf("registry image prefix must start with a registry host such as ghcr.io, or a Docker Hub namespace")
 	}
 	return nil
 }
