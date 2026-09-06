@@ -139,6 +139,64 @@ It does **not** make Docker’s root-equivalent socket harmless. The product
 reduces its exposure to a small, reviewed API rather than forwarding arbitrary
 Docker commands from a browser.
 
+## Deploy from a terminal
+
+`swarmopsctl` speaks the same API as the console and needs nothing installed on
+the cluster. Four commands are the whole path from a checkout to a running
+application:
+
+```bash
+swarmops login --url https://core.example.com --username operator \
+  --core-fingerprint 'SHA256:<64-hex>'
+swarmops init --name api --port 8080
+swarmops deploy
+swarmops logs -f
+```
+
+`login` stores the Core URL, the selected machine, the certificate pin and the
+session it obtained in `~/.swarmops/config.json` at mode 0600, and refuses to
+read that file if it is readable by anyone else. The password is never written.
+`SWARMOPS_PROFILE`, `SWARMOPS_URL` and `SWARMOPS_SERVER_ID` override the
+selected profile for one invocation.
+
+`init` writes a `swarmops.json` beside the code:
+
+```json
+{
+  "name": "api",
+  "port": 8080,
+  "plan": "small",
+  "domain": "api.example.com",
+  "env": { "LOG_LEVEL": "info" }
+}
+```
+
+Everything except the name is optional. `swarmops deploy` reads the repository
+this directory is checked out from — the controller fetches it, scans its
+Compose, and decides the image — so a workstation with an uncommitted tree
+cannot put something into the cluster that exists nowhere else. `--image`
+deploys an already-built reference instead, and `--local` builds this directory
+on the selected machine when no Git connection is configured.
+
+Every command that changes something is followed to what it became, and reports
+the controller's own summary and recovery hint rather than the identifier of a
+command whose fate is unknown:
+
+```
+Queued application.deploy (cmd-e184b37a3fe8a43101e894645c8c4bcb).
+  queued
+  retry_scheduled: The managed Traefik gateway is required before this stack can create private routes.
+  needs_attention (attempt 8/8)
+swarmops: command cmd-e184b37a… ended needs_attention; code gateway_required; … try: Install and verify Traefik under Gateway, routes & DNS, then retry.
+```
+
+`swarmops help` lists the application commands; `swarmops help all` adds the
+cluster, routing and resource trees — `node`, `service`, `stack`, `network`,
+`image`, `container`, `prune`, `core`, `domain`, `route`, `cert`, `dns`,
+`traefik`, `source`, `db`, `disk`, `secret`, `config`, `metrics`, `insights`,
+`audit`, `events` and `diagnose`. There is no `shell`: the agent has a fixed
+command surface and this CLI does not widen it.
+
 ## Product direction
 
 The SwarmOps program goal is to create the kind of developer platform offered
@@ -1011,20 +1069,13 @@ Declare a node and it is measured, live and offline, exactly as before:
 
 ```bash
 make swarmops-preflight MANIFEST=deploy/swarmops/platform.example.yml
-
-# After a remote manager is connected through its machine API, compare the same
-# manifest to that selected server's current Docker inventory. The controller
-# API password is prompted locally.
-go run ./cmd/swarmopsctl preflight \
-  --manifest deploy/swarmops/platform.example.yml \
-  --url https://swarmops.example.com --username operator --server-id <server-id> \
-  --core-fingerprint 'SHA256:<64-hex>'
 ```
 
-Use `--core-fingerprint` when Core has the direct self-signed certificate made
-by the native installer. Obtain the exact leaf pin from the authenticated
-console-generated enrollment material or another trusted channel; the CLI
-constant-time checks that pin and does not add a general insecure-TLS mode.
+Use `--core-fingerprint` on any `swarmops` command when Core has the direct
+self-signed certificate made by the native installer. Obtain the exact leaf pin
+from the authenticated console-generated enrollment material or another trusted
+channel; the CLI constant-time checks that pin and does not add a general
+insecure-TLS mode.
 
 The manifest carries only public topology and versioned secret *names*. It
 requires globally unique workload names within its namespace, unique routed

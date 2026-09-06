@@ -11,6 +11,54 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.20.0 — 2026-09-06
+
+Deploying an application meant opening a browser, and a queued command that
+failed said nothing about why. Both are now answered: SwarmOps has a terminal,
+and every mutating surface reports what its command actually did.
+
+- **`swarmopsctl` is the whole product from a terminal** — it had two commands,
+  `build` and `password-hash`, and logged in on every invocation; everything an
+  operator actually does was browser-only. It now carries the full command tree,
+  grouped so `--help` shows the deploy loop and `help all` shows the cluster:
+  `login`, `init`, `deploy`, `logs -f`, plus `app`, `env`, `plan`, `plans`,
+  `restart`, `status`, `command`, `db`, `disk`, `secret`, `config`, `domain`,
+  `route`, `cert`, `dns`, `traefik`, `source`, `node`, `service`, `stack`,
+  `network`, `image`, `container`, `prune`, `core`, `metrics`, `insights`,
+  `audit`, `events` and `diagnose`. A repository-root `swarmops.json` names the
+  application — `name`, `port`, `plan`, `domain`, `env` and little else — and
+  `swarmops deploy` reads the Git repository the working directory is checked
+  out from, so nothing is uploaded from a workstation with an uncommitted tree.
+  `--image` deploys an already-built reference and `--local` builds the working
+  directory when no Git connection is configured.
+- **A session is held in a profile instead of a password per command** —
+  `swarmops login` writes `~/.swarmops/config.json` at 0600 with the Core URL,
+  the selected machine, an optional pinned certificate and the session it
+  obtained. The password is never stored, and a file readable by other users is
+  refused rather than used. `build` and `password-hash` keep their exact flags.
+- **A queued command is followed to what it became, in both surfaces** — a
+  command is durable and asynchronous, so the console received a 202 and an ID
+  and reported "queued" in success green. Several screens then awaited the
+  command only to know when to refresh a list and discarded the result: a volume
+  that could not be created looked exactly like one that was. Every deploy,
+  resource and traffic action now follows its command and reports the
+  controller's own summary, attempt count and recovery hint, and a failure
+  notice no longer expires while it is being read. A command that outlives the
+  screen's budget is reported as still running, never as a failure.
+- **An application's environment can be set** — neither console path could
+  express one at all. `swarmops env list|set|unset` and a key/value editor on
+  both console deploy paths now can, enforcing on the field what the controller
+  enforces on the request: the name pattern, the fifty-variable cap, the
+  single-line value limit, and the refusal of credential-shaped names, which
+  belong to an attached managed database instead.
+- **Accepting a domain in the console worked at no point before this release** —
+  it sent an empty string as the acceptance timestamp, which is not a time, so
+  the controller refused the whole body and the button returned "Invalid request
+  body" every time. The field is controller-owned and is no longer sent.
+- **The same failure sentence is no longer printed twice** — a command's last
+  error restates its summary and appends the attempt count, and both surfaces
+  printed both. Only what the last error adds is shown now.
+
 ## 0.19.8 — 2026-09-06
 
 - **A domain no longer needs a certificate resolver declared for it** — adding
