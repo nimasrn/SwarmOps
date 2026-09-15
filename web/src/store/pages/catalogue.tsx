@@ -25,7 +25,7 @@ export function CataloguePage() {
               { label: t('plans.cpu', { value: plan.cpuMillicores / 1000 }) },
               { label: t('plans.memory', { value: plan.memoryMiB }) },
               { label: t('plans.disk', { value: plan.diskGiB }) },
-              ...plan.features.map((feature) => ({ label: feature })),
+              ...(locale === 'fa' && plan.featuresFa.length ? plan.featuresFa : plan.features).map((feature) => ({ label: feature })),
             ]}
             key={plan.code}
             name={plan.name}
@@ -33,7 +33,7 @@ export function CataloguePage() {
             price={money(plan.hourlyPriceRial)}
             priceCaption={t('plans.perHour')}
             secondary={{ caption: t('plans.monthlyCap'), value: money(plan.monthlyPriceRial) }}
-            tagline={locale === 'en' ? plan.description : undefined}
+            tagline={locale === 'fa' ? plan.descriptionFa || undefined : plan.description}
           />
         ))}
       </Rows>

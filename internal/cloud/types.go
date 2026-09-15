@@ -27,8 +27,10 @@ type Plan struct {
 	Code             string    `json:"code"`
 	CPUMillicores    uint32    `json:"cpuMillicores"`
 	Description      string    `json:"description"`
+	DescriptionFa    string    `json:"descriptionFa"`
 	DiskGiB          uint32    `json:"diskGiB"`
 	Features         []string  `json:"features"`
+	FeaturesFa       []string  `json:"featuresFa"`
 	HourlyPriceRial  int64     `json:"hourlyPriceRial"`
 	ID               uint32    `json:"id"`
 	MemoryMiB        uint32    `json:"memoryMiB"`
@@ -43,8 +45,10 @@ type PlanInput struct {
 	Code             string   `json:"code"`
 	CPUMillicores    uint32   `json:"cpuMillicores"`
 	Description      string   `json:"description"`
+	DescriptionFa    string   `json:"descriptionFa"`
 	DiskGiB          uint32   `json:"diskGiB"`
 	Features         []string `json:"features"`
+	FeaturesFa       []string `json:"featuresFa"`
 	HourlyPriceRial  int64    `json:"hourlyPriceRial"`
 	MemoryMiB        uint32   `json:"memoryMiB"`
 	MonthlyPriceRial int64    `json:"monthlyPriceRial"`

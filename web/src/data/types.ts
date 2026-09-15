@@ -1476,8 +1476,10 @@ export interface CloudPlan {
   code: string
   cpuMillicores: number
   description: string
+  descriptionFa: string
   diskGiB: number
   features: string[]
+  featuresFa: string[]
   hourlyPriceRial: number
   id: number
   memoryMiB: number

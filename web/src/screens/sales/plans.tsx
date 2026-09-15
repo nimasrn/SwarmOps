@@ -12,9 +12,11 @@ import { OrderStatus } from './status'
 type Toast = ReturnType<typeof useToast>
 
 const BLANK: CloudPlanInput = {
-  active: true, code: '', cpuMillicores: 500, description: '', diskGiB: 10, features: [], hourlyPriceRial: 10_000,
-  memoryMiB: 512, monthlyPriceRial: 6_000_000, name: '', sortOrder: 100,
+  active: true, code: '', cpuMillicores: 500, description: '', descriptionFa: '', diskGiB: 10, features: [], featuresFa: [],
+  hourlyPriceRial: 10_000, memoryMiB: 512, monthlyPriceRial: 6_000_000, name: '', sortOrder: 100,
 }
+
+const lines = (text: string) => text.split('\n').map((line) => line.trim()).filter(Boolean)
 
 /**
  * The storefront catalogue. Changing a price never alters an order already
@@ -56,13 +58,14 @@ export function PlansPage({ toast }: { toast: Toast }) {
 function PlanEditor({ input, onDone, toast }: { input: CloudPlanInput; onDone: () => void; toast: Toast }) {
   const [plan, setPlan] = useState(input)
   const [features, setFeatures] = useState(input.features.join('\n'))
+  const [featuresFa, setFeaturesFa] = useState(input.featuresFa.join('\n'))
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof CloudPlanInput>(key: K, value: CloudPlanInput[K]) => setPlan((current) => ({ ...current, [key]: value }))
 
   const save = async () => {
     setBusy(true)
     try {
-      await api.saveCloudPlan({ ...plan, features: features.split('\n').map((line) => line.trim()).filter(Boolean) })
+      await api.saveCloudPlan({ ...plan, features: lines(features), featuresFa: lines(featuresFa) })
       toast({ message: `Plan ${plan.code} saved`, tone: 'success' })
       onDone()
     } catch (reason) {
@@ -78,6 +81,7 @@ function PlanEditor({ input, onDone, toast }: { input: CloudPlanInput; onDone: (
         <Input disabled={Boolean(input.code)} label="Code" onChange={(event) => set('code', event.target.value.toLowerCase())} value={plan.code} />
         <Input label="Name" onChange={(event) => set('name', event.target.value)} value={plan.name} />
         <Input label="Description" onChange={(event) => set('description', event.target.value)} value={plan.description} />
+        <Input dir="rtl" hint="Shown on the Persian storefront." label="Description (Persian)" onChange={(event) => set('descriptionFa', event.target.value)} value={plan.descriptionFa} />
         <Input label="CPU (millicores)" onChange={(event) => set('cpuMillicores', Number(event.target.value))} type="number" value={String(plan.cpuMillicores)} />
         <Input label="Memory (MiB)" onChange={(event) => set('memoryMiB', Number(event.target.value))} type="number" value={String(plan.memoryMiB)} />
         <Input label="Disk (GiB)" onChange={(event) => set('diskGiB', Number(event.target.value))} type="number" value={String(plan.diskGiB)} />
@@ -85,6 +89,7 @@ function PlanEditor({ input, onDone, toast }: { input: CloudPlanInput; onDone: (
         <Input hint={formatMoney(plan.monthlyPriceRial)} label="Monthly cap (rial)" onChange={(event) => set('monthlyPriceRial', Number(event.target.value))} type="number" value={String(plan.monthlyPriceRial)} />
         <Input label="Display order" onChange={(event) => set('sortOrder', Number(event.target.value))} type="number" value={String(plan.sortOrder)} />
         <Textarea hint="One feature per line." label="Features" onChange={(event) => setFeatures(event.target.value)} value={features} />
+        <Textarea dir="rtl" hint="One feature per line, shown on the Persian storefront." label="Features (Persian)" onChange={(event) => setFeaturesFa(event.target.value)} value={featuresFa} />
         <Segmented
           label="Storefront availability"
           onChange={(value) => set('active', value === 'offered')}

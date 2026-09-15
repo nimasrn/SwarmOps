@@ -623,3 +623,55 @@ func TestReportsReadTheViews(t *testing.T) {
 		t.Fatalf("catalogue = %d plans, %v", len(plans), err)
 	}
 }
+
+// A plan keeps a Persian description and features beside the English ones,
+// and saving it again replaces both lists.
+func TestPlansKeepEnglishAndPersianText(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	ctx := context.Background()
+	input := PlanInput{Active: true, Code: "bilingual", CPUMillicores: 500, Description: "A web service", DescriptionFa: "یک سرویس وب",
+		DiskGiB: 10, Features: []string{"Hourly billing"}, FeaturesFa: []string{"صورتحساب ساعتی", " ", "پشتیبانی"},
+		HourlyPriceRial: 5000, MemoryMiB: 512, MonthlyPriceRial: 3_000_000, Name: "Bilingual"}
+	plan, err := f.service.SavePlan(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DescriptionFa != "یک سرویس وب" || len(plan.Features) != 1 || len(plan.FeaturesFa) != 2 || plan.FeaturesFa[1] != "پشتیبانی" {
+		t.Fatalf("saved plan = %#v", plan)
+	}
+	input.FeaturesFa = nil
+	plan, err = f.service.SavePlan(ctx, input)
+	if err != nil || len(plan.FeaturesFa) != 0 || len(plan.Features) != 1 {
+		t.Fatalf("resaved plan = %#v, %v", plan, err)
+	}
+	input.FeaturesFa = make([]string, 13)
+	if _, err := f.service.SavePlan(ctx, input); err == nil {
+		t.Fatal("thirteen Persian features were accepted")
+	}
+}
+
+// The seeded catalogue promises only what an order provides, in both
+// languages.
+func TestSeededPlansOnlyPromiseWhatAnOrderProvides(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	withdrawn := map[string]bool{
+		"HTTPS domain with automatic certificate": true, "Prometheus metrics endpoint": true, "Prometheus metrics and tracing": true,
+		"Managed database attachment": true, "Priority support": true,
+	}
+	for _, code := range []string{"starter", "basic", "standard", "plus", "pro"} {
+		plan, err := f.service.PlanByCode(context.Background(), code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(plan.Features) != 4 || len(plan.FeaturesFa) != 4 || plan.DescriptionFa == "" {
+			t.Fatalf("%s: features %d, Persian features %d, Persian description %q", code, len(plan.Features), len(plan.FeaturesFa), plan.DescriptionFa)
+		}
+		for _, feature := range plan.Features {
+			if withdrawn[feature] {
+				t.Fatalf("%s still promises %q", code, feature)
+			}
+		}
+	}
+}

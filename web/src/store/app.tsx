@@ -26,7 +26,7 @@ export function StoreRoot() {
     setLocale(next)
   }
   return (
-    <NimProvider defaultColorway="malachite" defaultScheme="light" defaultStyle="console" direction={locale === 'fa' ? 'rtl' : 'ltr'} locale={locale === 'fa' ? 'fa-IR' : 'en'}>
+    <NimProvider defaultColorway="malachite" defaultScheme="system" defaultStyle="console" direction={locale === 'fa' ? 'rtl' : 'ltr'} locale={locale === 'fa' ? 'fa-IR' : 'en'}>
       <StoreApp locale={locale} onLocaleChange={changeLocale} />
     </NimProvider>
   )
