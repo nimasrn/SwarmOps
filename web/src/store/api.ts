@@ -87,11 +87,21 @@ export class StoreAPI {
 
   closeTicket(id: number) { return this.request<CloudTicket>(`/tickets/${id}/close`, { method: 'POST' }) }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
     const headers = new Headers(init.headers)
     if (init.body) headers.set('Content-Type', 'application/json')
-    if (init.method && init.method !== 'GET' && this.csrfToken) headers.set('X-CSRF-Token', this.csrfToken)
+    const change = Boolean(init.method && init.method !== 'GET')
+    if (change && this.csrfToken) headers.set('X-CSRF-Token', this.csrfToken)
     const response = await fetch(`/api/store/v1${path}`, { ...init, credentials: 'same-origin', headers })
+    // Signing in from another tab replaces the session cookie, so this page's
+    // token can belong to a session that no longer answers. Read the current
+    // session's token once and repeat the change only if the token differs;
+    // the same Idempotency-Key travels with the repeat.
+    if (response.status === 403 && change && retry) {
+      const previous = this.csrfToken
+      const current = await this.me().catch(() => null)
+      if (current && current.csrfToken !== previous) return this.request<T>(path, init, false)
+    }
     if (response.status === 204) return undefined as T
     const payload = (response.headers.get('content-type') ?? '').includes('application/json') ? await response.json() as unknown : undefined
     if (!response.ok) {
