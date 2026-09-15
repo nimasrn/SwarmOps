@@ -1,13 +1,14 @@
 package ops
 
 import (
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"strings"
 	"testing"
 )
 
 func domainTestStore(t *testing.T) *RoutingStore {
 	t.Helper()
-	store, err := NewRoutingStore(t.TempDir(), make([]byte, 32), "ops@example.com")
+	store, err := NewRoutingStore(sqltest.Open(t), "ops@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

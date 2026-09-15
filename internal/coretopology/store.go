@@ -5,6 +5,8 @@
 package coretopology
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,11 +23,13 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
 const (
 	stateKey     = "core-topology"
 	storeVersion = 1
+	storeTimeout = 10 * time.Second
 )
 
 var coreIDPattern = regexp.MustCompile(`^core-[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -57,98 +61,145 @@ type stateFile struct {
 	Version        int                 `json:"version"`
 }
 
-// Store stores only public placement metadata under the controller's existing
-// sealed data directory. The encrypted controller state itself must still be
-// copied and restore-tested by the operator; this metadata never pretends to
-// perform that transfer over an unpinned peer connection.
+// Store keeps public placement metadata in the controller database. Every
+// decision reads the current row set, and every change runs in a transaction
+// that first locks the single core_authority row. Two core processes pointed
+// at the same database therefore serialise on that lock: a fence or promotion
+// one of them commits is what the other one reads next, and neither can act on
+// a stale copy of who is active.
 type Store struct {
 	config Config
+	db     *sqlstore.DB
 	now    func() time.Time
-	path   string
-	sealer *securestore.Sealer
-	state  stateFile
-	mu     sync.RWMutex
+	// state is the last topology read. It answers AuthorityEpoch when the
+	// database is momentarily unreachable; CanManage never trusts it and fails
+	// closed instead.
+	state stateFile
+	mu    sync.Mutex
 }
 
-func Open(dataDir string, dataEncryptionKey []byte, config Config) (*Store, error) {
-	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("core topology data directory is required")
+func Open(db *sqlstore.DB, config Config) (*Store, error) {
+	if db == nil {
+		return nil, fmt.Errorf("core topology requires a database")
 	}
 	config, err := normalizeConfig(config)
 	if err != nil {
 		return nil, err
 	}
-	sealer, err := securestore.New(dataEncryptionKey)
+	store := &Store{config: config, db: db, now: time.Now}
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		state, found, err := loadState(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		if !found {
+			state = stateFile{AuthorityEpoch: 1, Version: storeVersion, Members: []domain.CoreMember{newLocalMember(config)}}
+			if config.Mode == domain.CoreRoleActive {
+				state.ActiveID = config.ID
+			}
+			store.state = state
+			return writeState(ctx, tx, state, true)
+		}
+		if err := validateState(state); err != nil {
+			return fmt.Errorf("decode core topology: %w", err)
+		}
+		store.state = state
+		if !store.hasMemberLocked(config.ID) {
+			// A restored database may be opened by a pre-registered standby.
+			// If an operator forgot to register it first, record it as a
+			// standby rather than trusting a local environment flag to become
+			// active.
+			store.state.Members = append(store.state.Members, domain.CoreMember{
+				Endpoint:     config.Endpoint,
+				ID:           config.ID,
+				Name:         config.Name,
+				ReplicaState: domain.CoreReplicaAwaitingRestore,
+				Role:         domain.CoreRoleStandby,
+			})
+			return writeState(ctx, tx, store.state, false)
+		}
+		return nil
+	})
+	if sqlstore.IsDuplicate(err) {
+		// Another core initialised the singleton between our read and insert.
+		return Open(db, config)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("configure encrypted core topology: %w", err)
-	}
-	store := &Store{
-		config: config,
-		now:    time.Now,
-		path:   filepath.Join(dataDir, "core-topology.sealed"),
-		sealer: sealer,
-	}
-	data, err := sealer.ReadFile(store.path, stateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		store.state = stateFile{AuthorityEpoch: 1, Version: storeVersion, Members: []domain.CoreMember{newLocalMember(config)}}
-		if config.Mode == domain.CoreRoleActive {
-			store.state.ActiveID = config.ID
-		}
-		if err := store.saveLocked(); err != nil {
-			return nil, fmt.Errorf("initialize core topology: %w", err)
-		}
-		return store, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read core topology: %w", err)
-	}
-	if err := json.Unmarshal(data, &store.state); err != nil {
-		return nil, fmt.Errorf("decode core topology: %w", err)
-	}
-	if err := validateState(store.state); err != nil {
-		return nil, fmt.Errorf("decode core topology: %w", err)
-	}
-	if store.state.AuthorityEpoch == 0 {
-		// Forward-compatible migration for stores created before authority epochs
-		// were part of the topology contract.
-		store.state.AuthorityEpoch = 1
-		if err := store.saveLocked(); err != nil {
-			return nil, fmt.Errorf("migrate core authority epoch: %w", err)
-		}
-	}
-	if !store.hasMemberLocked(config.ID) {
-		// A copied encrypted state may be opened by a pre-registered standby.
-		// If an operator forgot to register it first, record it as a standby
-		// rather than trusting a local environment flag to become active.
-		store.state.Members = append(store.state.Members, domain.CoreMember{
-			Endpoint:     config.Endpoint,
-			ID:           config.ID,
-			Name:         config.Name,
-			ReplicaState: domain.CoreReplicaAwaitingRestore,
-			Role:         domain.CoreRoleStandby,
-		})
-		if err := store.saveLocked(); err != nil {
-			return nil, fmt.Errorf("register local standby: %w", err)
-		}
+		return nil, fmt.Errorf("open core topology: %w", err)
 	}
 	return store, nil
 }
 
+// refresh re-reads the topology without locking it.
+func (s *Store) refresh() error {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	state, found, err := loadState(ctx, s.db.Pool(), false)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("core topology is not initialised")
+	}
+	s.state = state
+	return nil
+}
+
+// transact runs one topology change against a freshly locked read. fn mutates
+// s.state and returns a domain error to abort; the state it leaves is
+// validated and written in the same transaction.
+func (s *Store) transact(fn func() error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	return s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		state, found, err := loadState(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("core topology is not initialised")
+		}
+		s.state = state
+		if err := fn(); err != nil {
+			return err
+		}
+		if err := validateState(s.state); err != nil {
+			return err
+		}
+		return writeState(ctx, tx, s.state, false)
+	})
+}
+
 func (s *Store) Status() domain.CoreTopology {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.refresh(); err != nil {
+		status := s.statusLocked()
+		status.ControlEnabled = false
+		return status
+	}
 	return s.statusLocked()
 }
 
+// CanManage reports whether this process is the declared active core. A
+// database it cannot read is answered with "no": acting on managed servers
+// without knowing the current authority is exactly the split brain the
+// topology exists to prevent.
 func (s *Store) CanManage() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.refresh(); err != nil {
+		return false
+	}
 	return s.canManageLocked()
 }
 
 func (s *Store) AuthorityEpoch() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.refresh()
 	if s.state.AuthorityEpoch == 0 {
 		return 1
 	}
@@ -156,141 +207,143 @@ func (s *Store) AuthorityEpoch() uint64 {
 }
 
 func (s *Store) AddReplica(input ReplicaInput) (domain.CoreTopology, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.canManageLocked() {
-		return domain.CoreTopology{}, ErrStandby
-	}
 	member, err := normalizeReplica(input)
 	if err != nil {
 		return domain.CoreTopology{}, err
 	}
-	if s.hasMemberLocked(member.ID) {
-		return domain.CoreTopology{}, fmt.Errorf("a core member with this identifier already exists")
-	}
-	s.state.Members = append(s.state.Members, member)
-	if err := s.saveLocked(); err != nil {
-		s.state.Members = s.state.Members[:len(s.state.Members)-1]
-		return domain.CoreTopology{}, fmt.Errorf("save core replica: %w", err)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err = s.transact(func() error {
+		if !s.canManageLocked() {
+			return ErrStandby
+		}
+		if s.hasMemberLocked(member.ID) {
+			return fmt.Errorf("a core member with this identifier already exists")
+		}
+		s.state.Members = append(s.state.Members, member)
+		return nil
+	})
+	if err != nil {
+		return domain.CoreTopology{}, err
 	}
 	return s.statusLocked(), nil
 }
 
-// VerifyReplica records an operator-attested completed encrypted-state restore.
-// It intentionally does not imply a live remote probe, a backup restore test,
-// or that a separate data-encryption key was transferred safely.
+// VerifyReplica records an operator-attested completed state restore. It
+// intentionally does not imply a live remote probe, a backup restore test, or
+// that a separate data-encryption key was transferred safely.
 func (s *Store) VerifyReplica(id string) (domain.CoreTopology, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.canManageLocked() {
-		return domain.CoreTopology{}, ErrStandby
-	}
-	index := s.memberIndexLocked(id)
-	if index < 0 || s.state.Members[index].Role != domain.CoreRoleStandby {
-		return domain.CoreTopology{}, fmt.Errorf("standby core member was not found")
-	}
-	now := s.now().UTC()
-	previous := s.state.Members[index]
-	s.state.Members[index].ReplicaState = domain.CoreReplicaVerified
-	s.state.Members[index].LastCheckpointAt = &now
-	if err := s.saveLocked(); err != nil {
-		s.state.Members[index] = previous
-		return domain.CoreTopology{}, fmt.Errorf("save core replica verification: %w", err)
+	err := s.transact(func() error {
+		if !s.canManageLocked() {
+			return ErrStandby
+		}
+		index := s.memberIndexLocked(id)
+		if index < 0 || s.state.Members[index].Role != domain.CoreRoleStandby {
+			return fmt.Errorf("standby core member was not found")
+		}
+		now := s.now().UTC().Truncate(time.Microsecond)
+		s.state.Members[index].ReplicaState = domain.CoreReplicaVerified
+		s.state.Members[index].LastCheckpointAt = &now
+		return nil
+	})
+	if err != nil {
+		return domain.CoreTopology{}, err
 	}
 	return s.statusLocked(), nil
 }
 
 // PrepareHandoff records the intended target before the operator takes the
-// final encrypted-state backup. It leaves the active core writable so the
-// operator can still abandon the plan without an outage.
+// final state backup. It leaves the active core writable so the operator can
+// still abandon the plan without an outage.
 func (s *Store) PrepareHandoff(targetID string) (domain.CoreTopology, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.canManageLocked() {
-		return domain.CoreTopology{}, ErrStandby
-	}
-	index := s.memberIndexLocked(targetID)
-	if index < 0 || s.state.Members[index].Role != domain.CoreRoleStandby || s.state.Members[index].ReplicaState != domain.CoreReplicaVerified {
-		return domain.CoreTopology{}, fmt.Errorf("choose a verified standby core member")
-	}
-	if s.state.Handoff != nil {
-		return domain.CoreTopology{}, fmt.Errorf("a core handoff is already in progress")
-	}
-	s.state.Handoff = &domain.CoreHandoff{
-		FromID:     s.config.ID,
-		PreparedAt: s.now().UTC(),
-		State:      domain.CoreHandoffPrepared,
-		ToID:       targetID,
-	}
-	if err := s.saveLocked(); err != nil {
-		s.state.Handoff = nil
-		return domain.CoreTopology{}, fmt.Errorf("save core handoff: %w", err)
+	err := s.transact(func() error {
+		if !s.canManageLocked() {
+			return ErrStandby
+		}
+		index := s.memberIndexLocked(targetID)
+		if index < 0 || s.state.Members[index].Role != domain.CoreRoleStandby || s.state.Members[index].ReplicaState != domain.CoreReplicaVerified {
+			return fmt.Errorf("choose a verified standby core member")
+		}
+		if s.state.Handoff != nil {
+			return fmt.Errorf("a core handoff is already in progress")
+		}
+		s.state.Handoff = &domain.CoreHandoff{
+			FromID:     s.config.ID,
+			PreparedAt: s.now().UTC().Truncate(time.Microsecond),
+			State:      domain.CoreHandoffPrepared,
+			ToID:       targetID,
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.CoreTopology{}, err
 	}
 	return s.statusLocked(), nil
 }
 
 // FenceForHandoff makes this local core a standby only after a prepared
-// handoff. The target must receive a final encrypted-state copy after this
-// state is written; only then can it promote itself without split brain.
+// handoff. Once this commits, no process reading this database treats the old
+// primary as active, so the target can promote itself without split brain.
 func (s *Store) FenceForHandoff(targetID string) (domain.CoreTopology, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.canManageLocked() {
-		return domain.CoreTopology{}, ErrStandby
-	}
-	if s.state.Handoff == nil || s.state.Handoff.State != domain.CoreHandoffPrepared || s.state.Handoff.FromID != s.config.ID || s.state.Handoff.ToID != targetID {
-		return domain.CoreTopology{}, fmt.Errorf("there is no prepared handoff for this core member")
-	}
-	localIndex := s.memberIndexLocked(s.config.ID)
-	if localIndex < 0 {
-		return domain.CoreTopology{}, fmt.Errorf("local core member was not found")
-	}
-	now := s.now().UTC()
-	previousActiveID := s.state.ActiveID
-	previousRole := s.state.Members[localIndex].Role
-	previousHandoff := cloneHandoff(s.state.Handoff)
-	s.state.ActiveID = ""
-	s.state.Members[localIndex].Role = domain.CoreRoleStandby
-	s.state.Handoff.State = domain.CoreHandoffFenced
-	s.state.Handoff.FencedAt = &now
-	if err := s.saveLocked(); err != nil {
-		s.state.ActiveID = previousActiveID
-		s.state.Members[localIndex].Role = previousRole
-		s.state.Handoff = previousHandoff
-		return domain.CoreTopology{}, fmt.Errorf("fence primary core: %w", err)
+	err := s.transact(func() error {
+		if !s.canManageLocked() {
+			return ErrStandby
+		}
+		if s.state.Handoff == nil || s.state.Handoff.State != domain.CoreHandoffPrepared || s.state.Handoff.FromID != s.config.ID || s.state.Handoff.ToID != targetID {
+			return fmt.Errorf("there is no prepared handoff for this core member")
+		}
+		localIndex := s.memberIndexLocked(s.config.ID)
+		if localIndex < 0 {
+			return fmt.Errorf("local core member was not found")
+		}
+		now := s.now().UTC().Truncate(time.Microsecond)
+		s.state.ActiveID = ""
+		s.state.Members[localIndex].Role = domain.CoreRoleStandby
+		s.state.Handoff.State = domain.CoreHandoffFenced
+		s.state.Handoff.FencedAt = &now
+		return nil
+	})
+	if err != nil {
+		return domain.CoreTopology{}, err
 	}
 	return s.statusLocked(), nil
 }
 
 // PromoteLocal turns this explicitly configured standby into the one active
-// core. A planned promotion needs the fenced handoff copied to this host; an
-// emergency promotion is deliberately separate so its operator acknowledgement
-// can be written to the audit trail by the HTTP boundary.
+// core and increments the authority epoch. A planned promotion needs the
+// fenced handoff; an emergency promotion is deliberately separate so its
+// operator acknowledgement can be written to the audit trail by the HTTP
+// boundary.
 func (s *Store) PromoteLocal(emergency bool) (domain.CoreTopology, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	localIndex := s.memberIndexLocked(s.config.ID)
-	if localIndex < 0 || s.state.Members[localIndex].Role != domain.CoreRoleStandby {
-		return domain.CoreTopology{}, fmt.Errorf("this core instance is not a standby member")
-	}
-	if s.state.Handoff != nil && s.state.Handoff.State == domain.CoreHandoffFenced && s.state.Handoff.ToID == s.config.ID {
-		// Planned handoff: the active primary already wrote its own fenced
-		// state, then that exact state was restored here.
-	} else if !emergency {
-		return domain.CoreTopology{}, fmt.Errorf("a fenced handoff to this core is required for planned promotion")
-	}
-	previous := cloneState(s.state)
-	if activeIndex := s.memberIndexLocked(s.state.ActiveID); activeIndex >= 0 {
-		s.state.Members[activeIndex].Role = domain.CoreRoleStandby
-	}
-	s.state.ActiveID = s.config.ID
-	s.state.AuthorityEpoch++
-	s.state.Members[localIndex].Role = domain.CoreRoleActive
-	s.state.Members[localIndex].ReplicaState = domain.CoreReplicaVerified
-	s.state.Handoff = nil
-	if err := s.saveLocked(); err != nil {
-		s.state = previous
-		return domain.CoreTopology{}, fmt.Errorf("promote standby core: %w", err)
+	err := s.transact(func() error {
+		localIndex := s.memberIndexLocked(s.config.ID)
+		if localIndex < 0 || s.state.Members[localIndex].Role != domain.CoreRoleStandby {
+			return fmt.Errorf("this core instance is not a standby member")
+		}
+		planned := s.state.Handoff != nil && s.state.Handoff.State == domain.CoreHandoffFenced && s.state.Handoff.ToID == s.config.ID
+		if !planned && !emergency {
+			return fmt.Errorf("a fenced handoff to this core is required for planned promotion")
+		}
+		if activeIndex := s.memberIndexLocked(s.state.ActiveID); activeIndex >= 0 {
+			s.state.Members[activeIndex].Role = domain.CoreRoleStandby
+		}
+		s.state.ActiveID = s.config.ID
+		s.state.AuthorityEpoch++
+		s.state.Members[localIndex].Role = domain.CoreRoleActive
+		s.state.Members[localIndex].ReplicaState = domain.CoreReplicaVerified
+		s.state.Handoff = nil
+		return nil
+	})
+	if err != nil {
+		return domain.CoreTopology{}, err
 	}
 	return s.statusLocked(), nil
 }
@@ -336,15 +389,154 @@ func (s *Store) memberIndexLocked(id string) int {
 
 func (s *Store) hasMemberLocked(id string) bool { return s.memberIndexLocked(id) >= 0 }
 
-func (s *Store) saveLocked() error {
-	data, err := json.MarshalIndent(s.state, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode core topology: %w", err)
+type queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// loadState reads the authority singleton, the members in their recorded
+// order, and any handoff. lock takes the authority row FOR UPDATE, which is the
+// lock every topology change serialises on.
+func loadState(ctx context.Context, q queryer, lock bool) (stateFile, bool, error) {
+	suffix := ""
+	if lock {
+		suffix = " FOR UPDATE"
 	}
-	if err := s.sealer.WriteFile(s.path, stateKey, append(data, '\n')); err != nil {
+	state := stateFile{Version: storeVersion}
+	var activeID sql.NullString
+	err := q.QueryRowContext(ctx, "SELECT active_id, authority_epoch FROM core_authority WHERE id = 1"+suffix).Scan(&activeID, &state.AuthorityEpoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		return stateFile{}, false, nil
+	}
+	if err != nil {
+		return stateFile{}, false, err
+	}
+	state.ActiveID = activeID.String
+	rows, err := q.QueryContext(ctx, `SELECT id, name, endpoint, role, replica_state, agent_server_id, last_checkpoint_at
+		FROM core_members ORDER BY position`)
+	if err != nil {
+		return stateFile{}, false, err
+	}
+	for rows.Next() {
+		var member domain.CoreMember
+		var role, replicaState string
+		var agentServerID sql.NullString
+		var checkpoint sql.NullTime
+		if err := rows.Scan(&member.ID, &member.Name, &member.Endpoint, &role, &replicaState, &agentServerID, &checkpoint); err != nil {
+			_ = rows.Close()
+			return stateFile{}, false, err
+		}
+		member.Role, member.ReplicaState, member.AgentServerID = domain.CoreRole(role), domain.CoreReplicaState(replicaState), agentServerID.String
+		if checkpoint.Valid {
+			value := checkpoint.Time
+			member.LastCheckpointAt = &value
+		}
+		state.Members = append(state.Members, member)
+	}
+	if err := rows.Close(); err != nil {
+		return stateFile{}, false, err
+	}
+	var handoff domain.CoreHandoff
+	var handoffState string
+	var fenced sql.NullTime
+	err = q.QueryRowContext(ctx, "SELECT from_id, to_id, state, prepared_at, fenced_at FROM core_handoffs WHERE id = 1").
+		Scan(&handoff.FromID, &handoff.ToID, &handoffState, &handoff.PreparedAt, &fenced)
+	if err == nil {
+		handoff.State = domain.CoreHandoffState(handoffState)
+		if fenced.Valid {
+			value := fenced.Time
+			handoff.FencedAt = &value
+		}
+		state.Handoff = &handoff
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return stateFile{}, false, err
+	}
+	return state, true, nil
+}
+
+// writeState replaces the topology rows with state inside the caller's
+// transaction. The handoff goes first because it references members.
+func writeState(ctx context.Context, tx *sql.Tx, state stateFile, create bool) error {
+	now := time.Now().UTC()
+	if create {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO core_authority (id, active_id, authority_epoch, updated_at) VALUES (1, ?, ?, ?)",
+			nullable(state.ActiveID), state.AuthorityEpoch, now); err != nil {
+			return err
+		}
+	} else if _, err := tx.ExecContext(ctx, "UPDATE core_authority SET active_id = ?, authority_epoch = ?, updated_at = ? WHERE id = 1",
+		nullable(state.ActiveID), state.AuthorityEpoch, now); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM core_handoffs"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM core_members"); err != nil {
+		return err
+	}
+	for position, member := range state.Members {
+		var checkpoint sql.NullTime
+		if member.LastCheckpointAt != nil {
+			checkpoint = sql.NullTime{Time: member.LastCheckpointAt.UTC(), Valid: true}
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO core_members (id, name, endpoint, role, replica_state, agent_server_id, last_checkpoint_at, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, member.ID, member.Name, member.Endpoint, string(member.Role), string(member.ReplicaState),
+			nullable(member.AgentServerID), checkpoint, position); err != nil {
+			return err
+		}
+	}
+	if state.Handoff != nil {
+		var fenced sql.NullTime
+		if state.Handoff.FencedAt != nil {
+			fenced = sql.NullTime{Time: state.Handoff.FencedAt.UTC(), Valid: true}
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO core_handoffs (id, from_id, to_id, state, prepared_at, fenced_at) VALUES (1, ?, ?, ?, ?, ?)",
+			state.Handoff.FromID, state.Handoff.ToID, string(state.Handoff.State), state.Handoff.PreparedAt.UTC(), fenced); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func nullable(value string) sql.NullString { return sql.NullString{String: value, Valid: value != ""} }
+
+// ImportFiles copies a pre-database core-topology.sealed file into the
+// database, replacing any topology already there, and reports how many members
+// it held. Run it before the controller first opens the database. The file is
+// kept as the backup.
+func ImportFiles(ctx context.Context, db *sqlstore.DB, dataDir string, dataEncryptionKey []byte) (int, error) {
+	sealer, err := securestore.New(dataEncryptionKey)
+	if err != nil {
+		return 0, err
+	}
+	data, err := sealer.ReadFile(filepath.Join(dataDir, "core-topology.sealed"), stateKey)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read core topology: %w", err)
+	}
+	var state stateFile
+	if err := json.Unmarshal(data, &state); err != nil {
+		return 0, fmt.Errorf("decode core topology: %w", err)
+	}
+	if state.AuthorityEpoch == 0 {
+		// Stores created before authority epochs were part of the contract.
+		state.AuthorityEpoch = 1
+	}
+	if err := validateState(state); err != nil {
+		return 0, fmt.Errorf("decode core topology: %w", err)
+	}
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, found, err := loadState(ctx, tx, true)
+		if err != nil {
+			return err
+		}
+		return writeState(ctx, tx, state, !found)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("import core topology: %w", err)
+	}
+	return len(state.Members), nil
 }
 
 func normalizeConfig(input Config) (Config, error) {

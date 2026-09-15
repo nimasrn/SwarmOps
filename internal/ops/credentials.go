@@ -1,89 +1,49 @@
 package ops
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
-const databaseCredentialStateKey = "database-credentials"
-
-// databaseCredentials is the controller's sealed record of the connection URIs
-// it generated for managed databases.
+// CredentialStore holds the connection URIs the controller generated for
+// managed databases, sealed per row.
 //
 // A Swarm secret cannot be read back, so without this record SwarmOps could
 // never wire a second application to a database it created earlier — it would
 // have to rotate the password and restart the database instead. The URIs are
-// AES-256-GCM sealed in the controller's own volume with the same key as the
-// server profiles and command ledger, are never returned by any endpoint or
-// written to the audit trail, and are removed when the database is removed.
-type databaseCredentials struct {
-	// ApplicationURIs holds the per-application credentials keyed by
-	// "<application>/<engine>". They exist for the same reason as URIs: the
-	// password inside them was written to a Swarm secret that can never be
-	// read back, so this record is the only way a later deployment of the same
-	// application can be handed the credential it already owns instead of
-	// having one rotated underneath it.
-	ApplicationURIs map[string]string `json:"applicationUris,omitempty"`
-	URIs            map[string]string `json:"uris"`
-	Version         int               `json:"version"`
-}
-
-// credentialVersion is 2 since per-application URIs were added. A version 1
-// file is still read: it simply has no application credentials yet.
-const credentialVersion = 2
-
-func applicationCredentialKey(application, engine string) string {
-	return application + "/" + engine
-}
-
-// CredentialStore holds those sealed URIs. A nil store simply reports that no
-// credential is available, so a controller configured without one degrades to
-// "deploy the database first" rather than failing at startup.
+// AES-256-GCM sealed with the controller's data key, bound to their engine and
+// application, never returned by any endpoint or written to the audit trail,
+// and removed when the database is removed.
+//
+// A nil store simply reports that no credential is available, so a controller
+// configured without one degrades to "deploy the database first" rather than
+// failing at startup.
 type CredentialStore struct {
-	applicationURIs map[string]string
-	mu              sync.Mutex
-	path            string
-	sealer          *securestore.Sealer
-	uris            map[string]string
+	db *sqlstore.DB
 }
 
-func NewCredentialStore(dataDir string, dataEncryptionKey []byte) (*CredentialStore, error) {
-	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("credential store data directory is required")
+func NewCredentialStore(db *sqlstore.DB) (*CredentialStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("credential store requires a database")
 	}
-	sealer, err := securestore.New(dataEncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("configure sealed database credentials: %w", err)
-	}
-	store := &CredentialStore{applicationURIs: map[string]string{}, path: filepath.Join(dataDir, "database-credentials.sealed"), sealer: sealer, uris: map[string]string{}}
-	data, err := sealer.ReadFile(store.path, databaseCredentialStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		return store, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read sealed database credentials: %w", err)
-	}
-	var saved databaseCredentials
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return nil, fmt.Errorf("read sealed database credentials: %w", err)
-	}
-	if saved.Version < 1 || saved.Version > credentialVersion {
-		return nil, fmt.Errorf("unsupported sealed database credential version")
-	}
-	for engine, uri := range saved.URIs {
-		store.uris[engine] = uri
-	}
-	for key, uri := range saved.ApplicationURIs {
-		store.applicationURIs[key] = uri
-	}
-	return store, nil
+	return &CredentialStore{db: db}, nil
+}
+
+func sharedCredentialPurpose(engine string) string {
+	return sqlstore.Purpose("database_credentials", "uri_sealed", engine)
+}
+
+func applicationCredentialPurpose(application, engine string) string {
+	return sqlstore.Purpose("application_database_credentials", "uri_sealed", application, engine)
 }
 
 // PutApplication seals one application's own connection URI for one engine.
@@ -93,18 +53,17 @@ func (s *CredentialStore) PutApplication(application, engine, uri string) error 
 	if s == nil {
 		return fmt.Errorf("sealed database credentials are not configured")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := applicationCredentialKey(application, engine)
-	previous, existed := s.applicationURIs[key]
-	s.applicationURIs[key] = uri
-	if err := s.saveLocked(); err != nil {
-		if existed {
-			s.applicationURIs[key] = previous
-		} else {
-			delete(s.applicationURIs, key)
-		}
+	sealed, err := s.db.Seal(applicationCredentialPurpose(application, engine), []byte(uri))
+	if err != nil {
 		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), appStoreTimeout)
+	defer cancel()
+	_, err = s.db.Pool().ExecContext(ctx, `INSERT INTO application_database_credentials (application_name, engine, uri_sealed, updated_at)
+		VALUES (?, ?, ?, UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE uri_sealed = VALUES(uri_sealed), updated_at = VALUES(updated_at)`,
+		application, engine, sealed)
+	if err != nil {
+		return fmt.Errorf("save sealed database credential: %w", err)
 	}
 	return nil
 }
@@ -114,10 +73,8 @@ func (s *CredentialStore) GetApplication(application, engine string) (string, bo
 	if s == nil {
 		return "", false
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	uri, found := s.applicationURIs[applicationCredentialKey(application, engine)]
-	return uri, found
+	return s.read("SELECT uri_sealed FROM application_database_credentials WHERE application_name = ? AND engine = ?",
+		applicationCredentialPurpose(application, engine), application, engine)
 }
 
 // ForgetApplication drops every engine credential for one application. It runs
@@ -129,19 +86,9 @@ func (s *CredentialStore) ForgetApplication(application string) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	prefix := application + "/"
-	removed := false
-	for key := range s.applicationURIs {
-		if strings.HasPrefix(key, prefix) {
-			delete(s.applicationURIs, key)
-			removed = true
-		}
-	}
-	if removed {
-		_ = s.saveLocked()
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), appStoreTimeout)
+	defer cancel()
+	_, _ = s.db.Pool().ExecContext(ctx, "DELETE FROM application_database_credentials WHERE application_name = ?", application)
 }
 
 // Put seals one engine's connection URI, replacing any previous value.
@@ -149,17 +96,17 @@ func (s *CredentialStore) Put(engine, uri string) error {
 	if s == nil {
 		return fmt.Errorf("sealed database credentials are not configured")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	previous, existed := s.uris[engine]
-	s.uris[engine] = uri
-	if err := s.saveLocked(); err != nil {
-		if existed {
-			s.uris[engine] = previous
-		} else {
-			delete(s.uris, engine)
-		}
+	sealed, err := s.db.Seal(sharedCredentialPurpose(engine), []byte(uri))
+	if err != nil {
 		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), appStoreTimeout)
+	defer cancel()
+	_, err = s.db.Pool().ExecContext(ctx, `INSERT INTO database_credentials (engine, uri_sealed, updated_at)
+		VALUES (?, ?, UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE uri_sealed = VALUES(uri_sealed), updated_at = VALUES(updated_at)`,
+		engine, sealed)
+	if err != nil {
+		return fmt.Errorf("save sealed database credential: %w", err)
 	}
 	return nil
 }
@@ -169,10 +116,7 @@ func (s *CredentialStore) Get(engine string) (string, bool) {
 	if s == nil {
 		return "", false
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	uri, found := s.uris[engine]
-	return uri, found
+	return s.read("SELECT uri_sealed FROM database_credentials WHERE engine = ?", sharedCredentialPurpose(engine), engine)
 }
 
 // Forget drops one engine's URI. It runs when the database is removed, so the
@@ -181,22 +125,89 @@ func (s *CredentialStore) Forget(engine string) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, found := s.uris[engine]; !found {
-		return
-	}
-	delete(s.uris, engine)
-	_ = s.saveLocked()
+	ctx, cancel := context.WithTimeout(context.Background(), appStoreTimeout)
+	defer cancel()
+	_, _ = s.db.Pool().ExecContext(ctx, "DELETE FROM database_credentials WHERE engine = ?", engine)
 }
 
-func (s *CredentialStore) saveLocked() error {
-	data, err := json.Marshal(databaseCredentials{ApplicationURIs: s.applicationURIs, URIs: s.uris, Version: credentialVersion})
+func (s *CredentialStore) read(query, purpose string, args ...any) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), appStoreTimeout)
+	defer cancel()
+	var sealed []byte
+	if err := s.db.Pool().QueryRowContext(ctx, query, args...).Scan(&sealed); err != nil {
+		return "", false
+	}
+	uri, err := s.db.Open(purpose, sealed)
 	if err != nil {
-		return fmt.Errorf("encode sealed database credentials: %w", err)
+		return "", false
 	}
-	if err := s.sealer.WriteFile(s.path, databaseCredentialStateKey, append(data, '\n')); err != nil {
-		return fmt.Errorf("save sealed database credentials: %w", err)
+	return string(uri), true
+}
+
+const databaseCredentialStateKey = "database-credentials"
+
+type databaseCredentials struct {
+	ApplicationURIs map[string]string `json:"applicationUris,omitempty"`
+	URIs            map[string]string `json:"uris"`
+	Version         int               `json:"version"`
+}
+
+// ImportCredentialFiles copies a pre-database database-credentials.sealed file
+// into the database, re-sealing each URI under its row-bound purpose, and
+// reports how many URIs it held. The file itself is kept as the backup.
+func ImportCredentialFiles(ctx context.Context, db *sqlstore.DB, dataDir string, dataEncryptionKey []byte) (int, error) {
+	sealer, err := securestore.New(dataEncryptionKey)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	data, err := sealer.ReadFile(filepath.Join(dataDir, "database-credentials.sealed"), databaseCredentialStateKey)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read sealed database credentials: %w", err)
+	}
+	var saved databaseCredentials
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return 0, fmt.Errorf("read sealed database credentials: %w", err)
+	}
+	if saved.Version < 1 || saved.Version > 2 {
+		return 0, fmt.Errorf("unsupported sealed database credential version")
+	}
+	count := 0
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		count = 0
+		for engine, uri := range saved.URIs {
+			sealed, err := db.Seal(sharedCredentialPurpose(engine), []byte(uri))
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO database_credentials (engine, uri_sealed, updated_at) VALUES (?, ?, UTC_TIMESTAMP(6))
+				ON DUPLICATE KEY UPDATE uri_sealed = VALUES(uri_sealed), updated_at = VALUES(updated_at)`, engine, sealed); err != nil {
+				return err
+			}
+			count++
+		}
+		for key, uri := range saved.ApplicationURIs {
+			application, engine, found := strings.Cut(key, "/")
+			if !found {
+				return fmt.Errorf("sealed application credential key %q is malformed", key)
+			}
+			sealed, err := db.Seal(applicationCredentialPurpose(application, engine), []byte(uri))
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO application_database_credentials (application_name, engine, uri_sealed, updated_at)
+				VALUES (?, ?, ?, UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE uri_sealed = VALUES(uri_sealed), updated_at = VALUES(updated_at)`,
+				application, engine, sealed); err != nil {
+				return err
+			}
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("import database credentials: %w", err)
+	}
+	return count, nil
 }

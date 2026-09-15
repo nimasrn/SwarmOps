@@ -1,7 +1,6 @@
 package ops
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -59,7 +59,7 @@ func TestTraefikPrerequisitesPlanAndRepairAreClosedAndComplete(t *testing.T) {
 	if err := os.WriteFile(dynamicPath, []byte(dynamic), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(directory, bytes.Repeat([]byte{19}, 32), 100)
+	auditStore, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

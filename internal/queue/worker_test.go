@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
-	"github.com/nimasrn/SwarmOps/internal/securestore"
 )
 
 func TestWorkerMarksTimedOutExecutionForAttentionRatherThanReplay(t *testing.T) {
@@ -70,7 +69,7 @@ func TestWorkerFailsStoppedAfterExhaustingStoreRetries(t *testing.T) {
 	}
 	// A durable-store outage must not be silently ignored, and it must not
 	// leave a phantom claimed command behind when every retry is exhausted.
-	store.sealer = &securestore.Sealer{}
+	_ = corruptPayload(t, store, command.ID)
 	runErr := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

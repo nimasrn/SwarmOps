@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -85,11 +86,11 @@ func TestDockerSwarmCommandLifecycle(t *testing.T) {
 
 	dataDir := t.TempDir()
 	dataKey := bytes.Repeat([]byte{7}, 32)
-	auditStore, err := audit.Open(dataDir, dataKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatalf("open audit store: %v", err)
 	}
-	servers, err := remote.NewManager(dataDir, dataKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatalf("open server manager: %v", err)
 	}

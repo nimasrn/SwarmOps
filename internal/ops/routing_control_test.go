@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,7 +27,7 @@ func TestTraefikObservabilityIsEmptyWhenServicesAreNotInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	routing, err := NewRoutingStore(t.TempDir(), make([]byte, 32), "ops@example.com")
+	routing, err := NewRoutingStore(sqltest.Open(t), "ops@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

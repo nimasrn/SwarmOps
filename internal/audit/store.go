@@ -1,137 +1,60 @@
-// Package audit persists a compact, logically append-only audit record. Its
-// state is encrypted before it reaches the controller disk.
+// Package audit persists a compact, logically append-only audit record in the
+// controller database. Events are only inserted; the oldest are trimmed once
+// the retention bound is exceeded.
 package audit
 
 import (
-	"bufio"
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
-	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
-const auditStateKey = "audit-events"
-
-type auditFile struct {
-	Events  []domain.AuditEvent
-	Version int
-}
+// storeTimeout bounds one audit statement. The Store's method set predates the
+// database and takes no context, so every call carries its own deadline rather
+// than blocking a request on a database that stopped answering.
+const storeTimeout = 10 * time.Second
 
 type Store struct {
-	events     []domain.AuditEvent
-	legacyPath string
-	maxEvents  int
-	mu         sync.Mutex
-	now        func() time.Time
-	path       string
-	store      *securestore.Sealer
+	db        *sqlstore.DB
+	maxEvents int
+	now       func() time.Time
 }
 
-// Open loads the encrypted audit history and keeps at most maxEvents records.
-// The bound stops unauthenticated login-failure spam and ordinary operation
-// volume from growing controller memory and the sealed rewrite cost forever;
-// the most recent evidence is always retained.
-func Open(dataDir string, dataEncryptionKey []byte, maxEvents int) (*Store, error) {
+// Open binds the audit ledger to the controller database and keeps at most
+// maxEvents records. The bound stops unauthenticated login-failure spam and
+// ordinary operation volume from growing the table forever; the most recent
+// evidence is always retained.
+func Open(db *sqlstore.DB, maxEvents int) (*Store, error) {
+	if db == nil {
+		return nil, fmt.Errorf("audit store requires a database")
+	}
 	if maxEvents < 1 {
 		return nil, fmt.Errorf("audit retention must be positive")
 	}
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create audit directory: %w", err)
-	}
-	sealer, err := securestore.New(dataEncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("configure encrypted audit store: %w", err)
-	}
-	store := &Store{
-		legacyPath: filepath.Join(dataDir, "audit.ndjson"),
-		maxEvents:  maxEvents,
-		now:        time.Now,
-		path:       filepath.Join(dataDir, "audit.sealed"),
-		store:      sealer,
-	}
-	data, err := store.store.ReadFile(store.path, auditStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := store.loadLegacyEvents(); err != nil {
-			return nil, err
-		}
-		return store, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read audit log: %w", err)
-	}
-	if _, err := os.Stat(store.legacyPath); err == nil {
-		return nil, fmt.Errorf("legacy plaintext audit log remains; remove %s only after verifying the encrypted migration", store.legacyPath)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("check legacy audit log: %w", err)
-	}
-	if err := store.loadEvents(data); err != nil {
-		return nil, err
-	}
-	return store, nil
+	return &Store{db: db, maxEvents: maxEvents, now: time.Now}, nil
 }
 
-func (s *Store) loadLegacyEvents() error {
-	file, err := os.Open(s.legacyPath)
-	if errors.Is(err, os.ErrNotExist) {
+// Database is the controller database this ledger lives in. The HTTP server
+// opens the rest of its durable state on the same database, so a process can
+// never record audit evidence in one place and act on state kept in another.
+func (s *Store) Database() *sqlstore.DB {
+	if s == nil {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("read legacy audit log: %w", err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 8<<10), 1<<20)
-	for scanner.Scan() {
-		var event domain.AuditEvent
-		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-			return fmt.Errorf("decode legacy audit event: %w", err)
-		}
-		s.events = append(s.events, cloneEvent(event))
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read legacy audit log: %w", err)
-	}
-	s.trimLocked()
-	if err := s.saveLocked(); err != nil {
-		return fmt.Errorf("seal legacy audit log: %w", err)
-	}
-	if err := securestore.RemoveFile(s.legacyPath); err != nil {
-		return fmt.Errorf("remove migrated plaintext audit log: %w", err)
-	}
-	return nil
-}
-
-func (s *Store) loadEvents(data []byte) error {
-	var saved auditFile
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return fmt.Errorf("decode audit log: %w", err)
-	}
-	if saved.Version != 1 {
-		return fmt.Errorf("unsupported audit log version")
-	}
-	s.events = make([]domain.AuditEvent, 0, len(saved.Events))
-	for _, event := range saved.Events {
-		s.events = append(s.events, cloneEvent(event))
-	}
-	s.trimLocked()
-	return nil
+	return s.db
 }
 
 func (s *Store) Record(event domain.AuditEvent) (domain.AuditEvent, error) {
 	if s == nil {
 		return domain.AuditEvent{}, fmt.Errorf("audit store is not configured")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if event.ID == "" {
 		id, err := newID()
 		if err != nil {
@@ -142,58 +65,72 @@ func (s *Store) Record(event domain.AuditEvent) (domain.AuditEvent, error) {
 	if event.OccurredAt.IsZero() {
 		event.OccurredAt = s.now().UTC()
 	}
+	event.OccurredAt = event.OccurredAt.UTC().Truncate(time.Microsecond)
 	event = cloneEvent(event)
-	s.events = append(s.events, event)
-	s.trimLocked()
-	if err := s.saveLocked(); err != nil {
-		s.events = s.events[:len(s.events)-1]
-		return domain.AuditEvent{}, err
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := insertEvent(ctx, tx, event); err != nil {
+			return err
+		}
+		return trim(ctx, tx, s.maxEvents)
+	})
+	if err != nil {
+		return domain.AuditEvent{}, fmt.Errorf("save audit event: %w", err)
 	}
 	return cloneEvent(event), nil
 }
 
-// trimLocked retains only the newest maxEvents records. It runs after load
-// and every append so both memory and the sealed rewrite stay bounded even
-// when unauthenticated login failures attempt to flood the ledger.
-func (s *Store) trimLocked() {
-	excess := len(s.events) - s.maxEvents
-	if excess <= 0 {
-		return
-	}
-	retained := make([]domain.AuditEvent, len(s.events)-excess)
-	copy(retained, s.events[excess:])
-	s.events = retained
-}
-
-// Writable verifies that the encrypted audit destination can create a
-// protected temporary file before a sensitive control-plane operation starts.
-// It intentionally does not add a probe record to the semantic audit stream.
-func (s *Store) Writable() error {
-	if s == nil {
-		return fmt.Errorf("audit store is not configured")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	temporary, err := os.CreateTemp(filepath.Dir(s.path), ".audit-write-check-*")
+func insertEvent(ctx context.Context, tx *sql.Tx, event domain.AuditEvent) error {
+	result, err := tx.ExecContext(ctx, `INSERT INTO audit_events (id, occurred_at, actor, action, target, outcome, request_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		event.ID, event.OccurredAt, event.Actor, event.Action, event.Target, event.Outcome, nullString(event.RequestID))
 	if err != nil {
-		return fmt.Errorf("open audit log: %w", err)
+		return err
 	}
-	temporaryPath := temporary.Name()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-		return fmt.Errorf("protect audit write check: %w", err)
+	seq, err := result.LastInsertId()
+	if err != nil {
+		return err
 	}
-	if err := temporary.Close(); err != nil {
-		_ = os.Remove(temporaryPath)
-		return fmt.Errorf("close audit write check: %w", err)
-	}
-	if err := os.Remove(temporaryPath); err != nil {
-		return fmt.Errorf("remove audit write check: %w", err)
+	for key, value := range event.Detail {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO audit_event_details (event_seq, detail_key, detail_value) VALUES (?, ?, ?)", seq, key, value); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+// trim deletes every event older than the newest maxEvents. Details go with
+// their event through the ON DELETE CASCADE foreign key.
+func trim(ctx context.Context, tx *sql.Tx, maxEvents int) error {
+	var boundary int64
+	err := tx.QueryRowContext(ctx, "SELECT seq FROM audit_events ORDER BY seq DESC LIMIT 1 OFFSET ?", maxEvents).Scan(&boundary)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM audit_events WHERE seq <= ?", boundary)
+	return err
+}
+
+// Writable verifies the ledger can accept a write before a sensitive
+// control-plane operation starts. It does not add a probe record to the
+// semantic audit stream.
+func (s *Store) Writable() error {
+	if s == nil {
+		return fmt.Errorf("audit store is not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	if err := s.db.Ready(ctx); err != nil {
+		return fmt.Errorf("open audit log: %w", err)
+	}
+	return nil
+}
+
+// Recent returns up to limit events, newest first.
 func (s *Store) Recent(limit int) ([]domain.AuditEvent, error) {
 	if s == nil {
 		return nil, fmt.Errorf("audit store is not configured")
@@ -204,28 +141,57 @@ func (s *Store) Recent(limit int) ([]domain.AuditEvent, error) {
 	if limit > 500 {
 		limit = 500
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	count := len(s.events)
-	if count > limit {
-		count = limit
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	rows, err := s.db.Pool().QueryContext(ctx, `SELECT seq, id, occurred_at, actor, action, target, outcome, request_id
+		FROM audit_events ORDER BY seq DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("read audit log: %w", err)
 	}
-	items := make([]domain.AuditEvent, 0, count)
-	for index := len(s.events) - 1; index >= 0 && len(items) < limit; index-- {
-		items = append(items, cloneEvent(s.events[index]))
+	defer rows.Close()
+	items := make([]domain.AuditEvent, 0, limit)
+	bySeq := map[int64]int{}
+	seqs := make([]any, 0, limit)
+	for rows.Next() {
+		var seq int64
+		var event domain.AuditEvent
+		var requestID sql.NullString
+		if err := rows.Scan(&seq, &event.ID, &event.OccurredAt, &event.Actor, &event.Action, &event.Target, &event.Outcome, &requestID); err != nil {
+			return nil, fmt.Errorf("read audit log: %w", err)
+		}
+		event.RequestID = requestID.String
+		bySeq[seq] = len(items)
+		seqs = append(seqs, seq)
+		items = append(items, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read audit log: %w", err)
+	}
+	if len(seqs) == 0 {
+		return items, nil
+	}
+	details, err := s.db.Pool().QueryContext(ctx,
+		"SELECT event_seq, detail_key, detail_value FROM audit_event_details WHERE event_seq IN ("+placeholders(len(seqs))+")", seqs...)
+	if err != nil {
+		return nil, fmt.Errorf("read audit details: %w", err)
+	}
+	defer details.Close()
+	for details.Next() {
+		var seq int64
+		var key, value string
+		if err := details.Scan(&seq, &key, &value); err != nil {
+			return nil, fmt.Errorf("read audit details: %w", err)
+		}
+		index := bySeq[seq]
+		if items[index].Detail == nil {
+			items[index].Detail = map[string]string{}
+		}
+		items[index].Detail[key] = value
+	}
+	if err := details.Err(); err != nil {
+		return nil, fmt.Errorf("read audit details: %w", err)
 	}
 	return items, nil
-}
-
-func (s *Store) saveLocked() error {
-	data, err := json.Marshal(auditFile{Events: s.events, Version: 1})
-	if err != nil {
-		return fmt.Errorf("encode audit log: %w", err)
-	}
-	if err := s.store.WriteFile(s.path, auditStateKey, append(data, '\n')); err != nil {
-		return fmt.Errorf("save audit log: %w", err)
-	}
-	return nil
 }
 
 func cloneEvent(event domain.AuditEvent) domain.AuditEvent {
@@ -246,4 +212,12 @@ func newID() (string, error) {
 		return "", fmt.Errorf("generate audit id: %w", err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func nullString(value string) sql.NullString {
+	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func placeholders(count int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }

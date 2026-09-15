@@ -59,6 +59,10 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "migrate-state" {
+		runMigrateState(os.Args[2:])
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "upgrade" {
 		runCoreUpgrade(os.Args[2:])
 		return
@@ -75,12 +79,21 @@ func main() {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
-	auditStore, err := audit.Open(cfg.DataDir, cfg.DataEncryptionKey, cfg.AuditMaxEvents)
+	// Every piece of controller state lives in the controller database. It is
+	// opened and migrated before anything reads state, so a controller never
+	// starts against a schema older than the code that uses it.
+	db, err := openDatabase(ctx, cfg)
+	if err != nil {
+		logger.Error("open controller database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	auditStore, err := audit.Open(db, cfg.AuditMaxEvents)
 	if err != nil {
 		logger.Error("open audit store", "error", err)
 		os.Exit(1)
 	}
-	servers, err := remote.NewManagerWithOptions(cfg.DataDir, cfg.DataEncryptionKey, remote.ManagerOptions{RetainKeys: cfg.RetainMachineKeys})
+	servers, err := remote.NewManagerWithOptions(db, remote.ManagerOptions{RetainKeys: cfg.RetainMachineKeys})
 	if err != nil {
 		logger.Error("load remote server profiles", "error", err)
 		os.Exit(1)
@@ -94,17 +107,17 @@ func main() {
 		}
 		startDevMachineAPIConnector(ctx, cfg.DevMachineAPI, servers, logger)
 	}
-	credentials, err := ops.NewCredentialStore(cfg.DataDir, cfg.DataEncryptionKey)
+	credentials, err := ops.NewCredentialStore(db)
 	if err != nil {
 		logger.Error("load sealed database credentials", "error", err)
 		os.Exit(1)
 	}
-	applications, err := ops.NewApplicationStore(cfg.DataDir, cfg.DataEncryptionKey)
+	applications, err := ops.NewApplicationStore(db)
 	if err != nil {
 		logger.Error("load sealed applications", "error", err)
 		os.Exit(1)
 	}
-	routing, err := ops.NewRoutingStore(cfg.DataDir, cfg.DataEncryptionKey, cfg.TraefikACMEEmail)
+	routing, err := ops.NewRoutingStore(db, cfg.TraefikACMEEmail)
 	if err != nil {
 		logger.Error("load sealed Traefik routing state", "error", err)
 		os.Exit(1)
@@ -113,12 +126,12 @@ func main() {
 	// an operator turns it on from the panel, and a service that only existed
 	// when an environment variable was already set could never be turned on
 	// without restarting the controller.
-	sourceStore, err := source.NewStore(cfg.DataDir, cfg.DataEncryptionKey)
+	sourceStore, err := source.NewStore(db)
 	if err != nil {
 		logger.Error("load sealed source connections", "error", err)
 		os.Exit(1)
 	}
-	sourceSettings, err := source.NewSettingsStore(cfg.DataDir, cfg.DataEncryptionKey, source.Settings{
+	sourceSettings, err := source.NewSettingsStore(db, source.Settings{
 		BuildEnabled: cfg.BuildEnabled,
 		Enabled:      cfg.SourceEnabled,
 		ImagePrefix:  cfg.SourceImagePrefix,

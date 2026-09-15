@@ -18,7 +18,8 @@ usage() {
     '' \
     'Builds and runs the SwarmOps API on a host without Docker.' \
     'It requires protected files through SWARMOPS_ADMIN_PASSWORD_HASH_FILE,' \
-    'SWARMOPS_SESSION_KEY_FILE, and SWARMOPS_DATA_ENCRYPTION_KEY_FILE; it' \
+    'SWARMOPS_SESSION_KEY_FILE, SWARMOPS_DATA_ENCRYPTION_KEY_FILE, and' \
+    'SWARMOPS_DATABASE_DSN_FILE (the MySQL or MariaDB controller database); it' \
     'writes sealed controller state to SWARMOPS_DATA_DIR (default:' \
     '/var/lib/swarmops) and listens on 127.0.0.1:8084 by default.' \
     '' \
@@ -138,6 +139,7 @@ require_command npm
 require_secret_file 'SWARMOPS_ADMIN_PASSWORD_HASH_FILE' "${SWARMOPS_ADMIN_PASSWORD_HASH_FILE:-}"
 require_secret_file 'SWARMOPS_SESSION_KEY_FILE' "${SWARMOPS_SESSION_KEY_FILE:-}"
 require_secret_file 'SWARMOPS_DATA_ENCRYPTION_KEY_FILE' "${SWARMOPS_DATA_ENCRYPTION_KEY_FILE:-}"
+require_secret_file 'SWARMOPS_DATABASE_DSN_FILE' "${SWARMOPS_DATABASE_DSN_FILE:-}"
 if [[ -n "${SWARMOPS_AGENT_TOKEN_FILE:-}" ]]; then
   require_secret_file 'SWARMOPS_AGENT_TOKEN_FILE' "$SWARMOPS_AGENT_TOKEN_FILE"
 fi

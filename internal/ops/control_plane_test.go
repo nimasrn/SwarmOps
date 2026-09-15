@@ -1,7 +1,6 @@
 package ops
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 )
 
 type recordingRunner struct{ calls [][]string }
@@ -43,7 +43,7 @@ func TestApplySnapshotKeepsLoadSeparateFromCPUCapacity(t *testing.T) {
 func TestReconcileTraefikUsesOnlyConfiguredAsset(t *testing.T) {
 	t.Parallel()
 	runner := &recordingRunner{}
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
+	store, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,12 +81,11 @@ configs:
 func TestInstallTraefikPersistsPanelDashboardHostname(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{17}, 32)
-	auditStore, err := audit.Open(dataDir, key, 100)
+	auditStore, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	routing, err := NewRoutingStore(dataDir, key, "ops@example.com")
+	routing, err := NewRoutingStore(sqltest.Open(t), "ops@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,13 +123,11 @@ func TestInstallTraefikPersistsPanelDashboardHostname(t *testing.T) {
 
 func TestInstallTraefikRejectsInvalidPanelDashboardHostname(t *testing.T) {
 	t.Parallel()
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{18}, 32)
-	auditStore, err := audit.Open(dataDir, key, 100)
+	auditStore, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	routing, err := NewRoutingStore(dataDir, key, "ops@example.com")
+	routing, err := NewRoutingStore(sqltest.Open(t), "ops@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +148,7 @@ func TestInstallTraefikRejectsInvalidPanelDashboardHostname(t *testing.T) {
 func TestValidateTraefikReconcileRejectsMissingACMEEmailBeforeExecution(t *testing.T) {
 	t.Parallel()
 	runner := &recordingRunner{}
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{12}, 32), 100)
+	store, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +171,7 @@ func TestValidateTraefikReconcileRejectsMissingACMEEmailBeforeExecution(t *testi
 
 func TestLogsCollectionRequiresConfiguredAsset(t *testing.T) {
 	t.Parallel()
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
+	store, err := audit.Open(sqltest.Open(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,11 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,7 +51,7 @@ func TestManagerConnectsThroughPinnedMachineAPIWithoutPersistingKey(t *testing.T
 	t.Parallel()
 	const apiKey = "test-machine-api-key"
 	endpoint, fingerprint := newTestMachineAPI(t, apiKey)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,12 +90,8 @@ func TestManagerConnectsThroughPinnedMachineAPIWithoutPersistingKey(t *testing.T
 		t.Fatalf("reconnect machine API: %v", err)
 	}
 
-	sealed, err := os.ReadFile(manager.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(sealed, []byte(apiKey)) {
-		t.Fatal("machine API key was persisted")
+	if bytes.Contains(persistedServerState(t, manager.db), []byte(apiKey)) || countServerKeys(t, manager.db) != 0 {
+		t.Fatal("machine API key was persisted without retention")
 	}
 }
 
@@ -103,7 +99,7 @@ func TestManagerRejectsWrongMachineAPICertificatePin(t *testing.T) {
 	t.Parallel()
 	const apiKey = "test-machine-api-key"
 	endpoint, _ := newTestMachineAPI(t, apiKey)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +134,7 @@ func TestManagerProbeMarksLegacyAgentAsUpdateRequired(t *testing.T) {
 	t.Parallel()
 	const apiKey = "test-machine-api-key"
 	endpoint, fingerprint := newLegacyMachineAPI(t, apiKey)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}

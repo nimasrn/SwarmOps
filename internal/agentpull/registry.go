@@ -1,6 +1,7 @@
 package agentpull
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/subtle"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -23,6 +25,7 @@ import (
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
 const (
@@ -30,7 +33,10 @@ const (
 	registryVersion = 1
 	enrollmentTTL   = 15 * time.Minute
 	clientCertTTL   = 30 * 24 * time.Hour
+	registryTimeout = 10 * time.Second
 )
+
+var caKeyPurpose = sqlstore.Purpose("agent_ca", "private_key_sealed", "1")
 
 type EnrollmentToken struct {
 	Code            string    `json:"code"`
@@ -124,114 +130,162 @@ func (r *Registry) StartClaim(input EnrollInput) (ClaimTicket, error) {
 	if err != nil {
 		return ClaimTicket{}, err
 	}
-	expires := time.Now().UTC().Add(enrollmentTTL)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pruneLocked(time.Now().UTC())
-	r.state.Claims = append(r.state.Claims, claimRecord{CSR: input.CSR, CodeDigest: digest(normalizeClaimCode(code)), ExpiresAt: expires, ID: claimID, Name: name, SecretDigest: digest(secret)})
-	if err := r.saveLocked(); err != nil {
+	expires := time.Now().UTC().Add(enrollmentTTL).Truncate(time.Microsecond)
+	err = r.transact(func() error {
+		r.pruneLocked(time.Now().UTC())
+		r.state.Claims = append(r.state.Claims, claimRecord{CSR: input.CSR, CodeDigest: digest(normalizeClaimCode(code)), ExpiresAt: expires, ID: claimID, Name: name, SecretDigest: digest(secret)})
+		return nil
+	})
+	if err != nil {
 		return ClaimTicket{}, err
 	}
 	return ClaimTicket{ClaimID: claimID, ClaimSecret: secret, Code: code, ExpiresAt: expires}, nil
 }
 
 func (r *Registry) ApproveClaim(code string) (ClaimApproval, error) {
-	now := time.Now().UTC()
 	wanted := digest(normalizeClaimCode(code))
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pruneLocked(now)
-	for index := range r.state.Claims {
-		claim := &r.state.Claims[index]
-		if subtle.ConstantTimeCompare([]byte(claim.CodeDigest), []byte(wanted)) != 1 || !now.Before(claim.ExpiresAt) {
-			continue
+	var approval ClaimApproval
+	err := r.transact(func() error {
+		now := time.Now().UTC()
+		r.pruneLocked(now)
+		for index := range r.state.Claims {
+			claim := &r.state.Claims[index]
+			if subtle.ConstantTimeCompare([]byte(claim.CodeDigest), []byte(wanted)) != 1 || !now.Before(claim.ExpiresAt) {
+				continue
+			}
+			if claim.Enrollment != nil {
+				approval = ClaimApproval{AgentID: claim.Enrollment.AgentID, Name: claim.Name, ExpiresAt: claim.Enrollment.ExpiresAt}
+				return nil
+			}
+			csr, err := parseCSR(claim.CSR)
+			if err != nil {
+				return err
+			}
+			agentID, err := randomID()
+			if err != nil {
+				return err
+			}
+			certificate, expiresAt, err := r.issueLocked(agentID, claim.Name, csr)
+			if err != nil {
+				return err
+			}
+			claim.Enrollment = &Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}
+			r.state.Agents = append(r.state.Agents, agentRecord{ID: agentID, Name: claim.Name, ExpiresAt: expiresAt})
+			approval = ClaimApproval{AgentID: agentID, Name: claim.Name, ExpiresAt: expiresAt}
+			return nil
 		}
-		if claim.Enrollment != nil {
-			return ClaimApproval{AgentID: claim.Enrollment.AgentID, Name: claim.Name, ExpiresAt: claim.Enrollment.ExpiresAt}, nil
-		}
-		csr, err := parseCSR(claim.CSR)
-		if err != nil {
-			return ClaimApproval{}, err
-		}
-		agentID, err := randomID()
-		if err != nil {
-			return ClaimApproval{}, err
-		}
-		certificate, expiresAt, err := r.issueLocked(agentID, claim.Name, csr)
-		if err != nil {
-			return ClaimApproval{}, err
-		}
-		claim.Enrollment = &Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}
-		r.state.Agents = append(r.state.Agents, agentRecord{ID: agentID, Name: claim.Name, ExpiresAt: expiresAt})
-		if err := r.saveLocked(); err != nil {
-			return ClaimApproval{}, err
-		}
-		return ClaimApproval{AgentID: agentID, Name: claim.Name, ExpiresAt: expiresAt}, nil
+		return fmt.Errorf("standalone enrollment code is invalid or expired")
+	})
+	if err != nil {
+		return ClaimApproval{}, err
 	}
-	return ClaimApproval{}, fmt.Errorf("standalone enrollment code is invalid or expired")
+	return approval, nil
 }
 
 func (r *Registry) RedeemClaim(claimID, secret string) (Enrollment, bool, error) {
-	now := time.Now().UTC()
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pruneLocked(now)
-	for index := range r.state.Claims {
-		claim := r.state.Claims[index]
-		if claim.ID != strings.TrimSpace(claimID) || subtle.ConstantTimeCompare([]byte(claim.SecretDigest), []byte(digest(strings.TrimSpace(secret)))) != 1 {
-			continue
+	var enrollment Enrollment
+	ready := false
+	err := r.transact(func() error {
+		r.pruneLocked(time.Now().UTC())
+		for index := range r.state.Claims {
+			claim := r.state.Claims[index]
+			if claim.ID != strings.TrimSpace(claimID) || subtle.ConstantTimeCompare([]byte(claim.SecretDigest), []byte(digest(strings.TrimSpace(secret)))) != 1 {
+				continue
+			}
+			if claim.Enrollment == nil {
+				return errClaimPending
+			}
+			enrollment = *claim.Enrollment
+			ready = true
+			r.state.Claims = append(r.state.Claims[:index], r.state.Claims[index+1:]...)
+			return nil
 		}
-		if claim.Enrollment == nil {
-			return Enrollment{}, false, nil
-		}
-		enrollment := *claim.Enrollment
-		r.state.Claims = append(r.state.Claims[:index], r.state.Claims[index+1:]...)
-		if err := r.saveLocked(); err != nil {
-			return Enrollment{}, false, err
-		}
-		return enrollment, true, nil
+		return fmt.Errorf("standalone enrollment claim is invalid or expired")
+	})
+	if errors.Is(err, errClaimPending) {
+		return Enrollment{}, false, nil
 	}
-	return Enrollment{}, false, fmt.Errorf("standalone enrollment claim is invalid or expired")
+	if err != nil {
+		return Enrollment{}, false, err
+	}
+	return enrollment, ready, nil
 }
 
-// Registry owns the private agent CA and one-time enrollment grants. Its state
-// is envelope-encrypted and atomically replaced by securestore.
+// errClaimPending aborts the redeem transaction without writing: a claim
+// awaiting approval is a normal answer, not a failure.
+var errClaimPending = errors.New("claim is awaiting approval")
+
+// Registry owns the private agent CA and one-time enrollment grants. Its rows
+// live in the controller database; the CA private key is sealed. Every change
+// runs in one transaction that first locks the agent_ca row, so enrollment
+// codes are spent exactly once even with two controller processes.
 type Registry struct {
 	authorityEpoch uint64
 	ca             *x509.Certificate
 	caKey          *ecdsa.PrivateKey
+	db             *sqlstore.DB
 	mu             sync.Mutex
-	path           string
-	sealer         *securestore.Sealer
 	state          registryState
 }
 
-func OpenRegistry(dataDir string, key []byte, authorityEpoch uint64) (*Registry, error) {
-	sealer, err := securestore.New(key)
-	if err != nil {
-		return nil, err
+func OpenRegistry(db *sqlstore.DB, authorityEpoch uint64) (*Registry, error) {
+	if db == nil {
+		return nil, fmt.Errorf("agent certificate registry requires a database")
 	}
 	if authorityEpoch == 0 {
 		authorityEpoch = 1
 	}
-	registry := &Registry{authorityEpoch: authorityEpoch, path: filepath.Join(dataDir, "agent-pull-registry.sealed"), sealer: sealer}
-	data, err := sealer.ReadFile(registry.path, registryPurpose)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := registry.initialize(); err != nil {
-			return nil, err
+	registry := &Registry{authorityEpoch: authorityEpoch, db: db}
+	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+	defer cancel()
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		state, found, err := loadRegistry(ctx, db, tx, true)
+		if err != nil {
+			return err
 		}
-		return registry, nil
+		if found {
+			registry.state = state
+			return nil
+		}
+		if err := registry.initialize(); err != nil {
+			return err
+		}
+		return writeRegistry(ctx, db, tx, registry.state, true)
+	})
+	if sqlstore.IsDuplicate(err) {
+		// Another controller created the CA between our read and insert.
+		return OpenRegistry(db, authorityEpoch)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read agent certificate registry: %w", err)
-	}
-	if err := json.Unmarshal(data, &registry.state); err != nil || registry.state.Version != registryVersion {
-		return nil, fmt.Errorf("read agent certificate registry: unsupported state")
+		return nil, fmt.Errorf("open agent certificate registry: %w", err)
 	}
 	if err := registry.parseCA(); err != nil {
 		return nil, err
 	}
 	return registry, nil
+}
+
+// transact runs fn against a freshly locked registry read and writes what fn
+// leaves in r.state. fn returns an error to abort without writing.
+func (r *Registry) transact(fn func() error) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+	defer cancel()
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		state, found, err := loadRegistry(ctx, r.db, tx, true)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("agent certificate registry is not initialised")
+		}
+		r.state = state
+		if err := fn(); err != nil {
+			return err
+		}
+		return writeRegistry(ctx, r.db, tx, r.state, false)
+	})
 }
 
 func (r *Registry) initialize() error {
@@ -259,7 +313,7 @@ func (r *Registry) initialize() error {
 	}
 	r.caKey = key
 	r.state = registryState{CACertPEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), CAKeyPEM: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})), Version: registryVersion}
-	return r.saveLocked()
+	return nil
 }
 
 func (r *Registry) parseCA() error {
@@ -294,12 +348,13 @@ func (r *Registry) CreateEnrollment(name string) (EnrollmentToken, error) {
 		return EnrollmentToken{}, fmt.Errorf("create enrollment code: %w", err)
 	}
 	code := hex.EncodeToString(codeBytes)
-	expires := time.Now().UTC().Add(enrollmentTTL)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pruneLocked(time.Now().UTC())
-	r.state.Tokens = append(r.state.Tokens, tokenRecord{Digest: digest(code), ExpiresAt: expires, Name: name})
-	if err := r.saveLocked(); err != nil {
+	expires := time.Now().UTC().Add(enrollmentTTL).Truncate(time.Microsecond)
+	err := r.transact(func() error {
+		r.pruneLocked(time.Now().UTC())
+		r.state.Tokens = append(r.state.Tokens, tokenRecord{Digest: digest(code), ExpiresAt: expires, Name: name})
+		return nil
+	})
+	if err != nil {
 		return EnrollmentToken{}, err
 	}
 	return EnrollmentToken{Code: code, ExpiresAt: expires, Name: name}, nil
@@ -313,43 +368,46 @@ func (r *Registry) Enroll(input EnrollInput) (Enrollment, error) {
 	if err != nil {
 		return Enrollment{}, err
 	}
-	now := time.Now().UTC()
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.pruneLocked(now)
-	index := -1
-	wanted := digest(strings.TrimSpace(input.Code))
-	for position, token := range r.state.Tokens {
-		if subtle.ConstantTimeCompare([]byte(token.Digest), []byte(wanted)) == 1 && now.Before(token.ExpiresAt) {
-			index = position
-			break
+	var enrollment Enrollment
+	err = r.transact(func() error {
+		now := time.Now().UTC()
+		r.pruneLocked(now)
+		index := -1
+		wanted := digest(strings.TrimSpace(input.Code))
+		for position, token := range r.state.Tokens {
+			if subtle.ConstantTimeCompare([]byte(token.Digest), []byte(wanted)) == 1 && now.Before(token.ExpiresAt) {
+				index = position
+				break
+			}
 		}
-	}
-	if index < 0 {
-		return Enrollment{}, fmt.Errorf("enrollment code is invalid or expired")
-	}
-	token := r.state.Tokens[index]
-	name := strings.TrimSpace(input.NodeName)
-	if token.Name != "" {
-		name = token.Name
-	}
-	if name == "" || len(name) > 96 || strings.ContainsAny(name, "\r\n\x00") {
-		return Enrollment{}, fmt.Errorf("agent name is invalid")
-	}
-	agentID, err := randomID()
+		if index < 0 {
+			return fmt.Errorf("enrollment code is invalid or expired")
+		}
+		token := r.state.Tokens[index]
+		name := strings.TrimSpace(input.NodeName)
+		if token.Name != "" {
+			name = token.Name
+		}
+		if name == "" || len(name) > 96 || strings.ContainsAny(name, "\r\n\x00") {
+			return fmt.Errorf("agent name is invalid")
+		}
+		agentID, err := randomID()
+		if err != nil {
+			return err
+		}
+		certificate, expiresAt, err := r.issueLocked(agentID, name, csr)
+		if err != nil {
+			return err
+		}
+		r.state.Tokens = append(r.state.Tokens[:index], r.state.Tokens[index+1:]...)
+		r.state.Agents = append(r.state.Agents, agentRecord{ID: agentID, Name: name, ExpiresAt: expiresAt})
+		enrollment = Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}
+		return nil
+	})
 	if err != nil {
 		return Enrollment{}, err
 	}
-	certificate, expiresAt, err := r.issueLocked(agentID, name, csr)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	r.state.Tokens = append(r.state.Tokens[:index], r.state.Tokens[index+1:]...)
-	r.state.Agents = append(r.state.Agents, agentRecord{ID: agentID, Name: name, ExpiresAt: expiresAt})
-	if err := r.saveLocked(); err != nil {
-		return Enrollment{}, err
-	}
-	return Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}, nil
+	return enrollment, nil
 }
 
 func (r *Registry) Renew(agentID, csrPEM string) (Enrollment, error) {
@@ -357,26 +415,31 @@ func (r *Registry) Renew(agentID, csrPEM string) (Enrollment, error) {
 	if err != nil {
 		return Enrollment{}, err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for index := range r.state.Agents {
-		if r.state.Agents[index].ID != agentID {
-			continue
+	var enrollment Enrollment
+	err = r.transact(func() error {
+		for index := range r.state.Agents {
+			if r.state.Agents[index].ID != agentID {
+				continue
+			}
+			certificate, expiresAt, err := r.issueLocked(agentID, r.state.Agents[index].Name, csr)
+			if err != nil {
+				return err
+			}
+			r.state.Agents[index].ExpiresAt = expiresAt
+			enrollment = Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}
+			return nil
 		}
-		certificate, expiresAt, err := r.issueLocked(agentID, r.state.Agents[index].Name, csr)
-		if err != nil {
-			return Enrollment{}, err
-		}
-		r.state.Agents[index].ExpiresAt = expiresAt
-		if err := r.saveLocked(); err != nil {
-			return Enrollment{}, err
-		}
-		return Enrollment{AgentID: agentID, AuthorityEpoch: r.authorityEpoch, CACertificate: r.state.CACertPEM, Certificate: certificate, ExpiresAt: expiresAt}, nil
+		return fmt.Errorf("agent identity is not enrolled")
+	})
+	if err != nil {
+		return Enrollment{}, err
 	}
-	return Enrollment{}, fmt.Errorf("agent identity is not enrolled")
+	return enrollment, nil
 }
 
 func (r *Registry) ClientCAs() *x509.CertPool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM([]byte(r.state.CACertPEM))
 	return pool
@@ -405,15 +468,14 @@ func (r *Registry) AgentID(request *http.Request) (string, error) {
 	return agentID, nil
 }
 
+// hasAgent answers from the table, not a cached copy: it runs on every agent
+// request, and an identity another controller process enrolled must be
+// recognised here too.
 func (r *Registry) hasAgent(agentID string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, agent := range r.state.Agents {
-		if agent.ID == agentID {
-			return true
-		}
-	}
-	return false
+	ctx, cancel := context.WithTimeout(context.Background(), registryTimeout)
+	defer cancel()
+	var found int
+	return r.db.Pool().QueryRowContext(ctx, "SELECT 1 FROM agents WHERE id = ?", agentID).Scan(&found) == nil
 }
 
 func (r *Registry) issueLocked(agentID, name string, csr *x509.CertificateRequest) (string, time.Time, error) {
@@ -422,7 +484,7 @@ func (r *Registry) issueLocked(agentID, name string, csr *x509.CertificateReques
 		return "", time.Time{}, err
 	}
 	now := time.Now().UTC()
-	expires := now.Add(clientCertTTL)
+	expires := now.Add(clientCertTTL).Truncate(time.Microsecond)
 	identity, _ := url.Parse("spiffe://swarmops/agent/" + agentID)
 	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: agentID, Organization: []string{"SwarmOps agents"}, OrganizationalUnit: []string{name}}, URIs: []*url.URL{identity}, NotBefore: now.Add(-time.Minute), NotAfter: expires, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
 	der, err := x509.CreateCertificate(rand.Reader, template, r.ca, csr.PublicKey, r.caKey)
@@ -469,15 +531,165 @@ func (r *Registry) pruneLocked(now time.Time) {
 	r.state.Claims = claims
 }
 
-func (r *Registry) saveLocked() error {
-	data, err := json.Marshal(r.state)
-	if err != nil {
-		return fmt.Errorf("encode agent certificate registry: %w", err)
+// loadRegistry reads the CA, agents, tokens, and claims. lock takes the
+// agent_ca singleton FOR UPDATE, the lock every registry change serialises on.
+func loadRegistry(ctx context.Context, db *sqlstore.DB, tx *sql.Tx, lock bool) (registryState, bool, error) {
+	suffix := ""
+	if lock {
+		suffix = " FOR UPDATE"
 	}
-	if err := r.sealer.WriteFile(r.path, registryPurpose, data); err != nil {
-		return fmt.Errorf("save agent certificate registry: %w", err)
+	state := registryState{Version: registryVersion}
+	var sealedKey []byte
+	err := tx.QueryRowContext(ctx, "SELECT certificate_pem, private_key_sealed FROM agent_ca WHERE id = 1"+suffix).Scan(&state.CACertPEM, &sealedKey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return registryState{}, false, nil
+	}
+	if err != nil {
+		return registryState{}, false, err
+	}
+	keyPEM, err := db.Open(caKeyPurpose, sealedKey)
+	if err != nil {
+		return registryState{}, false, err
+	}
+	state.CAKeyPEM = string(keyPEM)
+	if err := scanAll(ctx, tx, "SELECT id, name, certificate_expires_at FROM agents ORDER BY id", func(rows *sql.Rows) error {
+		var agent agentRecord
+		if err := rows.Scan(&agent.ID, &agent.Name, &agent.ExpiresAt); err != nil {
+			return err
+		}
+		state.Agents = append(state.Agents, agent)
+		return nil
+	}); err != nil {
+		return registryState{}, false, err
+	}
+	if err := scanAll(ctx, tx, "SELECT code_digest, name, expires_at FROM agent_enrollment_tokens ORDER BY expires_at, code_digest", func(rows *sql.Rows) error {
+		var token tokenRecord
+		var name sql.NullString
+		if err := rows.Scan(&token.Digest, &name, &token.ExpiresAt); err != nil {
+			return err
+		}
+		token.Name = name.String
+		state.Tokens = append(state.Tokens, token)
+		return nil
+	}); err != nil {
+		return registryState{}, false, err
+	}
+	if err := scanAll(ctx, tx, `SELECT id, name, csr, code_digest, secret_digest, expires_at, enrollment_agent_id,
+		enrollment_authority_epoch, enrollment_certificate, enrollment_expires_at FROM agent_claims ORDER BY position`, func(rows *sql.Rows) error {
+		var claim claimRecord
+		var agentID, certificate sql.NullString
+		var epoch sql.NullInt64
+		var expires sql.NullTime
+		if err := rows.Scan(&claim.ID, &claim.Name, &claim.CSR, &claim.CodeDigest, &claim.SecretDigest, &claim.ExpiresAt,
+			&agentID, &epoch, &certificate, &expires); err != nil {
+			return err
+		}
+		if agentID.Valid {
+			claim.Enrollment = &Enrollment{AgentID: agentID.String, AuthorityEpoch: uint64(epoch.Int64), CACertificate: state.CACertPEM, Certificate: certificate.String, ExpiresAt: expires.Time}
+		}
+		state.Claims = append(state.Claims, claim)
+		return nil
+	}); err != nil {
+		return registryState{}, false, err
+	}
+	return state, true, nil
+}
+
+func scanAll(ctx context.Context, tx *sql.Tx, query string, fn func(*sql.Rows) error) error {
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := fn(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// writeRegistry replaces the registry rows with state inside the caller's
+// transaction. The CA itself is written only when it is created.
+func writeRegistry(ctx context.Context, db *sqlstore.DB, tx *sql.Tx, state registryState, create bool) error {
+	if create {
+		sealed, err := db.Seal(caKeyPurpose, []byte(state.CAKeyPEM))
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO agent_ca (id, certificate_pem, private_key_sealed, created_at) VALUES (1, ?, ?, UTC_TIMESTAMP(6))", state.CACertPEM, sealed); err != nil {
+			return err
+		}
+	}
+	for _, table := range []string{"agents", "agent_enrollment_tokens", "agent_claims"} {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			return err
+		}
+	}
+	for _, agent := range state.Agents {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO agents (id, name, certificate_expires_at) VALUES (?, ?, ?)", agent.ID, agent.Name, agent.ExpiresAt.UTC()); err != nil {
+			return err
+		}
+	}
+	for _, token := range state.Tokens {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO agent_enrollment_tokens (code_digest, name, expires_at) VALUES (?, ?, ?)",
+			token.Digest, sql.NullString{String: token.Name, Valid: token.Name != ""}, token.ExpiresAt.UTC()); err != nil {
+			return err
+		}
+	}
+	for position, claim := range state.Claims {
+		var agentID, certificate sql.NullString
+		var epoch sql.NullInt64
+		var expires sql.NullTime
+		if claim.Enrollment != nil {
+			agentID = sql.NullString{String: claim.Enrollment.AgentID, Valid: true}
+			certificate = sql.NullString{String: claim.Enrollment.Certificate, Valid: true}
+			epoch = sql.NullInt64{Int64: int64(claim.Enrollment.AuthorityEpoch), Valid: true}
+			expires = sql.NullTime{Time: claim.Enrollment.ExpiresAt.UTC(), Valid: true}
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO agent_claims (id, name, csr, code_digest, secret_digest, expires_at, enrollment_agent_id,
+			enrollment_authority_epoch, enrollment_certificate, enrollment_expires_at, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			claim.ID, claim.Name, claim.CSR, claim.CodeDigest, claim.SecretDigest, claim.ExpiresAt.UTC(), agentID, epoch, certificate, expires, position); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// ImportFiles copies a pre-database agent-pull-registry.sealed file — the CA,
+// enrolled agents, and pending grants — into the database and reports how many
+// agents it held. It replaces any registry already present, so it must run
+// before the controller first opens the database. The file is kept.
+func ImportFiles(ctx context.Context, db *sqlstore.DB, dataDir string, dataEncryptionKey []byte) (int, error) {
+	sealer, err := securestore.New(dataEncryptionKey)
+	if err != nil {
+		return 0, err
+	}
+	data, err := sealer.ReadFile(filepath.Join(dataDir, "agent-pull-registry.sealed"), registryPurpose)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read agent certificate registry: %w", err)
+	}
+	var state registryState
+	if err := json.Unmarshal(data, &state); err != nil || state.Version != registryVersion {
+		return 0, fmt.Errorf("read agent certificate registry: unsupported state")
+	}
+	probe := &Registry{state: state}
+	if err := probe.parseCA(); err != nil {
+		return 0, err
+	}
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM agent_ca"); err != nil {
+			return err
+		}
+		return writeRegistry(ctx, db, tx, state, true)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("import agent certificate registry: %w", err)
+	}
+	return len(state.Agents), nil
 }
 
 func digest(value string) string {

@@ -30,6 +30,7 @@ all_cidrs=""
 admin_password=""
 admin_password_confirm=""
 generate_admin_password=false
+database_dsn_source=""
 generated_admin_password=""
 bootstrap_phase="initializing"
 automatic_setup=false
@@ -56,6 +57,8 @@ usage() {
     '' \
     '--listen-ip <server-ip>     A literal IP configured on this host.' \
     '--allow-cidr <CIDR>         An operator device or trusted network; repeatable and optional.' \
+    '--database-dsn-file <path>  A protected file holding the MySQL/MariaDB DSN for controller state.' \
+    '                            The database must already exist; Core creates and migrates its tables.' \
     '--release <tag|latest>      GitHub release tag, or latest (default: latest).' \
     '--github-repository <owner/name>  Release repository (default: nimasrn/SwarmOps).' \
     '--generate-admin-password   Generate a 256-bit password for the operator account and print it once after a successful install.' \
@@ -174,6 +177,14 @@ validate_repository() {
   [[ "$github_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail '--github-repository must be owner/name'
 }
 
+validate_database_dsn_file() {
+  if [[ -z "$database_dsn_source" && "$automatic_setup" == true ]]; then
+    database_dsn_source="$(prompt_value 'Controller database DSN file (MySQL or MariaDB)' '')"
+  fi
+  [[ -n "$database_dsn_source" ]] || fail '--database-dsn-file is required: Core keeps all controller state in a MySQL or MariaDB database'
+  [[ -f "$database_dsn_source" && -s "$database_dsn_source" && -r "$database_dsn_source" ]] || fail '--database-dsn-file must name a readable, non-empty file'
+}
+
 validate_release() {
   [[ "$release_version" == latest || "$release_version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail '--release must be latest or a safe release tag'
 }
@@ -185,6 +196,7 @@ assert_fresh_controller() {
     "$config_dir/admin-password-hash" \
     "$config_dir/session-key" \
     "$config_dir/data-encryption-key" \
+    "$config_dir/database-dsn" \
     "$config_dir/tls.key" \
     "$config_dir/tls.crt" \
     "$state_dir/servers.sealed" \
@@ -521,6 +533,7 @@ write_environment_file() {
       "SWARMOPS_ADMIN_PASSWORD_HASH_FILE=$config_dir/admin-password-hash" \
       "SWARMOPS_SESSION_KEY_FILE=$config_dir/session-key" \
       "SWARMOPS_DATA_ENCRYPTION_KEY_FILE=$config_dir/data-encryption-key" \
+      "SWARMOPS_DATABASE_DSN_FILE=$config_dir/database-dsn" \
       "SWARMOPS_TLS_CERT_FILE=$config_dir/tls.crt" \
       "SWARMOPS_TLS_KEY_FILE=$config_dir/tls.key" \
       "SWARMOPS_LISTEN_ADDR=$listen_address" \
@@ -720,6 +733,11 @@ while [[ "$#" -gt 0 ]]; do
       github_repository="$2"
       shift 2
       ;;
+    --database-dsn-file)
+      [[ "$#" -ge 2 ]] || fail '--database-dsn-file requires a path'
+      database_dsn_source="$2"
+      shift 2
+      ;;
     --generate-admin-password)
       generate_admin_password=true
       shift
@@ -765,6 +783,7 @@ fi
 [[ -n "$listen_ip" ]] || fail '--listen-ip is required'
 assert_local_ip "$listen_ip"
 validate_allowed_cidrs
+validate_database_dsn_file
 assert_fresh_controller
 
 bootstrap_phase='preparing protected controller directories'
@@ -791,6 +810,9 @@ info 'Configuring the restricted Core service and local release updater.'
 write_admin_password_hash
 write_random_secret "$config_dir/session-key" 48
 write_random_secret "$config_dir/data-encryption-key" 32
+# The DSN carries the database password, so it is installed exactly like a
+# generated secret: owned by the service account and readable only by it.
+install -o "$service_user" -g "$service_user" -m 0600 "$database_dsn_source" "$config_dir/database-dsn" || fail 'install the controller database DSN'
 write_tls_material
 write_environment_file "$port"
 write_systemd_service

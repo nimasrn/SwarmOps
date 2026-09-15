@@ -2,8 +2,10 @@ package apihttp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -45,11 +47,11 @@ func TestSourceConnectionAPISealsAndNeverReturnsProviderToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(directory, key, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(t.TempDir(), key)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestSourceConnectionAPISealsAndNeverReturnsProviderToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectionStore, err := source.NewStore(directory, key)
+	connectionStore, err := source.NewStore(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +117,8 @@ func TestSourceConnectionAPISealsAndNeverReturnsProviderToken(t *testing.T) {
 	if listResponse.Code != http.StatusOK || strings.Contains(listResponse.Body.String(), token) {
 		t.Fatalf("list = %d %s", listResponse.Code, listResponse.Body.String())
 	}
-	sealed, err := os.ReadFile(filepath.Join(directory, "source-connections.sealed"))
-	if err != nil {
+	var sealed []byte
+	if err := sqltest.Shared(t).Pool().QueryRow("SELECT token_sealed FROM source_connections LIMIT 1").Scan(&sealed); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, []byte(token)) {
@@ -172,11 +174,11 @@ func TestApplicationDomainEndpointUsesSelectedManagerAndRequiresRemovalConfirmat
 	if err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(directory, key, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	applications, err := ops.NewApplicationStore(directory, key)
+	applications, err := ops.NewApplicationStore(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +208,10 @@ func TestApplicationDomainEndpointUsesSelectedManagerAndRequiresRemovalConfirmat
 	if err := os.WriteFile(filepath.Join(serversDirectory, "servers.json"), serverProfiles, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(serversDirectory, key)
+	if _, _, err := remote.ImportServerFiles(context.Background(), sqltest.Shared(t), serversDirectory, key); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,11 +297,11 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(directory, key, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(t.TempDir(), key)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +320,7 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connectionStore, err := source.NewStore(directory, key)
+	connectionStore, err := source.NewStore(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +328,7 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settingsStore, err := source.NewSettingsStore(directory, key, source.Settings{})
+	settingsStore, err := source.NewSettingsStore(sqltest.Shared(t), source.Settings{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,8 +396,8 @@ func TestSourceSettingsEnableTheBoundaryWithoutRestart(t *testing.T) {
 	if !status.Enabled || !status.BuildEnabled || !status.ImagePrefixConfigured {
 		t.Fatalf("status did not reflect applied settings: %+v", status)
 	}
-	sealed, err := os.ReadFile(filepath.Join(directory, "source-settings.sealed"))
-	if err != nil {
+	var sealed []byte
+	if err := sqltest.Shared(t).Pool().QueryRow("SELECT registry_password_sealed FROM source_settings WHERE id = 1").Scan(&sealed); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, []byte(password)) {

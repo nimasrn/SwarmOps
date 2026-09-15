@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -49,11 +50,14 @@ func TestServerUpdateExplainsDisabledAutomaticUpdates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, "servers.json"), profiles, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(dataDir, dataKey)
+	if _, _, err := remote.ImportServerFiles(context.Background(), sqltest.Shared(t), dataDir, dataKey); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(t.TempDir(), dataKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +112,7 @@ func TestServerDiagnosticsReturnsRetainedFailureWhenMachineIsOffline(t *testing.
 	}
 	fingerprint := sha256.Sum256(machine.Certificate().Raw)
 	dataKey := bytes.Repeat([]byte{23}, 32)
-	servers, err := remote.NewManager(t.TempDir(), dataKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +135,7 @@ func TestServerDiagnosticsReturnsRetainedFailureWhenMachineIsOffline(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	auditStore, err := audit.Open(t.TempDir(), dataKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

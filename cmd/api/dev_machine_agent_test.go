@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"net"
 	"net/http/httptest"
 	"net/url"
@@ -54,7 +54,7 @@ func TestConnectDevMachineAPIConnectsHostAgentWithoutDocker(t *testing.T) {
 		Port:                      uint16(port),
 		TLSCertificateFingerprint: "SHA256:" + strings.ToUpper(hex.EncodeToString(fingerprint[:])),
 	}
-	servers, err := remote.NewManager(t.TempDir(), bytes.Repeat([]byte{7}, 32))
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}

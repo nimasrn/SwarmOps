@@ -39,6 +39,9 @@ services:
       # this so the console routes to itself rather than to nothing.
       SWARMOPS_CORE_SERVICE: ${SWARMOPS_CORE_SERVICE:-swarmops_api}
       SWARMOPS_DATA_ENCRYPTION_KEY_FILE: /run/secrets/swarmops_data_encryption_key
+      # All controller state lives in this MySQL or MariaDB database. The DSN
+      # carries its password, so it is a Swarm secret like the data key.
+      SWARMOPS_DATABASE_DSN_FILE: /run/secrets/swarmops_database_dsn
       SWARMOPS_IMAGE_PREFIXES: ${SWARMOPS_IMAGE_PREFIXES:-swarmops-local/,ghcr.io/nimasrn/}
       SWARMOPS_MUTATIONS_ENABLED: ${SWARMOPS_MUTATIONS_ENABLED:-false}
       SWARMOPS_ALERTMANAGER_CONFIG_NAME: ${SWARMOPS_ALERTMANAGER_CONFIG_NAME:-swarmops_alertmanager_config_v1}
@@ -136,6 +139,9 @@ services:
         mode: 0400
       - source: swarmops_data_encryption_key
         target: swarmops_data_encryption_key
+        mode: 0400
+      - source: swarmops_database_dsn
+        target: swarmops_database_dsn
         mode: 0400
       - source: swarmops_agent_token
         target: swarmops_agent_token
@@ -307,6 +313,9 @@ secrets:
   swarmops_data_encryption_key:
     external: true
     name: ${SWARMOPS_DATA_ENCRYPTION_KEY_SECRET:-swarmops_data_encryption_key_v1}
+  swarmops_database_dsn:
+    external: true
+    name: ${SWARMOPS_DATABASE_DSN_SECRET:-swarmops_database_dsn_v1}
   swarmops_agent_token:
     external: true
     name: ${SWARMOPS_AGENT_TOKEN_SECRET:-swarmops_agent_token_v1}

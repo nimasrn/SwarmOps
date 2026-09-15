@@ -166,15 +166,13 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	commandStore, err := queue.Open(cfg.DataDir, cfg.DataEncryptionKey, cfg.CommandHistoryLimit)
-	if err != nil {
-		return nil, err
+	// Every durable store this server owns lives in the same controller
+	// database as the audit ledger it records evidence to.
+	db := auditStore.Database()
+	if db == nil {
+		return nil, fmt.Errorf("audit store has no controller database")
 	}
-	// A failure the classifier cannot name reaches the operator as "SwarmOps
-	// could not confirm that the requested change completed". The cause is
-	// written here instead of being lost with it.
-	commandStore.SetLogger(logger)
-	core, err := coretopology.Open(cfg.DataDir, cfg.DataEncryptionKey, coretopology.Config{
+	core, err := coretopology.Open(db, coretopology.Config{
 		Endpoint: cfg.CoreEndpoint,
 		ID:       cfg.CoreID,
 		Mode:     domain.CoreRole(cfg.CoreMode),
@@ -183,7 +181,23 @@ func New(cfg config.Config, targets TargetResolver, servers *remote.Manager, aud
 	if err != nil {
 		return nil, err
 	}
-	registry, err := agentpull.OpenRegistry(cfg.DataDir, cfg.DataEncryptionKey, core.AuthorityEpoch())
+	commandStore, err := queue.Open(db, cfg.DataDir, cfg.DataEncryptionKey, cfg.CommandHistoryLimit)
+	if err != nil {
+		return nil, err
+	}
+	// A failure the classifier cannot name reaches the operator as "SwarmOps
+	// could not confirm that the requested change completed". The cause is
+	// written here instead of being lost with it.
+	commandStore.SetLogger(logger)
+	// Only the declared active core reclaims work left in flight. A standby
+	// opening the same database must not mark the active core's running
+	// commands as abandoned.
+	if core.CanManage() {
+		if err := commandStore.Recover(); err != nil {
+			return nil, err
+		}
+	}
+	registry, err := agentpull.OpenRegistry(db, core.AuthorityEpoch())
 	if err != nil {
 		return nil, err
 	}

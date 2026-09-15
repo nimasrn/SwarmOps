@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"encoding/json"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,7 +68,7 @@ func (f *fakeEngine) start(t *testing.T) *ops.ControlPlane {
 
 func testServer(t *testing.T, control *ops.ControlPlane) *Server {
 	t.Helper()
-	store, err := coretopology.Open(t.TempDir(), make([]byte, 32), coretopology.Config{
+	store, err := coretopology.Open(sqltest.Shared(t), coretopology.Config{
 		Endpoint: "https://core.test", ID: "core-1", Mode: domain.CoreRoleActive, Name: "core",
 	})
 	if err != nil {

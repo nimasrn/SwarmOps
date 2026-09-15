@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -152,7 +153,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{5}, 32)
-	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	store, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestLoginMeAndCSRFProtection(t *testing.T) {
 		SessionTTL:        time.Hour,
 	}
 	control := ops.NewControlPlane(docker, ops.DockerCLI{}, store, ops.ControlPlaneOptions{DataDir: cfg.DataDir})
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,11 +230,11 @@ func TestHTTPSHandlerKeepsSecureSessionAndPlaintextBlocksAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{7}, 32)
-	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	store, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +284,7 @@ func TestServerReadinessUsesPathTargetAndDurableQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{11}, 32)
-	auditStore, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +310,7 @@ func TestServerReadinessUsesPathTargetAndDurableQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	fingerprint := sha256.Sum256(machine.Certificate().Raw)
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +433,7 @@ func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{7}, 32)
-	store, err := audit.Open(t.TempDir(), dataEncryptionKey, 100)
+	store, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +448,7 @@ func TestOverviewUsesSelectedRemoteManager(t *testing.T) {
 		SessionTTL:        time.Hour,
 	}
 	control := ops.NewControlPlane(docker, ops.DockerCLI{}, store, ops.ControlPlaneOptions{DataDir: cfg.DataDir})
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,11 +505,11 @@ func TestCoreTopologyIsSeparateFromManagedServers(t *testing.T) {
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{13}, 32)
 	dataDir := t.TempDir()
-	auditStore, err := audit.Open(dataDir, dataEncryptionKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,11 +581,11 @@ func TestStandbyBlocksAgentOperationsUntilExplicitPromotion(t *testing.T) {
 	}
 	dataEncryptionKey := bytes.Repeat([]byte{14}, 32)
 	dataDir := t.TempDir()
-	auditStore, err := audit.Open(dataDir, dataEncryptionKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(t.TempDir(), dataEncryptionKey)
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}

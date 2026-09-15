@@ -5,37 +5,48 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 )
 
 func newApplicationControlPlane(t *testing.T, runner *recordingRunner) *ControlPlane {
 	t.Helper()
-	store, err := audit.Open(t.TempDir(), bytes.Repeat([]byte{11}, 32), 100)
+	db := sqltest.Open(t)
+	store, err := audit.Open(db, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dataDir := t.TempDir()
-	credentials, err := NewCredentialStore(dataDir, bytes.Repeat([]byte{12}, 32))
+	credentials, err := NewCredentialStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	applications, err := NewApplicationStore(dataDir, bytes.Repeat([]byte{12}, 32))
+	applications, err := NewApplicationStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return NewControlPlane(nil, DockerCLI{Runner: runner}, store, ControlPlaneOptions{
 		Apps:        applications,
 		Credentials: credentials,
-		DataDir:     dataDir,
+		DataDir:     t.TempDir(),
 		Mutations:   true,
 	})
+}
+
+func newApplicationStore(t *testing.T, db *sqlstore.DB) *ApplicationStore {
+	t.Helper()
+	store, err := NewApplicationStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
 }
 
 func TestPlanApplicationReferencesStackScopedSecretsWithoutMutatingTheCluster(t *testing.T) {
@@ -114,32 +125,79 @@ func TestMetricsDiscoveryListsOnlyApplicationsThatPublishMetrics(t *testing.T) {
 	}
 }
 
-func TestSealedApplicationsSurviveARestart(t *testing.T) {
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{12}, 32)
-	store, err := NewApplicationStore(dataDir, key)
-	if err != nil {
+func TestApplicationsSurviveANewStoreOnTheSameDatabase(t *testing.T) {
+	db := sqltest.Open(t)
+	if err := newApplicationStore(t, db).Put(vloraBackendSpec()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(vloraBackendSpec()); err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec, found := reloaded.Get("vlora-backend")
+	spec, found := newApplicationStore(t, db).Get("vlora-backend")
 	if !found || spec.Domain != "api.vlora.ir" || len(spec.Databases) != 2 {
 		t.Fatalf("application did not survive a restart: %#v", spec)
 	}
 }
 
-func TestApplicationStoreRejectsDuplicateDomain(t *testing.T) {
-	directory := t.TempDir()
-	store, err := NewApplicationStore(directory, bytes.Repeat([]byte{19}, 32))
-	if err != nil {
+// Every field of a spec, including the ordered and keyed collections that now
+// live in child tables, must read back exactly as it was stored.
+func TestEveryApplicationFieldRoundTripsThroughTheSchema(t *testing.T) {
+	t.Parallel()
+	db := sqltest.Open(t)
+	store := newApplicationStore(t, db)
+	spec := ApplicationSpec{
+		Backend:          "api",
+		CPUs:             0.75,
+		Databases:        []string{DatabaseRedis, DatabaseMongo},
+		DatabaseDelivery: "env",
+		DatabaseEnv:      map[string][]string{DatabaseMongo: {"MONGO_URL", "DATABASE_URL"}},
+		Domain:           "shop.example.com",
+		Env:              map[string]string{"STRIPE_KEY": "sk_live_secret", "MODE": "production"},
+		HealthCommand:    []string{"/app/healthcheck", "--port", "8080"},
+		Image:            "ghcr.io/acme/shop:2026.09.01",
+		MemoryMiB:        768,
+		Metrics:          true,
+		MetricsPath:      "/metrics",
+		MetricsPort:      8080,
+		Name:             "shop",
+		Port:             8080,
+		Replicas:         3,
+		Resolver:         "le",
+		Tracing:          true,
+	}
+	want := spec.Normalize()
+	if err := want.Validate(); err != nil {
+		t.Fatalf("fixture spec is invalid: %v", err)
+	}
+	if err := store.Put(spec); err != nil {
 		t.Fatal(err)
 	}
+	got, found := store.Get("SHOP")
+	if !found {
+		t.Fatal("stored application was not found by a differently cased name")
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("round trip changed the spec:\n got %#v\nwant %#v", got, want)
+	}
+	var sealed []byte
+	if err := db.Pool().QueryRow("SELECT env_value_sealed FROM application_env WHERE application_name = 'shop' AND env_key = 'STRIPE_KEY'").Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("sk_live_secret")) {
+		t.Fatal("an environment value was stored in the clear")
+	}
+	// Replacing the spec replaces its collections instead of appending to them.
+	spec.Databases = []string{DatabaseMongo}
+	spec.Env = map[string]string{"MODE": "staging"}
+	spec.HealthCommand = nil
+	if err := store.Put(spec); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = store.Get("shop")
+	if len(got.Databases) != 1 || len(got.Env) != 1 || got.Env["MODE"] != "staging" || len(got.HealthCommand) != 0 {
+		t.Fatalf("replaced spec kept stale child rows: %#v", got)
+	}
+}
+
+func TestApplicationStoreRejectsDuplicateDomain(t *testing.T) {
+	store := newApplicationStore(t, sqltest.Open(t))
 	first := ApplicationSpec{Name: "first", Image: "ghcr.io/acme/first:2026.08.25", Port: 8080, Domain: "app.example.com", Resolver: "le"}
 	second := ApplicationSpec{Name: "second", Image: "ghcr.io/acme/second:2026.08.25", Port: 8080, Domain: "app.example.com", Resolver: "le"}
 	if err := store.Put(first); err != nil {
@@ -148,12 +206,17 @@ func TestApplicationStoreRejectsDuplicateDomain(t *testing.T) {
 	if err := store.Put(second); err == nil || !strings.Contains(err.Error(), "already assigned") {
 		t.Fatalf("duplicate domain error = %v", err)
 	}
+	if err := store.DomainAvailable("second", "APP.example.com."); err == nil {
+		t.Fatal("DomainAvailable accepted a hostname another application owns")
+	}
+	if err := store.DomainAvailable("first", "app.example.com"); err != nil {
+		t.Fatalf("an application's own domain was reported unavailable: %v", err)
+	}
 }
 
-func TestSealedDatabaseCredentialsAreNotStoredInTheClear(t *testing.T) {
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{12}, 32)
-	store, err := NewCredentialStore(dataDir, key)
+func TestDatabaseCredentialsAreSealedPerRow(t *testing.T) {
+	db := sqltest.Open(t)
+	store, err := NewCredentialStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,14 +224,25 @@ func TestSealedDatabaseCredentialsAreNotStoredInTheClear(t *testing.T) {
 	if err := store.Put(DatabaseMongo, uri); err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := readFileBytes(dataDir + "/database-credentials.sealed")
-	if err != nil {
+	if err := store.PutApplication("shop", DatabaseMongo, uri+"&app=shop"); err != nil {
+		t.Fatal(err)
+	}
+	var sealed []byte
+	if err := db.Pool().QueryRow("SELECT uri_sealed FROM database_credentials WHERE engine = ?", DatabaseMongo).Scan(&sealed); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, []byte("super-secret-password")) {
 		t.Fatal("a database credential was written in the clear")
 	}
-	reloaded, err := NewCredentialStore(dataDir, key)
+	// Moving one row's ciphertext into another row must not yield a usable
+	// credential: the seal is bound to the row it was written for.
+	if _, err := db.Pool().Exec("UPDATE application_database_credentials SET uri_sealed = ? WHERE application_name = 'shop'", sealed); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := store.GetApplication("shop", DatabaseMongo); found {
+		t.Fatal("a sealed value copied from another row was accepted")
+	}
+	reloaded, err := NewCredentialStore(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +253,11 @@ func TestSealedDatabaseCredentialsAreNotStoredInTheClear(t *testing.T) {
 	if _, found := reloaded.Get(DatabaseMongo); found {
 		t.Fatal("a forgotten credential is still available")
 	}
+	reloaded.ForgetApplication("shop")
+	if _, found := reloaded.GetApplication("shop", DatabaseMongo); found {
+		t.Fatal("a forgotten application credential is still available")
+	}
 }
-
-func readFileBytes(path string) ([]byte, error) { return os.ReadFile(path) }
 
 // Deploying a repository this controller has never heard of is the first
 // thing an operator does with a new application, and it is the whole of what
@@ -222,12 +298,7 @@ func TestANewApplicationPlansWithNothingDeclaredInAdvance(t *testing.T) {
 // from an application that had never been asked for.
 func TestAFailedApplicationIsKeptAndNamedAsFailed(t *testing.T) {
 	t.Parallel()
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{12}, 32)
-	store, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newApplicationStore(t, sqltest.Open(t))
 	spec := ApplicationSpec{Image: "ghcr.io/example/api:1", Name: "api", Port: 8080}
 	if err := store.Put(spec); err != nil {
 		t.Fatal(err)
@@ -259,32 +330,28 @@ func TestAFailedApplicationIsKeptAndNamedAsFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	outcome, _ = store.Outcome("api")
-	if !outcome.Started {
-		t.Fatal("an application that has started must keep having started")
+	if !outcome.Started || outcome.StartedAt.IsZero() {
+		t.Fatalf("an application that has started must keep having started: %#v", outcome)
 	}
 	if state := applicationState(outcome, false, 0); state != ApplicationStopped {
 		t.Fatalf("state = %q, want %q", state, ApplicationStopped)
+	}
+	if err := store.PutOutcome("missing", ApplicationOutcome{}); err == nil {
+		t.Fatal("an outcome was stored for an application that does not exist")
 	}
 }
 
 func TestAnOutcomeSurvivesAReloadAndIsForgottenWithItsApplication(t *testing.T) {
 	t.Parallel()
-	dataDir := t.TempDir()
-	key := bytes.Repeat([]byte{9}, 32)
-	store, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db := sqltest.Open(t)
+	store := newApplicationStore(t, db)
 	if err := store.Put(ApplicationSpec{Image: "ghcr.io/example/api:1", Name: "api", Port: 8080}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PutOutcome("api", ApplicationOutcome{FailureSummary: "gateway required", LastCommandID: "cmd-7"}); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	reloaded := newApplicationStore(t, db)
 	outcome, found := reloaded.Outcome("api")
 	if !found || outcome.LastCommandID != "cmd-7" || outcome.FailureSummary != "gateway required" {
 		t.Fatalf("after reload outcome = %#v, found=%t", outcome, found)
@@ -292,22 +359,15 @@ func TestAnOutcomeSurvivesAReloadAndIsForgottenWithItsApplication(t *testing.T) 
 	if err := reloaded.Remove("api"); err != nil {
 		t.Fatal(err)
 	}
-	if _, found := reloaded.Outcome("api"); found {
+	if _, found := newApplicationStore(t, db).Outcome("api"); found {
 		t.Fatal("the outcome outlived the application it described")
-	}
-	again, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, found := again.Outcome("api"); found {
-		t.Fatal("the removed outcome came back after a reload")
 	}
 }
 
 // An older store held specs alone, and every spec in it was written only after
-// a deployment succeeded. Reading one forward has to say so, or every existing
+// a deployment succeeded. Importing one has to say so, or every existing
 // application would be reported as never having started.
-func TestAnOlderStoreReadsAsApplicationsThatHaveStarted(t *testing.T) {
+func TestImportingAVersionOneFileRecordsApplicationsThatHaveStarted(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
 	key := bytes.Repeat([]byte{5}, 32)
@@ -325,9 +385,19 @@ func TestAnOlderStoreReadsAsApplicationsThatHaveStarted(t *testing.T) {
 	if err := sealer.WriteFile(filepath.Join(dataDir, "applications.sealed"), applicationStateKey, legacy); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewApplicationStore(dataDir, key)
-	if err != nil {
-		t.Fatal(err)
+	db := sqltest.Open(t)
+	for range 2 {
+		count, err := ImportApplicationFiles(context.Background(), db, dataDir, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("imported %d applications, want 1", count)
+		}
+	}
+	store := newApplicationStore(t, db)
+	if len(store.List()) != 1 {
+		t.Fatalf("a repeated import duplicated applications: %#v", store.List())
 	}
 	outcome, found := store.Outcome("api")
 	if !found || !outcome.Started {
@@ -335,6 +405,45 @@ func TestAnOlderStoreReadsAsApplicationsThatHaveStarted(t *testing.T) {
 	}
 	if state := applicationState(outcome, false, 0); state != ApplicationStopped {
 		t.Fatalf("state = %q, want %q — it started once, so it is stopped rather than failed", state, ApplicationStopped)
+	}
+}
+
+func TestImportingCredentialFilesReSealsEveryURIPerRow(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	key := sqltest.Key()
+	sealer, err := securestore.New(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(databaseCredentials{
+		ApplicationURIs: map[string]string{"shop/" + DatabaseMongo: "mongodb://shop:pw@mongo/shop"},
+		URIs:            map[string]string{DatabaseRedis: "redis://:pw@redis:6379/0"},
+		Version:         2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(dataDir, "database-credentials.sealed"), databaseCredentialStateKey, legacy); err != nil {
+		t.Fatal(err)
+	}
+	db := sqltest.Open(t)
+	count, err := ImportCredentialFiles(context.Background(), db, dataDir, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("imported %d credentials, want 2", count)
+	}
+	store, err := NewCredentialStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uri, found := store.GetApplication("shop", DatabaseMongo); !found || uri != "mongodb://shop:pw@mongo/shop" {
+		t.Fatalf("imported application credential = %q, %t", uri, found)
+	}
+	if uri, found := store.Get(DatabaseRedis); !found || uri != "redis://:pw@redis:6379/0" {
+		t.Fatalf("imported shared credential = %q, %t", uri, found)
 	}
 }
 

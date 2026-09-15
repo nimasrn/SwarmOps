@@ -57,6 +57,11 @@ type Config struct {
 	CoreService  string
 	CoreName     string
 	DataDir      string
+	// DatabaseDSN addresses the MySQL or MariaDB database that holds every
+	// piece of controller state. It carries a password, so outside insecure
+	// development it is read only from a protected file and is never logged.
+	DatabaseDSN          string
+	DatabaseMaxOpenConns int
 	// What the installer told this process about its own releases. Empty in a
 	// source checkout, which has no updater and says so rather than pretending.
 	CoreReleaseDir                string
@@ -155,6 +160,7 @@ func Load() (Config, error) {
 		CoreService:            env("SWARMOPS_CORE_SERVICE", "swarmops_api"),
 		CoreName:               env("SWARMOPS_CORE_NAME", "SwarmOps control plane"),
 		DataDir:                env("SWARMOPS_DATA_DIR", "/var/lib/swarmops"),
+		DatabaseMaxOpenConns:   int(envInt64("SWARMOPS_DATABASE_MAX_OPEN_CONNS", 20)),
 		CoreReleaseDir:         env("SWARMOPS_CORE_RELEASE_DIR", ""),
 		CoreUpdateRequestFile:  env("SWARMOPS_CORE_UPDATE_REQUEST_FILE", ""),
 		CoreUpdateStatusFile:   env("SWARMOPS_CORE_UPDATE_STATUS_FILE", ""),
@@ -291,6 +297,8 @@ func Load() (Config, error) {
 		c.DevMachineAPI = devMachineAPI
 		derivedKey := sha256.Sum256(c.SessionKey)
 		c.DataEncryptionKey = derivedKey[:]
+		// The local development database started by `make dev-db`.
+		c.DatabaseDSN = env("SWARMOPS_DEV_DATABASE_DSN", "root:devroot@tcp(127.0.0.1:3307)/swarmops")
 		return c, nil
 	}
 
@@ -323,6 +331,14 @@ func Load() (Config, error) {
 	}
 	if c.DataEncryptionKey, err = readDataEncryptionKey(env("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", "")); err != nil {
 		return Config{}, fmt.Errorf("data encryption key: %w", err)
+	}
+	dsn, err := readProtectedSecret(env("SWARMOPS_DATABASE_DSN_FILE", ""), "database DSN")
+	if err != nil {
+		return Config{}, fmt.Errorf("database DSN: %w", err)
+	}
+	c.DatabaseDSN = string(dsn)
+	if c.DatabaseMaxOpenConns < 1 || c.DatabaseMaxOpenConns > 500 {
+		return Config{}, fmt.Errorf("SWARMOPS_DATABASE_MAX_OPEN_CONNS must be between 1 and 500")
 	}
 	if !c.SecureCookies {
 		return Config{}, fmt.Errorf("SWARMOPS_SECURE_COOKIES must remain true outside insecure development")

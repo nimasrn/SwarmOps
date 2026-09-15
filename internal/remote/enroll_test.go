@@ -5,10 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,8 +27,8 @@ func TestEnrollConnectsFromOneTokenWithoutTheOperatorSeeingTheKey(t *testing.T) 
 	if err != nil {
 		t.Fatalf("encode token: %v", err)
 	}
-	dataDir := t.TempDir()
-	manager, err := NewManagerWithOptions(dataDir, testDataEncryptionKey(), ManagerOptions{RetainKeys: true})
+	db := sqltest.Open(t)
+	manager, err := NewManagerWithOptions(db, ManagerOptions{RetainKeys: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,23 +46,16 @@ func TestEnrollConnectsFromOneTokenWithoutTheOperatorSeeingTheKey(t *testing.T) 
 	}
 
 	// The retained key is sealed, never stored beside the non-secret profile.
-	sealedProfiles, err := os.ReadFile(manager.path)
-	if err != nil {
-		t.Fatal(err)
+	persisted := persistedServerState(t, db)
+	if bytes.Contains(persisted, []byte(apiKey)) || bytes.Contains(persisted, []byte(secret)) {
+		t.Fatal("a credential reached the server tables in the clear")
 	}
-	if bytes.Contains(sealedProfiles, []byte(apiKey)) || bytes.Contains(sealedProfiles, []byte(secret)) {
-		t.Fatal("credentials leaked into the server profile file")
-	}
-	sealedKeys, err := os.ReadFile(manager.keysPath)
-	if err != nil {
-		t.Fatalf("read sealed keys: %v", err)
-	}
-	if bytes.Contains(sealedKeys, []byte(apiKey)) {
-		t.Fatal("the machine API key was written in the clear")
+	if countServerKeys(t, db) != 1 {
+		t.Fatal("the retained machine API key was not sealed into server_keys")
 	}
 
 	// A restarted controller reconnects on its own from the sealed key.
-	restarted, err := NewManagerWithOptions(dataDir, testDataEncryptionKey(), ManagerOptions{RetainKeys: true})
+	restarted, err := NewManagerWithOptions(db, ManagerOptions{RetainKeys: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +70,7 @@ func TestEnrollConnectsFromOneTokenWithoutTheOperatorSeeingTheKey(t *testing.T) 
 	if err := restarted.Disconnect(profile.ID); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := NewManagerWithOptions(dataDir, testDataEncryptionKey(), ManagerOptions{RetainKeys: true})
+	reloaded, err := NewManagerWithOptions(db, ManagerOptions{RetainKeys: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +90,7 @@ func TestEnrollRejectsATamperedFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager, err := NewManagerWithOptions(t.TempDir(), testDataEncryptionKey(), ManagerOptions{RetainKeys: true})
+	manager, err := NewManagerWithOptions(sqltest.Open(t), ManagerOptions{RetainKeys: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +104,7 @@ func TestEnrollRejectsATamperedFingerprint(t *testing.T) {
 
 func TestEnrollRejectsMalformedTokens(t *testing.T) {
 	t.Parallel()
-	manager, err := NewManagerWithOptions(t.TempDir(), testDataEncryptionKey(), ManagerOptions{RetainKeys: true})
+	manager, err := NewManagerWithOptions(sqltest.Open(t), ManagerOptions{RetainKeys: true})
 	if err != nil {
 		t.Fatal(err)
 	}

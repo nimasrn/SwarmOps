@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"net"
 	"net/http"
 	"os"
@@ -31,7 +32,7 @@ func (unavailableRoundTripper) RoundTrip(*http.Request) (*http.Response, error) 
 
 func TestManagerMarksStaleOutboundAgentDisconnectedUntilNextPoll(t *testing.T) {
 	t.Parallel()
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestManagerMarksStaleOutboundAgentDisconnectedUntilNextPoll(t *testing.T) {
 
 func TestManagerKeepsOutboundAgentConnectedAfterCoreCatalogRejection(t *testing.T) {
 	t.Parallel()
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestManagerKeepsOutboundAgentConnectedAfterCoreCatalogRejection(t *testing.
 func TestManagerConnectsThroughPinnedSSHWithoutPersistingCredentials(t *testing.T) {
 	t.Parallel()
 	server := newTestSSHServer(t)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,21 +140,11 @@ func TestManagerConnectsThroughPinnedSSHWithoutPersistingCredentials(t *testing.
 		t.Fatal(err)
 	}
 
-	profileData, err := os.ReadFile(manager.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	profileData := persistedServerState(t, manager.db)
 	if bytes.Contains(profileData, []byte("test-password")) || bytes.Contains(profileData, []byte("privateKey")) {
 		t.Fatalf("credentials were persisted: %s", profileData)
 	}
-	info, err := os.Stat(manager.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("server profile permissions = %o, want 600", got)
-	}
-	reloaded, err := NewManager(filepath.Dir(manager.path), testDataEncryptionKey())
+	reloaded, err := NewManager(manager.db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +156,7 @@ func TestManagerConnectsThroughPinnedSSHWithoutPersistingCredentials(t *testing.
 func TestManagerConnectsToFreshHostWithoutDocker(t *testing.T) {
 	t.Parallel()
 	server := newTestSSHServerWithoutDocker(t)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +184,7 @@ func TestManagerConnectsToFreshHostWithoutDocker(t *testing.T) {
 	}
 }
 
-func TestManagerLoadsDockerStateFromProfilesWrittenBeforeDockerAvailable(t *testing.T) {
+func TestImportingProfilesWrittenBeforeDockerAvailableKeepsDockerState(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
 	legacy := map[string]any{
@@ -219,30 +210,28 @@ func TestManagerLoadsDockerStateFromProfilesWrittenBeforeDockerAvailable(t *test
 	if err := os.WriteFile(filepath.Join(dataDir, "servers.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manager, err := NewManager(dataDir, testDataEncryptionKey())
+	db := sqltest.Open(t)
+	imported, keys, err := ImportServerFiles(context.Background(), db, dataDir, testDataEncryptionKey())
+	if err != nil || imported != 1 || keys != 0 {
+		t.Fatalf("import = %d profiles, %d keys, %v", imported, keys, err)
+	}
+	manager, err := NewManager(db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	profiles := manager.List()
-	if len(profiles) != 1 || !profiles[0].DockerAvailable || profiles[0].ConnectionState != disconnectedState {
+	if len(profiles) != 1 || !profiles[0].DockerAvailable || profiles[0].ConnectionState != disconnectedState || profiles[0].Name != "legacy manager" {
 		t.Fatalf("loaded profiles = %#v", profiles)
 	}
-	if _, err := os.Stat(filepath.Join(dataDir, "servers.json")); !os.IsNotExist(err) {
-		t.Fatalf("legacy plaintext server profiles remain after migration: %v", err)
-	}
-	sealed, err := os.ReadFile(manager.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(sealed, []byte("legacy manager")) {
-		t.Fatal("sealed server state contains plaintext profile data")
+	if _, err := os.Stat(filepath.Join(dataDir, "servers.json")); err != nil {
+		t.Fatalf("the import removed the file it must keep as a backup: %v", err)
 	}
 }
 
 func TestManagerRejectsUnpinnedSSHHost(t *testing.T) {
 	t.Parallel()
 	server := newTestSSHServer(t)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +298,7 @@ func TestConnectionErrorDetailsKeepsUnknownHostKeyDataPrivate(t *testing.T) {
 func TestManagerAcceptsPrivateKeyAuthentication(t *testing.T) {
 	t.Parallel()
 	server := newTestSSHServer(t)
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +488,7 @@ func testDataEncryptionKey() []byte {
 
 func TestAttachPullCarriesNativeUpdaterStateAndKeepsCoreRequestedAt(t *testing.T) {
 	t.Parallel()
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +533,7 @@ func TestAttachPullCarriesNativeUpdaterStateAndKeepsCoreRequestedAt(t *testing.T
 // every cluster read failed with "selected server has no control plane".
 func TestAttachPullRebuildsControlPlaneWhenDockerArrivesAfterEnrolment(t *testing.T) {
 	t.Parallel()
-	manager, err := NewManager(t.TempDir(), testDataEncryptionKey())
+	manager, err := NewManager(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}

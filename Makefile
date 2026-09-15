@@ -7,7 +7,7 @@ PLATFORM    ?= linux/amd64
 TARGETS     := api agent cli fluentd logs
 STACKS      := traefik swarmops swarmops-agent swarmops-observability swarmops-logs swarmops-postgres swarmops-mongo swarmops-redis mongo-replicaset postgres-primary-replica
 
-.PHONY: help test web-build web-dev local dev dev-api dev-agent build push registry-login context swarm-init swarm-network \
+.PHONY: help test web-build web-dev local dev dev-db dev-api dev-agent build push registry-login context swarm-init swarm-network \
 	swarm-label secret-create secret-list stack-check stack-check-all deploy \
 	platform-deploy swarmops-bootstrap-swarm swarmops-native-api swarmops-native-bootstrap ps service-ps logs scale rollback docs-check clean-worktree
 
@@ -17,6 +17,7 @@ help:
 	  'Push:     make registry-login && make push [TARGET=api|agent|cli|fluentd|logs]' \
 	  'Validate: make test | make stack-check STACK=<stack>' \
 	  'Local:    make local      # Core and console' \
+	  'DB:       make dev-db     # local MariaDB 11.4 for the controller and tests' \
 	  'Dev:      make dev-agent  # host machine agent only' \
 	  '          make dev        # Core and console' \
 	  '          make dev-api    # Core only; prepares a persistent local identity' \
@@ -45,6 +46,7 @@ local:
 
 dev:
 	@set -eu; \
+	  $(MAKE) --no-print-directory dev-db; \
 	  command -v curl >/dev/null 2>&1 || { echo 'curl is required for make dev'; exit 1; }; \
 	  api_addr="$${SWARMOPS_LISTEN_ADDR:-127.0.0.1:8084}"; \
 	  case "$$api_addr" in 127.0.0.1:[0-9]*) ;; *) echo 'make dev requires SWARMOPS_LISTEN_ADDR to use 127.0.0.1:<port>'; exit 1;; esac; \
@@ -86,6 +88,18 @@ dev-api:
 
 dev-agent:
 	@bash scripts/run-dev-machine-agent.sh
+
+# The controller keeps all of its state in MySQL or MariaDB. This starts the
+# local development database the dev controller and the Go tests default to.
+dev-db:
+	@command -v docker >/dev/null 2>&1 || { echo 'docker is required for make dev-db'; exit 1; }
+	@docker inspect swarmops-mariadb >/dev/null 2>&1 \
+	  && docker start swarmops-mariadb >/dev/null \
+	  || docker run -d --name swarmops-mariadb -e MARIADB_ROOT_PASSWORD=devroot -p 127.0.0.1:3307:3306 mariadb:11.4 >/dev/null
+	@for attempt in $$(seq 1 60); do \
+	  docker exec swarmops-mariadb mariadb -uroot -pdevroot -e 'CREATE DATABASE IF NOT EXISTS swarmops CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci' >/dev/null 2>&1 && exit 0; \
+	  sleep 1; \
+	done; echo 'local MariaDB did not become ready'; exit 1
 
 clean-worktree:
 	@test -z "$$(git status --porcelain)" || { \

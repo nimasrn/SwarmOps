@@ -1,6 +1,8 @@
 package source
 
 import (
+	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,14 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/nimasrn/SwarmOps/internal/securestore"
-)
-
-const (
-	settingsStateKey = "source-settings"
-	settingsVersion  = 1
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
 // Settings is the part of the source boundary an operator may change from the
@@ -25,9 +22,9 @@ const (
 // SwarmOps from a browser can do, and a settings screen that can only print
 // the variables it wants is a dead end rather than a control.
 //
-// Everything here is still a boundary: it is sealed at rest with the same key
-// as provider tokens, the registry password is never returned to the console,
-// and per-host build permission remains the agent's own decision.
+// Everything here is still a boundary: the registry password is sealed with
+// the controller's data key and never returned to the console, and per-host
+// build permission remains the agent's own decision.
 type Settings struct {
 	// BuildEnabled allows the controller to submit bounded source builds.
 	BuildEnabled bool `json:"buildEnabled"`
@@ -43,16 +40,6 @@ type Settings struct {
 	RegistryUsername string `json:"registryUsername"`
 }
 
-type storedSettings struct {
-	Settings
-	RegistryPassword string `json:"registryPassword"`
-}
-
-type settingsFile struct {
-	Settings storedSettings `json:"settings"`
-	Version  int            `json:"version"`
-}
-
 // SettingsInput is what the console may send. An empty RegistryPassword means
 // "keep the sealed one", so re-saving unrelated fields never silently drops a
 // working credential.
@@ -66,44 +53,26 @@ type SettingsInput struct {
 	RegistryUsername string   `json:"registryUsername"`
 }
 
-// SettingsStore owns the sealed console-owned source settings.
+// SettingsStore owns the console-owned source settings: one singleton row plus
+// its private-host allow-list. Until an operator saves, the controller's own
+// configuration supplies the defaults.
 type SettingsStore struct {
-	mu       sync.RWMutex
-	path     string
-	sealer   *securestore.Sealer
-	settings storedSettings
+	db       *sqlstore.DB
+	defaults Settings
 }
 
-func NewSettingsStore(dataDir string, dataEncryptionKey []byte, defaults Settings) (*SettingsStore, error) {
-	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("source settings data directory is required")
+func NewSettingsStore(db *sqlstore.DB, defaults Settings) (*SettingsStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("source settings store requires a database")
 	}
-	sealer, err := securestore.New(dataEncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("configure sealed source settings: %w", err)
-	}
-	store := &SettingsStore{
-		path:     filepath.Join(dataDir, "source-settings.sealed"),
-		sealer:   sealer,
-		settings: storedSettings{Settings: normalizeSettings(defaults)},
-	}
-	data, err := sealer.ReadFile(store.path, settingsStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		return store, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read sealed source settings: %w", err)
-	}
-	var saved settingsFile
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return nil, fmt.Errorf("read sealed source settings: %w", err)
-	}
-	if saved.Version != settingsVersion {
-		return nil, fmt.Errorf("unsupported sealed source settings version")
-	}
-	saved.Settings.Settings = normalizeSettings(saved.Settings.Settings)
-	store.settings = saved.Settings
-	return store, nil
+	return &SettingsStore{db: db, defaults: normalizeSettings(defaults)}, nil
+}
+
+var registryPasswordPurpose = sqlstore.Purpose("source_settings", "registry_password_sealed", "1")
+
+type storedSettings struct {
+	Settings
+	RegistryPassword string `json:"registryPassword"`
 }
 
 // Settings returns the console-visible view. It never carries the password.
@@ -111,9 +80,63 @@ func (s *SettingsStore) Settings() Settings {
 	if s == nil {
 		return Settings{}
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.settings.Settings
+	stored, err := s.load()
+	if err != nil {
+		return s.defaults
+	}
+	return stored.Settings
+}
+
+func (s *SettingsStore) load() (storedSettings, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	return loadSettings(ctx, s.db, s.db.Pool(), s.defaults, false)
+}
+
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func loadSettings(ctx context.Context, db *sqlstore.DB, q querier, defaults Settings, lock bool) (storedSettings, error) {
+	suffix := ""
+	if lock {
+		suffix = " FOR UPDATE"
+	}
+	var stored storedSettings
+	var sealed []byte
+	err := q.QueryRowContext(ctx, `SELECT enabled, build_enabled, image_prefix, registry_server, registry_username, registry_password_sealed
+		FROM source_settings WHERE id = 1`+suffix).
+		Scan(&stored.Enabled, &stored.BuildEnabled, &stored.ImagePrefix, &stored.RegistryServer, &stored.RegistryUsername, &sealed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storedSettings{Settings: defaults}, nil
+	}
+	if err != nil {
+		return storedSettings{}, err
+	}
+	password, err := db.OpenString(registryPasswordPurpose, sealed)
+	if err != nil {
+		return storedSettings{}, err
+	}
+	stored.RegistryPassword = password
+	rows, err := q.QueryContext(ctx, "SELECT host FROM source_private_hosts ORDER BY position")
+	if err != nil {
+		return storedSettings{}, err
+	}
+	defer rows.Close()
+	stored.PrivateHosts = []string{}
+	for rows.Next() {
+		var host string
+		if err := rows.Scan(&host); err != nil {
+			return storedSettings{}, err
+		}
+		stored.PrivateHosts = append(stored.PrivateHosts, host)
+	}
+	if err := rows.Err(); err != nil {
+		return storedSettings{}, err
+	}
+	stored.Settings = normalizeSettings(stored.Settings)
+	return stored, nil
 }
 
 // RegistryAuth renders the stored credential as a Docker config document, the
@@ -124,11 +147,13 @@ func (s *SettingsStore) RegistryAuth() []byte {
 	if s == nil {
 		return nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	server := strings.TrimSpace(s.settings.RegistryServer)
-	username := strings.TrimSpace(s.settings.RegistryUsername)
-	password := s.settings.RegistryPassword
+	stored, err := s.load()
+	if err != nil {
+		return nil
+	}
+	server := strings.TrimSpace(stored.RegistryServer)
+	username := strings.TrimSpace(stored.RegistryUsername)
+	password := stored.RegistryPassword
 	if server == "" || username == "" || password == "" {
 		return nil
 	}
@@ -147,7 +172,7 @@ func (s *SettingsStore) RegistryConfigured() bool { return len(s.RegistryAuth())
 
 func (s *SettingsStore) Save(input SettingsInput) (Settings, error) {
 	if s == nil {
-		return Settings{}, fmt.Errorf("sealed source settings are not configured")
+		return Settings{}, fmt.Errorf("source settings are not configured")
 	}
 	candidate := normalizeSettings(Settings{
 		BuildEnabled:     input.BuildEnabled,
@@ -160,42 +185,63 @@ func (s *SettingsStore) Save(input SettingsInput) (Settings, error) {
 	if err := validateSettings(candidate); err != nil {
 		return Settings{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	password := s.settings.RegistryPassword
-	if strings.TrimSpace(input.RegistryPassword) != "" {
-		password = input.RegistryPassword
-	}
-	if candidate.RegistryServer == "" || candidate.RegistryUsername == "" {
-		password = ""
-	}
-	// A build no longer needs a registry. Without one the image is built under
-	// the local prefix and never pushed, so demanding a credential here would
-	// be demanding an account the operator may not have. A namespace WITH no
-	// credential is still refused: that build would be pushed, and would fail
-	// at the push with nothing said here.
-	if candidate.BuildEnabled && candidate.ImagePrefix != "" && (candidate.RegistryServer == "" || candidate.RegistryUsername == "" || password == "") {
-		return Settings{}, fmt.Errorf("a registry namespace needs a server, username, and password to push to; leave the namespace empty to build images on the deployment host instead")
-	}
-	previous := s.settings
-	s.settings = storedSettings{Settings: candidate, RegistryPassword: password}
-	if err := s.saveLocked(); err != nil {
-		s.settings = previous
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	var saved Settings
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		current, err := loadSettings(ctx, s.db, tx, s.defaults, true)
+		if err != nil {
+			return err
+		}
+		password := current.RegistryPassword
+		if strings.TrimSpace(input.RegistryPassword) != "" {
+			password = input.RegistryPassword
+		}
+		if candidate.RegistryServer == "" || candidate.RegistryUsername == "" {
+			password = ""
+		}
+		// A build no longer needs a registry. Without one the image is built
+		// under the local prefix and never pushed, so demanding a credential
+		// here would be demanding an account the operator may not have. A
+		// namespace WITH no credential is still refused: that build would be
+		// pushed, and would fail at the push with nothing said here.
+		if candidate.BuildEnabled && candidate.ImagePrefix != "" && (candidate.RegistryServer == "" || candidate.RegistryUsername == "" || password == "") {
+			return errSettingsNeedPushCredential
+		}
+		sealed, err := s.db.SealString(registryPasswordPurpose, password)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO source_settings
+			(id, enabled, build_enabled, image_prefix, registry_server, registry_username, registry_password_sealed, updated_at)
+			VALUES (1, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
+			ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), build_enabled = VALUES(build_enabled), image_prefix = VALUES(image_prefix),
+			 registry_server = VALUES(registry_server), registry_username = VALUES(registry_username),
+			 registry_password_sealed = VALUES(registry_password_sealed), updated_at = VALUES(updated_at)`,
+			candidate.Enabled, candidate.BuildEnabled, candidate.ImagePrefix, candidate.RegistryServer, candidate.RegistryUsername, sealed); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM source_private_hosts"); err != nil {
+			return err
+		}
+		for position, host := range candidate.PrivateHosts {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO source_private_hosts (host, position) VALUES (?, ?)", host, position); err != nil {
+				return err
+			}
+		}
+		saved = candidate
+		return nil
+	})
+	if errors.Is(err, errSettingsNeedPushCredential) {
 		return Settings{}, err
 	}
-	return s.settings.Settings, nil
+	if err != nil {
+		return Settings{}, fmt.Errorf("save source settings: %w", err)
+	}
+	return saved, nil
 }
 
-func (s *SettingsStore) saveLocked() error {
-	data, err := json.Marshal(settingsFile{Settings: s.settings, Version: settingsVersion})
-	if err != nil {
-		return fmt.Errorf("seal source settings: %w", err)
-	}
-	if err := s.sealer.WriteFile(s.path, settingsStateKey, data); err != nil {
-		return fmt.Errorf("seal source settings: %w", err)
-	}
-	return nil
-}
+var errSettingsNeedPushCredential = errors.New("a registry namespace needs a server, username, and password to push to; leave the namespace empty to build images on the deployment host instead")
 
 func normalizeSettings(settings Settings) Settings {
 	settings.ImagePrefix = strings.TrimSuffix(strings.TrimSpace(settings.ImagePrefix), "/")
@@ -301,4 +347,63 @@ func validHostname(host string) bool {
 	}
 	parsed, err := url.Parse("https://" + host)
 	return err == nil && parsed.Host == host && strings.Contains(host, ".")
+}
+
+const settingsStateKey = "source-settings"
+
+type settingsFile struct {
+	Settings storedSettings `json:"settings"`
+	Version  int            `json:"version"`
+}
+
+// ImportSettingsFiles copies a pre-database source-settings.sealed file into
+// the singleton row and reports whether one existed. The file is kept.
+func ImportSettingsFiles(ctx context.Context, db *sqlstore.DB, dataDir string, dataEncryptionKey []byte) (int, error) {
+	sealer, err := securestore.New(dataEncryptionKey)
+	if err != nil {
+		return 0, err
+	}
+	data, err := sealer.ReadFile(filepath.Join(dataDir, "source-settings.sealed"), settingsStateKey)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read sealed source settings: %w", err)
+	}
+	var saved settingsFile
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return 0, fmt.Errorf("read sealed source settings: %w", err)
+	}
+	if saved.Version != 1 {
+		return 0, fmt.Errorf("unsupported sealed source settings version")
+	}
+	settings := normalizeSettings(saved.Settings.Settings)
+	sealed, err := db.SealString(registryPasswordPurpose, saved.Settings.RegistryPassword)
+	if err != nil {
+		return 0, err
+	}
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO source_settings
+			(id, enabled, build_enabled, image_prefix, registry_server, registry_username, registry_password_sealed, updated_at)
+			VALUES (1, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
+			ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), build_enabled = VALUES(build_enabled), image_prefix = VALUES(image_prefix),
+			 registry_server = VALUES(registry_server), registry_username = VALUES(registry_username),
+			 registry_password_sealed = VALUES(registry_password_sealed), updated_at = VALUES(updated_at)`,
+			settings.Enabled, settings.BuildEnabled, settings.ImagePrefix, settings.RegistryServer, settings.RegistryUsername, sealed); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM source_private_hosts"); err != nil {
+			return err
+		}
+		for position, host := range settings.PrivateHosts {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO source_private_hosts (host, position) VALUES (?, ?)", host, position); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("import source settings: %w", err)
+	}
+	return 1, nil
 }

@@ -1,10 +1,10 @@
 package source
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -49,8 +49,7 @@ func TestGitHubAdapterListsAndDiscoversAtImmutableRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory := t.TempDir()
-	store, err := NewStore(directory, bytes.Repeat([]byte{31}, 32))
+	store, err := NewStore(sqltest.Open(t))
 	if err != nil {
 		t.Fatal(err)
 	}

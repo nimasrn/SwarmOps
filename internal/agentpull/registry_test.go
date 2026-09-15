@@ -1,20 +1,21 @@
 package agentpull
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"sync"
 	"testing"
+
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 )
 
 func TestEnrollmentCodeIsSingleUseAndRegistrySurvivesRestart(t *testing.T) {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	registry, err := OpenRegistry(t.TempDir(), key, 9)
+	db := sqltest.Open(t)
+	registry, err := OpenRegistry(db, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +34,77 @@ func TestEnrollmentCodeIsSingleUseAndRegistrySurvivesRestart(t *testing.T) {
 	if _, err := registry.Enroll(EnrollInput{CSR: csr, Code: token.Code, NodeName: "worker-a", Protocol: ProtocolVersion}); err == nil {
 		t.Fatal("expected spent code rejection")
 	}
+
+	restarted, err := OpenRegistry(db, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restarted.state.CACertPEM != registry.state.CACertPEM {
+		t.Fatal("a restarted registry generated a new CA instead of loading the existing one")
+	}
+	if !restarted.hasAgent(enrollment.AgentID) {
+		t.Fatal("an enrolled agent was forgotten across a restart")
+	}
+	if _, err := restarted.Renew(enrollment.AgentID, testCSR(t)); err != nil {
+		t.Fatalf("renew after restart: %v", err)
+	}
+	var sealed []byte
+	if err := db.Pool().QueryRow("SELECT private_key_sealed FROM agent_ca WHERE id = 1").Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("PRIVATE KEY")) {
+		t.Fatal("the agent CA private key was stored in the clear")
+	}
+}
+
+// Many enrolments racing for one code must produce exactly one agent: the
+// lock on agent_ca makes spending a code atomic across goroutines, and it
+// would across controller processes too.
+func TestAnEnrollmentCodeIsSpentExactlyOnceUnderConcurrency(t *testing.T) {
+	db := sqltest.Open(t)
+	registry, err := OpenRegistry(db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := OpenRegistry(db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := registry.CreateEnrollment("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	successes := 0
+	for index := range 8 {
+		wg.Add(1)
+		target := registry
+		if index%2 == 1 {
+			target = second
+		}
+		csr := testCSR(t)
+		go func() {
+			defer wg.Done()
+			if _, err := target.Enroll(EnrollInput{CSR: csr, Code: token.Code, NodeName: "racer", Protocol: ProtocolVersion}); err == nil {
+				mu.Lock()
+				successes++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	var agents int
+	if err := db.Pool().QueryRow("SELECT COUNT(*) FROM agents").Scan(&agents); err != nil {
+		t.Fatal(err)
+	}
+	if successes != 1 || agents != 1 {
+		t.Fatalf("successes=%d agents=%d, want exactly one of each", successes, agents)
+	}
 }
 
 func TestStandaloneClaimRequiresApprovalAndRedeemsOnce(t *testing.T) {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		t.Fatal(err)
-	}
-	registry, err := OpenRegistry(t.TempDir(), key, 12)
+	registry, err := OpenRegistry(sqltest.Open(t), 12)
 	if err != nil {
 		t.Fatal(err)
 	}

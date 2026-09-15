@@ -1,15 +1,21 @@
 package source
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 )
 
 func newTestSettings(t *testing.T, defaults Settings) *SettingsStore {
 	t.Helper()
-	store, err := NewSettingsStore(t.TempDir(), make([]byte, 32), defaults)
+	store, err := NewSettingsStore(sqltest.Open(t), defaults)
 	if err != nil {
 		t.Fatalf("new settings store: %v", err)
 	}
@@ -17,7 +23,11 @@ func newTestSettings(t *testing.T, defaults Settings) *SettingsStore {
 }
 
 func TestSettingsSaveSealsRegistryCredentialWithoutReturningIt(t *testing.T) {
-	store := newTestSettings(t, Settings{})
+	db := sqltest.Open(t)
+	store, err := NewSettingsStore(db, Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	saved, err := store.Save(SettingsInput{
 		BuildEnabled:     true,
 		Enabled:          true,
@@ -39,6 +49,13 @@ func TestSettingsSaveSealsRegistryCredentialWithoutReturningIt(t *testing.T) {
 	if strings.Contains(string(encoded), "secret-token") {
 		t.Fatalf("console view carried the registry password: %s", encoded)
 	}
+	var sealed []byte
+	if err := db.Pool().QueryRow("SELECT registry_password_sealed FROM source_settings WHERE id = 1").Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("secret-token")) {
+		t.Fatal("the registry password was stored in the clear")
+	}
 	auth := store.RegistryAuth()
 	var document struct {
 		Auths map[string]struct {
@@ -51,6 +68,14 @@ func TestSettingsSaveSealsRegistryCredentialWithoutReturningIt(t *testing.T) {
 	decoded, err := base64.StdEncoding.DecodeString(document.Auths["ghcr.io"].Auth)
 	if err != nil || string(decoded) != "robot:secret-token" {
 		t.Fatalf("registry auth did not carry the credential: %q %v", decoded, err)
+	}
+}
+
+func TestSettingsReturnConfiguredDefaultsUntilSaved(t *testing.T) {
+	store := newTestSettings(t, Settings{Enabled: true, ImagePrefix: "ghcr.io/defaults/", PrivateHosts: []string{"Git.Example.com"}})
+	settings := store.Settings()
+	if !settings.Enabled || settings.ImagePrefix != "ghcr.io/defaults" || len(settings.PrivateHosts) != 1 || settings.PrivateHosts[0] != "git.example.com" {
+		t.Fatalf("defaults = %+v", settings)
 	}
 }
 
@@ -102,22 +127,21 @@ func TestSettingsRejectMalformedHostsAndPrefixes(t *testing.T) {
 }
 
 func TestSettingsSurviveReload(t *testing.T) {
-	dir := t.TempDir()
-	key := make([]byte, 32)
-	store, err := NewSettingsStore(dir, key, Settings{})
+	db := sqltest.Open(t)
+	store, err := NewSettingsStore(db, Settings{})
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	if _, err := store.Save(SettingsInput{Enabled: true, ImagePrefix: "ghcr.io/acme", PrivateHosts: []string{"git.example.com"}, RegistryPassword: "p", RegistryServer: "ghcr.io", RegistryUsername: "robot"}); err != nil {
+	if _, err := store.Save(SettingsInput{Enabled: true, ImagePrefix: "ghcr.io/acme", PrivateHosts: []string{"git.example.com", "forge.example.org"}, RegistryPassword: "p", RegistryServer: "ghcr.io", RegistryUsername: "robot"}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	reloaded, err := NewSettingsStore(dir, key, Settings{})
+	reloaded, err := NewSettingsStore(db, Settings{})
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	settings := reloaded.Settings()
-	if !settings.Enabled || settings.ImagePrefix != "ghcr.io/acme" || len(settings.PrivateHosts) != 1 || !reloaded.RegistryConfigured() {
-		t.Fatalf("sealed settings did not survive a restart: %+v", settings)
+	if !settings.Enabled || settings.ImagePrefix != "ghcr.io/acme" || len(settings.PrivateHosts) != 2 || settings.PrivateHosts[1] != "forge.example.org" || !reloaded.RegistryConfigured() {
+		t.Fatalf("settings did not survive a restart: %+v", settings)
 	}
 }
 
@@ -129,6 +153,36 @@ func TestSettingsDisableTurnsOffBuilds(t *testing.T) {
 	}
 	if saved.BuildEnabled {
 		t.Fatal("builds stayed enabled while the boundary was off")
+	}
+}
+
+func TestImportSettingsFilesCopiesTheSealedSingleton(t *testing.T) {
+	dataDir := t.TempDir()
+	key := sqltest.Key()
+	sealer, err := securestore.New(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(settingsFile{Version: 1, Settings: storedSettings{
+		Settings:         Settings{Enabled: true, ImagePrefix: "ghcr.io/acme", PrivateHosts: []string{"git.example.com"}, RegistryServer: "ghcr.io", RegistryUsername: "robot"},
+		RegistryPassword: "imported-secret",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(dataDir, "source-settings.sealed"), settingsStateKey, encoded); err != nil {
+		t.Fatal(err)
+	}
+	db := sqltest.Open(t)
+	if count, err := ImportSettingsFiles(context.Background(), db, dataDir, key); err != nil || count != 1 {
+		t.Fatalf("import = %d, %v", count, err)
+	}
+	store, err := NewSettingsStore(db, Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.RegistryConfigured() || store.Settings().ImagePrefix != "ghcr.io/acme" || len(store.Settings().PrivateHosts) != 1 {
+		t.Fatalf("imported settings = %+v", store.Settings())
 	}
 }
 

@@ -1,6 +1,8 @@
 package ops
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +14,13 @@ import (
 	"time"
 
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
 
-const routingStateKey = "traefik-routing-control-plane"
+const (
+	routingStateKey     = "traefik-routing-control-plane"
+	routingStoreTimeout = 15 * time.Second
+)
 
 type RoutingState struct {
 	Bindings        []DependencyBinding       `json:"bindings"`
@@ -31,6 +37,9 @@ type RoutingState struct {
 	Version         int                       `json:"version"`
 }
 
+// routingCluster is the in-memory working copy of one cluster's routing rows.
+// A mutation is applied to it and the whole cluster is validated before any row
+// is written, exactly as when the cluster was one sealed document.
 type routingCluster struct {
 	Bindings        map[string]DependencyBinding       `json:"bindings"`
 	Certificates    map[string]CertificateStatus       `json:"certificates"`
@@ -51,66 +60,41 @@ type routingFile struct {
 	Version  int                        `json:"version"`
 }
 
-// RoutingStore seals both desired state and DNS credential material. Public
-// snapshots construct metadata-only copies and never expose Secrets.
+// RoutingStore keeps desired routing state and sealed DNS credential material
+// in the controller database. Public snapshots construct metadata-only copies
+// and never expose a secret. Each change to a cluster runs in one transaction
+// that locks the cluster's routing_clusters row.
 type RoutingStore struct {
-	clusters     map[string]*routingCluster
+	db           *sqlstore.DB
 	defaultEmail string
-	mu           sync.RWMutex
+	mu           sync.Mutex
 	now          func() time.Time
-	path         string
-	sealer       *securestore.Sealer
 }
 
-func NewRoutingStore(dataDir string, dataEncryptionKey []byte, defaultACMEEmail string) (*RoutingStore, error) {
-	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("routing store data directory is required")
+func NewRoutingStore(db *sqlstore.DB, defaultACMEEmail string) (*RoutingStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("routing store requires a database")
 	}
-	sealer, err := securestore.New(dataEncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("configure sealed routing state: %w", err)
-	}
-	store := &RoutingStore{
-		clusters:     map[string]*routingCluster{},
-		defaultEmail: strings.TrimSpace(defaultACMEEmail),
-		now:          time.Now,
-		path:         filepath.Join(dataDir, "traefik-routing.sealed"),
-		sealer:       sealer,
-	}
-	data, err := sealer.ReadFile(store.path, routingStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		return store, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read sealed routing state: %w", err)
-	}
-	var saved routingFile
-	if err := json.Unmarshal(data, &saved); err != nil || saved.Version != RoutingSchemaVersion || saved.Clusters == nil {
-		return nil, fmt.Errorf("read sealed routing state: unsupported or invalid version")
-	}
-	for clusterID, cluster := range saved.Clusters {
-		if !validClusterID(clusterID) || cluster == nil {
-			return nil, fmt.Errorf("read sealed routing state: invalid cluster")
-		}
-		normalizeRoutingCluster(cluster, store.defaultEmail)
-		if err := validateRoutingCluster(cluster); err != nil {
-			return nil, fmt.Errorf("read sealed routing state: %w", err)
-		}
-	}
-	store.clusters = saved.Clusters
-	return store, nil
+	return &RoutingStore{db: db, defaultEmail: strings.TrimSpace(defaultACMEEmail), now: time.Now}, nil
+}
+
+func dnsCredentialPurpose(clusterID, credentialID string, version int) string {
+	return sqlstore.Purpose("dns_credential_versions", "secret_sealed", clusterID, credentialID, fmt.Sprint(version))
 }
 
 func (s *RoutingStore) Snapshot(clusterID string) (RoutingState, error) {
 	if s == nil {
-		return RoutingState{}, fmt.Errorf("sealed routing state is not configured")
+		return RoutingState{}, fmt.Errorf("routing state is not configured")
 	}
 	if !validClusterID(clusterID) {
 		return RoutingState{}, fmt.Errorf("selected server identifier is invalid")
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	cluster := s.clusters[clusterID]
+	ctx, cancel := context.WithTimeout(context.Background(), routingStoreTimeout)
+	defer cancel()
+	cluster, err := s.loadCluster(ctx, s.db.Pool(), clusterID, false, false)
+	if err != nil {
+		return RoutingState{}, fmt.Errorf("read routing state: %w", err)
+	}
 	if cluster == nil {
 		settings := DefaultTraefikSettings(s.defaultEmail)
 		return RoutingState{Bindings: []DependencyBinding{}, Certificates: []CertificateStatus{}, Credentials: []DNSCredentialMetadata{}, Declarations: []ServiceRouteDeclaration{}, DNSRecords: []DNSRecordSpec{}, Domains: []DomainSpec{}, Routes: []RouteSpec{}, Runtime: []RouteRuntime{}, Settings: settings, Version: RoutingSchemaVersion}, nil
@@ -281,7 +265,7 @@ func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNS
 		}
 		created = DNSCredentialMetadata{
 			AccountID:  identity.AccountID,
-			CreatedAt:  s.now().UTC(),
+			CreatedAt:  s.now().UTC().Truncate(time.Microsecond),
 			Email:      identity.Email,
 			ID:         id,
 			Name:       name,
@@ -300,12 +284,15 @@ func (s *RoutingStore) RotateCredential(clusterID, id, name string, provider DNS
 
 func (s *RoutingStore) CredentialSecret(clusterID, id string, version int) (DNSCredentialMetadata, string, error) {
 	if s == nil || !validClusterID(clusterID) {
-		return DNSCredentialMetadata{}, "", fmt.Errorf("sealed routing state is not configured")
+		return DNSCredentialMetadata{}, "", fmt.Errorf("routing state is not configured")
 	}
 	id = strings.ToLower(strings.TrimSpace(id))
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	cluster := s.clusters[clusterID]
+	ctx, cancel := context.WithTimeout(context.Background(), routingStoreTimeout)
+	defer cancel()
+	cluster, err := s.loadCluster(ctx, s.db.Pool(), clusterID, false, true)
+	if err != nil {
+		return DNSCredentialMetadata{}, "", fmt.Errorf("read routing state: %w", err)
+	}
 	if cluster == nil {
 		return DNSCredentialMetadata{}, "", fmt.Errorf("DNS credential was not found")
 	}
@@ -330,7 +317,7 @@ func (s *RoutingStore) MarkCredentialValidated(clusterID, id string, version int
 		if version < 1 || version > len(versions) {
 			return fmt.Errorf("DNS credential version was not found")
 		}
-		now := s.now().UTC()
+		now := s.now().UTC().Truncate(time.Microsecond)
 		versions[version-1].State = "validated"
 		versions[version-1].ValidatedAt = &now
 		cluster.Credentials[id] = versions
@@ -408,7 +395,7 @@ func (s *RoutingStore) PutDomain(clusterID string, domain DomainSpec) error {
 		if existing, found := cluster.Domains[domain.Zone]; found && !existing.CreatedAt.IsZero() {
 			domain.CreatedAt = existing.CreatedAt
 		} else if domain.CreatedAt.IsZero() {
-			domain.CreatedAt = s.now().UTC()
+			domain.CreatedAt = s.now().UTC().Truncate(time.Microsecond)
 		}
 		cluster.Domains[domain.Zone] = domain
 		return nil
@@ -521,44 +508,493 @@ func (s *RoutingStore) ClearCutoverRollback(clusterID string) error {
 	})
 }
 
+// update applies one mutation to a cluster inside a transaction: lock the
+// cluster row, load every routing row with the sealed secrets opened, run the
+// mutation on a working copy, validate the whole cluster, and write it back.
+// A mutation or validation error writes nothing.
 func (s *RoutingStore) update(clusterID string, mutation func(*routingCluster) error) error {
-	if s == nil || s.sealer == nil {
-		return fmt.Errorf("sealed routing state is not configured")
+	if s == nil || s.db == nil {
+		return fmt.Errorf("routing state is not configured")
 	}
 	if !validClusterID(clusterID) {
 		return fmt.Errorf("selected server identifier is invalid")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	previous, existed := s.clusters[clusterID]
-	working := cloneRoutingCluster(previous, s.defaultEmail)
-	if err := mutation(working); err != nil {
-		return err
-	}
-	if err := validateRoutingCluster(working); err != nil {
-		return err
-	}
-	s.clusters[clusterID] = working
-	if err := s.saveLocked(); err != nil {
-		if existed {
-			s.clusters[clusterID] = previous
-		} else {
-			delete(s.clusters, clusterID)
+	ctx, cancel := context.WithTimeout(context.Background(), routingStoreTimeout)
+	defer cancel()
+	var mutationErr error
+	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO routing_clusters (cluster_id, settings_json, updated_at) VALUES (?, ?, UTC_TIMESTAMP(6))
+			ON DUPLICATE KEY UPDATE cluster_id = cluster_id`, clusterID, mustJSON(DefaultTraefikSettings(s.defaultEmail))); err != nil {
+			return err
 		}
-		return err
+		existing, err := s.loadCluster(ctx, tx, clusterID, true, true)
+		if err != nil {
+			return err
+		}
+		working := cloneRoutingCluster(existing, s.defaultEmail)
+		if err := mutation(working); err != nil {
+			mutationErr = err
+			return err
+		}
+		if err := validateRoutingCluster(working); err != nil {
+			mutationErr = err
+			return err
+		}
+		return s.writeCluster(ctx, tx, clusterID, working)
+	})
+	if mutationErr != nil {
+		return mutationErr
+	}
+	if err != nil {
+		return fmt.Errorf("save routing state: %w", err)
 	}
 	return nil
 }
 
-func (s *RoutingStore) saveLocked() error {
-	data, err := json.Marshal(routingFile{Clusters: s.clusters, Version: RoutingSchemaVersion})
-	if err != nil {
-		return fmt.Errorf("encode sealed routing state: %w", err)
+type routingQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// loadCluster reads one cluster's rows, or nil when the cluster has none. lock
+// takes the cluster row FOR UPDATE; secrets opens the sealed credential values,
+// which only a mutation or CredentialSecret needs.
+func (s *RoutingStore) loadCluster(ctx context.Context, q routingQueryer, clusterID string, lock, secrets bool) (*routingCluster, error) {
+	suffix := ""
+	if lock {
+		suffix = " FOR UPDATE"
 	}
-	if err := s.sealer.WriteFile(s.path, routingStateKey, append(data, '\n')); err != nil {
-		return fmt.Errorf("save sealed routing state: %w", err)
+	var settingsJSON []byte
+	var cutoverJSON, rollbackJSON []byte
+	err := q.QueryRowContext(ctx, "SELECT settings_json, cutover_json, cutover_rollback_json FROM routing_clusters WHERE cluster_id = ?"+suffix, clusterID).
+		Scan(&settingsJSON, &cutoverJSON, &rollbackJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	cluster := &routingCluster{}
+	if err := json.Unmarshal(settingsJSON, &cluster.Settings); err != nil {
+		return nil, fmt.Errorf("decode Traefik settings: %w", err)
+	}
+	if len(cutoverJSON) > 0 {
+		cluster.Cutover = &CutoverPlan{}
+		if err := json.Unmarshal(cutoverJSON, cluster.Cutover); err != nil {
+			return nil, fmt.Errorf("decode cutover plan: %w", err)
+		}
+	}
+	if len(rollbackJSON) > 0 {
+		cluster.CutoverRollback = &CutoverRollbackPlan{}
+		if err := json.Unmarshal(rollbackJSON, cluster.CutoverRollback); err != nil {
+			return nil, fmt.Errorf("decode cutover rollback plan: %w", err)
+		}
+	}
+	cluster.Routes = map[string]RouteSpec{}
+	cluster.Bindings = map[string]DependencyBinding{}
+	cluster.Credentials = map[string][]DNSCredentialMetadata{}
+	cluster.DNSRecords = map[string]DNSRecordSpec{}
+	cluster.Domains = map[string]DomainSpec{}
+	cluster.Declarations = map[string]ServiceRouteDeclaration{}
+	cluster.Certificates = map[string]CertificateStatus{}
+	cluster.Runtime = map[string]RouteRuntime{}
+	cluster.Secrets = map[string]string{}
+
+	scan := func(query string, fn func(*sql.Rows) error) error {
+		rows, err := q.QueryContext(ctx, query, clusterID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			if err := fn(rows); err != nil {
+				return err
+			}
+		}
+		return rows.Err()
+	}
+	if err := scan(`SELECT route_key, service_key, protocol, scope, tls_mode, listen_port, target_port, path_prefix, health_kind,
+		health_path, health_timeout_seconds, dns_reference, resolver, enabled, managed, metrics, access_logs, public_allow, is_sensitive, version
+		FROM routes WHERE cluster_id = ?`, func(rows *sql.Rows) error {
+		var route RouteSpec
+		var protocol, scope, tls string
+		var listenPort sql.NullInt32
+		var pathPrefix, healthPath, dnsReference, resolver sql.NullString
+		if err := rows.Scan(&route.Key, &route.ServiceKey, &protocol, &scope, &tls, &listenPort, &route.TargetPort, &pathPrefix, &route.Health.Kind,
+			&healthPath, &route.Health.TimeoutSeconds, &dnsReference, &resolver, &route.Enabled, &route.Managed, &route.Metrics, &route.AccessLogs,
+			&route.PublicAllow, &route.Sensitive, &route.Version); err != nil {
+			return err
+		}
+		route.Protocol, route.Scope, route.TLS = RouteProtocol(protocol), RouteScope(scope), RouteTLSMode(tls)
+		route.ListenPort = uint16(listenPort.Int32)
+		route.Match.PathPrefix, route.Health.Path, route.DNSReference, route.Resolver = pathPrefix.String, healthPath.String, dnsReference.String, resolver.String
+		cluster.Routes[route.Key] = route
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT route_key, kind, hostname FROM route_hosts WHERE cluster_id = ? ORDER BY route_key, kind, position", func(rows *sql.Rows) error {
+		var key, kind, hostname string
+		if err := rows.Scan(&key, &kind, &hostname); err != nil {
+			return err
+		}
+		route := cluster.Routes[key]
+		if kind == "sni" {
+			route.Match.SNI = append(route.Match.SNI, hostname)
+		} else {
+			route.Match.Hosts = append(route.Match.Hosts, hostname)
+		}
+		cluster.Routes[key] = route
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT caller_service, target_route, name, delivery, version FROM dependency_bindings WHERE cluster_id = ?", func(rows *sql.Rows) error {
+		var binding DependencyBinding
+		var delivery string
+		if err := rows.Scan(&binding.CallerService, &binding.TargetRoute, &binding.Name, &delivery, &binding.Version); err != nil {
+			return err
+		}
+		binding.Delivery = DependencyDelivery(delivery)
+		cluster.Bindings[dependencyBindingKey(binding)] = binding
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT service_key, role, reason, version FROM service_route_declarations WHERE cluster_id = ?", func(rows *sql.Rows) error {
+		var declaration ServiceRouteDeclaration
+		var role string
+		var reason sql.NullString
+		if err := rows.Scan(&declaration.ServiceKey, &role, &reason, &declaration.Version); err != nil {
+			return err
+		}
+		declaration.Role, declaration.Reason = ServiceRouteRole(role), reason.String
+		cluster.Declarations[declaration.ServiceKey] = declaration
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT zone, note, created_at, version FROM routing_domains WHERE cluster_id = ?", func(rows *sql.Rows) error {
+		var domain DomainSpec
+		var note sql.NullString
+		var created sql.NullTime
+		if err := rows.Scan(&domain.Zone, &note, &created, &domain.Version); err != nil {
+			return err
+		}
+		domain.Note, domain.CreatedAt = note.String, created.Time
+		cluster.Domains[domain.Zone] = domain
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan(`SELECT credential_id, version, name, provider, account_id, email, secret_name, state, created_at, validated_at, secret_sealed
+		FROM dns_credential_versions WHERE cluster_id = ? ORDER BY credential_id, version`, func(rows *sql.Rows) error {
+		var metadata DNSCredentialMetadata
+		var provider string
+		var accountID, email sql.NullString
+		var validated sql.NullTime
+		var sealed []byte
+		if err := rows.Scan(&metadata.ID, &metadata.Version, &metadata.Name, &provider, &accountID, &email, &metadata.SecretName, &metadata.State,
+			&metadata.CreatedAt, &validated, &sealed); err != nil {
+			return err
+		}
+		metadata.Provider, metadata.AccountID, metadata.Email = DNSProvider(provider), accountID.String, email.String
+		if validated.Valid {
+			value := validated.Time
+			metadata.ValidatedAt = &value
+		}
+		cluster.Credentials[metadata.ID] = append(cluster.Credentials[metadata.ID], metadata)
+		if secrets && len(sealed) > 0 {
+			secret, err := s.db.OpenString(dnsCredentialPurpose(clusterID, metadata.ID, metadata.Version), sealed)
+			if err != nil {
+				return err
+			}
+			cluster.Secrets[metadata.SecretName] = secret
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan(`SELECT id, zone, name, type, content, ttl, proxied, managed, adopted, credential_id, provider_record_id, version
+		FROM dns_records WHERE cluster_id = ?`, func(rows *sql.Rows) error {
+		var record DNSRecordSpec
+		var recordType string
+		var providerRecordID sql.NullString
+		if err := rows.Scan(&record.ID, &record.Zone, &record.Name, &recordType, &record.Content, &record.TTL, &record.Proxied, &record.Managed,
+			&record.Adopted, &record.CredentialID, &providerRecordID, &record.Version); err != nil {
+			return err
+		}
+		record.Type, record.ProviderRecordID = DNSRecordType(recordType), providerRecordID.String
+		cluster.DNSRecords[record.ID] = record
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan(`SELECT route_key, state, issuer, fingerprint, resolver, handshake_valid, failure_summary, last_attempt, not_before, not_after, version
+		FROM route_certificates WHERE cluster_id = ?`, func(rows *sql.Rows) error {
+		var certificate CertificateStatus
+		var issuer, fingerprint, failure sql.NullString
+		var lastAttempt, notBefore, notAfter sql.NullTime
+		if err := rows.Scan(&certificate.RouteKey, &certificate.State, &issuer, &fingerprint, &certificate.Resolver, &certificate.HandshakeValid,
+			&failure, &lastAttempt, &notBefore, &notAfter, &certificate.Version); err != nil {
+			return err
+		}
+		certificate.Issuer, certificate.Fingerprint, certificate.FailureSummary = issuer.String, fingerprint.String, failure.String
+		certificate.LastAttempt, certificate.NotBefore, certificate.NotAfter = nullTimePointer(lastAttempt), nullTimePointer(notBefore), nullTimePointer(notAfter)
+		cluster.Certificates[certificate.RouteKey] = certificate
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT route_key, domain FROM route_certificate_domains WHERE cluster_id = ? ORDER BY route_key, position", func(rows *sql.Rows) error {
+		var key, domain string
+		if err := rows.Scan(&key, &domain); err != nil {
+			return err
+		}
+		certificate := cluster.Certificates[key]
+		certificate.Domains = append(certificate.Domains, domain)
+		cluster.Certificates[key] = certificate
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT route_key, protocol, router, service, state, observed_at, version FROM route_runtime WHERE cluster_id = ?", func(rows *sql.Rows) error {
+		var runtime RouteRuntime
+		var protocol string
+		if err := rows.Scan(&runtime.RouteKey, &protocol, &runtime.Router, &runtime.Service, &runtime.State, &runtime.ObservedAt, &runtime.Version); err != nil {
+			return err
+		}
+		runtime.Protocol = RouteProtocol(protocol)
+		runtime.EntryPoints = []string{}
+		cluster.Runtime[runtime.RouteKey] = runtime
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT route_key, entry_point FROM route_runtime_entry_points WHERE cluster_id = ? ORDER BY route_key, position", func(rows *sql.Rows) error {
+		var key, entryPoint string
+		if err := rows.Scan(&key, &entryPoint); err != nil {
+			return err
+		}
+		runtime := cluster.Runtime[key]
+		runtime.EntryPoints = append(runtime.EntryPoints, entryPoint)
+		cluster.Runtime[key] = runtime
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := scan("SELECT route_key, message FROM route_runtime_errors WHERE cluster_id = ? ORDER BY route_key, position", func(rows *sql.Rows) error {
+		var key, message string
+		if err := rows.Scan(&key, &message); err != nil {
+			return err
+		}
+		runtime := cluster.Runtime[key]
+		runtime.Errors = append(runtime.Errors, message)
+		cluster.Runtime[key] = runtime
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return cluster, nil
+}
+
+// writeCluster replaces one cluster's rows with the validated working copy.
+// Child rows are deleted before their parents are, and inserted after them.
+func (s *RoutingStore) writeCluster(ctx context.Context, tx *sql.Tx, clusterID string, cluster *routingCluster) error {
+	exec := func(query string, args ...any) error {
+		_, err := tx.ExecContext(ctx, query, args...)
+		return err
+	}
+	var cutover, rollback any
+	if cluster.Cutover != nil {
+		cutover = mustJSON(cluster.Cutover)
+	}
+	if cluster.CutoverRollback != nil {
+		rollback = mustJSON(cluster.CutoverRollback)
+	}
+	if err := exec("UPDATE routing_clusters SET settings_json = ?, cutover_json = ?, cutover_rollback_json = ?, updated_at = UTC_TIMESTAMP(6) WHERE cluster_id = ?",
+		mustJSON(cluster.Settings), cutover, rollback, clusterID); err != nil {
+		return err
+	}
+	for _, table := range []string{"route_runtime_errors", "route_runtime_entry_points", "route_runtime", "route_certificate_domains", "route_certificates",
+		"route_hosts", "routes", "dependency_bindings", "service_route_declarations", "routing_domains", "dns_credential_versions", "dns_records"} {
+		if err := exec("DELETE FROM "+table+" WHERE cluster_id = ?", clusterID); err != nil {
+			return err
+		}
+	}
+	for _, route := range cluster.Routes {
+		if err := exec(`INSERT INTO routes (cluster_id, route_key, service_key, protocol, scope, tls_mode, listen_port, target_port, path_prefix,
+			health_kind, health_path, health_timeout_seconds, dns_reference, resolver, enabled, managed, metrics, access_logs, public_allow, is_sensitive, version)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			clusterID, route.Key, route.ServiceKey, string(route.Protocol), string(route.Scope), string(route.TLS), nullablePort(route.ListenPort),
+			route.TargetPort, nullableText(route.Match.PathPrefix), route.Health.Kind, nullableText(route.Health.Path), route.Health.TimeoutSeconds,
+			nullableText(route.DNSReference), nullableText(route.Resolver), route.Enabled, route.Managed, route.Metrics, route.AccessLogs,
+			route.PublicAllow, route.Sensitive, route.Version); err != nil {
+			return err
+		}
+		for kind, hosts := range map[string][]string{"host": route.Match.Hosts, "sni": route.Match.SNI} {
+			for position, hostname := range hosts {
+				if err := exec("INSERT INTO route_hosts (cluster_id, route_key, kind, position, hostname) VALUES (?, ?, ?, ?, ?)",
+					clusterID, route.Key, kind, position, hostname); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, binding := range cluster.Bindings {
+		if err := exec("INSERT INTO dependency_bindings (cluster_id, caller_service, target_route, name, delivery, version) VALUES (?, ?, ?, ?, ?, ?)",
+			clusterID, binding.CallerService, binding.TargetRoute, binding.Name, string(binding.Delivery), binding.Version); err != nil {
+			return err
+		}
+	}
+	for _, declaration := range cluster.Declarations {
+		if err := exec("INSERT INTO service_route_declarations (cluster_id, service_key, role, reason, version) VALUES (?, ?, ?, ?, ?)",
+			clusterID, declaration.ServiceKey, string(declaration.Role), nullableText(declaration.Reason), declaration.Version); err != nil {
+			return err
+		}
+	}
+	for _, domain := range cluster.Domains {
+		if err := exec("INSERT INTO routing_domains (cluster_id, zone, note, created_at, version) VALUES (?, ?, ?, ?, ?)",
+			clusterID, domain.Zone, nullableText(domain.Note), nullableTime(domain.CreatedAt), domain.Version); err != nil {
+			return err
+		}
+	}
+	for id, versions := range cluster.Credentials {
+		for _, metadata := range versions {
+			var sealed []byte
+			if value := cluster.Secrets[metadata.SecretName]; metadata.State != "removed" && value != "" {
+				var err error
+				sealed, err = s.db.Seal(dnsCredentialPurpose(clusterID, id, metadata.Version), []byte(value))
+				if err != nil {
+					return err
+				}
+			}
+			var validated sql.NullTime
+			if metadata.ValidatedAt != nil {
+				validated = sql.NullTime{Time: metadata.ValidatedAt.UTC(), Valid: true}
+			}
+			if err := exec(`INSERT INTO dns_credential_versions (cluster_id, credential_id, version, name, provider, account_id, email, secret_name,
+				state, created_at, validated_at, secret_sealed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				clusterID, id, metadata.Version, metadata.Name, string(metadata.Provider), nullableText(metadata.AccountID), nullableText(metadata.Email),
+				metadata.SecretName, metadata.State, metadata.CreatedAt.UTC(), validated, sealed); err != nil {
+				return err
+			}
+		}
+	}
+	for _, record := range cluster.DNSRecords {
+		if err := exec(`INSERT INTO dns_records (cluster_id, id, zone, name, type, content, ttl, proxied, managed, adopted, credential_id, provider_record_id, version)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			clusterID, record.ID, record.Zone, record.Name, string(record.Type), record.Content, record.TTL, record.Proxied, record.Managed, record.Adopted,
+			record.CredentialID, nullableText(record.ProviderRecordID), record.Version); err != nil {
+			return err
+		}
+	}
+	for _, certificate := range cluster.Certificates {
+		if err := exec(`INSERT INTO route_certificates (cluster_id, route_key, state, issuer, fingerprint, resolver, handshake_valid, failure_summary,
+			last_attempt, not_before, not_after, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			clusterID, certificate.RouteKey, certificate.State, nullableText(certificate.Issuer), nullableText(certificate.Fingerprint), certificate.Resolver,
+			certificate.HandshakeValid, nullableText(certificate.FailureSummary), pointerTime(certificate.LastAttempt), pointerTime(certificate.NotBefore),
+			pointerTime(certificate.NotAfter), certificate.Version); err != nil {
+			return err
+		}
+		for position, domain := range certificate.Domains {
+			if err := exec("INSERT INTO route_certificate_domains (cluster_id, route_key, position, domain) VALUES (?, ?, ?, ?)",
+				clusterID, certificate.RouteKey, position, domain); err != nil {
+				return err
+			}
+		}
+	}
+	for _, runtime := range cluster.Runtime {
+		if err := exec("INSERT INTO route_runtime (cluster_id, route_key, protocol, router, service, state, observed_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			clusterID, runtime.RouteKey, string(runtime.Protocol), runtime.Router, runtime.Service, runtime.State, runtime.ObservedAt.UTC(), runtime.Version); err != nil {
+			return err
+		}
+		for position, entryPoint := range runtime.EntryPoints {
+			if err := exec("INSERT INTO route_runtime_entry_points (cluster_id, route_key, position, entry_point) VALUES (?, ?, ?, ?)",
+				clusterID, runtime.RouteKey, position, entryPoint); err != nil {
+				return err
+			}
+		}
+		for position, message := range runtime.Errors {
+			if err := exec("INSERT INTO route_runtime_errors (cluster_id, route_key, position, message) VALUES (?, ?, ?, ?)",
+				clusterID, runtime.RouteKey, position, message); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func mustJSON(value any) []byte {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(fmt.Sprintf("encode routing document: %v", err))
+	}
+	return encoded
+}
+
+func nullTimePointer(value sql.NullTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Time
+	return &result
+}
+
+func pointerTime(value *time.Time) sql.NullTime {
+	if value == nil || value.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+// ImportRoutingFiles copies a pre-database traefik-routing.sealed file into the
+// database, one cluster at a time, re-sealing each DNS credential under its
+// row-bound purpose. It reports how many clusters it held. The file is kept.
+func ImportRoutingFiles(ctx context.Context, db *sqlstore.DB, dataDir string, dataEncryptionKey []byte, defaultACMEEmail string) (int, error) {
+	sealer, err := securestore.New(dataEncryptionKey)
+	if err != nil {
+		return 0, err
+	}
+	data, err := sealer.ReadFile(filepath.Join(dataDir, "traefik-routing.sealed"), routingStateKey)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read sealed routing state: %w", err)
+	}
+	var saved routingFile
+	if err := json.Unmarshal(data, &saved); err != nil || saved.Version != RoutingSchemaVersion || saved.Clusters == nil {
+		return 0, fmt.Errorf("read sealed routing state: unsupported or invalid version")
+	}
+	store, err := NewRoutingStore(db, defaultACMEEmail)
+	if err != nil {
+		return 0, err
+	}
+	clusterIDs := make([]string, 0, len(saved.Clusters))
+	for clusterID, cluster := range saved.Clusters {
+		if !validClusterID(clusterID) || cluster == nil {
+			return 0, fmt.Errorf("read sealed routing state: invalid cluster")
+		}
+		normalizeRoutingCluster(cluster, store.defaultEmail)
+		if err := validateRoutingCluster(cluster); err != nil {
+			return 0, fmt.Errorf("read sealed routing state: %w", err)
+		}
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	sort.Strings(clusterIDs)
+	for _, clusterID := range clusterIDs {
+		imported := saved.Clusters[clusterID]
+		if err := store.update(clusterID, func(working *routingCluster) error {
+			*working = *imported
+			return nil
+		}); err != nil {
+			return 0, fmt.Errorf("import routing cluster %q: %w", clusterID, err)
+		}
+	}
+	return len(clusterIDs), nil
 }
 
 func normalizeRoutingCluster(cluster *routingCluster, defaultEmail string) {

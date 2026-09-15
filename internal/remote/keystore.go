@@ -2,58 +2,59 @@ package remote
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 )
-
-const keyStateKey = "server-keys"
 
 // Machine API keys are sealed beside the server profiles when key retention is
 // enabled. This is a deliberate trade: an enrolled operator never sees the key,
 // so without retention every controller restart would strand every host until
-// its agent was reinstalled. The key is AES-256-GCM sealed in the controller's
-// own volume, never returned by any endpoint, and never written to the audit
-// trail. Operators who prefer the memory-only posture can disable retention and
-// reconnect each host by hand.
-type keyFile struct {
-	Keys    map[string]string `json:"keys"`
-	Version int               `json:"version"`
-}
+// its agent was reinstalled. The key is AES-256-GCM sealed with the
+// controller's data key and bound to its server id, never returned by any
+// endpoint, and never written to the audit trail. Operators who prefer the
+// memory-only posture can disable retention and reconnect each host by hand.
 
 // ManagerOptions carries construction settings that are not part of the
-// long-standing two-argument constructor.
+// long-standing constructor.
 type ManagerOptions struct {
 	RetainKeys bool
+}
+
+func serverKeyPurpose(id string) string {
+	return sqlstore.Purpose("server_keys", "api_key_sealed", id)
 }
 
 func (m *Manager) loadKeys() error {
 	if !m.retainKeys {
 		return nil
 	}
-	data, err := m.store.ReadFile(m.keysPath, keyStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), managerTimeout)
+	defer cancel()
+	rows, err := m.db.Pool().QueryContext(ctx, "SELECT server_id, api_key_sealed FROM server_keys")
 	if err != nil {
 		return fmt.Errorf("read sealed machine API keys: %w", err)
 	}
-	var saved keyFile
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return fmt.Errorf("read sealed machine API keys: %w", err)
-	}
-	if saved.Version != 1 {
-		return fmt.Errorf("unsupported sealed machine API key version")
-	}
-	for id, key := range saved.Keys {
-		if len(key) >= 16 {
-			m.keys[id] = key
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var sealed []byte
+		if err := rows.Scan(&id, &sealed); err != nil {
+			return fmt.Errorf("read sealed machine API keys: %w", err)
 		}
+		key, err := m.db.Open(serverKeyPurpose(id), sealed)
+		if err != nil {
+			return fmt.Errorf("read sealed machine API keys: %w", err)
+		}
+		if len(key) >= 16 {
+			m.keys[id] = string(key)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read sealed machine API keys: %w", err)
 	}
 	return nil
 }
@@ -91,18 +92,51 @@ func (m *Manager) forgetKeyLocked(id string) {
 	_ = m.saveKeysLocked()
 }
 
+// saveKeysLocked makes server_keys hold exactly the retained keys whose
+// profile still exists.
 func (m *Manager) saveKeysLocked() error {
-	keys := make(map[string]string, len(m.keys))
-	for id, key := range m.keys {
-		if _, found := m.profiles[id]; found {
-			keys[id] = key
+	ctx, cancel := context.WithTimeout(context.Background(), managerTimeout)
+	defer cancel()
+	err := m.db.WithTx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, "SELECT server_id FROM server_keys")
+		if err != nil {
+			return err
 		}
-	}
-	data, err := json.Marshal(keyFile{Keys: keys, Version: 1})
+		var stale []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			if _, keep := m.keys[id]; !keep {
+				stale = append(stale, id)
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, id := range stale {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM server_keys WHERE server_id = ?", id); err != nil {
+				return err
+			}
+		}
+		for id, key := range m.keys {
+			if _, found := m.profiles[id]; !found {
+				continue
+			}
+			sealed, err := m.db.Seal(serverKeyPurpose(id), []byte(key))
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO server_keys (server_id, api_key_sealed, updated_at) VALUES (?, ?, UTC_TIMESTAMP(6))
+				ON DUPLICATE KEY UPDATE api_key_sealed = VALUES(api_key_sealed), updated_at = VALUES(updated_at)`, id, sealed); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("encode sealed machine API keys: %w", err)
-	}
-	if err := m.store.WriteFile(m.keysPath, keyStateKey, append(data, '\n')); err != nil {
 		return fmt.Errorf("save sealed machine API keys: %w", err)
 	}
 	return nil
@@ -173,5 +207,3 @@ func (m *Manager) Resume(ctx context.Context) []error {
 	}
 	return failures
 }
-
-func keysPathFor(dataDir string) string { return filepath.Join(dataDir, "server-keys.sealed") }

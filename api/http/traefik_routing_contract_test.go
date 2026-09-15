@@ -2,8 +2,10 @@ package apihttp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -194,7 +196,7 @@ func TestTraefikSettingsSubmissionReturnsCommandWithoutMutationPayload(t *testin
 func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
-	routing, err := ops.NewRoutingStore(t.TempDir(), make([]byte, 32), "")
+	routing, err := ops.NewRoutingStore(sqltest.Shared(t), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestTraefikInstallRejectsMissingACMEEmailBeforeQueueing(t *testing.T) {
 func TestTraefikInstallRejectsMissingPanelDashboardHostnameBeforeQueueing(t *testing.T) {
 	t.Parallel()
 	server, csrf, cookie := buildTraefikContractServer(t, "manager-1")
-	routing, err := ops.NewRoutingStore(t.TempDir(), make([]byte, 32), "ops@example.com")
+	routing, err := ops.NewRoutingStore(sqltest.Shared(t), "ops@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,14 +487,17 @@ func buildTraefikContractServer(t *testing.T, serverID string) (*Server, string,
 	}
 	dataKey := bytes.Repeat([]byte{2}, 32)
 	dataDir := t.TempDir()
-	auditStore, err := audit.Open(dataDir, dataKey, 100)
+	auditStore, err := audit.Open(sqltest.Shared(t), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := writeLegacyServersFile(dataDir, serverID); err != nil {
 		t.Fatal(err)
 	}
-	servers, err := remote.NewManager(dataDir, dataKey)
+	if _, _, err := remote.ImportServerFiles(context.Background(), sqltest.Shared(t), dataDir, dataKey); err != nil {
+		t.Fatal(err)
+	}
+	servers, err := remote.NewManager(sqltest.Shared(t))
 	if err != nil {
 		t.Fatal(err)
 	}

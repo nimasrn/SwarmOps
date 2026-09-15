@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,8 +17,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,7 +27,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/dockerapi"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
-	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -179,68 +178,53 @@ type profileFile struct {
 	Version int             `json:"version"`
 }
 
-// Manager persists safe target metadata and holds active authentication
-// material only in memory. It is safe for concurrent HTTP requests.
+// Manager persists safe target metadata in the controller database and holds
+// active connections only in memory. Profiles are also cached in memory: the
+// live connection state that decorates them exists nowhere else, and a single
+// active controller owns the table, so every change is written through to the
+// database before it is reported. It is safe for concurrent HTTP requests.
 type Manager struct {
 	connections map[string]*Connection
+	db          *sqlstore.DB
 	keys        map[string]string
-	keysPath    string
-	legacyPath  string
-	path        string
 	profiles    map[string]domain.Server
 	probeMu     sync.Mutex
 	retainKeys  bool
-	store       *securestore.Sealer
 	mu          sync.RWMutex
 }
 
+// managerTimeout bounds one profile write-through.
+const managerTimeout = 10 * time.Second
+
 // NewManager keeps the memory-only credential posture: keys live only until
 // disconnect or restart.
-func NewManager(dataDir string, dataEncryptionKey []byte) (*Manager, error) {
-	return NewManagerWithOptions(dataDir, dataEncryptionKey, ManagerOptions{})
+func NewManager(db *sqlstore.DB) (*Manager, error) {
+	return NewManagerWithOptions(db, ManagerOptions{})
 }
 
 // NewManagerWithOptions additionally allows sealed machine-API key retention,
 // which an enrollment-based install needs so a controller restart does not
 // strand every host. See keystore.go for the trade this makes.
-func NewManagerWithOptions(dataDir string, dataEncryptionKey []byte, options ManagerOptions) (*Manager, error) {
-	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("server profile data directory is required")
-	}
-	store, err := securestore.New(dataEncryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("configure encrypted server profiles: %w", err)
+func NewManagerWithOptions(db *sqlstore.DB, options ManagerOptions) (*Manager, error) {
+	if db == nil {
+		return nil, fmt.Errorf("server profile store requires a database")
 	}
 	manager := &Manager{
 		connections: map[string]*Connection{},
+		db:          db,
 		keys:        map[string]string{},
-		keysPath:    keysPathFor(dataDir),
-		legacyPath:  filepath.Join(dataDir, "servers.json"),
-		path:        filepath.Join(dataDir, "servers.sealed"),
 		profiles:    map[string]domain.Server{},
 		retainKeys:  options.RetainKeys,
-		store:       store,
 	}
-	data, err := manager.store.ReadFile(manager.path, profileStateKey)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := manager.loadLegacyProfiles(); err != nil {
-			return nil, err
-		}
-		if err := manager.loadKeys(); err != nil {
-			return nil, err
-		}
-		return manager, nil
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), managerTimeout)
+	defer cancel()
+	profiles, err := loadServerRows(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("read server profiles: %w", err)
 	}
-	if _, err := os.Stat(manager.legacyPath); err == nil {
-		return nil, fmt.Errorf("legacy plaintext server profiles remain; remove %s only after verifying the encrypted migration", manager.legacyPath)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("check legacy server profiles: %w", err)
-	}
-	if err := manager.loadProfiles(data); err != nil {
-		return nil, err
+	for _, profile := range profiles {
+		profile.ConnectionState = disconnectedState
+		manager.profiles[profile.ID] = profile
 	}
 	if err := manager.loadKeys(); err != nil {
 		return nil, err
@@ -248,26 +232,8 @@ func NewManagerWithOptions(dataDir string, dataEncryptionKey []byte, options Man
 	return manager, nil
 }
 
-func (m *Manager) loadLegacyProfiles() error {
-	data, err := os.ReadFile(m.legacyPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read legacy server profiles: %w", err)
-	}
-	if err := m.loadProfiles(data); err != nil {
-		return err
-	}
-	if err := m.saveLocked(); err != nil {
-		return fmt.Errorf("seal legacy server profiles: %w", err)
-	}
-	if err := securestore.RemoveFile(m.legacyPath); err != nil {
-		return fmt.Errorf("remove migrated plaintext server profiles: %w", err)
-	}
-	return nil
-}
-
+// loadProfiles reads a pre-database profile document, sealed or plaintext.
+// Only the importer uses it now.
 func (m *Manager) loadProfiles(data []byte) error {
 	var saved profileFile
 	if err := json.Unmarshal(data, &saved); err != nil {
@@ -577,6 +543,11 @@ func pullConnectionFresh(profile domain.Server, now time.Time) bool {
 	return profile.ConnectionType != ConnectionAgentPull || (!profile.LastConnectedAt.IsZero() && now.Sub(profile.LastConnectedAt) <= agentPullStaleAfter)
 }
 
+// saveLocked writes the in-memory profile set through to the database in one
+// transaction: every profile is upserted with its event trail, and a row whose
+// profile is gone is deleted, taking its sealed key and events with it through
+// ON DELETE CASCADE. Callers hold m.mu and roll their memory change back when
+// this fails, so memory and table never disagree about a reported change.
 func (m *Manager) saveLocked() error {
 	profiles := make([]domain.Server, 0, len(m.profiles))
 	for _, profile := range m.profiles {
@@ -584,11 +555,9 @@ func (m *Manager) saveLocked() error {
 		profiles = append(profiles, profile)
 	}
 	sort.Slice(profiles, func(left, right int) bool { return profiles[left].ID < profiles[right].ID })
-	data, err := json.MarshalIndent(profileFile{Servers: profiles, Version: 1}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode server profiles: %w", err)
-	}
-	if err := m.store.WriteFile(m.path, profileStateKey, append(data, '\n')); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), managerTimeout)
+	defer cancel()
+	if err := m.db.WithTx(ctx, func(tx *sql.Tx) error { return replaceServerRows(ctx, tx, profiles) }); err != nil {
 		return fmt.Errorf("save server profiles: %w", err)
 	}
 	return nil

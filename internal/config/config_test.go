@@ -178,6 +178,7 @@ func TestLoadDirectTLSAllowsEveryClientNetworkWithoutAllowlist(t *testing.T) {
 	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
 	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
 	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)))))
+	t.Setenv("SWARMOPS_DATABASE_DSN_FILE", writeSecretFile(t, "database-dsn", []byte("swarmops:secret@tcp(db.internal:3306)/swarmops")))
 	t.Setenv("SWARMOPS_TLS_CERT_FILE", writeSecretFile(t, "certificate", []byte("certificate")))
 	t.Setenv("SWARMOPS_TLS_KEY_FILE", writeSecretFile(t, "private-key", []byte("private-key")))
 	t.Setenv("SWARMOPS_LISTEN_ADDR", "192.0.2.20:42420")
@@ -198,6 +199,7 @@ func TestLoadDirectTLSParsesClientNetwork(t *testing.T) {
 	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
 	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
 	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))))
+	t.Setenv("SWARMOPS_DATABASE_DSN_FILE", writeSecretFile(t, "database-dsn", []byte("swarmops:secret@tcp(db.internal:3306)/swarmops")))
 	t.Setenv("SWARMOPS_TLS_CERT_FILE", writeSecretFile(t, "certificate", []byte("certificate")))
 	t.Setenv("SWARMOPS_TLS_KEY_FILE", writeSecretFile(t, "private-key", []byte("private-key")))
 	t.Setenv("SWARMOPS_LISTEN_ADDR", "192.0.2.20:42420")
@@ -355,6 +357,7 @@ func setProductionCoreEnv(t *testing.T) {
 	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
 	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
 	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32)))))
+	t.Setenv("SWARMOPS_DATABASE_DSN_FILE", writeSecretFile(t, "database-dsn", []byte("swarmops:secret@tcp(db.internal:3306)/swarmops")))
 }
 
 func writeDevMachineCertificate(t *testing.T) (string, string) {
@@ -383,4 +386,38 @@ func writeDevMachineCertificate(t *testing.T) (string, string) {
 	}
 	digest := sha256.Sum256(rawCertificate)
 	return path, "SHA256:" + strings.ToUpper(hex.EncodeToString(digest[:]))
+}
+
+func TestLoadProductionRequiresAProtectedDatabaseDSN(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "false")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_ADMIN_PASSWORD_HASH_FILE", writeSecretFile(t, "admin-password-hash", []byte("bcrypt-hash")))
+	t.Setenv("SWARMOPS_SESSION_KEY_FILE", writeSecretFile(t, "session-key", []byte(strings.Repeat("s", 32))))
+	t.Setenv("SWARMOPS_DATA_ENCRYPTION_KEY_FILE", writeSecretFile(t, "data-key", []byte(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)))))
+	t.Setenv("SWARMOPS_DATABASE_DSN_FILE", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "database DSN") {
+		t.Fatalf("production load without a database DSN = %v", err)
+	}
+	dsn := writeSecretFile(t, "database-dsn", []byte("swarmops:secret@tcp(db.internal:3306)/swarmops"))
+	if err := os.Chmod(dsn, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SWARMOPS_DATABASE_DSN_FILE", dsn)
+	if _, err := Load(); err == nil {
+		t.Fatal("a group-readable database DSN file was accepted")
+	}
+}
+
+func TestLoadInsecureDevAuthDefaultsToTheLocalDevelopmentDatabase(t *testing.T) {
+	t.Setenv("SWARMOPS_INSECURE_DEV_AUTH", "true")
+	t.Setenv("SWARMOPS_DATA_DIR", t.TempDir())
+	t.Setenv("SWARMOPS_DEV_SESSION_KEY", strings.Repeat("s", 32))
+	t.Setenv("SWARMOPS_DEV_DATABASE_DSN", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseDSN != "root:devroot@tcp(127.0.0.1:3307)/swarmops" || cfg.DatabaseMaxOpenConns != 20 {
+		t.Fatalf("development database = %q, %d", cfg.DatabaseDSN, cfg.DatabaseMaxOpenConns)
+	}
 }

@@ -944,6 +944,7 @@ still builds and stages the same server-local binary:
 SWARMOPS_ADMIN_PASSWORD_HASH_FILE=/etc/swarmops/admin-password-hash \
 SWARMOPS_SESSION_KEY_FILE=/etc/swarmops/session-key \
 SWARMOPS_DATA_ENCRYPTION_KEY_FILE=/etc/swarmops/data-encryption-key \
+SWARMOPS_DATABASE_DSN_FILE=/etc/swarmops/database-dsn \
 SWARMOPS_DATA_DIR=/var/lib/swarmops \
 make swarmops-native-api
 ```

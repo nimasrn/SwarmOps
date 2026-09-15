@@ -12,6 +12,21 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      # Storage suites run against a real engine and must fail, not skip,
+      # when it is unreachable.
+      SWARMOPS_TEST_DATABASE_DSN: root:ci-root@tcp(127.0.0.1:3306)/
+      SWARMOPS_TEST_DATABASE_REQUIRED: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -60,3 +75,32 @@ jobs:
           docker build --target cli --tag swarmops-cli:ci .
           docker build --target fluentd --tag swarmops-fluentd:ci .
           docker build --target logs --tag swarmops-logs:ci .
+
+  # The schema uses only what MariaDB 11.4 and MySQL 8.4 have in common. This
+  # job holds that to account by running the Go suite on MySQL as well.
+  verify-mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      SWARMOPS_TEST_DATABASE_DSN: root:ci-root@tcp(127.0.0.1:3306)/
+      SWARMOPS_TEST_DATABASE_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Verify Go on MySQL 8.4
+        run: go test ./...
+

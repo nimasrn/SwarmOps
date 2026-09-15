@@ -3,6 +3,7 @@ package queue
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"testing/iotest"
@@ -17,9 +19,10 @@ import (
 
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/securestore"
+	"github.com/nimasrn/SwarmOps/internal/sqlstore/sqltest"
 )
 
-func TestSubmitIsEncryptedDurableAndIdempotent(t *testing.T) {
+func TestSubmitIsSealedDurableAndIdempotent(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
 	input := testInput()
@@ -40,25 +43,18 @@ func TestSubmitIsEncryptedDurableAndIdempotent(t *testing.T) {
 	if created || replayed.ID != command.ID {
 		t.Fatalf("idempotent submit = %#v, created=%t", replayed, created)
 	}
-	ciphertext, err := os.ReadFile(store.path)
+	var sealed []byte
+	if err := store.db.Pool().QueryRow("SELECT payload_sealed FROM command_payloads WHERE command_id = ?", command.ID).Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("private-service-configuration")) {
+		t.Fatal("the command payload was stored in the clear")
+	}
+	loaded, err := reopen(t, store).Get(command.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(ciphertext, []byte("private-service-configuration")) {
-		t.Fatal("encrypted command ledger contains plaintext payload")
-	}
-	if got, want := mustFileMode(t, store.path), os.FileMode(0o600); got != want {
-		t.Fatalf("command ledger mode = %o, want %o", got, want)
-	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := reloaded.Get(command.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.ID != command.ID || loaded.State != domain.CommandQueued {
+	if loaded.ID != command.ID || loaded.State != domain.CommandQueued || !loaded.CreatedAt.Equal(command.CreatedAt) {
 		t.Fatalf("reloaded command = %#v", loaded)
 	}
 }
@@ -78,6 +74,9 @@ func TestFailUsesExponentialBackoffAndBoundedAttention(t *testing.T) {
 	record, found, err := store.ClaimDue()
 	if err != nil || !found || record.Command.ID != command.ID {
 		t.Fatalf("claim = %#v, %t, %v", record, found, err)
+	}
+	if string(record.Payload) != `{"name":"example"}` {
+		t.Fatalf("claimed payload = %s", record.Payload)
 	}
 	failed, event, err := store.Fail(command.ID, errors.New("network unavailable"))
 	if err != nil {
@@ -223,6 +222,13 @@ func TestPullLeaseLifecycleRequiresCapabilityAndPersistsAgentStates(t *testing.T
 	if err != nil || completed.State != domain.CommandSucceeded || completed.LeaseExpiresAt != nil {
 		t.Fatalf("completed = %#v err=%v", completed, err)
 	}
+	var payloads int
+	if err := store.db.Pool().QueryRow("SELECT COUNT(*) FROM command_payloads WHERE command_id = ?", command.ID).Scan(&payloads); err != nil {
+		t.Fatal(err)
+	}
+	if payloads != 0 {
+		t.Fatal("a succeeded command kept its raw payload")
+	}
 }
 
 func TestFenceAuthorityRetainsUnfinishedCommandsForReview(t *testing.T) {
@@ -334,6 +340,13 @@ func TestSubmitSupersedesOlderPendingCommandForSameServerActionAndTarget(t *test
 	if len(commands) != 1 || commands[0].ID != submission.Command.ID || commands[0].State != domain.CommandQueued {
 		t.Fatalf("commands = %#v", commands)
 	}
+	var orphaned int
+	if err := store.db.Pool().QueryRow("SELECT COUNT(*) FROM command_payloads WHERE command_id = ?", older.ID).Scan(&orphaned); err != nil {
+		t.Fatal(err)
+	}
+	if orphaned != 0 {
+		t.Fatal("a superseded command left its payload row behind")
+	}
 }
 
 func TestSubmitKeepsRunningAndNeedsAttentionCommandsVisible(t *testing.T) {
@@ -443,8 +456,8 @@ func TestRecoverTurnsInFlightCommandIntoNeedsAttention(t *testing.T) {
 	if _, found, err := store.ClaimDue(); err != nil || !found {
 		t.Fatalf("claim found=%t err=%v", found, err)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
-	if err != nil {
+	reloaded := reopen(t, store)
+	if err := reloaded.Recover(); err != nil {
 		t.Fatal(err)
 	}
 	value, err := reloaded.Get(command.ID)
@@ -453,6 +466,28 @@ func TestRecoverTurnsInFlightCommandIntoNeedsAttention(t *testing.T) {
 	}
 	if value.State != domain.CommandNeedsAttention || value.LastError == "" {
 		t.Fatalf("recovered command = %#v", value)
+	}
+}
+
+// Opening the store is what a standby controller does too. If opening reclaimed
+// in-flight work, a standby starting against the database would mark the
+// active controller's running command as abandoned while it was still running.
+func TestOpeningTheStoreDoesNotReclaimAnotherControllersWork(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	command, _, err := store.Submit(testInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.ClaimDue(); err != nil || !found {
+		t.Fatalf("claim found=%t err=%v", found, err)
+	}
+	value, err := reopen(t, store).Get(command.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.State != domain.CommandRunning {
+		t.Fatalf("opening a second store changed a running command to %q", value.State)
 	}
 }
 
@@ -552,10 +587,7 @@ func TestLegacyPlaintextArtifactMigratesToEncryptedState(t *testing.T) {
 	if err := os.WriteFile(store.legacyArtifactPath(command.ID), []byte("legacy build source"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey(), testHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	reloaded := reopen(t, store)
 	if _, err := os.Stat(reloaded.legacyArtifactPath(command.ID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy artifact remains: %v", err)
 	}
@@ -626,21 +658,51 @@ func (errReader) Read([]byte) (int, error) { return 0, errors.New("source disapp
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(t.TempDir(), testDataKey(), testHistoryLimit)
+	return newTestStoreWithLimit(t, testHistoryLimit)
+}
+
+func newTestStoreWithLimit(t *testing.T, limit int) *Store {
+	t.Helper()
+	store, err := Open(sqltest.Open(t), t.TempDir(), testDataKey(), limit)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return store
 }
 
-const testHistoryLimit = 100
-
-func testDataDir(t *testing.T, store *Store) string {
+// reopen returns a second store on the same database and input directory, as
+// a restarted controller would open.
+func reopen(t *testing.T, store *Store) *Store {
 	t.Helper()
-	return filepath.Dir(store.dir)
+	reopened, err := Open(store.db, filepath.Dir(store.dir), testDataKey(), store.historyLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reopened
 }
 
-func testDataKey() []byte { return bytes.Repeat([]byte{47}, 32) }
+// corruptPayload replaces a command's sealed payload with bytes that do not
+// open, so the next claim fails inside its transaction after it has already
+// updated the row. It returns a function that restores the original.
+func corruptPayload(t *testing.T, store *Store, id string) func() {
+	t.Helper()
+	var original []byte
+	if err := store.db.Pool().QueryRow("SELECT payload_sealed FROM command_payloads WHERE command_id = ?", id).Scan(&original); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Pool().Exec("UPDATE command_payloads SET payload_sealed = ? WHERE command_id = ?", []byte("not a sealed payload"), id); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if _, err := store.db.Pool().Exec("UPDATE command_payloads SET payload_sealed = ? WHERE command_id = ?", original, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+const testHistoryLimit = 100
+
+func testDataKey() []byte { return sqltest.Key() }
 
 func testInput() SubmitInput {
 	return SubmitInput{
@@ -669,10 +731,7 @@ func stringsReader(value string) io.Reader { return bytes.NewBufferString(value)
 
 func TestStorePrunesOldestSucceededCommandsOnly(t *testing.T) {
 	t.Parallel()
-	store, err := Open(t.TempDir(), testDataKey(), 2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestStoreWithLimit(t, 2)
 	succeeded := make([]string, 0, 3)
 	for index := range 3 {
 		input := testInput()
@@ -717,11 +776,7 @@ func TestStorePrunesOldestSucceededCommandsOnly(t *testing.T) {
 	if state, ok := states[queued.ID]; !ok || state.State != domain.CommandQueued {
 		t.Fatalf("active command was pruned: %#v", state)
 	}
-	reloaded, err := Open(testDataDir(t, store), testDataKey(), 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	relisted, err := reloaded.List(500)
+	relisted, err := reopen(t, store).List(500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,30 +785,117 @@ func TestStorePrunesOldestSucceededCommandsOnly(t *testing.T) {
 	}
 }
 
-func TestClaimDueRollsBackWhenTheDurableWriteFails(t *testing.T) {
+// A claim that fails part-way must leave the row exactly as it was: the
+// attempt counter and state are changed and then rolled back with the
+// transaction, rather than left as a phantom running command that would block
+// every later claim.
+func TestClaimDueRollsBackWhenTheTransactionFails(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
 	command, _, err := store.Submit(testInput())
 	if err != nil {
 		t.Fatal(err)
 	}
-	broken := &securestore.Sealer{}
-	working := store.sealer
-	store.sealer = broken
+	restore := corruptPayload(t, store, command.ID)
 	if _, _, err := store.ClaimDue(); err == nil {
-		t.Fatal("claim unexpectedly succeeded with a broken sealer")
+		t.Fatal("claim unexpectedly succeeded with an unreadable payload")
 	}
 	stored, err := store.Get(command.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stored.State != domain.CommandQueued || stored.Attempt != 0 || stored.LastAttemptAt != nil {
-		t.Fatalf("claim did not roll back its in-memory mutation: %#v", stored)
+		t.Fatalf("claim did not roll back: %#v", stored)
 	}
-	store.sealer = working
+	restore()
 	record, found, err := store.ClaimDue()
 	if err != nil || !found || record.Command.ID != command.ID {
 		t.Fatalf("claim after recovery = %#v, %t, %v", record, found, err)
+	}
+}
+
+// The single-claim rule has to hold between controller processes, not only
+// between goroutines in one: every store here is a separate Store value, and
+// they share nothing but the database.
+func TestOnlyOneCommandRunsAtATimeAcrossStores(t *testing.T) {
+	t.Parallel()
+	first := newTestStore(t)
+	for index := range 5 {
+		input := testInput()
+		input.IdempotencyKey = fmt.Sprintf("parallel-%d", index)
+		input.Target = fmt.Sprintf("stack/parallel-%d", index)
+		if _, _, err := first.Submit(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stores := []*Store{first, reopen(t, first), reopen(t, first)}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	claimed := 0
+	for index := range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, found, err := stores[index%len(stores)].ClaimDue()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if found {
+				mu.Lock()
+				claimed++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	var running int
+	if err := first.db.Pool().QueryRow("SELECT COUNT(*) FROM commands WHERE state = 'running'").Scan(&running); err != nil {
+		t.Fatal(err)
+	}
+	if claimed != 1 || running != 1 {
+		t.Fatalf("claims=%d running=%d, want exactly one of each", claimed, running)
+	}
+}
+
+func TestAServerIsLeasedOneCommandAtATimeAcrossStores(t *testing.T) {
+	t.Parallel()
+	first := newTestStore(t)
+	for index := range 3 {
+		input := testInput()
+		input.IdempotencyKey = fmt.Sprintf("lease-%d", index)
+		input.Target = fmt.Sprintf("stack/lease-%d", index)
+		if _, _, err := first.Submit(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	second := reopen(t, first)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	leases := map[string]bool{}
+	for index := range 10 {
+		wg.Add(1)
+		store := first
+		if index%2 == 1 {
+			store = second
+		}
+		go func() {
+			defer wg.Done()
+			lease, found, err := store.LeaseDue("server-1", 1, 30*time.Second)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if found {
+				mu.Lock()
+				leases[lease.Record.Command.ID] = true
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if len(leases) != 1 {
+		t.Fatalf("server-1 was leased %d commands at once, want 1", len(leases))
 	}
 }
 
@@ -1001,8 +1143,7 @@ func TestARetainedExecutionLogSurvivesTheCommandThatProducedIt(t *testing.T) {
 	if err := store.RetainOutput(command.ID, log); err != nil {
 		t.Fatal(err)
 	}
-	// It is not in the command record, and therefore not in any list: the
-	// ledger is read whole, and remote output does not belong in it.
+	// It is not in the command record, and therefore not in any list.
 	listed, err := store.List(10)
 	if err != nil {
 		t.Fatal(err)
@@ -1012,16 +1153,18 @@ func TestARetainedExecutionLogSurvivesTheCommandThatProducedIt(t *testing.T) {
 			t.Fatal("the execution log leaked into the command ledger")
 		}
 	}
+	var sealed []byte
+	if err := store.db.Pool().QueryRow("SELECT output_sealed FROM command_outputs WHERE command_id = ?", command.ID).Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("doesNotExist")) {
+		t.Fatal("the execution log was stored in the clear")
+	}
 	read, err := store.Output(command.ID)
 	if err != nil || read != log {
 		t.Fatalf("Output = %q, %v", read, err)
 	}
-	// It survives a reload, sealed on disk like every other command file.
-	reopened, err := Open(store.dir[:len(store.dir)-len("/commands")], testDataKey(), testHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if read, err := reopened.Output(command.ID); err != nil || read != log {
+	if read, err := reopen(t, store).Output(command.ID); err != nil || read != log {
 		t.Fatalf("after reload Output = %q, %v", read, err)
 	}
 }
@@ -1076,14 +1219,11 @@ func TestARetainedLogIsBounded(t *testing.T) {
 	}
 }
 
-// A log left on disk after the record that explains it is gone is an orphan
+// A log left behind after the record that explains it is gone is an orphan
 // nothing will ever read or delete.
 func TestPruningACommandForgetsItsRetainedLog(t *testing.T) {
 	t.Parallel()
-	store, err := Open(t.TempDir(), testDataKey(), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestStoreWithLimit(t, 1)
 	var first string
 	for index := 0; index < 2; index++ {
 		input := testInput()
@@ -1110,8 +1250,12 @@ func TestPruningACommandForgetsItsRetainedLog(t *testing.T) {
 	if _, err := store.Output(first); err == nil {
 		t.Fatal("the pruned command's log outlived its record")
 	}
-	if _, err := os.Stat(store.outputPath(first)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the sealed log file was left on disk: %v", err)
+	var orphaned int
+	if err := store.db.Pool().QueryRow("SELECT COUNT(*) FROM command_outputs WHERE command_id = ?", first).Scan(&orphaned); err != nil {
+		t.Fatal(err)
+	}
+	if orphaned != 0 {
+		t.Fatal("the pruned command's log row was left behind")
 	}
 }
 
@@ -1177,8 +1321,6 @@ func TestACommandRecordsTheStepsItPassesThrough(t *testing.T) {
 	if events[1].Evidence != "Building swarmops-local/api:abc" {
 		t.Errorf("second step = %q", events[1].Evidence)
 	}
-	// The trail is sealed beside the command, not carried inside it: the ledger
-	// is read whole on every load.
 	listed, err := store.List(10)
 	if err != nil {
 		t.Fatal(err)
@@ -1186,11 +1328,7 @@ func TestACommandRecordsTheStepsItPassesThrough(t *testing.T) {
 	if strings.Contains(fmt.Sprintf("%#v", listed), "Checking the managed Traefik") {
 		t.Fatal("the progress trail leaked into the command ledger")
 	}
-	reopened, err := Open(store.dir[:len(store.dir)-len("/commands")], testDataKey(), testHistoryLimit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if events, err := reopened.Events(command.ID); err != nil || len(events) != 3 {
+	if events, err := reopen(t, store).Events(command.ID); err != nil || len(events) != 3 {
 		t.Fatalf("after reload: %d events, %v", len(events), err)
 	}
 }
@@ -1294,5 +1432,78 @@ func TestARetryClearsTheStepsOfTheAttemptBeforeIt(t *testing.T) {
 	events, err = store.Events(command.ID)
 	if err != nil || len(events) != 1 || events[0].Sequence != 1 {
 		t.Fatalf("the new attempt's trail = %#v, %v", events, err)
+	}
+}
+
+// An existing controller's sealed ledger, with a progress trail and a retained
+// log beside one of its commands, has to arrive in the database whole.
+func TestImportFilesCopiesTheSealedLedgerWithItsTrailAndLog(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	inputs := filepath.Join(dataDir, "commands", "inputs")
+	if err := os.MkdirAll(inputs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := testDataKey()
+	sealer, err := securestore.New(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "cmd-0123456789abcdef0123456789abcdef"
+	created := time.Date(2026, 8, 20, 10, 0, 0, 123456789, time.UTC)
+	ledger, err := json.Marshal(storeFile{Version: storeVersion, Commands: []storedRecord{{
+		Command: domain.Command{
+			Action: "stack.deploy", Actor: "operator", AuthorityEpoch: 1, ClusterID: "default", CreatedAt: created, ID: id,
+			MaxAttempts: 3, NodeID: "server-1", ServerID: "server-1", State: domain.CommandQueued, Target: "stack/legacy", UpdatedAt: created,
+		},
+		Events:         true,
+		IdempotencyKey: "legacy-key",
+		Output:         true,
+		Payload:        json.RawMessage(`{"name":"legacy"}`),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(dataDir, "commands", "commands.sealed"), stateKey, ledger); err != nil {
+		t.Fatal(err)
+	}
+	trail, err := json.Marshal([]domain.CommandEvent{
+		{CommandID: id, Evidence: "Rendering", OccurredAt: created, Sequence: 1, State: domain.CommandRunning},
+		{CommandID: id, Evidence: "Deploying", OccurredAt: created, Sequence: 2, State: domain.CommandRunning},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(inputs, id+".events.sealed"), "command-events:"+id, trail); err != nil {
+		t.Fatal(err)
+	}
+	if err := sealer.WriteFile(filepath.Join(inputs, id+".output.sealed"), "command-output:"+id, []byte("legacy execution log")); err != nil {
+		t.Fatal(err)
+	}
+
+	db := sqltest.Open(t)
+	for attempt, want := range []int{1, 0} {
+		count, err := ImportFiles(context.Background(), db, dataDir, key)
+		if err != nil || count != want {
+			t.Fatalf("import attempt %d = %d, %v; want %d", attempt+1, count, err, want)
+		}
+	}
+	store, err := Open(db, dataDir, key, testHistoryLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := store.Get(id)
+	if err != nil || command.Target != "stack/legacy" || !command.CreatedAt.Equal(created.Truncate(time.Microsecond)) {
+		t.Fatalf("imported command = %#v, %v", command, err)
+	}
+	if events, err := store.Events(id); err != nil || len(events) != 2 || events[1].Evidence != "Deploying" {
+		t.Fatalf("imported events = %#v, %v", events, err)
+	}
+	if output, err := store.Output(id); err != nil || output != "legacy execution log" {
+		t.Fatalf("imported output = %q, %v", output, err)
+	}
+	record, found, err := store.ClaimDue()
+	if err != nil || !found || string(record.Payload) != `{"name":"legacy"}` {
+		t.Fatalf("imported command claim = %#v, %t, %v", record, found, err)
 	}
 }
