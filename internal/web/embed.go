@@ -31,6 +31,12 @@ func Handler() http.Handler {
 			files.ServeHTTP(response, request)
 			return
 		}
+		// The SwarmOps Cloud storefront is its own page: every address under
+		// /store is one of its client-side routes.
+		if name == "store" || strings.HasPrefix(name, "store/") {
+			http.ServeFileFS(response, request, content, "store.html")
+			return
+		}
 		http.ServeFileFS(response, request, content, "index.html")
 	})
 }

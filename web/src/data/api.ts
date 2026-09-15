@@ -1,4 +1,16 @@
 import type {
+  CloudBillingResult,
+  CloudCustomerAccount,
+  CloudInvoice,
+  CloudOrder,
+  CloudOverview,
+  CloudPlan,
+  CloudPlanInput,
+  CloudProject,
+  CloudRevenueMonth,
+  CloudTicket,
+  CloudTransaction,
+  CloudWallet,
   ChangePreview,
   DiagnosisResult,
   ImportReport,
@@ -772,6 +784,45 @@ export class SwarmOpsAPI {
     }
     throw lastError
   }
+
+  // SwarmOps Cloud administration. Each read is the controller database's
+  // own answer; a change is audited by the controller like any other.
+  commerceOverview() { return this.request<CloudOverview>('/api/v1/commerce/overview') }
+  commerceOrders(status = '') { return this.request<CloudOrder[]>(`/api/v1/commerce/orders${status ? `?status=${encodeURIComponent(status)}` : ''}`) }
+  confirmCloudOrder(id: number, serverId: string) {
+    return this.request<{ command: Command; order: CloudOrder; project: CloudProject }>(`/api/v1/commerce/orders/${id}/confirm`, { method: 'POST', body: JSON.stringify({ serverId }) })
+  }
+  rejectCloudOrder(id: number, reason: string) {
+    return this.request<CloudOrder>(`/api/v1/commerce/orders/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) })
+  }
+  commerceCustomers() { return this.request<CloudCustomerAccount[]>('/api/v1/commerce/customers') }
+  commerceCustomerWallet(id: number) {
+    return this.request<{ ledgerConsistent: boolean; transactions: CloudTransaction[]; wallet: CloudWallet }>(`/api/v1/commerce/customers/${id}/wallet`)
+  }
+  setCloudCustomerStatus(id: number, status: 'active' | 'suspended') {
+    return this.request<void>(`/api/v1/commerce/customers/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) })
+  }
+  adjustCloudWallet(id: number, amountRial: number, reason: string, idempotencyKey: string) {
+    return this.request<CloudTransaction>(`/api/v1/commerce/customers/${id}/adjustments`, { method: 'POST', body: JSON.stringify({ amountRial, reason }), headers: { 'Idempotency-Key': idempotencyKey } })
+  }
+  commercePlans() { return this.request<CloudPlan[]>('/api/v1/commerce/plans') }
+  saveCloudPlan(input: CloudPlanInput) {
+    return this.request<CloudPlan>(`/api/v1/commerce/plans/${encodeURIComponent(input.code)}`, { method: 'PUT', body: JSON.stringify(input) })
+  }
+  commerceProjects(status = '') { return this.request<CloudProject[]>(`/api/v1/commerce/projects${status ? `?status=${encodeURIComponent(status)}` : ''}`) }
+  commerceInvoices() { return this.request<CloudInvoice[]>('/api/v1/commerce/invoices') }
+  commerceInvoice(id: number) { return this.request<CloudInvoice>(`/api/v1/commerce/invoices/${id}`) }
+  issueCloudInvoices(month: string) {
+    return this.request<{ issued: number }>('/api/v1/commerce/invoices/issue', { method: 'POST', body: JSON.stringify({ month }) })
+  }
+  runCloudBilling() { return this.request<CloudBillingResult>('/api/v1/commerce/billing/run', { method: 'POST' }) }
+  commerceRevenue() { return this.request<CloudRevenueMonth[]>('/api/v1/commerce/revenue') }
+  commerceTickets(status = '') { return this.request<CloudTicket[]>(`/api/v1/commerce/tickets${status ? `?status=${encodeURIComponent(status)}` : ''}`) }
+  commerceTicket(id: number) { return this.request<CloudTicket>(`/api/v1/commerce/tickets/${id}`) }
+  replyCloudTicket(id: number, body: string) {
+    return this.request<CloudTicket>(`/api/v1/commerce/tickets/${id}/replies`, { method: 'POST', body: JSON.stringify({ body }) })
+  }
+  closeCloudTicket(id: number) { return this.request<CloudTicket>(`/api/v1/commerce/tickets/${id}/close`, { method: 'POST' }) }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers)

@@ -18,11 +18,12 @@ async function tree(directory = '.', prefix = '') {
 test('the information architecture is one source, and every screen is reachable from it', async () => {
   const [nav, console_] = await Promise.all([source('navigation/navigation.ts'), source('shell/console.tsx')])
 
-  // Six areas, named for the operator's job rather than the system's object
+  // Seven areas, named for the operator's job rather than the system's object
   // model. There were eight: Deliver and Workloads were the same object at two
   // points in its life, and Observe was a place charts went to be unattached
-  // from the thing they measured.
-  for (const area of ['Home', 'Apps', 'Machines', 'Traffic', 'Activity', 'Control']) {
+  // from the thing they measured. Sales joined when SwarmOps Cloud gave the
+  // controller customers: reviewing what they bought is a job of its own.
+  for (const area of ['Home', 'Apps', 'Machines', 'Traffic', 'Activity', 'Sales', 'Control']) {
     assert.match(nav, new RegExp(`label: '${area}'`))
   }
   for (const retired of ["label: 'Deliver'", "label: 'Workloads'", "label: 'Observe'", "label: 'Fleet'"]) {
@@ -34,7 +35,7 @@ test('the information architecture is one source, and every screen is reachable 
   // `agent-diagnostics` had both a label and a section for three releases and
   // could not be opened from navigation at all.
   const declared = [...nav.matchAll(/key: '([a-z-]+)', label:/g)].map((match) => match[1])
-  for (const destination of ['agents', 'applications', 'audit', 'catalog', 'containers', 'core', 'deploy', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'machines', 'overview', 'platform', 'registry-mirror', 'routes', 'storage', 'swarm', 'tls', 'workloads']) {
+  for (const destination of ['agents', 'applications', 'audit', 'billing', 'catalog', 'containers', 'core', 'customers', 'deploy', 'dns', 'gateway', 'gateway-settings', 'images', 'logs', 'machines', 'orders', 'overview', 'plans', 'platform', 'registry-mirror', 'routes', 'storage', 'support', 'swarm', 'tls', 'workloads']) {
     assert.ok(declared.includes(destination), `${destination} is routable but appears in no area`)
   }
 
@@ -48,7 +49,7 @@ test('the information architecture is one source, and every screen is reachable 
 
   // Every page carries the one line that says what decision it serves; the
   // contextual sidebar, the palette, and now every screen heading read it.
-  assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 6, 'each page needs a summary and each of the 6 areas needs one too')
+  assert.equal(declared.length, [...nav.matchAll(/summary: '/g)].length - 7, 'each page needs a summary and each of the 7 areas needs one too')
 
   assert.match(console_, /navigation="nested"/)
   assert.match(console_, /contextualGroups=\{contextualGroups\}/)

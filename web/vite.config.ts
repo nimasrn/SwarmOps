@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 const localAPITarget = 'http://127.0.0.1:8084'
 
@@ -59,6 +60,15 @@ export default defineConfig(({ mode }) => {
     build: {
       emptyOutDir: true,
       outDir: '../internal/web/static',
+      // Two pages share one bundle graph: the operator console, and the
+      // SwarmOps Cloud storefront customers use. Neither imports the other's
+      // screens, so a customer never downloads the console.
+      rollupOptions: {
+        input: {
+          console: fileURLToPath(new URL('./index.html', import.meta.url)),
+          store: fileURLToPath(new URL('./store.html', import.meta.url)),
+        },
+      },
     },
     server: {
       host: '127.0.0.1',

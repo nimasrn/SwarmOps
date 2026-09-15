@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -31,5 +33,21 @@ func TestEmbeddedConsoleUsesPublishedAgentInstaller(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("embedded console does not contain the published agent installer URL")
+	}
+}
+
+func TestStorefrontAddressesServeTheStorefrontPage(t *testing.T) {
+	handler := Handler()
+	for _, path := range []string{"/store", "/store/", "/store/wallet", "/store.html"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "SwarmOps Cloud") {
+			t.Fatalf("GET %s = %d, want the storefront page", path, response.Code)
+		}
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/machines", nil))
+	if strings.Contains(response.Body.String(), "SwarmOps Cloud") {
+		t.Fatal("a console address served the storefront")
 	}
 }

@@ -1,0 +1,1 @@
+import{F as e,zt as t}from"./format-Dh6Hw4j3.js";var n=t(),r={active:`success`,answered:`info`,cancelled:`neutral`,closed:`neutral`,deleted:`neutral`,failed:`danger`,open:`warning`,paid:`success`,pending:`warning`,provisioning:`info`,rejected:`danger`,suspended:`danger`};function i({status:t}){return(0,n.jsx)(e,{dot:!0,variant:r[t]??`neutral`,children:t})}export{i as t};

@@ -1451,3 +1451,183 @@ export interface CoreConsoleRequest {
   label: string
   zone: string
 }
+
+// SwarmOps Cloud. Shapes mirror internal/cloud/types.go; every amount is rials.
+
+export interface CloudUser {
+  createdAt: string
+  email: string
+  fullName: string
+  id: number
+  lastLoginAt?: string
+  role: 'admin' | 'customer'
+  status: 'active' | 'suspended'
+}
+
+export interface CloudSession {
+  csrfToken: string
+  expiresAt: string
+  user: CloudUser
+}
+
+export interface CloudPlan {
+  active: boolean
+  category: string
+  code: string
+  cpuMillicores: number
+  description: string
+  diskGiB: number
+  features: string[]
+  hourlyPriceRial: number
+  id: number
+  memoryMiB: number
+  monthlyPriceRial: number
+  name: string
+  sortOrder: number
+  updatedAt: string
+}
+
+export type CloudPlanInput = Omit<CloudPlan, 'category' | 'id' | 'updatedAt'>
+
+export interface CloudWallet {
+  balanceRial: number
+  updatedAt: string
+  userId: number
+}
+
+export interface CloudTransaction {
+  amountRial: number
+  balanceAfterRial: number
+  createdAt: string
+  description: string
+  id: number
+  kind: 'adjustment' | 'order_charge' | 'refund' | 'topup' | 'usage'
+  referenceId?: number
+  referenceType?: string
+  userId: number
+}
+
+export interface CloudOrderItem {
+  appName: string
+  hourlyPriceRial: number
+  id: number
+  image: string
+  monthlyPriceRial: number
+  planCode: string
+  planName: string
+  port: number
+}
+
+export type CloudOrderStatus = 'active' | 'cancelled' | 'failed' | 'pending' | 'provisioning' | 'rejected'
+
+export interface CloudOrder {
+  customerEmail?: string
+  customerNote?: string
+  id: number
+  items: CloudOrderItem[]
+  placedAt: string
+  reviewReason?: string
+  reviewedAt?: string
+  status: CloudOrderStatus
+  upfrontRial: number
+  updatedAt: string
+  userId: number
+}
+
+export interface CloudProject {
+  activatedAt?: string
+  appName: string
+  commandId?: string
+  createdAt: string
+  hourlyPriceRial: number
+  id: number
+  monthlyPriceRial: number
+  orderItemId: number
+  planCode: string
+  planName: string
+  serverId: string
+  status: 'active' | 'deleted' | 'failed' | 'provisioning' | 'suspended'
+  suspendedAt?: string
+  usageThisMonthRial: number
+  userId: number
+}
+
+export interface CloudInvoiceLine {
+  amountRial: number
+  description: string
+  id: number
+  projectId?: number
+  quantityHours: number
+}
+
+export interface CloudInvoice {
+  createdAt: string
+  id: number
+  issuedAt?: string
+  lines?: CloudInvoiceLine[]
+  number: string
+  periodEnd: string
+  periodStart: string
+  status: 'draft' | 'issued' | 'paid' | 'void'
+  subtotalRial: number
+  taxRateBp: number
+  taxRial: number
+  totalRial: number
+  userId: number
+}
+
+export interface CloudTicketMessage {
+  authorName: string
+  authorRole: 'admin' | 'customer'
+  body: string
+  createdAt: string
+  id: number
+}
+
+export interface CloudTicket {
+  createdAt: string
+  customerEmail?: string
+  id: number
+  messages?: CloudTicketMessage[]
+  priority: 'high' | 'low' | 'normal'
+  projectId?: number
+  status: 'answered' | 'closed' | 'open'
+  subject: string
+  updatedAt: string
+  userId: number
+}
+
+export interface CloudCustomerAccount {
+  balanceRial: number
+  createdAt: string
+  email: string
+  fullName: string
+  liveProjects: number
+  pendingOrders: number
+  status: 'active' | 'suspended'
+  userId: number
+}
+
+export interface CloudRevenueMonth {
+  chargedRial: number
+  month: string
+  payingCustomers: number
+  refundedRial: number
+  toppedUpRial: number
+}
+
+export interface CloudOverview {
+  activeProjects: number
+  customers: number
+  openTickets: number
+  pendingOrders: number
+  revenueThisMonthRial: number
+  suspendedProjects: number
+  walletFloatRial: number
+}
+
+export interface CloudBillingResult {
+  chargedHours: number
+  chargedRial: number
+  suspended: number
+}

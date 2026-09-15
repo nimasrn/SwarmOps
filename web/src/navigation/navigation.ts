@@ -46,12 +46,18 @@ export type WorkspacePage =
   | 'logs'
   | 'audit'
   | 'catalog'
+  // Sales — SwarmOps Cloud: what customers bought, and what they owe.
+  | 'orders'
+  | 'customers'
+  | 'plans'
+  | 'billing'
+  | 'support'
   // Control — the controller itself and the software on every host.
   | 'core'
   | 'agents'
   | 'registry-mirror'
 
-export type AreaKey = 'home' | 'apps' | 'machines' | 'traffic' | 'activity' | 'control'
+export type AreaKey = 'home' | 'apps' | 'machines' | 'traffic' | 'activity' | 'sales' | 'control'
 
 export interface PageEntry {
   icon: IconName
@@ -148,6 +154,20 @@ export const AREAS: AreaEntry[] = [
       { icon: 'document', key: 'logs', label: 'Logs', summary: 'Container and service output, live and searchable.', keywords: 'output stdout stderr tail fluentd' },
       { icon: 'shield', key: 'audit', label: 'Audit', summary: 'Who did what, when, and against which host.', keywords: 'log security compliance events who' },
       { icon: 'terminal', key: 'catalog', label: 'Action catalog', summary: 'The fixed set of operations that may be queued.', keywords: 'actions catalogue run command available vocabulary' },
+    ],
+  },
+  {
+    icon: 'wallet',
+    key: 'sales',
+    shortcut: 's',
+    label: 'Sales',
+    summary: 'SwarmOps Cloud: what customers bought, what they owe, and what is waiting for a decision.',
+    pages: [
+      { icon: 'check-circle', key: 'orders', label: 'Orders', summary: 'Orders waiting for review, and every order already decided.', keywords: 'cloud commerce purchase confirm approve reject queue provisioning storefront' },
+      { icon: 'users', key: 'customers', label: 'Customers', summary: 'Accounts, wallet balances, and ledger corrections.', keywords: 'cloud accounts wallet balance adjust suspend users' },
+      { icon: 'tag', key: 'plans', label: 'Plans', summary: 'What the storefront sells, at what size and price.', keywords: 'cloud catalogue products pricing tiers' },
+      { icon: 'chart', key: 'billing', label: 'Billing', summary: 'Hourly charges, invoices, and revenue by month.', keywords: 'cloud usage invoices revenue tax billing run' },
+      { icon: 'chat', key: 'support', label: 'Support', summary: 'Customer tickets and their answers.', keywords: 'cloud tickets help desk customers' },
     ],
   },
   {

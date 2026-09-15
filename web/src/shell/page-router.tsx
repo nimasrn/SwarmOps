@@ -26,6 +26,11 @@ const AuditPage = lazy(() => import('../screens/activity/audit').then(module => 
 const CoreTopologyPage = lazy(() => import('../screens/control/core').then(module => ({ default: module.CoreTopologyPage })))
 const AgentsPage = lazy(() => import('../screens/control/agents').then(module => ({ default: module.AgentsPage })))
 const RegistryMirrorPage = lazy(() => import('../screens/control/registry-mirror').then(module => ({ default: module.RegistryMirrorPage })))
+const OrdersPage = lazy(() => import('../screens/sales/orders').then(module => ({ default: module.OrdersPage })))
+const CustomersPage = lazy(() => import('../screens/sales/customers').then(module => ({ default: module.CustomersPage })))
+const PlansPage = lazy(() => import('../screens/sales/plans').then(module => ({ default: module.PlansPage })))
+const BillingPage = lazy(() => import('../screens/sales/billing').then(module => ({ default: module.BillingPage })))
+const SupportPage = lazy(() => import('../screens/sales/support').then(module => ({ default: module.SupportPage })))
 
 type Toast = ReturnType<typeof useToast>
 
@@ -164,6 +169,18 @@ function PageRouterContent(props: PageRouterProps) {
           toast={toast}
         />
       )
+    // SwarmOps Cloud reads the controller database, not a cluster, so every
+    // Sales screen answers before the cluster gate below.
+    case 'orders':
+      return <OrdersPage servers={servers} toast={toast} />
+    case 'customers':
+      return <CustomersPage toast={toast} />
+    case 'plans':
+      return <PlansPage toast={toast} />
+    case 'billing':
+      return <BillingPage toast={toast} />
+    case 'support':
+      return <SupportPage toast={toast} />
     case 'deploy':
       // Every way of starting a deployment is one screen with one plan: a
       // repository, an archive, an image already pushed, or a set of

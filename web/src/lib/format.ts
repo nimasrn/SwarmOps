@@ -116,3 +116,18 @@ export function relativeTime(value?: string) {
 export function countOf(value: number, singular: string, plural = `${singular}s`) {
   return `${value} ${value === 1 ? singular : plural}`
 }
+
+/**
+ * Money is stored in rials, the legal unit, as whole numbers. People read
+ * prices in tomans, ten rials each, so that is what every screen prints. The
+ * locale decides the digits: Persian readers get Persian numerals.
+ */
+export function formatMoney(rial: number, locale: 'en' | 'fa' = 'en') {
+  const toman = new Intl.NumberFormat(locale === 'fa' ? 'fa-IR' : 'en-US', { maximumFractionDigits: 0 }).format(Math.round(rial / 10))
+  return locale === 'fa' ? `${toman} تومان` : `${toman} toman`
+}
+
+/** Hundredths of a percent, as tax rates are stored: 1000 is 10%. */
+export function formatBasisPoints(value: number) {
+  return `${(value / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%`
+}
