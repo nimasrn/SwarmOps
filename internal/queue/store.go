@@ -198,37 +198,60 @@ func (s *Store) SubmitWithResult(input SubmitInput) (Submission, error) {
 	return s.submit(input, true)
 }
 
+// SubmitInTx enqueues a command inside a transaction the caller owns. The
+// command commits or rolls back together with the caller's own writes, which
+// is the transactional outbox the commerce layer provisions through: a wallet
+// charge and the deployment it paid for can never exist one without the other.
+// After its transaction commits, the caller passes the returned ids to
+// ForgetInputs so superseded build inputs leave the disk too.
+func (s *Store) SubmitInTx(ctx context.Context, tx *sql.Tx, input SubmitInput) (Submission, []string, error) {
+	if err := validateInput(input, false); err != nil {
+		return Submission{}, nil, err
+	}
+	return s.submitTx(ctx, tx, input)
+}
+
+// ForgetInputs removes the sealed input files of commands that left the ledger
+// in a transaction that has now committed.
+func (s *Store) ForgetInputs(ids []string) {
+	for _, id := range ids {
+		s.removeArtifact(id)
+	}
+}
+
+func (s *Store) submitTx(ctx context.Context, tx *sql.Tx, input SubmitInput) (Submission, []string, error) {
+	if command, found, err := idempotentTx(ctx, tx, input, false); err != nil {
+		return Submission{}, nil, err
+	} else if found {
+		return Submission{Command: command}, nil, nil
+	}
+	record, err := s.newRecord(input, false)
+	if err != nil {
+		return Submission{}, nil, err
+	}
+	superseded, artifacts, err := supersedeTx(ctx, tx, input)
+	if err != nil {
+		return Submission{}, nil, err
+	}
+	if err := s.insertTx(ctx, tx, record, input.Payload); err != nil {
+		return Submission{}, nil, err
+	}
+	pruned, err := s.pruneTx(ctx, tx)
+	if err != nil {
+		return Submission{}, nil, err
+	}
+	return Submission{Command: cloneCommand(record.command), Created: true, Superseded: superseded}, append(artifacts, pruned...), nil
+}
+
 func (s *Store) submit(input SubmitInput, retryDuplicate bool) (Submission, error) {
 	ctx, cancel := s.context()
 	defer cancel()
 	var submission Submission
 	var cleanup []string
 	err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
-		submission, cleanup = Submission{}, nil
-		if command, found, err := idempotentTx(ctx, tx, input, false); err != nil {
-			return err
-		} else if found {
-			submission.Command = command
-			return nil
-		}
-		record, err := s.newRecord(input, false)
-		if err != nil {
-			return err
-		}
-		superseded, artifacts, err := supersedeTx(ctx, tx, input)
-		if err != nil {
-			return err
-		}
-		if err := s.insertTx(ctx, tx, record, input.Payload); err != nil {
-			return err
-		}
-		pruned, err := s.pruneTx(ctx, tx)
-		if err != nil {
-			return err
-		}
-		submission = Submission{Command: cloneCommand(record.command), Created: true, Superseded: superseded}
-		cleanup = append(artifacts, pruned...)
-		return nil
+		var err error
+		submission, cleanup, err = s.submitTx(ctx, tx, input)
+		return err
 	})
 	if sqlstore.IsDuplicate(err) && retryDuplicate {
 		// A concurrent submission with the same idempotency key committed
