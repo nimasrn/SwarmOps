@@ -449,6 +449,12 @@ func (s *Service) OnCommandTransition(ctx context.Context, command domain.Comman
 		if _, err := tx.ExecContext(ctx, "UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND status = ?", OrderFailed, now, orderID, OrderProvisioning); err != nil {
 			return err
 		}
+		// The hour charged at confirmation is refunded below, so its usage
+		// row goes with it: otherwise the project would still show the hour
+		// as spent and the month's invoice would bill money already returned.
+		if _, err := tx.ExecContext(ctx, "DELETE FROM usage_records WHERE project_id = ? AND invoice_id IS NULL", projectID); err != nil {
+			return err
+		}
 		var charged int64
 		if err := tx.QueryRowContext(ctx, "SELECT COALESCE(-SUM(amount_rial), 0) FROM wallet_transactions WHERE user_id = ? AND reference_type = 'order' AND reference_id = ? AND kind = ?",
 			userID, orderID, KindOrderCharge).Scan(&charged); err != nil {

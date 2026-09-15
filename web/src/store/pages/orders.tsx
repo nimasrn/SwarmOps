@@ -83,7 +83,7 @@ export function ProjectsPage() {
               <Body>{`${project.planName} · ${t('projects.rate', { price: money(project.hourlyPriceRial) })}`}</Body>
               <Inline gap="loose" wrap>
                 <Stat label={t('projects.usage')} value={money(project.usageThisMonthRial)} />
-                <Stat label={t('column.date')} value={date(project.activatedAt ?? project.createdAt)} />
+                <Stat label={t('projects.since')} value={date(project.activatedAt ?? project.createdAt)} />
               </Inline>
               {project.status === 'suspended'
                 ? <Banner action={<Button onClick={() => navigate('wallet')} size="sm">{t('action.topUp')}</Button>} tone="warning">{t('projects.suspended')}</Banner>

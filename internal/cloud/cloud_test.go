@@ -404,6 +404,17 @@ func TestTheDeploymentOutcomeActivatesOrFailsAndRefundsOnce(t *testing.T) {
 	if err != nil || project.Status != ProjectFailed {
 		t.Fatalf("failed project = %#v, %v", project, err)
 	}
+	if project.UsageThisMonth != 0 {
+		t.Fatalf("a refunded project still shows %d rial of usage", project.UsageThisMonth)
+	}
+	// The month's invoice bills only the hour that was kept.
+	if _, err := f.service.IssueInvoices(ctx, f.clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	invoices, err := f.service.Invoices(ctx, customer.ID, 10)
+	if err != nil || len(invoices) != 1 || invoices[0].TotalRial != 10_000 {
+		t.Fatalf("invoices after a refund = %#v, %v; want one invoice of 10000", invoices, err)
+	}
 }
 
 // Billing charges each hour once, never more than the plan's monthly price in
