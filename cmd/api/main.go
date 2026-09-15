@@ -20,6 +20,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/agent"
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/build"
+	"github.com/nimasrn/SwarmOps/internal/cloud"
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/domain"
 	"github.com/nimasrn/SwarmOps/internal/ops"
@@ -286,6 +287,15 @@ func main() {
 	})
 	api, err := apihttp.New(cfg, targets, servers, auditStore, logger)
 	if err == nil {
+		// SwarmOps Cloud shares the controller database and provisions
+		// through the same command ledger as the console.
+		cloudService, cloudErr := cloud.New(db, api.CommandStore(), api.CloudProvisioner(), cloud.Options{})
+		if cloudErr != nil {
+			logger.Error("configure SwarmOps Cloud", "error", cloudErr)
+			os.Exit(1)
+		}
+		api.SetCloudService(cloudService)
+		go runCloudBilling(ctx, cloudService, api.CanExecuteCommands, logger)
 		api.SetVersion(version)
 		api.SetApplicationDiscovery(applications, ops.ApplicationNamespace)
 		api.SetSourceService(sourceService)

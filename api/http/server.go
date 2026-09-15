@@ -26,6 +26,7 @@ import (
 	"github.com/nimasrn/SwarmOps/internal/audit"
 	"github.com/nimasrn/SwarmOps/internal/auth"
 	"github.com/nimasrn/SwarmOps/internal/build"
+	"github.com/nimasrn/SwarmOps/internal/cloud"
 	"github.com/nimasrn/SwarmOps/internal/config"
 	"github.com/nimasrn/SwarmOps/internal/coretopology"
 	"github.com/nimasrn/SwarmOps/internal/domain"
@@ -143,6 +144,7 @@ type Server struct {
 	apps           *ops.ApplicationStore
 	agentBroker    *agentpull.Broker
 	agentRegistry  *agentpull.Registry
+	cloud          *cloud.Service
 	namespace      string
 	targets        TargetResolver
 }
@@ -366,6 +368,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/commands/{id}/log", s.withAuth(false, s.commandLog))
 	mux.HandleFunc("GET /api/v1/commands/{id}/events", s.withAuth(false, s.commandEvents))
 	mux.HandleFunc("POST /api/v1/commands/{id}/retry", s.withActiveAuth(s.commandRetry))
+	s.registerCloudRoutes(mux)
 	mux.Handle("/", web.Handler())
 	return s.middleware(mux)
 }

@@ -35,7 +35,7 @@ func openDatabase(ctx context.Context, cfg config.Config) (*sqlstore.DB, error) 
 
 // migrationStep is one store's import from the pre-database sealed files.
 type migrationStep struct {
-	name   string
+	name    string
 	import_ func(context.Context, *sqlstore.DB, config.Config) (string, error)
 }
 

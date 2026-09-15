@@ -1172,6 +1172,7 @@ func sortedCommandStrings(values []string) []string {
 // raw Compose, build input, remote output, or error text in the audit stream.
 func (s *Server) RecordCommandTransition(command domain.Command, event string) {
 	s.record(command.Actor, command.RequestID, "command."+event, "command/"+command.ID, nil, commandAuditDetail(command))
+	s.notifyCloud(command)
 }
 
 func (s *Server) CommandStore() *queue.Store { return s.commands }
