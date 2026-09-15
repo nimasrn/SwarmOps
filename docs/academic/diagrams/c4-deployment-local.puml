@@ -1,0 +1,31 @@
+@startuml c4-deployment-local
+!include <C4/C4_Deployment>
+
+title SwarmOps Cloud — Environment used for verification (15 September 2026)
+
+Deployment_Node(mac, "Development laptop", "macOS, Apple silicon (arm64)") {
+  Deployment_Node(browser, "Browser", "Chromium") {
+    Container(storefront, "Storefront", "React, served by Vite")
+    Container(console, "Administration console", "React, served by Vite")
+  }
+  Container(vite, "Vite dev server", "Node.js, 127.0.0.1:5284", "Serves the applications and proxies /api to Core.")
+  Container(core, "swarmops-core", "go run ./cmd/api, 127.0.0.1:8084", "Development authentication; mutations enabled.")
+  Container(agent, "swarmops-agent", "Go build stamped v0.22.0, 127.0.0.1:9180", "Loopback machine API with a pinned certificate.")
+  Deployment_Node(orbstack, "OrbStack Docker Engine 29.4", "Single-node Swarm manager, nim.edge=true") {
+    ContainerDb(mariadb, "MariaDB 11.4", "Container, 127.0.0.1:3307", "Development database and test runs.")
+    ContainerDb(mysql, "MySQL 8.4", "Container, 127.0.0.1:3308", "Second engine for test runs.")
+    Container(traefik, "Traefik v3.6.13", "Swarm service")
+    Container(app, "production-sara-api_app", "Swarm service, mendhak/http-https-echo:41")
+  }
+}
+
+Rel(storefront, vite, "HTTP")
+Rel(console, vite, "HTTP")
+Rel(vite, core, "Proxies /api", "HTTP")
+Rel(core, mariadb, "SQL")
+Rel(core, agent, "HTTPS, pinned TLS")
+Rel(agent, orbstack, "Docker Engine socket")
+Rel(traefik, app, "Overlay network")
+
+SHOW_LEGEND()
+@enduml

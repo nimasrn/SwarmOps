@@ -1,0 +1,28 @@
+@startuml c4-context
+!include <C4/C4_Context>
+
+title SwarmOps Cloud — System Context (C4 level 1)
+
+Person(customer, "Customer", "Buys hosting plans, tops up a prepaid wallet, and follows orders, projects, invoices and support tickets.")
+Person(admin, "Administrator", "Reviews and confirms orders, manages plans, wallets and billing, and operates servers, the gateway and applications.")
+Person_Ext(visitor, "Application visitor", "Uses an application a customer deployed.")
+
+System(swarmops, "SwarmOps Cloud", "SQL-backed platform-as-a-service for containers on Docker Swarm, with a customer storefront and an administration console.")
+
+System_Ext(swarm, "Docker Swarm cluster", "Ubuntu nodes running the SwarmOps machine agent, Docker Engine, the Traefik gateway and customer applications.")
+System_Ext(registry, "Container registry", "GHCR, Docker Hub or a private registry holding the images customers order.")
+System_Ext(git, "Git providers", "GitHub and GitLab repositories read by source-to-deploy.")
+System_Ext(dns, "DNS providers", "Cloudflare and ArvanCloud zones used for DNS records and DNS-01 challenges.")
+System_Ext(acme, "ACME certificate authority", "Let's Encrypt, issuing TLS certificates to the gateway.")
+
+Rel(customer, swarmops, "Orders plans, tops up, reads invoices", "HTTPS")
+Rel(admin, swarmops, "Confirms orders, operates the platform", "HTTPS")
+Rel(swarmops, swarm, "Deploys, scales and inspects services through the machine agent", "HTTPS, pinned TLS")
+Rel(swarmops, git, "Reads source repositories", "HTTPS")
+Rel(swarmops, dns, "Manages DNS records", "HTTPS API")
+Rel(swarm, registry, "Pulls application images", "HTTPS")
+Rel(swarm, acme, "Requests certificates", "ACME")
+Rel(visitor, swarm, "Uses deployed applications", "HTTP/HTTPS")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,38 @@
+@startgantt proposal-schedule
+title Planned schedule (weeks from the start of the project)
+printscale weekly
+hide footbox
+
+-- Analysis --
+[Requirements and market study] as [A1] requires 2 weeks
+[Architecture and data model] as [A2] requires 2 weeks
+[A2] starts at [A1]'s end
+
+-- SQL foundation --
+[Connection pool, transactions, migrations] as [B1] requires 1 week
+[B1] starts at [A2]'s end
+[Move every controller store to SQL] as [B2] requires 3 weeks
+[B2] starts at [B1]'s end
+
+-- Commerce --
+[Accounts, catalogue and wallet ledger] as [C1] requires 2 weeks
+[C1] starts at [B1]'s end
+[Orders, provisioning, billing and invoices] as [C2] requires 2 weeks
+[C2] starts at [C1]'s end
+
+-- Front ends --
+[Storefront (English and Persian)] as [D1] requires 2 weeks
+[D1] starts at [C2]'s end
+[Administration Sales area] as [D2] requires 2 weeks
+[D2] starts at [C2]'s end
+
+-- Verification and documentation --
+[Automated tests on MariaDB and MySQL] as [E1] requires 2 weeks
+[E1] starts at [B2]'s end
+[End-to-end verification] as [E2] requires 1 week
+[E2] starts at [D1]'s end
+[Academic documentation] as [E3] requires 2 weeks
+[E3] starts at [E2]'s end
+
+[Submission] happens at [E3]'s end
+@endgantt

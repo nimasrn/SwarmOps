@@ -1,0 +1,49 @@
+@startuml use-cases
+title SwarmOps Cloud — Use cases
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor Customer as C
+actor Administrator as A
+actor "Billing job" as B <<system>>
+actor "Command worker" as W <<system>>
+
+rectangle "SwarmOps Cloud" {
+  usecase "UC-01 Register and sign in" as UC1
+  usecase "UC-02 Top up the wallet" as UC2
+  usecase "UC-03 Order a plan" as UC3
+  usecase "UC-04 Cancel a pending order" as UC4
+  usecase "UC-05 Review and confirm an order" as UC5
+  usecase "UC-06 Reject an order" as UC6
+  usecase "UC-07 Provision the application" as UC7
+  usecase "UC-08 Bill running projects hourly" as UC8
+  usecase "UC-09 Issue monthly invoices" as UC9
+  usecase "UC-10 Open and answer a support ticket" as UC10
+  usecase "UC-11 Adjust a wallet" as UC11
+  usecase "UC-12 Manage the plan catalogue" as UC12
+  usecase "UC-13 Suspend or reactivate a customer" as UC13
+  usecase "UC-14 Read invoices and projects" as UC14
+}
+
+C --> UC1
+C --> UC2
+C --> UC3
+C --> UC4
+C --> UC10
+C --> UC14
+A --> UC5
+A --> UC6
+A --> UC9
+A --> UC10
+A --> UC11
+A --> UC12
+A --> UC13
+A --> UC8
+B --> UC8
+B --> UC9
+W --> UC7
+
+UC5 ..> UC7 : <<include>>
+UC2 ..> UC8 : <<extend>>\nresumes suspended projects
+@enduml

@@ -1,0 +1,190 @@
+@startuml c4-code-commerce
+title Commerce, queue and storage types (C4 level 4, code)
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+
+package "internal/sqlstore" {
+  class DB {
+    - engine : Engine
+    - pool : *sql.DB
+    - sealer : *securestore.Sealer
+    - version : string
+    + WithTx(ctx, fn func(*sql.Tx) error) error
+    + Migrate(ctx) error
+    + Pool() *sql.DB
+  }
+}
+
+package "internal/domain" {
+  class Command {
+    + ID : string
+    + Action : string
+    + Actor : string
+    + ServerID : string
+    + Target : string
+    + State : CommandState
+    + Attempt : uint
+    + MaxAttempts : uint
+    + AutoRetry : bool
+    + AuthorityEpoch : uint64
+    + NextAttemptAt : *time.Time
+    + FailureCode : string
+    + FailureSummary : string
+  }
+}
+
+package "internal/queue" {
+  class SubmitInput {
+    + Action : string
+    + Actor : string
+    + ServerID : string
+    + Target : string
+    + IdempotencyKey : string
+    + Payload : []byte
+    + MaxAttempts : uint
+    + AutoRetry : bool
+    + AuthorityEpoch : uint64
+  }
+  class Submission {
+    + Command : domain.Command
+    + Created : bool
+    + Superseded : []domain.Command
+  }
+  class Store {
+    - db : *sqlstore.DB
+    - sealer : *securestore.Sealer
+    - historyLimit : int
+    + SubmitInTx(ctx, tx, SubmitInput) (Submission, []string, error)
+    + ClaimDue() (Record, bool, error)
+    + Fail(id, err) (domain.Command, string, error)
+    + ForgetInputs(ids []string)
+  }
+  class Worker {
+    + CanExecute : func() bool
+    + Execute : ExecuteFunc
+    + ExecutionTimeout : func(domain.Command) time.Duration
+    + OnTransition : TransitionFunc
+    + PollInterval : time.Duration
+    + Store : *Store
+  }
+}
+
+package "internal/cloud" {
+  interface CommandQueue {
+    + SubmitInTx(ctx, tx, queue.SubmitInput) (queue.Submission, []string, error)
+    + ForgetInputs(ids []string)
+  }
+  interface Provisioner {
+    + Suspend(ctx, Project) error
+    + Resume(ctx, Project) error
+  }
+  class Options {
+    + BcryptCost : int
+    + SessionTTL : time.Duration
+    + ReserveHours : int64
+    + TaxRateBP : int64
+    + MinTopUpRial : int64
+    + MaxTopUpRial : int64
+    + Now : func() time.Time
+  }
+  class Service {
+    - commands : CommandQueue
+    - db : *sqlstore.DB
+    - options : Options
+    - provisioner : Provisioner
+    + PlaceOrder(ctx, userID, OrderInput) (Order, error)
+    + ConfirmOrder(ctx, reviewer, orderID, ProvisionTarget) (Order, Project, domain.Command, error)
+    + OnCommandTransition(ctx, domain.Command) error
+    + TopUp(ctx, userID, amount, idempotencyKey) (Transaction, error)
+    + RunBilling(ctx) (BillingResult, error)
+    + IssueInvoices(ctx, month) (int, error)
+    - applyTx(ctx, tx, ledgerEntry) (Transaction, error)
+  }
+  class ledgerEntry <<unexported>> {
+    - userID : uint64
+    - amount : int64
+    - kind : string
+    - idempotencyKey : string
+    - referenceType : string
+    - referenceID : uint64
+    - description : string
+    - createdBy : uint64
+  }
+  class Wallet {
+    + UserID : uint64
+    + BalanceRial : int64
+    + UpdatedAt : time.Time
+  }
+  class Transaction {
+    + ID : uint64
+    + UserID : uint64
+    + Kind : string
+    + AmountRial : int64
+    + BalanceAfterRial : int64
+    + ReferenceType : string
+    + ReferenceID : uint64
+    + Description : string
+  }
+  class Order {
+    + ID : uint64
+    + UserID : uint64
+    + Status : string
+    + UpfrontRial : int64
+    + CustomerNote : string
+    + ReviewReason : string
+    + Items : []OrderItem
+  }
+  class OrderItem {
+    + ID : uint64
+    + PlanCode : string
+    + AppName : string
+    + Image : string
+    + Port : uint16
+    + HourlyPriceRial : int64
+    + MonthlyPriceRial : int64
+  }
+  class Project {
+    + ID : uint64
+    + UserID : uint64
+    + OrderItemID : uint64
+    + AppName : string
+    + ServerID : string
+    + CommandID : string
+    + Status : string
+    + HourlyPriceRial : int64
+    + UsageThisMonth : int64
+  }
+  class Invoice {
+    + ID : uint64
+    + UserID : uint64
+    + Number : string
+    + PeriodStart : time.Time
+    + SubtotalRial : int64
+    + TaxRateBP : int64
+    + TaxRial : int64
+    + TotalRial : int64
+    + Lines : []InvoiceLine
+  }
+}
+
+Service o-- Options
+Service --> CommandQueue : queues deployments through
+Service --> Provisioner : suspends and resumes through
+Service --> DB : runs transactions on
+Service ..> ledgerEntry : applies
+ledgerEntry ..> Transaction : becomes
+Transaction --> Wallet : changes the balance of
+Order *-- "1..*" OrderItem
+OrderItem "1" -- "0..1" Project : provisions
+Project ..> Command : deployed by
+Service ..> Invoice : issues
+Store ..|> CommandQueue
+Store --> DB
+Store ..> SubmitInput
+Store ..> Submission
+Submission o-- Command
+Worker --> Store : claims from
+
+@enduml

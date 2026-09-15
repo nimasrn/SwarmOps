@@ -1,0 +1,40 @@
+@startuml c4-deployment-production
+!include <C4/C4_Deployment>
+
+title SwarmOps Cloud — Intended production deployment
+
+Deployment_Node(device, "Customer or administrator device", "Web browser") {
+  Container(storefront, "Storefront", "React single-page application")
+  Container(console, "Administration console", "React single-page application")
+}
+
+Deployment_Node(control, "Control host", "Ubuntu 24.04, systemd") {
+  Container(core, "swarmops-core", "Go binary", "Serves the applications and APIs, runs the command worker and the billing job. Reads its database DSN and keys from protected files.")
+}
+
+Deployment_Node(dbhost, "Database server", "MariaDB 11.4 LTS or MySQL 8.4 LTS") {
+  ContainerDb(db, "swarmops schema", "InnoDB, utf8mb4", "Backed up with mysqldump --single-transaction; the data key is held separately.")
+}
+
+Deployment_Node(swarm, "Docker Swarm cluster", "Docker Engine") {
+  Deployment_Node(manager, "Edge manager node", "Ubuntu 24.04, label nim.edge=true") {
+    Container(agent1, "swarmops-agent", "systemd service")
+    Container(traefik, "Traefik gateway", "Swarm service, ports 80 and 443")
+    Container(apps1, "Customer applications", "Swarm services")
+  }
+  Deployment_Node(workers, "Worker nodes", "Ubuntu 24.04, one or more") {
+    Container(agent2, "swarmops-agent", "systemd service")
+    Container(apps2, "Customer applications", "Swarm services")
+  }
+}
+
+Rel(storefront, core, "HTTPS")
+Rel(console, core, "HTTPS")
+Rel(core, db, "SQL over TLS")
+Rel(core, agent1, "HTTPS, pinned TLS")
+Rel(core, agent2, "HTTPS, pinned TLS")
+Rel(traefik, apps1, "Overlay network")
+Rel(traefik, apps2, "Overlay network")
+
+SHOW_LEGEND()
+@enduml

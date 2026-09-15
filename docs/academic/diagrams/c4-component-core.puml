@@ -1,0 +1,57 @@
+@startuml c4-component-core
+!include <C4/C4_Component>
+LAYOUT_TOP_DOWN()
+
+title SwarmOps Core — Components (C4 level 3)
+
+Container(storefront, "Storefront", "React 19, TypeScript")
+Container(console, "Administration console", "React 19, TypeScript")
+ContainerDb(db, "Controller database", "MariaDB 11.4 or MySQL 8.4")
+Container_Ext(agent, "Machine agent", "Go, systemd service")
+
+Container_Boundary(core, "SwarmOps Core") {
+  Component(web, "Embedded web server", "internal/web", "Serves the console at / and the storefront at /store from files embedded in the binary.")
+  Component(storeapi, "Storefront API", "api/http, cloud_api.go", "/api/store/v1: customer sessions, CSRF checks, rate limits, wallet, orders, projects, invoices and tickets.")
+  Component(commerceapi, "Commerce administration API", "api/http, cloud_api.go", "/api/v1/commerce: order review and confirmation, customers, plans, billing, invoices, reports and tickets.")
+  Component(opsapi, "Operations API", "api/http, server.go, commands.go, traefik_routing.go", "Servers, gateway, applications and runs; submits typed commands.")
+  Component(auth, "Operator authentication", "internal/auth", "Bcrypt password check and signed operator sessions.")
+  Component(cloud, "Commerce service", "internal/cloud", "Accounts, catalogue, wallet ledger, orders, billing, invoices, tickets and reports.")
+  Component(billingjob, "Billing job", "cmd/api, cloud_billing.go", "Every five minutes, on the active core only: hourly billing and last month's invoices.")
+  Component(queue, "Command queue", "internal/queue, Store", "Durable commands with idempotency keys, retries and events; SubmitInTx joins a caller's transaction.")
+  Component(worker, "Command worker", "internal/queue, Worker", "Claims one due command at a time and executes it within a timeout.")
+  Component(ops, "Control plane", "internal/ops", "Renders and validates application stacks, routes and the Traefik gateway, and drives deployments.")
+  Component(remote, "Server manager", "internal/remote", "Saved servers and keys, plus live agent connections kept in memory.")
+  Component(audit, "Audit ledger", "internal/audit", "Append-only record of operator actions.")
+  Component(sqlstore, "SQL store", "internal/sqlstore", "Connection pool, retrying READ COMMITTED transactions, embedded migrations and sealed columns.")
+}
+
+Rel(storefront, web, "Loaded from", "HTTPS")
+Rel(console, web, "Loaded from", "HTTPS")
+Rel(storefront, storeapi, "Calls", "JSON/HTTPS")
+Rel(console, commerceapi, "Calls", "JSON/HTTPS")
+Rel(console, opsapi, "Calls", "JSON/HTTPS")
+
+Rel(storeapi, cloud, "Uses")
+Rel(commerceapi, auth, "Authenticates operators with")
+Rel(opsapi, auth, "Authenticates operators with")
+Rel(commerceapi, cloud, "Uses")
+Rel(commerceapi, ops, "Plans the application before confirming")
+Rel(commerceapi, audit, "Records decisions in")
+Rel(opsapi, queue, "Submits commands to")
+Rel(cloud, queue, "Queues the deployment inside the confirmation transaction")
+Rel(billingjob, cloud, "Runs billing and invoicing through")
+Rel(worker, queue, "Claims and completes commands in")
+Rel(worker, ops, "Executes commands with")
+Rel(worker, cloud, "Reports deployment outcomes to")
+Rel(ops, remote, "Resolves the target server through")
+Rel(remote, agent, "Calls", "HTTPS, pinned TLS")
+
+Rel(cloud, sqlstore, "Transactions")
+Rel(queue, sqlstore, "Transactions")
+Rel(audit, sqlstore, "Transactions")
+Rel(remote, sqlstore, "Transactions")
+Rel(ops, sqlstore, "Transactions")
+Rel(sqlstore, db, "SQL", "TCP")
+
+SHOW_LEGEND()
+@enduml

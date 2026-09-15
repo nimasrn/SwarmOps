@@ -1,0 +1,38 @@
+@startuml c4-container
+!include <C4/C4_Container>
+
+title SwarmOps Cloud — Containers (C4 level 2)
+
+Person(customer, "Customer")
+Person(admin, "Administrator")
+Person_Ext(visitor, "Application visitor")
+
+System_Boundary(cloud, "SwarmOps Cloud") {
+  Container(storefront, "Storefront", "React 19, TypeScript, Vite", "Customer single-page application served at /store: plans, checkout, wallet, orders, projects, invoices and support, in English and Persian.")
+  Container(console, "Administration console", "React 19, TypeScript, Vite", "Operator single-page application: the Sales area plus servers, gateway, applications, runs and audit.")
+  Container(core, "SwarmOps Core", "Go 1.26, net/http", "One process that serves both applications and their APIs, runs the command worker one command at a time, and runs the billing job every five minutes.")
+  ContainerDb(db, "Controller database", "MariaDB 11.4 or MySQL 8.4", "57 tables and 3 views: accounts, catalogue, wallet ledger, orders, invoices, command queue, audit, servers and routing. Secret columns are sealed with AES-GCM.")
+}
+
+System_Boundary(cluster, "Docker Swarm cluster") {
+  Container(agent, "Machine agent", "Go, systemd service", "Authenticated machine API on each node; runs fixed-shape Docker and Swarm operations.")
+  Container(traefik, "Traefik gateway", "Traefik v3.6, Swarm service", "Routes HTTP traffic to applications and obtains certificates.")
+  Container(apps, "Customer applications", "Docker Swarm services", "One stack per project, limited to its plan's CPU and memory.")
+}
+
+System_Ext(registry, "Container registry")
+
+Rel(customer, storefront, "Uses", "HTTPS")
+Rel(admin, console, "Uses", "HTTPS")
+Rel(storefront, core, "Calls /api/store/v1", "JSON over HTTPS, session cookie and CSRF token")
+Rel(console, core, "Calls /api/v1", "JSON over HTTPS, session cookie and CSRF token")
+Rel(core, db, "Reads and writes in transactions", "SQL over TCP, READ COMMITTED")
+Rel(core, agent, "Executes queued commands", "HTTPS, pinned certificate and API key")
+Rel(agent, apps, "Deploys stacks and scales services", "Docker Engine API")
+Rel(agent, traefik, "Installs and reconciles", "Docker Engine API")
+Rel(visitor, traefik, "Requests", "HTTP/HTTPS")
+Rel(traefik, apps, "Forwards requests", "Overlay network")
+Rel(apps, registry, "Images pulled from", "HTTPS")
+
+SHOW_LEGEND()
+@enduml

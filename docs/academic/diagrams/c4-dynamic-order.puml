@@ -1,0 +1,28 @@
+@startuml c4-dynamic-order
+!include <C4/C4_Dynamic>
+
+title Ordering a plan until the application runs (C4 dynamic diagram)
+
+Person(customer, "Customer")
+Person(admin, "Administrator")
+Container(storefront, "Storefront", "React")
+Container(console, "Administration console", "React")
+Container(core, "SwarmOps Core", "Go")
+ContainerDb(db, "Controller database", "MariaDB or MySQL")
+Container(agent, "Machine agent", "Go")
+Container(apps, "Customer application", "Swarm service")
+
+Rel(customer, storefront, "Chooses a plan and enters the application name, image and port")
+Rel(storefront, core, "POST /api/store/v1/orders", "JSON/HTTPS")
+Rel(core, db, "Inserts the order and its item with the prices at this moment; status pending", "SQL")
+Rel(admin, console, "Reviews the order, picks a Swarm manager and types CONFIRM_ORDER_n")
+Rel(console, core, "POST /api/v1/commerce/orders/{id}/confirm", "JSON/HTTPS")
+Rel(core, agent, "Plans the application against the chosen server", "HTTPS")
+Rel(core, db, "One transaction: lock the wallet, check the reserve, charge the first hour, create the project and usage row, insert the application.deploy command", "SQL")
+Rel(core, db, "The worker claims the due command", "SQL, FOR UPDATE SKIP LOCKED")
+Rel(core, agent, "Deploys the stack and waits for it to converge", "HTTPS")
+Rel(agent, apps, "Creates the service; Swarm checks GET /healthz", "Docker Engine API")
+Rel(core, db, "Succeeded: project and order become active. Failed: both become failed, the usage row is deleted and the hour is refunded", "SQL")
+Rel(customer, storefront, "Sees the project, its hourly price and this month's charges")
+
+@enduml

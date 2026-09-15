@@ -1,0 +1,51 @@
+@startuml seq-confirm-order
+title Confirming an order: payment and provisioning in one transaction
+autonumber
+skinparam sequenceMessageAlign center
+hide footbox
+
+actor Administrator as A
+participant "Console" as UI
+participant "Commerce API\n(api/http)" as API
+participant "Control plane\n(internal/ops)" as OPS
+participant "Commerce service\n(internal/cloud)" as SVC
+participant "Command queue\n(internal/queue)" as Q
+database "MariaDB / MySQL" as DB
+participant "Command worker" as W
+participant "Machine agent" as AG
+
+A -> UI : types CONFIRM_ORDER_n, chooses a server
+UI -> API : POST /api/v1/commerce/orders/{id}/confirm
+API -> API : mutations enabled, audit writable,\nserver is a connected manager
+API -> OPS : PlanApplication(spec)
+OPS --> API : valid
+API -> SVC : ConfirmOrder(reviewer, id, target)
+SVC -> DB : BEGIN (READ COMMITTED)
+SVC -> DB : SELECT order … FOR UPDATE
+SVC -> DB : SELECT wallet … FOR UPDATE
+alt balance < 24 × hourly price
+  SVC -> DB : ROLLBACK
+  SVC --> API : FundsError
+  API --> UI : 409 with required amount
+else enough balance
+  SVC -> DB : INSERT wallet_transactions (order-charge-n)\nUPDATE wallets balance
+  SVC -> DB : INSERT projects, usage_records\nUPDATE orders status = provisioning
+  SVC -> Q : SubmitInTx(tx, application.deploy,\nkey cloud-order-n)
+  Q -> DB : INSERT commands, command_payloads
+  SVC -> DB : COMMIT
+  SVC --> API : order, project, command
+  API --> UI : 200 "deployment queued"
+end
+
+W -> DB : claim due command\n(FOR UPDATE SKIP LOCKED)
+W -> AG : deploy stack, wait for convergence
+alt deployment succeeds
+  AG --> W : converged
+  W -> SVC : OnCommandTransition(succeeded)
+  SVC -> DB : project, order = active
+else deployment fails
+  AG --> W : error or timeout
+  W -> SVC : OnCommandTransition(needs_attention)
+  SVC -> DB : BEGIN; project, order = failed;\nDELETE usage row; INSERT refund (order-refund-n); COMMIT
+end
+@enduml

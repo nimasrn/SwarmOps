@@ -1,0 +1,231 @@
+@startuml erd-platform
+title Platform schema (migrations 0001–0007): keys and relationships
+hide circle
+skinparam linetype ortho
+left to right direction
+entity "agents" as agents {
+  * id : varchar(64) <<PK>>
+  --
+}
+entity "agent_ca" as agent_ca {
+  * id : tinyint(3) unsigned <<PK>>
+  --
+}
+entity "agent_claims" as agent_claims {
+  * id : varchar(64) <<PK>>
+  --
+}
+entity "agent_enrollment_tokens" as agent_enrollment_tokens {
+  * code_digest : char(64) <<PK>>
+  --
+}
+entity "applications" as applications {
+  * name : varchar(41) <<PK>>
+  --
+}
+entity "application_databases" as application_databases {
+  * application_name : varchar(41) <<PK>>
+  * engine : varchar(16) <<PK>>
+  --
+}
+entity "application_database_credentials" as application_database_credentials {
+  * application_name : varchar(41) <<PK>>
+  * engine : varchar(16) <<PK>>
+  --
+}
+entity "application_database_env" as application_database_env {
+  * application_name : varchar(41) <<PK>>
+  * engine : varchar(16) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "application_env" as application_env {
+  * application_name : varchar(41) <<PK>>
+  * env_key : varchar(64) <<PK>>
+  --
+}
+entity "application_health_command" as application_health_command {
+  * application_name : varchar(41) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "application_outcomes" as application_outcomes {
+  * application_name : varchar(41) <<PK>>
+  --
+}
+entity "audit_events" as audit_events {
+  * seq : bigint(20) unsigned <<PK>>
+  --
+}
+entity "audit_event_details" as audit_event_details {
+  * event_seq : bigint(20) unsigned <<PK>>
+  * detail_key : varchar(190) <<PK>>
+  --
+}
+entity "commands" as commands {
+  * id : char(36) <<PK>>
+  --
+}
+entity "command_events" as command_events {
+  * command_id : char(36) <<PK>>
+  * sequence : int(10) unsigned <<PK>>
+  --
+}
+entity "command_locks" as command_locks {
+  * lock_name : varchar(80) <<PK>>
+  --
+}
+entity "command_outputs" as command_outputs {
+  * command_id : char(36) <<PK>>
+  --
+}
+entity "command_payloads" as command_payloads {
+  * command_id : char(36) <<PK>>
+  --
+}
+entity "core_authority" as core_authority {
+  * id : tinyint(3) unsigned <<PK>>
+  --
+}
+entity "core_handoffs" as core_handoffs {
+  * id : tinyint(3) unsigned <<PK>>
+  --
+  * from_id : varchar(64) <<FK>>
+  * to_id : varchar(64) <<FK>>
+}
+entity "core_members" as core_members {
+  * id : varchar(64) <<PK>>
+  --
+}
+entity "database_credentials" as database_credentials {
+  * engine : varchar(16) <<PK>>
+  --
+}
+entity "dependency_bindings" as dependency_bindings {
+  * cluster_id : varchar(64) <<PK>>
+  * caller_service : varchar(128) <<PK>>
+  * target_route : varchar(64) <<PK>>
+  * name : varchar(64) <<PK>>
+  --
+}
+entity "dns_credential_versions" as dns_credential_versions {
+  * cluster_id : varchar(64) <<PK>>
+  * credential_id : varchar(64) <<PK>>
+  * version : int(10) unsigned <<PK>>
+  --
+}
+entity "dns_records" as dns_records {
+  * cluster_id : varchar(64) <<PK>>
+  * id : varchar(64) <<PK>>
+  --
+}
+entity "routes" as routes {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  --
+}
+entity "route_certificates" as route_certificates {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  --
+}
+entity "route_certificate_domains" as route_certificate_domains {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "route_hosts" as route_hosts {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  * kind : varchar(4) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "route_runtime" as route_runtime {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  --
+}
+entity "route_runtime_entry_points" as route_runtime_entry_points {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "route_runtime_errors" as route_runtime_errors {
+  * cluster_id : varchar(64) <<PK>>
+  * route_key : varchar(64) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "routing_clusters" as routing_clusters {
+  * cluster_id : varchar(64) <<PK>>
+  --
+}
+entity "routing_domains" as routing_domains {
+  * cluster_id : varchar(64) <<PK>>
+  * zone : varchar(253) <<PK>>
+  --
+}
+entity "servers" as servers {
+  * id : varchar(64) <<PK>>
+  --
+}
+entity "server_agent_events" as server_agent_events {
+  * server_id : varchar(64) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+}
+entity "server_keys" as server_keys {
+  * server_id : varchar(64) <<PK>>
+  --
+}
+entity "service_route_declarations" as service_route_declarations {
+  * cluster_id : varchar(64) <<PK>>
+  * service_key : varchar(128) <<PK>>
+  --
+}
+entity "source_connections" as source_connections {
+  * id : char(32) <<PK>>
+  --
+}
+entity "source_private_hosts" as source_private_hosts {
+  * host : varchar(253) <<PK>>
+  --
+}
+entity "source_settings" as source_settings {
+  * id : tinyint(3) unsigned <<PK>>
+  --
+}
+applications ||--o{ application_databases : application_name
+applications ||--o{ application_database_env : application_name
+applications ||--o{ application_env : application_name
+applications ||--o{ application_health_command : application_name
+applications ||--o{ application_outcomes : application_name
+audit_events ||--o{ audit_event_details : event_seq
+commands ||--o{ command_events : command_id
+commands ||--o{ command_outputs : command_id
+commands ||--o{ command_payloads : command_id
+core_members ||--o{ core_handoffs : from_id
+core_members ||--o{ core_handoffs : to_id
+routing_clusters ||--o{ dependency_bindings : cluster_id
+routing_clusters ||--o{ dns_credential_versions : cluster_id
+routing_clusters ||--o{ dns_records : cluster_id
+routing_clusters ||--o{ routes : cluster_id
+routes ||--o{ route_certificates : cluster_id
+routes ||--o{ route_certificates : route_key
+route_certificates ||--o{ route_certificate_domains : cluster_id
+route_certificates ||--o{ route_certificate_domains : route_key
+routes ||--o{ route_hosts : cluster_id
+routes ||--o{ route_hosts : route_key
+routing_clusters ||--o{ route_runtime : cluster_id
+route_runtime ||--o{ route_runtime_entry_points : cluster_id
+route_runtime ||--o{ route_runtime_entry_points : route_key
+route_runtime ||--o{ route_runtime_errors : cluster_id
+route_runtime ||--o{ route_runtime_errors : route_key
+routing_clusters ||--o{ routing_domains : cluster_id
+servers ||--o{ server_agent_events : server_id
+servers ||--o{ server_keys : server_id
+routing_clusters ||--o{ service_route_declarations : cluster_id
+@enduml

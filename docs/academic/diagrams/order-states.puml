@@ -1,0 +1,28 @@
+@startuml order-states
+title Order and project states
+
+state "Order" as Order {
+  [*] --> pending : customer places the order
+  pending --> cancelled : customer cancels
+  pending --> rejected : administrator rejects with a reason
+  pending --> provisioning : administrator confirms\n(first hour charged, deployment queued)
+  provisioning --> active : deployment succeeded
+  provisioning --> failed : deployment failed\n(hour refunded)
+  cancelled --> [*]
+  rejected --> [*]
+  failed --> [*]
+}
+
+state "Project" as Project {
+  [*] --> p_provisioning : created on confirmation
+  p_provisioning : provisioning
+  p_active : active
+  p_suspended : suspended
+  p_failed : failed
+  p_provisioning --> p_active : deployment succeeded
+  p_provisioning --> p_failed : deployment failed
+  p_active --> p_suspended : the wallet cannot pay the next hour\n(service scaled to zero)
+  p_suspended --> p_active : a top-up covers the next hour\n(service scaled back; suspended hours not charged)
+  p_failed --> [*]
+}
+@enduml

@@ -1,0 +1,42 @@
+agent_ca	ck_agent_ca_singleton	`id` = 1
+applications	ck_applications_resources	`cpus` > 0 and `memory_mib` > 0 and `port` > 0
+commands	ck_commands_attempts	`max_attempts` between 1 and 8
+commands	ck_commands_epoch	`authority_epoch` >= 1
+commands	ck_commands_state	`state` in ('uploading','queued','leased','preparing','running','retry_scheduled','succeeded','failed','needs_attention','superseded','cancelled')
+core_authority	ck_core_authority_epoch	`authority_epoch` >= 1
+core_authority	ck_core_authority_singleton	`id` = 1
+core_handoffs	ck_core_handoffs_distinct	`from_id` <> `to_id`
+core_handoffs	ck_core_handoffs_fenced_time	`state` <> 'fenced' or `fenced_at` is not null
+core_handoffs	ck_core_handoffs_singleton	`id` = 1
+core_handoffs	ck_core_handoffs_state	`state` in ('prepared','fenced')
+core_members	ck_core_members_replica_state	`replica_state` in ('awaiting_restore','verified')
+core_members	ck_core_members_role	`role` in ('active','standby')
+dns_credential_versions	ck_dns_credential_versions_secret	`state` = 'removed' or `secret_sealed` is not null
+dns_credential_versions	ck_dns_credential_versions_state	`state` in ('sealed','validated','removed')
+invoices	ck_invoices_period	`period_end` >= `period_start`
+invoices	ck_invoices_status	`status` in ('draft','issued','paid','void')
+invoices	ck_invoices_total	`total_rial` = `subtotal_rial` + `tax_rial`
+orders	ck_orders_review	`status` in ('pending','cancelled') or `reviewed_at` is not null
+orders	ck_orders_status	`status` in ('pending','rejected','cancelled','provisioning','active','failed')
+order_items	ck_order_items_port	`port` > 0
+plans	ck_plans_prices	`hourly_price_rial` > 0 and `monthly_price_rial` >= `hourly_price_rial`
+plans	ck_plans_resources	`cpu_millicores` > 0 and `memory_mib` > 0
+plan_features	ck_plan_features_locale	`locale` in ('en','fa')
+projects	ck_projects_status	`status` in ('provisioning','active','suspended','failed','deleted')
+routes	ck_routes_protocol	`protocol` in ('http','tcp','udp')
+route_hosts	ck_route_hosts_kind	`kind` in ('host','sni')
+routing_clusters	ck_routing_clusters_settings	json_valid(`settings_json`)
+routing_clusters	cutover_json	json_valid(`cutover_json`)
+routing_clusters	cutover_rollback_json	json_valid(`cutover_rollback_json`)
+routing_clusters	settings_json	json_valid(`settings_json`)
+servers	ck_servers_agent_state	`agent_state` is null or `agent_state` in ('healthy','degraded','unknown','unhealthy')
+source_settings	ck_source_settings_build_requires_enabled	`build_enabled` = 0 or `enabled` = 1
+source_settings	ck_source_settings_singleton	`id` = 1
+support_tickets	ck_support_tickets_priority	`priority` in ('low','normal','high')
+support_tickets	ck_support_tickets_status	`status` in ('open','answered','closed')
+users	ck_users_role	`role` in ('customer','admin')
+users	ck_users_status	`status` in ('active','suspended')
+wallets	ck_wallets_non_negative	`balance_rial` >= 0
+wallet_transactions	ck_wallet_transactions_amount	`amount_rial` <> 0
+wallet_transactions	ck_wallet_transactions_balance	`balance_after_rial` >= 0
+wallet_transactions	ck_wallet_transactions_kind	`kind` in ('topup','order_charge','usage','refund','adjustment')

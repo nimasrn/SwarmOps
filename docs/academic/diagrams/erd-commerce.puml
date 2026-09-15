@@ -1,0 +1,198 @@
+@startuml erd-commerce
+title Commerce schema (migrations 0008 and 0009)
+hide circle
+skinparam linetype ortho
+
+entity "invoices" as invoices {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * number : varchar(24) <<UQ>>
+  * user_id : bigint(20) unsigned <<FK>>
+  * period_start : date
+  * period_end : date
+  * status : varchar(16)
+  * subtotal_rial : bigint(20) unsigned
+  * tax_rate_bp : smallint(5) unsigned
+  * tax_rial : bigint(20) unsigned
+  * total_rial : bigint(20) unsigned
+    issued_at : datetime(6)
+  * created_at : datetime(6)
+}
+entity "invoice_lines" as invoice_lines {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * invoice_id : bigint(20) unsigned <<FK>>
+    project_id : bigint(20) unsigned <<FK>>
+  * description : varchar(255)
+  * quantity_hours : int(10) unsigned
+  * amount_rial : bigint(20) unsigned
+}
+entity "orders" as orders {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * user_id : bigint(20) unsigned <<FK>>
+  * status : varchar(16)
+    customer_note : varchar(500)
+  * upfront_rial : bigint(20) unsigned
+    reviewer_id : bigint(20) unsigned <<FK>>
+    review_reason : varchar(500)
+  * placed_at : datetime(6)
+    reviewed_at : datetime(6)
+  * updated_at : datetime(6)
+}
+entity "order_items" as order_items {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * order_id : bigint(20) unsigned <<FK>>
+  * plan_id : int(10) unsigned <<FK>>
+  * app_name : varchar(41)
+  * image : varchar(512)
+  * port : smallint(5) unsigned
+  * hourly_price_rial : bigint(20) unsigned
+  * monthly_price_rial : bigint(20) unsigned
+}
+entity "plans" as plans {
+  * id : int(10) unsigned <<PK>>
+  --
+  * category_id : smallint(5) unsigned <<FK>>
+  * code : varchar(32) <<UQ>>
+  * name : varchar(64)
+  * description : varchar(255)
+  * description_fa : varchar(255)
+  * cpu_millicores : int(10) unsigned
+  * memory_mib : int(10) unsigned
+  * disk_gib : int(10) unsigned
+  * hourly_price_rial : bigint(20) unsigned
+  * monthly_price_rial : bigint(20) unsigned
+  * is_active : tinyint(1)
+  * sort_order : smallint(5) unsigned
+  * created_at : datetime(6)
+  * updated_at : datetime(6)
+}
+entity "plan_features" as plan_features {
+  * plan_id : int(10) unsigned <<PK>>
+  * locale : varchar(8) <<PK>>
+  * position : smallint(5) unsigned <<PK>>
+  --
+  * feature : varchar(160)
+}
+entity "product_categories" as product_categories {
+  * id : smallint(5) unsigned <<PK>>
+  --
+  * code : varchar(32) <<UQ>>
+  * name : varchar(80)
+  * description : varchar(255)
+}
+entity "projects" as projects {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * user_id : bigint(20) unsigned <<FK>>
+  * order_item_id : bigint(20) unsigned <<FK>>
+  * plan_id : int(10) unsigned <<FK>>
+  * app_name : varchar(41) <<UQ>>
+  * status : varchar(16)
+  * server_id : varchar(64)
+    command_id : char(36)
+  * hourly_price_rial : bigint(20) unsigned
+  * monthly_price_rial : bigint(20) unsigned
+  * created_at : datetime(6)
+    activated_at : datetime(6)
+    suspended_at : datetime(6)
+    billing_resumed_at : datetime(6)
+    deleted_at : datetime(6)
+  * updated_at : datetime(6)
+}
+entity "support_tickets" as support_tickets {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * user_id : bigint(20) unsigned <<FK>>
+    project_id : bigint(20) unsigned <<FK>>
+  * subject : varchar(160)
+  * status : varchar(16)
+  * priority : varchar(8)
+  * created_at : datetime(6)
+  * updated_at : datetime(6)
+}
+entity "ticket_messages" as ticket_messages {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * ticket_id : bigint(20) unsigned <<FK>>
+  * author_id : bigint(20) unsigned <<FK>>
+  * body : text
+  * created_at : datetime(6)
+}
+entity "usage_records" as usage_records {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * project_id : bigint(20) unsigned <<FK>>
+  * period_start : datetime
+  * amount_rial : bigint(20) unsigned
+    wallet_transaction_id : bigint(20) unsigned <<FK>>
+    invoice_id : bigint(20) unsigned <<FK>>
+  * created_at : datetime(6)
+}
+entity "users" as users {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * email : varchar(254) <<UQ>>
+  * full_name : varchar(120)
+  * password_hash : varchar(100)
+  * role : varchar(16)
+  * status : varchar(16)
+  * created_at : datetime(6)
+  * updated_at : datetime(6)
+    last_login_at : datetime(6)
+}
+entity "user_sessions" as user_sessions {
+  * token_hash : char(64) <<PK>>
+  --
+  * user_id : bigint(20) unsigned <<FK>>
+  * csrf_token : varchar(64)
+  * created_at : datetime(6)
+  * expires_at : datetime(6)
+    revoked_at : datetime(6)
+}
+entity "wallets" as wallets {
+  * user_id : bigint(20) unsigned <<PK>>
+  --
+  * balance_rial : bigint(20)
+  * updated_at : datetime(6)
+}
+entity "wallet_transactions" as wallet_transactions {
+  * id : bigint(20) unsigned <<PK>>
+  --
+  * user_id : bigint(20) unsigned <<FK>>
+  * kind : varchar(16)
+  * amount_rial : bigint(20)
+  * balance_after_rial : bigint(20)
+    reference_type : varchar(32)
+    reference_id : bigint(20) unsigned
+  * description : varchar(255)
+    idempotency_key : varchar(128)
+    created_by : bigint(20) unsigned <<FK>>
+  * created_at : datetime(6)
+}
+users ||--o{ invoices : user_id
+invoices ||--o{ invoice_lines : invoice_id
+projects |o--o{ invoice_lines : project_id
+users ||--o{ orders : user_id
+users |o--o{ orders : reviewer_id
+orders ||--o{ order_items : order_id
+plans ||--o{ order_items : plan_id
+product_categories ||--o{ plans : category_id
+plans ||--o{ plan_features : plan_id
+users ||--o{ projects : user_id
+order_items ||--o{ projects : order_item_id
+plans ||--o{ projects : plan_id
+users ||--o{ support_tickets : user_id
+projects |o--o{ support_tickets : project_id
+support_tickets ||--o{ ticket_messages : ticket_id
+users ||--o{ ticket_messages : author_id
+projects ||--o{ usage_records : project_id
+wallet_transactions |o--o{ usage_records : wallet_transaction_id
+invoices |o--o{ usage_records : invoice_id
+users ||--o{ user_sessions : user_id
+users ||--o{ wallets : user_id
+wallets ||--o{ wallet_transactions : user_id
+users |o--o{ wallet_transactions : created_by
+@enduml

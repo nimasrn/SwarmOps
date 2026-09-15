@@ -1,0 +1,8 @@
+% Persian documents. bidi, which xepersian loads, must come after hyperref,
+% which pandoc's template would otherwise load after these lines.
+\usepackage{hyperref}
+\usepackage{bookmark}
+\usepackage{xepersian}
+\settextfont[Path=VAZIRMATN_DIR/, Extension=.ttf, UprightFont=*-Regular, BoldFont=*-Bold]{Vazirmatn}
+\setlatintextfont[Path=VAZIRMATN_DIR/, Extension=.ttf, UprightFont=*-Regular, BoldFont=*-Bold]{Vazirmatn}
+\setlatinmonofont{Menlo}

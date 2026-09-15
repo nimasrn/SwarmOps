@@ -1,0 +1,39 @@
+@startuml seq-billing
+title Hourly billing, suspension and resumption
+autonumber
+hide footbox
+
+participant "Billing job\n(every 5 minutes)" as J
+participant "Commerce service" as SVC
+database "MariaDB / MySQL" as DB
+participant "Provisioner\n(service.scale)" as P
+actor Customer as C
+
+J -> J : is this the active core?
+J -> SVC : RunBilling()
+SVC -> DB : active projects with the last charged hour
+loop each hour not yet charged
+  SVC -> DB : BEGIN
+  SVC -> DB : sum of this month's usage for the project
+  alt monthly cap reached
+    SVC -> DB : COMMIT (nothing to charge)
+  else below the cap
+    SVC -> DB : INSERT usage_records (project, hour)\n— UNIQUE(project_id, period_start)
+    SVC -> DB : SELECT wallet … FOR UPDATE
+    alt wallet can pay
+      SVC -> DB : INSERT wallet_transactions (usage)\nUPDATE wallets; link usage row; COMMIT
+    else wallet cannot pay
+      SVC -> DB : ROLLBACK
+      SVC -> DB : project = suspended
+      SVC -> P : Suspend(project) — scale to 0
+    end
+  end
+end
+
+C -> SVC : TopUp(amount, idempotency key)
+SVC -> DB : ledger row, balance
+SVC -> SVC : ResumeFundedProjects()
+SVC -> DB : project = active,\nbilling_resumed_at = now
+SVC -> P : Resume(project) — scale to 1
+note right of DB : Hours spent suspended are never charged:\nbilling restarts from billing_resumed_at.
+@enduml

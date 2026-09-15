@@ -1,0 +1,52 @@
+@startuml c4-component-commerce
+!include <C4/C4_Component>
+
+title Commerce service — Components (C4 level 3)
+
+Component(storeapi, "Storefront API", "api/http")
+Component(commerceapi, "Commerce administration API", "api/http")
+Component(billingjob, "Billing job", "cmd/api")
+Component_Ext(queue, "Command queue", "internal/queue", "Implements the CommandQueue interface.")
+Component_Ext(provisioner, "Cloud provisioner", "api/http", "Implements the Provisioner interface by queueing service.scale.")
+ContainerDb(db, "Controller database", "MariaDB 11.4 or MySQL 8.4")
+
+Container_Boundary(cloud, "internal/cloud") {
+  Component(accounts, "Accounts", "accounts.go", "Registration, login with a timing-safe password check, sessions, CSRF, operator accounts and customer suspension.")
+  Component(catalog, "Catalogue", "catalog.go", "Plans with CPU, memory, disk, hourly price and monthly cap.")
+  Component(wallet, "Wallet ledger", "wallet.go", "Every balance change is a ledger row written under a wallet row lock, with an idempotency key.")
+  Component(orders, "Orders", "orders.go", "Places orders with price snapshots; confirmation charges, creates the project and queues the deployment in one transaction; outcomes activate or refund.")
+  Component(billing, "Billing", "billing.go", "Charges each running project once per hour, capped at the monthly price; suspends projects a wallet cannot pay for and resumes them after a top-up.")
+  Component(invoices, "Invoices", "invoices.go", "Issues one tax-inclusive, numbered invoice per customer per month from usage records.")
+  Component(tickets, "Support tickets", "tickets.go", "Conversations between a customer and administrators.")
+  Component(reports, "Reports", "reports.go", "Customer accounts, revenue by month and the administration overview, read from views.")
+}
+
+Rel(storeapi, accounts, "Registers and signs in")
+Rel(storeapi, orders, "Places and cancels orders")
+Rel(storeapi, wallet, "Tops up")
+Rel(storeapi, tickets, "Opens and replies")
+Rel(commerceapi, orders, "Confirms and rejects")
+Rel(commerceapi, catalog, "Edits plans")
+Rel(commerceapi, wallet, "Adjusts with a reason")
+Rel(commerceapi, reports, "Reads")
+Rel(billingjob, billing, "Runs hourly")
+Rel(billingjob, invoices, "Issues monthly")
+
+Rel(orders, catalog, "Copies prices from")
+Rel(orders, wallet, "Charges and refunds through")
+Rel(orders, queue, "SubmitInTx: application.deploy")
+Rel(billing, wallet, "Charges through")
+Rel(billing, provisioner, "Scales suspended projects to zero")
+Rel(wallet, billing, "Resumes funded projects after a top-up")
+
+Rel(accounts, db, "users, user_sessions")
+Rel(catalog, db, "plans, plan_features")
+Rel(wallet, db, "wallets, wallet_transactions")
+Rel(orders, db, "orders, order_items, projects")
+Rel(billing, db, "usage_records, projects")
+Rel(invoices, db, "invoices, invoice_lines")
+Rel(tickets, db, "support_tickets, ticket_messages")
+Rel(reports, db, "v_customer_accounts, v_revenue_by_month, v_order_queue")
+
+SHOW_LEGEND()
+@enduml
