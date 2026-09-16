@@ -422,9 +422,10 @@ private Git provider ─ bounded HTTPS API ─> evidence plan ─ regular-file t
 ```
 
 - `cmd/api` serves the React build and authenticated API on port `8084`. The
-  default active core is constrained to a manager with `nim.control=true`; its
-  named volume holds AES-256-GCM-sealed server profiles, audit history, command
-  metadata/payload, pending build contexts, and non-secret core-topology state.
+  default active core is constrained to a manager with `nim.control=true`. Server
+  profiles, audit history, command metadata and payloads, and core-topology state
+  live in MySQL or MariaDB, with every secret value held as an AES-256-GCM sealed
+  column; pending build contexts stay as owner-only spool files beside it.
   It starts without a Docker daemon or socket. A restored standby has its own
   stable core ID and blocks agent/cluster operations until it is explicitly
   promoted.
@@ -520,11 +521,11 @@ encrypted write fails, so a claim can never leave a phantom running command.
 The ledger is bounded: succeeded commands beyond
 `SWARMOPS_COMMAND_HISTORY_LIMIT` (default `2000`) are pruned oldest-first on
 each transition. Queued, running, retry-scheduled, and needs-attention
-commands are never pruned, and pruning only takes effect once the sealed
-write succeeds.
+commands are never pruned, and pruning is a bounded delete in the same
+transaction as the transition that triggers it.
 
-Command metadata and JSON payloads are AES-256-GCM sealed in the controller
-volume. A build source archive remains in an AES-256-GCM-sealed, owner-only
+Command metadata and JSON payloads are rows in the database, with payloads and
+outputs held in AES-256-GCM sealed columns. A build source archive remains in an AES-256-GCM-sealed, owner-only
 (`0600`) spool until it can stream to Docker; it is never returned by the API,
 browser, or audit log and SwarmOps attempts immediate deletion after a
 successful lifecycle write. A failed upload is retained as a visible
@@ -751,8 +752,8 @@ accepting the self-signed IP certificate in a browser.
 
 The service account has no Docker-group membership or capabilities, and the
 service gets no Docker socket. Browser mutations and remote builds begin
-disabled. Server profiles, audit history, and command metadata/payload are
-sealed with AES-256-GCM under `/var/lib/swarmops`; pending build contexts are
+disabled. Server profiles, audit history, and command metadata/payload live in the
+database, with secret values in AES-256-GCM sealed columns; pending build contexts are
 owner-only spool files retained only while a queued or needs-attention build
 needs its source and deleted after a successful build. The separate key remains
 in a protected file under `/etc/swarmops`. Machine API keys are never stored in
@@ -761,8 +762,9 @@ key; it cannot protect a controller host already compromised as root.
 
 The allowlist is enforced by the API, not by the random port. Also add an outer
 firewall or security-group rule that exposes the printed port only to the same
-trusted networks. Back up the state key separately from the encrypted state:
-losing it makes saved controller state unrecoverable.
+trusted networks. Back up the state key separately from the database dump
+(`mysqldump --single-transaction`): losing it makes the sealed columns
+unrecoverable.
 
 ### Optional plaintext HTTP listener
 

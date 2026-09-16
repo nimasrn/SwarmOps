@@ -11,6 +11,48 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.23.0 — 2026-09-16
+
+- **Controller state moves to MySQL or MariaDB** — every store kept its whole
+  snapshot in a sealed file, rewritten in full on each change. That gave no
+  relational integrity, no transaction spanning two kinds of data, and no way to
+  ask a question of the data beyond what a loaded snapshot could answer. Servers,
+  agents, commands, applications, routing, source connections, audit and core
+  topology are now tables, read through indexes rather than by loading
+  everything. Secret values keep the same AES-GCM sealing they had, as sealed
+  columns bound to their table, column and primary key, so an encrypted value
+  cannot be moved between rows and the data key still never reaches the database.
+- **Confirming an order and queueing its deployment are one transaction** — the
+  charge lived in one store and the command in another, so a crash between them
+  either billed a customer for a deployment that was never requested or deployed
+  work nobody paid for. Both now commit together or not at all: the queue is a
+  table, so the debit, the order state, the project row and the `application.deploy`
+  command are a single commit. The queue claims work with `FOR UPDATE SKIP LOCKED`,
+  which lets several workers share it without leasing the same command twice.
+- **SwarmOps sells hosting** — it had one operator and no notion of a customer, a
+  product or a payment, which is everything needed to run it as a platform rather
+  than as one team's console. It gains accounts and roles, a plan catalogue, an
+  append-only wallet ledger whose balance is a cached column constrained to stay
+  at or above zero, orders an administrator reviews, hourly usage capped at the
+  plan's monthly price, and monthly invoices. Every balance change is a ledger
+  row carrying an idempotency key, so a retried charge is recorded once.
+- **A storefront for customers, a Sales area for operators** — the console was
+  built for whoever runs the platform, and a customer needs to see their own
+  projects and nothing else. The storefront is a second entry point with its own
+  session and CSRF token, in English and Persian with right-to-left layout; the
+  console gains the order queue, customers, plans, invoices and support tickets.
+- **A failed deployment refunds what it charged** — the first hour is charged when
+  an order is confirmed, before anything is known about whether it will run. When
+  the deployment fails the charge is returned and the usage row recorded for that
+  hour goes with it, so a customer is never billed for an application that never
+  started.
+- **`migrate-state` imports an existing installation** — an operator upgrading
+  from a file-backed SwarmOps would otherwise start empty. The command reads the
+  sealed files with the existing data key and imports each store in its own
+  transaction, checking row counts against what the snapshot held, and leaves the
+  files untouched as a backup. Backups become `mysqldump --single-transaction`
+  plus the separately held key, which the installation guide now describes.
+
 ## 0.22.0 — 2026-09-06
 
 - **An application that failed to start is kept** — it was stored only after its
