@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Database Design"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   SwarmOps Cloud keeps all of its state in one relational database, MariaDB 11.4 or MySQL 8.4. This document presents the design of that database. It moves from a conceptual model of the business, through the logical schema drawn as entity-relationship diagrams, to the physical choices of types, keys, constraints and indexes. It argues that the schema is in third normal form and names each deliberate exception with its reason. It explains how transactions, isolation and row locks prevent the concurrency anomalies that would otherwise corrupt money, and it shows real query plans. The schema has 57 tables and 3 views, created by nine migrations; a complete data dictionary generated from the live schema is given as an appendix.
@@ -58,7 +57,7 @@ Figure 1 shows the commerce schema with every column. Figure 2 shows the platfor
 
 ![Platform schema: keys and relationships](../diagrams/out/erd-platform.png){width=100%}
 
-Both diagrams are generated from the live schema by `docs/academic/tools/schema_docs.py`. They cannot drift from the migrations.
+Both diagrams are generated from the live schema by `docs/cloud/tools/schema_docs.py`. They cannot drift from the migrations.
 
 # Physical design
 

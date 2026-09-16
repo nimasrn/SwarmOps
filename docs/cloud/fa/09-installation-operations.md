@@ -1,7 +1,6 @@
 ---
 title: "سوارم‌آپس کلود (SwarmOps Cloud)"
 subtitle: "راهنمای نصب و بهره‌برداری"
-author: "Nima Sarayan"
 date: "شهریور ۱۴۰۵"
 toc-title: "فهرست مطالب"
 abstract: |

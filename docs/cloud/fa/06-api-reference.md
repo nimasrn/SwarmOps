@@ -1,7 +1,6 @@
 ---
 title: "سوارم‌آپس کلود (SwarmOps Cloud)"
 subtitle: "مرجع API — فروشگاه و مدیریت تجارت"
-author: "Nima Sarayan"
 date: "شهریور ۱۴۰۵"
 toc-title: "فهرست مطالب"
 abstract: |

@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Installation and Operations Guide"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This guide tells a developer how to run SwarmOps Cloud locally and tells an operator how to install it, upgrade an existing SwarmOps installation to the relational database, back it up, restore it, and keep it healthy. Commands are given exactly as they are used in the repository. Where a step was not exercised in the verification environment — a production installation on Ubuntu, in particular — the guide says so.

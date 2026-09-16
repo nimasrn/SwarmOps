@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Test Plan and Test Report"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This document states how SwarmOps Cloud was tested and what the tests showed. The plan combines four levels:
@@ -17,11 +16,11 @@ abstract: |
 
 ## Purpose
 
-The plan (sections 2–3) defines what is tested, how and when testing is complete. The report (sections 4–7) records the results. It is written for the course instructor and for anyone who must judge whether the system does what the Software Requirements Specification (SRS) requires.
+The plan (sections 2–3) defines what is tested, how and when testing is complete. The report (sections 4–7) records the results. It is written for anyone who must judge whether the system does what the Software Requirements Specification (SRS) requires.
 
 ## Items under test
 
-The items are the `university/cloud-platform` branch of SwarmOps, at the commits listed in Table 1, with the uncommitted documentation build.
+The items are the `main` branch of SwarmOps, at the commits listed in Table 1, with the uncommitted documentation build.
 
 | Commit | Content |
 |---|---|

@@ -1,6 +1,6 @@
-# SwarmOps Cloud — academic documents
+# SwarmOps Cloud — documents
 
-The university project documentation for SwarmOps Cloud: a SQL-backed
+Documentation for SwarmOps Cloud: a SQL-backed
 platform-as-a-service with a customer storefront and an administration
 console, built on SwarmOps. Every document exists in English (`en/`) and
 Persian (`fa/`), as Markdown sources and as Word and PDF files in `dist/`.
@@ -35,7 +35,7 @@ The architecture decision behind the storage change is
 ## Building
 
 ```bash
-docs/academic/build.sh --schema-dsn-container swarmops-mariadb
+docs/cloud/build.sh --schema-dsn-container swarmops-mariadb
 ```
 
 Requires pandoc 3, XeLaTeX with the `xepersian` package, Java and python3.
@@ -47,6 +47,6 @@ database first; without it the committed exports in `generated/` are used.
 Screenshots are re-captured against a running storefront and console with:
 
 ```bash
-node docs/academic/tools/screenshots.mjs --base http://127.0.0.1:5284 \
+node docs/cloud/tools/screenshots.mjs --base http://127.0.0.1:5284 \
   --customer-email … --customer-password … --operator-username admin --operator-password …
 ```

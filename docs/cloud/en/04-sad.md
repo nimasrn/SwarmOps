@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Software Architecture Document"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This document explains how SwarmOps Cloud is built and why. It follows the arc42 template: goals and constraints, context, solution strategy, building blocks, runtime scenarios, deployment, cross-cutting concepts, decisions, quality scenarios, and risks. The structural views are drawn with the C4 model and given in full in the separate C4 Architecture Model; this document refers to them and adds the behaviour, the rationale and the trade-offs. The central architectural idea is that the command queue and the wallet ledger share one relational database. That makes paying for an application and requesting its deployment a single local transaction.
@@ -29,7 +28,7 @@ SwarmOps Cloud sells container hosting. Customers top up a wallet and order plan
 
 | Stakeholder | Expectation |
 |---|---|
-| Course instructor | A complete, correct system using SQL, with an administration panel and a storefront, documented academically. |
+| Reviewer | A complete, correct system using SQL, with an administration panel and a storefront, documented thoroughly. |
 | Customers | A simple, trustworthy way to run an image and pay only for what runs. |
 | Administrators | Control over orders, prices, money and the platform, with evidence for every decision. |
 | Developers | Clear module boundaries, tests on both engines, and diagrams that match the code. |
@@ -46,7 +45,7 @@ SwarmOps Cloud sells container hosting. Customers top up a wallet and order plan
 
 ## Organisational constraints
 
-- **OC-1** One developer, within a university term.
+- **OC-1** One developer, within a single development cycle.
 - **OC-2** Everything must be demonstrable on a laptop: a single-node Swarm, local databases, a loopback machine agent.
 - **OC-3** No real payment provider may be contacted.
 

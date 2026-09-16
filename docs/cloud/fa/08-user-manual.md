@@ -1,7 +1,6 @@
 ---
 title: "سوارم‌آپس کلود (SwarmOps Cloud)"
 subtitle: "راهنمای کاربر — مشتریان و مدیران"
-author: "Nima Sarayan"
 date: "شهریور ۱۴۰۵"
 toc-title: "فهرست مطالب"
 abstract: |

@@ -7,8 +7,8 @@
 // package is needed: Node's built-in fetch and WebSocket speak the protocol.
 //
 // Usage:
-//   node docs/academic/tools/screenshots.mjs \
-//     --base http://127.0.0.1:5284 --out docs/academic/screenshots \
+//   node docs/cloud/tools/screenshots.mjs \
+//     --base http://127.0.0.1:5284 --out docs/cloud/screenshots \
 //     --customer-email sara.demo@example.com --customer-password '…' \
 //     --operator-username admin --operator-password '…'
 
@@ -22,7 +22,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, inde
   return pairs
 }, []))
 const base = args.base ?? 'http://127.0.0.1:5284'
-const out = args.out ?? 'docs/academic/screenshots'
+const out = args.out ?? 'docs/cloud/screenshots'
 const chromePath = args.chrome ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const port = Number(args.port ?? 9333)
 const only = args.only ? new Set(args.only.split(',')) : null

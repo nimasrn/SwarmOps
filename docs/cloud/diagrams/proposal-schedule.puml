@@ -31,7 +31,7 @@ hide footbox
 [E1] starts at [B2]'s end
 [End-to-end verification] as [E2] requires 1 week
 [E2] starts at [D1]'s end
-[Academic documentation] as [E3] requires 2 weeks
+[Documentation] as [E3] requires 2 weeks
 [E3] starts at [E2]'s end
 
 [Submission] happens at [E3]'s end

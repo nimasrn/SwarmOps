@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "User Manual — Customers and Administrators"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This manual explains how to use SwarmOps Cloud. Part I is for customers: creating an account, topping up the wallet, ordering a plan, following orders and projects, and reading invoices and support replies. Part II is for administrators: preparing the platform, reviewing and confirming orders, managing customers, wallets and plans, running billing and invoicing, and answering support tickets. The screenshots are of the real application, taken during the end-to-end test on 15 September 2026 with a fictitious customer, Sara Ahmadi.

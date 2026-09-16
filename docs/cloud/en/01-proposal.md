@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Project Proposal — A SQL-Backed Platform-as-a-Service with a Customer Storefront and an Administration Console"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   Small software teams need somewhere to run their containers without operating servers themselves. Commercial platforms such as Heroku and the Iranian provider Liara sell exactly this: a customer chooses a plan, pays from a prepaid balance or a card, and the platform deploys and bills the application. This project proposes SwarmOps Cloud, a platform of that kind built on top of SwarmOps, an existing open control plane for Docker Swarm. Two gaps make SwarmOps unsuitable today. First, it keeps its entire state in encrypted JSON snapshot files, which gives no relational integrity, no transactions spanning several kinds of data, and no way to query or report on the data. Second, it has a single operator and no notion of customers, products, orders or payments. The project will move all controller state into a relational database (MariaDB or MySQL), add a commerce subsystem with accounts, a plan catalogue, an append-only wallet ledger, orders that an administrator confirms, hourly billing and monthly invoices, and add a bilingual customer storefront next to the existing administration console. Provisioning will be made transactional: confirming an order charges the customer and queues the deployment in a single database transaction. The system will be evaluated with automated tests on both database engines and an end-to-end run from customer registration to a running application.
@@ -13,7 +12,7 @@ A platform-as-a-service (PaaS) lets a developer run an application by describing
 
 SwarmOps is an open control plane for Docker Swarm clusters. It already provides the operator side of such a platform: it enrolls servers through a machine agent, renders and validates application stacks, installs a Traefik gateway, queues every change as a durable command, and records every operator action in an audit ledger. It does not provide the customer side, and its storage design limits what can be built on it.
 
-This proposal describes a university project that closes both gaps and documents the result to an academic standard.
+This proposal describes a project that closes both gaps and documents the result thoroughly.
 
 # Problem statement
 
@@ -45,7 +44,7 @@ The design of SwarmOps Cloud borrows the commercial model of Heroku and Liara (p
 | O4 | Handle money correctly. | Balances never become negative, are always equal to the sum of the ledger, and a retried request never charges or credits twice — including under concurrent requests. |
 | O5 | Tie payment to provisioning. | Charging an order and queuing its deployment happen in one database transaction; a deployment that fails is refunded exactly once. |
 | O6 | Serve Persian-speaking customers. | The storefront works in English and Persian, with right-to-left layout and Persian digits. |
-| O7 | Document the system to an academic standard. | Proposal, requirements specification, C4 architecture model, architecture document, database design, API reference, test report, user manual and operations guide, in English and Persian. |
+| O7 | Document the system to an professional standard. | Proposal, requirements specification, C4 architecture model, architecture document, database design, API reference, test report, user manual and operations guide, in English and Persian. |
 
 # Scope
 

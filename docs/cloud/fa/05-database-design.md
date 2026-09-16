@@ -1,7 +1,6 @@
 ---
 title: "سوارم‌آپس کلود (SwarmOps Cloud)"
 subtitle: "طراحی پایگاه داده"
-author: "Nima Sarayan"
 date: "شهریور ۱۴۰۵"
 toc-title: "فهرست مطالب"
 abstract: |
@@ -59,7 +58,7 @@ abstract: |
 
 ![طرح‌واره‌ی سکو: کلیدها و رابطه‌ها](../diagrams/out/erd-platform.png){width=100%}
 
-هر دو نمودار با `docs/academic/tools/schema_docs.py` از طرح‌واره‌ی واقعی تولید می‌شوند؛ بنابراین نمی‌توانند از مهاجرت‌ها فاصله بگیرند.
+هر دو نمودار با `docs/cloud/tools/schema_docs.py` از طرح‌واره‌ی واقعی تولید می‌شوند؛ بنابراین نمی‌توانند از مهاجرت‌ها فاصله بگیرند.
 
 # طراحی فیزیکی
 

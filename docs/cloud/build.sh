@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds the SwarmOps Cloud academic documents.
+# Builds the SwarmOps Cloud documents.
 #
-#   docs/academic/build.sh [--schema-dsn-container NAME]
+#   docs/cloud/build.sh [--schema-dsn-container NAME]
 #
 # 1. Renders every PlantUML diagram to PNG and SVG (diagrams/out).
 # 2. Optionally re-exports the schema from a running MariaDB container and
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cache="${ACADEMIC_CACHE_DIR:-${TMPDIR:-/tmp}/swarmops-academic}"
+cache="${DOCS_CACHE_DIR:-${TMPDIR:-/tmp}/swarmops-docs}"
 schema_container=""
 
 while [[ "$#" -gt 0 ]]; do

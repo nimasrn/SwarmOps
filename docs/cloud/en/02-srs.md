@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "Software Requirements Specification"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This document specifies the requirements of SwarmOps Cloud, a platform-as-a-service built on the SwarmOps control plane for Docker Swarm. It follows the structure recommended by ISO/IEC/IEEE 29148:2018 for a software requirements specification. It describes the product's context, users and constraints, then states each functional and non-functional requirement with an identifier, and traces every requirement to the project objectives, the implementation and the verification that demonstrates it. Every rule, limit and default quoted here is the one the implementation enforces.
@@ -11,7 +10,7 @@ abstract: |
 
 ## Purpose
 
-This specification defines what SwarmOps Cloud must do and the qualities it must have. It is written for the course instructor evaluating the project, for developers maintaining the system, and for testers deriving test cases.
+This specification defines what SwarmOps Cloud must do and the qualities it must have. It is written for reviewers of the project, for developers maintaining the system, and for testers deriving test cases.
 
 ## Scope
 

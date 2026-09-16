@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "API Reference — Storefront and Commerce Administration"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This reference documents the two HTTP interfaces that SwarmOps Cloud adds to SwarmOps Core: the storefront API at /api/store/v1, used by customers' browsers, and the commerce administration API at /api/v1/commerce, used by the administration console. For every endpoint it gives the method and path, the protection that applies, the request body and the response. It also documents the conventions all endpoints share: JSON encoding, authentication and CSRF, rate limiting, idempotency, pagination and the error model. The operations API that SwarmOps already provided is out of scope.

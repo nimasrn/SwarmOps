@@ -1,7 +1,6 @@
 ---
 title: "SwarmOps Cloud"
 subtitle: "C4 Architecture Model"
-author: "Nima Sarayan"
 date: "September 2026"
 abstract: |
   This document describes the architecture of SwarmOps Cloud with the C4 model. The C4 model presents software architecture as a hierarchy of four levels of abstraction — system context, containers, components and code — supplemented by dynamic and deployment diagrams. Each diagram below is rendered from a C4-PlantUML source file kept in the repository, so the diagrams change together with the code they describe. For every level, a catalogue table states each element's responsibility and technology.
@@ -20,7 +19,7 @@ Two supplementary diagram types are used here. *Dynamic diagrams* show how eleme
 
 **Notation.** People are drawn as person shapes, the system under discussion and its parts in blue, and external systems in grey. Databases are drawn as cylinders. Arrows are one-directional and labelled with the intent of the interaction and, where useful, the protocol. Each diagram includes a legend.
 
-**Sources.** The diagrams are kept in `docs/academic/diagrams/*.puml` and use the C4-PlantUML library bundled with PlantUML. The documentation build renders them to PNG and SVG.
+**Sources.** The diagrams are kept in `docs/cloud/diagrams/*.puml` and use the C4-PlantUML library bundled with PlantUML. The documentation build renders them to PNG and SVG.
 
 # Level 1 — System context
 
