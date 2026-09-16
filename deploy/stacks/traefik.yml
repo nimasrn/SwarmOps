@@ -72,6 +72,12 @@ services:
       labels:
         - traefik.enable=true
         - traefik.swarm.network=traefik
+        # The Swarm provider refuses an enabled service it cannot assign a
+        # port to, and that refusal discards every label below with it, so
+        # the dashboard routers never exist and no certificate is ever
+        # requested. The routers serve api@internal and noop@internal, so
+        # this port is only what the provider needs to accept the service.
+        - traefik.http.services.traefik-traefik.loadbalancer.server.port=8080
         - traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_HOST:-traefik.nim.zone}`)
         - traefik.http.routers.traefik-dashboard.entrypoints=websecure
         - traefik.http.routers.traefik-dashboard.tls.certresolver=le
