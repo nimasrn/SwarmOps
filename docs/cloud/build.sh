@@ -47,13 +47,21 @@ fi
 
 if [[ -n "$schema_container" ]]; then
   echo "== exporting the schema from $schema_container"
-  query() { docker exec "$schema_container" mariadb -uroot -p"${MARIADB_ROOT_PASSWORD:-devroot}" -N -B -e "$1"; }
-  query "SELECT c.TABLE_NAME, c.ORDINAL_POSITION, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, COALESCE(c.COLUMN_KEY,''), COALESCE(c.COLUMN_DEFAULT,''), c.EXTRA,
+  # Into a temporary file first: a plain redirection would empty the export
+  # before the query runs, and a database that is down would then silently
+  # produce documents with no data dictionary and empty diagrams.
+  query() {
+    local into="$here/generated/$1" sql="$2"
+    docker exec "$schema_container" mariadb -uroot -p"${MARIADB_ROOT_PASSWORD:-devroot}" -N -B -e "$sql" > "$cache/export.tsv"
+    [[ -s "$cache/export.tsv" ]] || { echo "the $1 export came back empty" >&2; exit 1; }
+    mv "$cache/export.tsv" "$into"
+  }
+  query schema-columns.tsv "SELECT c.TABLE_NAME, c.ORDINAL_POSITION, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, COALESCE(c.COLUMN_KEY,''), COALESCE(c.COLUMN_DEFAULT,''), c.EXTRA,
     COALESCE((SELECT CONCAT(k.REFERENCED_TABLE_NAME,'.',k.REFERENCED_COLUMN_NAME) FROM information_schema.KEY_COLUMN_USAGE k WHERE k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1),'')
     FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME AND t.TABLE_TYPE='BASE TABLE'
-    WHERE c.TABLE_SCHEMA='swarmops' ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION" > "$here/generated/schema-columns.tsv"
-  query "SELECT TABLE_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='swarmops' ORDER BY TABLE_NAME, CONSTRAINT_NAME" > "$here/generated/schema-foreign-keys.tsv"
-  query "SELECT TABLE_NAME, CONSTRAINT_NAME, CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='swarmops' ORDER BY TABLE_NAME, CONSTRAINT_NAME" > "$here/generated/schema-checks.tsv"
+    WHERE c.TABLE_SCHEMA='swarmops' ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION"
+  query schema-foreign-keys.tsv "SELECT TABLE_NAME, CONSTRAINT_NAME, REFERENCED_TABLE_NAME, DELETE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='swarmops' ORDER BY TABLE_NAME, CONSTRAINT_NAME"
+  query schema-checks.tsv "SELECT TABLE_NAME, CONSTRAINT_NAME, CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='swarmops' ORDER BY TABLE_NAME, CONSTRAINT_NAME"
 fi
 python3 "$here/tools/schema_docs.py"
 

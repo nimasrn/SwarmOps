@@ -181,6 +181,10 @@ def main():
     columns = read("schema-columns.tsv")
     fks = read("schema-foreign-keys.tsv")
     checks = read("schema-checks.tsv")
+    # An export that came back empty would otherwise overwrite the data
+    # dictionary and both diagrams with nothing at all.
+    if not columns:
+        raise SystemExit("schema-columns.tsv is empty: re-export the schema from a running database")
     purpose_fa = {}
     fa_file = GENERATED / "table-purposes-fa.tsv"
     if fa_file.exists():

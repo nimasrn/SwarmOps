@@ -1,0 +1,424 @@
+agents	1	id	varchar(64)	NO	PRI			
+agents	2	name	varchar(96)	NO				
+agents	3	certificate_expires_at	datetime(6)	NO				
+agent_ca	1	id	tinyint(3) unsigned	NO	PRI			
+agent_ca	2	certificate_pem	text	NO				
+agent_ca	3	private_key_sealed	varbinary(4096)	NO				
+agent_ca	4	created_at	datetime(6)	NO				
+agent_claims	1	id	varchar(64)	NO	PRI			
+agent_claims	2	name	varchar(96)	NO				
+agent_claims	3	csr	text	NO				
+agent_claims	4	code_digest	char(64)	NO	UNI			
+agent_claims	5	secret_digest	char(64)	NO				
+agent_claims	6	expires_at	datetime(6)	NO	MUL			
+agent_claims	7	enrollment_agent_id	varchar(64)	YES		NULL		
+agent_claims	8	enrollment_authority_epoch	bigint(20) unsigned	YES		NULL		
+agent_claims	9	enrollment_certificate	text	YES		NULL		
+agent_claims	10	enrollment_expires_at	datetime(6)	YES		NULL		
+agent_claims	11	position	int(10) unsigned	NO				
+agent_enrollment_tokens	1	code_digest	char(64)	NO	PRI			
+agent_enrollment_tokens	2	name	varchar(96)	YES		NULL		
+agent_enrollment_tokens	3	expires_at	datetime(6)	NO	MUL			
+applications	1	name	varchar(41)	NO	PRI			
+applications	2	image	varchar(512)	NO				
+applications	3	port	smallint(5) unsigned	NO				
+applications	4	replicas	int(10) unsigned	NO				
+applications	5	cpus	double	NO				
+applications	6	memory_mib	bigint(20)	NO				
+applications	7	plan	varchar(32)	YES		NULL		
+applications	8	domain	varchar(253)	YES	UNI	NULL		
+applications	9	resolver	varchar(64)	YES		NULL		
+applications	10	backend	varchar(41)	YES		NULL		
+applications	11	database_delivery	varchar(32)	YES		NULL		
+applications	12	health_path	varchar(201)	YES		NULL		
+applications	13	metrics	tinyint(1)	NO		0		
+applications	14	metrics_path	varchar(201)	YES		NULL		
+applications	15	metrics_port	smallint(5) unsigned	YES		NULL		
+applications	16	tracing	tinyint(1)	NO		0		
+applications	17	created_at	datetime(6)	NO				
+applications	18	updated_at	datetime(6)	NO				
+application_databases	1	application_name	varchar(41)	NO	PRI			applications.name
+application_databases	2	engine	varchar(16)	NO	PRI			
+application_databases	3	position	smallint(5) unsigned	NO				
+application_database_credentials	1	application_name	varchar(41)	NO	PRI			
+application_database_credentials	2	engine	varchar(16)	NO	PRI			
+application_database_credentials	3	uri_sealed	varbinary(4096)	NO				
+application_database_credentials	4	updated_at	datetime(6)	NO				
+application_database_env	1	application_name	varchar(41)	NO	PRI			applications.name
+application_database_env	2	engine	varchar(16)	NO	PRI			
+application_database_env	3	position	smallint(5) unsigned	NO	PRI			
+application_database_env	4	env_name	varchar(64)	NO				
+application_env	1	application_name	varchar(41)	NO	PRI			applications.name
+application_env	2	env_key	varchar(64)	NO	PRI			
+application_env	3	env_value_sealed	varbinary(8192)	NO				
+application_health_command	1	application_name	varchar(41)	NO	PRI			applications.name
+application_health_command	2	position	smallint(5) unsigned	NO	PRI			
+application_health_command	3	argument	varchar(1024)	NO				
+application_outcomes	1	application_name	varchar(41)	NO	PRI			applications.name
+application_outcomes	2	started	tinyint(1)	NO		0		
+application_outcomes	3	started_at	datetime(6)	YES		NULL		
+application_outcomes	4	last_attempt_at	datetime(6)	YES		NULL		
+application_outcomes	5	last_command_id	varchar(64)	YES		NULL		
+application_outcomes	6	failure_summary	text	YES		NULL		
+audit_events	1	seq	bigint(20) unsigned	NO	PRI		auto_increment	
+audit_events	2	id	char(32)	NO	UNI			
+audit_events	3	occurred_at	datetime(6)	NO	MUL			
+audit_events	4	actor	varchar(190)	NO	MUL			
+audit_events	5	action	varchar(190)	NO				
+audit_events	6	target	varchar(512)	NO				
+audit_events	7	outcome	varchar(64)	NO				
+audit_events	8	request_id	varchar(128)	YES		NULL		
+audit_event_details	1	event_seq	bigint(20) unsigned	NO	PRI			audit_events.seq
+audit_event_details	2	detail_key	varchar(190)	NO	PRI			
+audit_event_details	3	detail_value	text	NO				
+commands	1	seq	bigint(20) unsigned	NO	UNI		auto_increment	
+commands	2	id	char(36)	NO	PRI			
+commands	3	action	varchar(64)	NO	MUL			
+commands	4	actor	varchar(190)	NO	MUL			
+commands	5	server_id	varchar(64)	NO	MUL			
+commands	6	node_id	varchar(64)	NO		''		
+commands	7	cluster_id	varchar(64)	NO				
+commands	8	target	varchar(512)	NO				
+commands	9	state	varchar(20)	NO	MUL			
+commands	10	attempt	int(10) unsigned	NO		0		
+commands	11	max_attempts	tinyint(3) unsigned	NO				
+commands	12	auto_retry	tinyint(1)	NO				
+commands	13	authority_epoch	bigint(20) unsigned	NO				
+commands	14	request_id	varchar(128)	YES		NULL		
+commands	15	idempotency_key	varchar(128)	NO				
+commands	16	payload_digest	char(64)	YES		NULL		
+commands	17	has_artifact	tinyint(1)	NO		0		
+commands	18	lease_id	varchar(64)	YES		NULL		
+commands	19	lease_expires_at	datetime(6)	YES		NULL		
+commands	20	last_attempt_at	datetime(6)	YES		NULL		
+commands	21	next_attempt_at	datetime(6)	YES		NULL		
+commands	22	last_error	text	YES		NULL		
+commands	23	failure_code	varchar(64)	YES		NULL		
+commands	24	failure_summary	text	YES		NULL		
+commands	25	recovery_hint	text	YES		NULL		
+commands	26	created_at	datetime(6)	NO				
+commands	27	updated_at	datetime(6)	NO	MUL			
+command_events	1	command_id	char(36)	NO	PRI			commands.id
+command_events	2	sequence	int(10) unsigned	NO	PRI			
+command_events	3	state	varchar(20)	NO				
+command_events	4	evidence	varchar(1024)	YES		NULL		
+command_events	5	occurred_at	datetime(6)	NO				
+command_locks	1	lock_name	varchar(80)	NO	PRI			
+command_outputs	1	command_id	char(36)	NO	PRI			commands.id
+command_outputs	2	output_sealed	mediumblob	NO				
+command_outputs	3	retained_at	datetime(6)	NO				
+command_payloads	1	command_id	char(36)	NO	PRI			commands.id
+command_payloads	2	payload_sealed	mediumblob	NO				
+core_authority	1	id	tinyint(3) unsigned	NO	PRI			
+core_authority	2	active_id	varchar(64)	YES		NULL		
+core_authority	3	authority_epoch	bigint(20) unsigned	NO				
+core_authority	4	updated_at	datetime(6)	NO				
+core_handoffs	1	id	tinyint(3) unsigned	NO	PRI			
+core_handoffs	2	from_id	varchar(64)	NO	MUL			core_members.id
+core_handoffs	3	to_id	varchar(64)	NO	MUL			core_members.id
+core_handoffs	4	state	varchar(16)	NO				
+core_handoffs	5	prepared_at	datetime(6)	NO				
+core_handoffs	6	fenced_at	datetime(6)	YES		NULL		
+core_members	1	id	varchar(64)	NO	PRI			
+core_members	2	name	varchar(96)	NO				
+core_members	3	endpoint	varchar(512)	NO		''		
+core_members	4	role	varchar(16)	NO				
+core_members	5	replica_state	varchar(32)	NO				
+core_members	6	agent_server_id	varchar(64)	YES		NULL		
+core_members	7	last_checkpoint_at	datetime(6)	YES		NULL		
+core_members	8	position	smallint(5) unsigned	NO				
+database_credentials	1	engine	varchar(16)	NO	PRI			
+database_credentials	2	uri_sealed	varbinary(4096)	NO				
+database_credentials	3	updated_at	datetime(6)	NO				
+dependency_bindings	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+dependency_bindings	2	caller_service	varchar(128)	NO	PRI			
+dependency_bindings	3	target_route	varchar(64)	NO	PRI			
+dependency_bindings	4	name	varchar(64)	NO	PRI	''		
+dependency_bindings	5	delivery	varchar(32)	NO				
+dependency_bindings	6	version	int(11)	NO				
+dns_credential_versions	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+dns_credential_versions	2	credential_id	varchar(64)	NO	PRI			
+dns_credential_versions	3	version	int(10) unsigned	NO	PRI			
+dns_credential_versions	4	name	varchar(96)	NO				
+dns_credential_versions	5	provider	varchar(32)	NO				
+dns_credential_versions	6	account_id	varchar(128)	YES		NULL		
+dns_credential_versions	7	email	varchar(254)	YES		NULL		
+dns_credential_versions	8	secret_name	varchar(128)	NO				
+dns_credential_versions	9	state	varchar(16)	NO				
+dns_credential_versions	10	created_at	datetime(6)	NO				
+dns_credential_versions	11	validated_at	datetime(6)	YES		NULL		
+dns_credential_versions	12	secret_sealed	varbinary(8192)	YES		NULL		
+dns_records	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+dns_records	2	id	varchar(64)	NO	PRI			
+dns_records	3	zone	varchar(253)	NO				
+dns_records	4	name	varchar(253)	NO				
+dns_records	5	type	varchar(8)	NO				
+dns_records	6	content	varchar(512)	NO				
+dns_records	7	ttl	int(10) unsigned	NO				
+dns_records	8	proxied	tinyint(1)	NO				
+dns_records	9	managed	tinyint(1)	NO				
+dns_records	10	adopted	tinyint(1)	NO				
+dns_records	11	credential_id	varchar(64)	NO				
+dns_records	12	provider_record_id	varchar(128)	YES		NULL		
+dns_records	13	version	int(11)	NO				
+invoices	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+invoices	2	number	varchar(24)	NO	UNI			
+invoices	3	user_id	bigint(20) unsigned	NO	MUL			users.id
+invoices	4	period_start	date	NO				
+invoices	5	period_end	date	NO				
+invoices	6	status	varchar(16)	NO				
+invoices	7	subtotal_rial	bigint(20) unsigned	NO				
+invoices	8	tax_rate_bp	smallint(5) unsigned	NO				
+invoices	9	tax_rial	bigint(20) unsigned	NO				
+invoices	10	total_rial	bigint(20) unsigned	NO				
+invoices	11	issued_at	datetime(6)	YES		NULL		
+invoices	12	created_at	datetime(6)	NO				
+invoice_lines	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+invoice_lines	2	invoice_id	bigint(20) unsigned	NO	MUL			invoices.id
+invoice_lines	3	project_id	bigint(20) unsigned	YES	MUL	NULL		projects.id
+invoice_lines	4	description	varchar(255)	NO				
+invoice_lines	5	quantity_hours	int(10) unsigned	NO				
+invoice_lines	6	amount_rial	bigint(20) unsigned	NO				
+orders	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+orders	2	user_id	bigint(20) unsigned	NO	MUL			users.id
+orders	3	status	varchar(16)	NO	MUL			
+orders	4	customer_note	varchar(500)	YES		NULL		
+orders	5	upfront_rial	bigint(20) unsigned	NO		0		
+orders	6	reviewer_id	bigint(20) unsigned	YES	MUL	NULL		users.id
+orders	7	review_reason	varchar(500)	YES		NULL		
+orders	8	placed_at	datetime(6)	NO				
+orders	9	reviewed_at	datetime(6)	YES		NULL		
+orders	10	updated_at	datetime(6)	NO				
+order_items	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+order_items	2	order_id	bigint(20) unsigned	NO	MUL			orders.id
+order_items	3	plan_id	int(10) unsigned	NO	MUL			plans.id
+order_items	4	app_name	varchar(41)	NO				
+order_items	5	image	varchar(512)	NO				
+order_items	6	port	smallint(5) unsigned	NO				
+order_items	7	hourly_price_rial	bigint(20) unsigned	NO				
+order_items	8	monthly_price_rial	bigint(20) unsigned	NO				
+plans	1	id	int(10) unsigned	NO	PRI		auto_increment	
+plans	2	category_id	smallint(5) unsigned	NO	MUL			product_categories.id
+plans	3	code	varchar(32)	NO	UNI			
+plans	4	name	varchar(64)	NO				
+plans	5	description	varchar(255)	NO				
+plans	6	description_fa	varchar(255)	NO		''		
+plans	7	cpu_millicores	int(10) unsigned	NO				
+plans	8	memory_mib	int(10) unsigned	NO				
+plans	9	disk_gib	int(10) unsigned	NO				
+plans	10	hourly_price_rial	bigint(20) unsigned	NO				
+plans	11	monthly_price_rial	bigint(20) unsigned	NO				
+plans	12	is_active	tinyint(1)	NO	MUL	1		
+plans	13	sort_order	smallint(5) unsigned	NO		0		
+plans	14	created_at	datetime(6)	NO				
+plans	15	updated_at	datetime(6)	NO				
+plan_features	1	plan_id	int(10) unsigned	NO	PRI			plans.id
+plan_features	2	locale	varchar(8)	NO	PRI	'en'		
+plan_features	3	position	smallint(5) unsigned	NO	PRI			
+plan_features	4	feature	varchar(160)	NO				
+product_categories	1	id	smallint(5) unsigned	NO	PRI		auto_increment	
+product_categories	2	code	varchar(32)	NO	UNI			
+product_categories	3	name	varchar(80)	NO				
+product_categories	4	description	varchar(255)	NO				
+projects	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+projects	2	user_id	bigint(20) unsigned	NO	MUL			users.id
+projects	3	order_item_id	bigint(20) unsigned	NO	UNI			order_items.id
+projects	4	plan_id	int(10) unsigned	NO	MUL			plans.id
+projects	5	app_name	varchar(41)	NO	UNI			
+projects	6	status	varchar(16)	NO	MUL			
+projects	7	server_id	varchar(64)	NO				
+projects	8	command_id	char(36)	YES		NULL		
+projects	9	hourly_price_rial	bigint(20) unsigned	NO				
+projects	10	monthly_price_rial	bigint(20) unsigned	NO				
+projects	11	created_at	datetime(6)	NO				
+projects	12	activated_at	datetime(6)	YES		NULL		
+projects	13	suspended_at	datetime(6)	YES		NULL		
+projects	14	billing_resumed_at	datetime(6)	YES		NULL		
+projects	15	deleted_at	datetime(6)	YES		NULL		
+projects	16	updated_at	datetime(6)	NO				
+routes	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+routes	2	route_key	varchar(64)	NO	PRI			
+routes	3	service_key	varchar(128)	NO				
+routes	4	protocol	varchar(8)	NO				
+routes	5	scope	varchar(16)	NO				
+routes	6	tls_mode	varchar(16)	NO				
+routes	7	listen_port	smallint(5) unsigned	YES		NULL		
+routes	8	target_port	smallint(5) unsigned	NO				
+routes	9	path_prefix	varchar(256)	YES		NULL		
+routes	10	health_kind	varchar(32)	NO		''		
+routes	11	health_path	varchar(256)	YES		NULL		
+routes	12	health_timeout_seconds	smallint(5) unsigned	NO		0		
+routes	13	dns_reference	varchar(64)	YES		NULL		
+routes	14	resolver	varchar(64)	YES		NULL		
+routes	15	enabled	tinyint(1)	NO				
+routes	16	managed	tinyint(1)	NO				
+routes	17	metrics	tinyint(1)	NO				
+routes	18	access_logs	tinyint(1)	NO				
+routes	19	public_allow	tinyint(1)	NO				
+routes	20	is_sensitive	tinyint(1)	NO				
+routes	21	version	int(11)	NO				
+route_certificates	1	cluster_id	varchar(64)	NO	PRI			routes.cluster_id
+route_certificates	2	route_key	varchar(64)	NO	PRI			routes.route_key
+route_certificates	3	state	varchar(32)	NO				
+route_certificates	4	issuer	varchar(256)	YES		NULL		
+route_certificates	5	fingerprint	varchar(128)	YES		NULL		
+route_certificates	6	resolver	varchar(64)	NO		''		
+route_certificates	7	handshake_valid	tinyint(1)	NO				
+route_certificates	8	failure_summary	text	YES		NULL		
+route_certificates	9	last_attempt	datetime(6)	YES		NULL		
+route_certificates	10	not_before	datetime(6)	YES		NULL		
+route_certificates	11	not_after	datetime(6)	YES	MUL	NULL		
+route_certificates	12	version	int(11)	NO				
+route_certificate_domains	1	cluster_id	varchar(64)	NO	PRI			route_certificates.cluster_id
+route_certificate_domains	2	route_key	varchar(64)	NO	PRI			route_certificates.route_key
+route_certificate_domains	3	position	smallint(5) unsigned	NO	PRI			
+route_certificate_domains	4	domain	varchar(253)	NO				
+route_hosts	1	cluster_id	varchar(64)	NO	PRI			routes.cluster_id
+route_hosts	2	route_key	varchar(64)	NO	PRI			routes.route_key
+route_hosts	3	kind	varchar(4)	NO	PRI			
+route_hosts	4	position	smallint(5) unsigned	NO	PRI			
+route_hosts	5	hostname	varchar(253)	NO				
+route_runtime	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+route_runtime	2	route_key	varchar(64)	NO	PRI			
+route_runtime	3	protocol	varchar(8)	NO				
+route_runtime	4	router	varchar(256)	NO		''		
+route_runtime	5	service	varchar(256)	NO		''		
+route_runtime	6	state	varchar(32)	NO		''		
+route_runtime	7	observed_at	datetime(6)	NO				
+route_runtime	8	version	int(11)	NO				
+route_runtime_entry_points	1	cluster_id	varchar(64)	NO	PRI			route_runtime.cluster_id
+route_runtime_entry_points	2	route_key	varchar(64)	NO	PRI			route_runtime.route_key
+route_runtime_entry_points	3	position	smallint(5) unsigned	NO	PRI			
+route_runtime_entry_points	4	entry_point	varchar(64)	NO				
+route_runtime_errors	1	cluster_id	varchar(64)	NO	PRI			route_runtime.cluster_id
+route_runtime_errors	2	route_key	varchar(64)	NO	PRI			route_runtime.route_key
+route_runtime_errors	3	position	smallint(5) unsigned	NO	PRI			
+route_runtime_errors	4	message	varchar(256)	NO				
+routing_clusters	1	cluster_id	varchar(64)	NO	PRI			
+routing_clusters	2	settings_json	longtext	NO				
+routing_clusters	3	cutover_json	longtext	YES		NULL		
+routing_clusters	4	cutover_rollback_json	longtext	YES		NULL		
+routing_clusters	5	updated_at	datetime(6)	NO				
+routing_domains	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+routing_domains	2	zone	varchar(253)	NO	PRI			
+routing_domains	3	note	varchar(512)	YES		NULL		
+routing_domains	4	created_at	datetime(6)	YES		NULL		
+routing_domains	5	version	int(11)	NO				
+schema_migrations	1	version	int(10) unsigned	NO	PRI			
+schema_migrations	2	name	varchar(200)	NO				
+schema_migrations	3	checksum	char(64)	NO				
+schema_migrations	4	applied_at	datetime(6)	NO				
+servers	1	id	varchar(64)	NO	PRI			
+servers	2	name	varchar(96)	NO	MUL			
+servers	3	host	varchar(253)	NO				
+servers	4	port	smallint(5) unsigned	NO		0		
+servers	5	username	varchar(190)	NO		''		
+servers	6	authentication	varchar(32)	NO				
+servers	7	connection_type	varchar(32)	YES		NULL		
+servers	8	api_url	varchar(512)	YES		NULL		
+servers	9	host_key_fingerprint	varchar(128)	NO		''		
+servers	10	tls_certificate_fingerprint	varchar(128)	YES		NULL		
+servers	11	docker_available	tinyint(1)	NO		0		
+servers	12	docker_version	varchar(64)	YES		NULL		
+servers	13	swarm_control_available	tinyint(1)	NO		0		
+servers	14	swarm_state	varchar(32)	YES		NULL		
+servers	15	last_connected_at	datetime(6)	YES		NULL		
+servers	16	agent_version	varchar(64)	YES		NULL		
+servers	17	agent_checked_at	datetime(6)	YES		NULL		
+servers	18	agent_detail	text	YES		NULL		
+servers	19	agent_last_failure_at	datetime(6)	YES		NULL		
+servers	20	agent_last_reachable_at	datetime(6)	YES		NULL		
+servers	21	agent_protocol_version	int(10) unsigned	NO		0		
+servers	22	agent_state	varchar(16)	YES		NULL		
+servers	23	agent_summary	varchar(1024)	YES		NULL		
+servers	24	agent_uptime_seconds	bigint(20) unsigned	NO		0		
+servers	25	update_automatic	tinyint(1)	NO		0		
+servers	26	update_checked_at	datetime(6)	YES		NULL		
+servers	27	update_last_updated_at	datetime(6)	YES		NULL		
+servers	28	update_requested_at	datetime(6)	YES		NULL		
+servers	29	update_revision	varchar(128)	YES		NULL		
+servers	30	update_state	varchar(32)	YES		NULL		
+servers	31	update_version	varchar(64)	YES		NULL		
+servers	32	updated_at	datetime(6)	NO				
+server_agent_events	1	server_id	varchar(64)	NO	PRI			servers.id
+server_agent_events	2	position	smallint(5) unsigned	NO	PRI			
+server_agent_events	3	code	varchar(64)	NO				
+server_agent_events	4	level	varchar(16)	NO				
+server_agent_events	5	message	text	NO				
+server_agent_events	6	occurred_at	datetime(6)	NO				
+server_agent_events	7	source	varchar(32)	NO				
+server_keys	1	server_id	varchar(64)	NO	PRI			servers.id
+server_keys	2	api_key_sealed	varbinary(1024)	NO				
+server_keys	3	updated_at	datetime(6)	NO				
+service_route_declarations	1	cluster_id	varchar(64)	NO	PRI			routing_clusters.cluster_id
+service_route_declarations	2	service_key	varchar(128)	NO	PRI			
+service_route_declarations	3	role	varchar(32)	NO				
+service_route_declarations	4	reason	varchar(512)	YES		NULL		
+service_route_declarations	5	version	int(11)	NO				
+source_connections	1	id	char(32)	NO	PRI			
+source_connections	2	kind	varchar(32)	NO				
+source_connections	3	name	varchar(190)	NO	MUL			
+source_connections	4	base_url	varchar(512)	NO				
+source_connections	5	account	varchar(190)	YES		NULL		
+source_connections	6	token_sealed	varbinary(8192)	NO				
+source_connections	7	created_at	datetime(6)	NO				
+source_connections	8	updated_at	datetime(6)	NO				
+source_private_hosts	1	host	varchar(253)	NO	PRI			
+source_private_hosts	2	position	smallint(5) unsigned	NO	UNI			
+source_settings	1	id	tinyint(3) unsigned	NO	PRI			
+source_settings	2	enabled	tinyint(1)	NO				
+source_settings	3	build_enabled	tinyint(1)	NO				
+source_settings	4	image_prefix	varchar(255)	NO		''		
+source_settings	5	registry_server	varchar(253)	NO		''		
+source_settings	6	registry_username	varchar(190)	NO		''		
+source_settings	7	registry_password_sealed	varbinary(4096)	YES		NULL		
+source_settings	8	updated_at	datetime(6)	NO				
+support_tickets	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+support_tickets	2	user_id	bigint(20) unsigned	NO	MUL			users.id
+support_tickets	3	project_id	bigint(20) unsigned	YES	MUL	NULL		projects.id
+support_tickets	4	subject	varchar(160)	NO				
+support_tickets	5	status	varchar(16)	NO	MUL	'open'		
+support_tickets	6	priority	varchar(8)	NO		'normal'		
+support_tickets	7	created_at	datetime(6)	NO				
+support_tickets	8	updated_at	datetime(6)	NO				
+ticket_messages	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+ticket_messages	2	ticket_id	bigint(20) unsigned	NO	MUL			support_tickets.id
+ticket_messages	3	author_id	bigint(20) unsigned	NO	MUL			users.id
+ticket_messages	4	body	text	NO				
+ticket_messages	5	created_at	datetime(6)	NO				
+usage_records	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+usage_records	2	project_id	bigint(20) unsigned	NO	MUL			projects.id
+usage_records	3	period_start	datetime	NO				
+usage_records	4	amount_rial	bigint(20) unsigned	NO				
+usage_records	5	wallet_transaction_id	bigint(20) unsigned	YES	MUL	NULL		wallet_transactions.id
+usage_records	6	invoice_id	bigint(20) unsigned	YES	MUL	NULL		invoices.id
+usage_records	7	created_at	datetime(6)	NO				
+users	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+users	2	email	varchar(254)	NO	UNI			
+users	3	full_name	varchar(120)	NO				
+users	4	password_hash	varchar(100)	NO				
+users	5	role	varchar(16)	NO	MUL			
+users	6	status	varchar(16)	NO		'active'		
+users	7	created_at	datetime(6)	NO				
+users	8	updated_at	datetime(6)	NO				
+users	9	last_login_at	datetime(6)	YES		NULL		
+user_sessions	1	token_hash	char(64)	NO	PRI			
+user_sessions	2	user_id	bigint(20) unsigned	NO	MUL			users.id
+user_sessions	3	csrf_token	varchar(64)	NO				
+user_sessions	4	created_at	datetime(6)	NO				
+user_sessions	5	expires_at	datetime(6)	NO				
+user_sessions	6	revoked_at	datetime(6)	YES		NULL		
+wallets	1	user_id	bigint(20) unsigned	NO	PRI			users.id
+wallets	2	balance_rial	bigint(20)	NO		0		
+wallets	3	updated_at	datetime(6)	NO				
+wallet_transactions	1	id	bigint(20) unsigned	NO	PRI		auto_increment	
+wallet_transactions	2	user_id	bigint(20) unsigned	NO	MUL			wallets.user_id
+wallet_transactions	3	kind	varchar(16)	NO	MUL			
+wallet_transactions	4	amount_rial	bigint(20)	NO				
+wallet_transactions	5	balance_after_rial	bigint(20)	NO				
+wallet_transactions	6	reference_type	varchar(32)	YES		NULL		
+wallet_transactions	7	reference_id	bigint(20) unsigned	YES		NULL		
+wallet_transactions	8	description	varchar(255)	NO				
+wallet_transactions	9	idempotency_key	varchar(128)	YES		NULL		
+wallet_transactions	10	created_by	bigint(20) unsigned	YES	MUL	NULL		users.id
+wallet_transactions	11	created_at	datetime(6)	NO				
