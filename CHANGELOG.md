@@ -11,6 +11,21 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.23.1 — 2026-09-16
+
+- **The gateway's own service needed a port, or it published nothing** — Traefik
+  labels itself to serve its dashboard, but the Swarm provider refuses a service
+  it cannot assign a port to and discards that service's whole label set along
+  with the refusal. Both dashboard routers therefore never existed. Nothing
+  looked broken from the outside: the service reported one replica of one,
+  held ports 80 and 443, and answered every request — with its built-in
+  self-signed certificate and a 404, while logging "port is missing" every
+  fifteen seconds. Because no router carried a hostname, ACME had nothing to
+  request a certificate for and its storage stayed empty, so a gateway that
+  reported itself installed could not serve a single name. The service now
+  declares a port it never serves traffic on; the routers continue to serve
+  api@internal and noop@internal.
+
 ## 0.23.0 — 2026-09-16
 
 - **Controller state moves to MySQL or MariaDB** — every store kept its whole
