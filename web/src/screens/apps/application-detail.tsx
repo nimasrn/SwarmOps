@@ -28,7 +28,8 @@ export function ApplicationDetailView({ onBack, onDeploy, onOpenRoutes, status, 
     { label: 'Running tasks', value: String(status.runningTasks), source: 'Selected manager snapshot' },
     { label: 'CPU limit / replica', value: `${status.spec.cpus} vCPU` },
     { label: 'Memory limit / replica', value: `${status.spec.memoryMiB} MiB` },
-    { label: 'Container port', value: String(status.spec.port) },
+    { label: 'Kind', value: capitalize(status.spec.kind ?? 'web') + (status.spec.protocol === 'tcp' ? ' (TCP, internal)' : '') },
+    { label: 'Container port', value: status.spec.port ? String(status.spec.port) : 'None' },
     { label: 'Health path', mono: true, value: status.spec.healthPath || 'Not declared' },
     { label: 'Credential delivery', value: capitalize(status.spec.databaseDelivery ?? 'secret') },
   ]
@@ -77,6 +78,9 @@ export function ApplicationDetailView({ onBack, onDeploy, onOpenRoutes, status, 
           <Panel variant="plain" title="Dependencies"><Facts items={[
             { label: 'Managed databases', value: status.spec.databases?.join(', ') || 'None declared' },
             { label: 'Backend', value: status.spec.backend || 'None declared' },
+            { label: 'Calls', value: status.spec.dependsOn?.map(dependency => dependency.application).join(', ') || 'None declared' },
+            { label: 'Database owner', value: status.spec.databaseOwner || 'Its own' },
+            { label: 'Secret variables', mono: true, value: Object.keys(status.spec.secretEnv ?? {}).sort().join(', ') || 'None declared' },
           ]} /></Panel>
         </Rows> : tab === 'releases' ? <Panel variant="plain" title="Release activity" description="Retained commands for this application; not a complete deployment history.">
           {relatedRuns.length ? <List plain>{relatedRuns.map(command => <ListRow key={command.id} title={command.action} subtitle={command.target} trailing={<CommandStateBadge state={command.state} />} href={workspaceHash('runs', command.id)} />)}</List> : <Body size="sm">No matching command is present in the retained window. The current image is <Mono>{status.spec.image}</Mono>.</Body>}

@@ -649,11 +649,17 @@ export interface ApplicationSpec {
   cpus?: number
   databaseDelivery?: 'secret' | 'env'
   databases?: string[]
+  /** The application whose managed database accounts this one shares. */
+  databaseOwner?: string
+  /** Applications this one calls; each address arrives as NAME_ADDRESS and under `env`. */
+  dependsOn?: { application: string; env?: string[] }[]
   domain?: string
   Env?: Record<string, string>
   healthCommand?: string[]
   healthPath?: string
   image: string
+  /** web (routed, default), worker (no route), or job (runs once per change). */
+  kind?: 'web' | 'worker' | 'job'
   memoryMiB?: number
   metrics: boolean
   metricsPath?: string
@@ -662,8 +668,13 @@ export interface ApplicationSpec {
   /** The named size this application runs at. Empty means the default plan. */
   plan?: string
   port: number
+  /** http (default) or tcp; a tcp application is internal-only. */
+  protocol?: 'http' | 'tcp'
   replicas?: number
   resolver?: string
+  /** Secret variable names. The controller returns every value empty; an
+      empty value sent back keeps the stored one. */
+  secretEnv?: Record<string, string>
   tracing?: boolean
 }
 

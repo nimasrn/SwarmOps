@@ -33,26 +33,34 @@ type ManifestSource struct {
 // the spec's Env field carries no struct tag and therefore travels as "Env" on
 // the wire, and the console reads it under that name.
 type Manifest struct {
-	Backend       string            `json:"backend,omitempty"`
-	CPUs          float64           `json:"cpus,omitempty"`
-	Databases     []string          `json:"databases,omitempty"`
-	Domain        string            `json:"domain,omitempty"`
-	Env           map[string]string `json:"env,omitempty"`
-	HealthCommand []string          `json:"healthCommand,omitempty"`
-	HealthPath    string            `json:"healthPath,omitempty"`
-	Image         string            `json:"image,omitempty"`
-	MemoryMiB     int64             `json:"memoryMiB,omitempty"`
-	Metrics       bool              `json:"metrics,omitempty"`
-	MetricsPath   string            `json:"metricsPath,omitempty"`
-	MetricsPort   uint16            `json:"metricsPort,omitempty"`
-	Name          string            `json:"name"`
-	Plan          string            `json:"plan,omitempty"`
-	Port          uint16            `json:"port,omitempty"`
-	Replicas      uint64            `json:"replicas,omitempty"`
-	Resolver      string            `json:"resolver,omitempty"`
-	Server        string            `json:"server,omitempty"`
-	Source        *ManifestSource   `json:"source,omitempty"`
-	Tracing       bool              `json:"tracing,omitempty"`
+	Backend       string                      `json:"backend,omitempty"`
+	CPUs          float64                     `json:"cpus,omitempty"`
+	DatabaseOwner string                      `json:"databaseOwner,omitempty"`
+	DependsOn     []ops.ApplicationDependency `json:"dependsOn,omitempty"`
+	Databases     []string                    `json:"databases,omitempty"`
+	Domain        string                      `json:"domain,omitempty"`
+	Env           map[string]string           `json:"env,omitempty"`
+	HealthCommand []string                    `json:"healthCommand,omitempty"`
+	HealthPath    string                      `json:"healthPath,omitempty"`
+	Image         string                      `json:"image,omitempty"`
+	Kind          string                      `json:"kind,omitempty"`
+	MemoryMiB     int64                       `json:"memoryMiB,omitempty"`
+	Metrics       bool                        `json:"metrics,omitempty"`
+	MetricsPath   string                      `json:"metricsPath,omitempty"`
+	MetricsPort   uint16                      `json:"metricsPort,omitempty"`
+	Name          string                      `json:"name"`
+	Plan          string                      `json:"plan,omitempty"`
+	Port          uint16                      `json:"port,omitempty"`
+	Protocol      string                      `json:"protocol,omitempty"`
+	Replicas      uint64                      `json:"replicas,omitempty"`
+	Resolver      string                      `json:"resolver,omitempty"`
+	// SecretEnv names secret variables only. Their values are read from the
+	// operator's environment at deploy time, so swarmops.json never holds a
+	// secret; a name that is unset keeps the value the controller stored.
+	SecretEnv []string        `json:"secretEnv,omitempty"`
+	Server    string          `json:"server,omitempty"`
+	Source    *ManifestSource `json:"source,omitempty"`
+	Tracing   bool            `json:"tracing,omitempty"`
 }
 
 // LoadManifest reads swarmops.json from a directory.
@@ -102,12 +110,15 @@ func (m Manifest) Spec() ops.ApplicationSpec {
 	return ops.ApplicationSpec{
 		Backend:       strings.TrimSpace(m.Backend),
 		CPUs:          m.CPUs,
+		DatabaseOwner: strings.ToLower(strings.TrimSpace(m.DatabaseOwner)),
+		DependsOn:     m.DependsOn,
 		Databases:     m.Databases,
 		Domain:        strings.TrimSpace(m.Domain),
 		Env:           m.Env,
 		HealthCommand: m.HealthCommand,
 		HealthPath:    strings.TrimSpace(m.HealthPath),
 		Image:         strings.TrimSpace(m.Image),
+		Kind:          strings.ToLower(strings.TrimSpace(m.Kind)),
 		MemoryMiB:     m.MemoryMiB,
 		Metrics:       m.Metrics,
 		MetricsPath:   strings.TrimSpace(m.MetricsPath),
@@ -115,10 +126,31 @@ func (m Manifest) Spec() ops.ApplicationSpec {
 		Name:          strings.ToLower(strings.TrimSpace(m.Name)),
 		Plan:          strings.ToLower(strings.TrimSpace(m.Plan)),
 		Port:          m.Port,
+		Protocol:      strings.ToLower(strings.TrimSpace(m.Protocol)),
 		Replicas:      m.Replicas,
 		Resolver:      strings.TrimSpace(m.Resolver),
+		SecretEnv:     m.secretEnv(os.LookupEnv),
 		Tracing:       m.Tracing,
 	}
+}
+
+// secretEnv resolves the named secrets from the environment. An unset name is
+// sent empty, which tells the controller to keep its stored value; no names
+// at all leaves the field out so the stored secrets are kept untouched.
+func (m Manifest) secretEnv(lookup func(string) (string, bool)) map[string]string {
+	if len(m.SecretEnv) == 0 {
+		return nil
+	}
+	values := make(map[string]string, len(m.SecretEnv))
+	for _, name := range m.SecretEnv {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		value, _ := lookup(name)
+		values[name] = value
+	}
+	return values
 }
 
 // ManifestFromSpec is how `init` turns an existing application, or a
@@ -127,12 +159,15 @@ func ManifestFromSpec(spec ops.ApplicationSpec) Manifest {
 	return Manifest{
 		Backend:       spec.Backend,
 		CPUs:          spec.CPUs,
+		DatabaseOwner: spec.DatabaseOwner,
+		DependsOn:     spec.DependsOn,
 		Databases:     spec.Databases,
 		Domain:        spec.Domain,
 		Env:           spec.Env,
 		HealthCommand: spec.HealthCommand,
 		HealthPath:    spec.HealthPath,
 		Image:         spec.Image,
+		Kind:          spec.Kind,
 		MemoryMiB:     spec.MemoryMiB,
 		Metrics:       spec.Metrics,
 		MetricsPath:   spec.MetricsPath,
@@ -140,8 +175,10 @@ func ManifestFromSpec(spec ops.ApplicationSpec) Manifest {
 		Name:          spec.Name,
 		Plan:          spec.Plan,
 		Port:          spec.Port,
+		Protocol:      spec.Protocol,
 		Replicas:      spec.Replicas,
 		Resolver:      spec.Resolver,
+		SecretEnv:     spec.SecretEnvKeys(),
 		Tracing:       spec.Tracing,
 	}
 }

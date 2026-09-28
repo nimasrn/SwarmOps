@@ -44,7 +44,7 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 	if err := c.requireAudit(); err != nil {
 		return err
 	}
-	spec = spec.Normalize()
+	spec = c.withStoredSecrets(spec.Normalize())
 	// Databases come first, and completely. Provisioning waits for each
 	// managed engine to pass its own healthcheck, creates this application's
 	// user, database, and grants, and seals the credential — so by the time
@@ -56,6 +56,9 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 		step.report("Provisioning " + strings.Join(spec.Databases, ", ") + " for " + spec.Name)
 	}
 	uris, err := c.EnsureApplicationDatabases(ctx, actor, requestID, spec)
+	for engine, uri := range uris {
+		uris[engine] = c.DatabaseSettings.DeliveredURI(engine, uri)
+	}
 	var rendered []byte
 	var stack string
 	if err == nil {
@@ -66,9 +69,15 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 		step.report("Preparing the route network")
 		err = c.prepareApplicationRouteNetwork(ctx, spec)
 	}
-	if err == nil && spec.DatabaseDelivery == DeliverySecret {
+	if err == nil && (spec.DatabaseDelivery == DeliverySecret || len(spec.SecretEnv) > 0) {
 		step.report("Sealing the connection secrets")
 		err = c.ensureApplicationSecrets(ctx, stack, spec, uris)
+	}
+	if err == nil && spec.Kind == KindJob && c.Routing != nil && validClusterID(c.ServerID) {
+		// Deploying a job waits for its run, so its dependencies must be
+		// reachable before it starts rather than after.
+		step.report("Binding dependencies before the job runs")
+		err = c.bindApplicationDependencies(ctx, actor, requestID, spec, c.applicationDesiredRoute(spec), true)
 	}
 	if err == nil {
 		step.report("Deploying the " + stack + " stack")
@@ -98,9 +107,28 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 	}
 	if err == nil && c.Routing != nil && validClusterID(c.ServerID) {
 		route := c.applicationDesiredRoute(spec)
-		err = c.Routing.PutRoute(c.ServerID, route)
-		if err == nil {
-			err = c.Routing.PutDeclaration(c.ServerID, ServiceRouteDeclaration{Role: ServiceRoleRouted, ServiceKey: route.ServiceKey, Version: RoutingSchemaVersion})
+		if spec.Routed() && spec.Protocol == ProtocolTCP {
+			// The listen port is allocated once and kept; applying the plan
+			// also restores the labels a stack redeploy replaced.
+			route.Enabled = true
+			var plan RoutePlan
+			plan, err = c.PlanRoute(ctx, route)
+			if err == nil {
+				err = c.applyRoutePlan(ctx, plan)
+				route = plan.Route
+			}
+			if err == nil {
+				err = c.Routing.PutDeclaration(c.ServerID, ServiceRouteDeclaration{Role: ServiceRoleRouted, ServiceKey: route.ServiceKey, Version: RoutingSchemaVersion})
+			}
+		} else if spec.Routed() {
+			err = c.Routing.PutRoute(c.ServerID, route)
+			if err == nil {
+				err = c.Routing.PutDeclaration(c.ServerID, ServiceRouteDeclaration{Role: ServiceRoleRouted, ServiceKey: route.ServiceKey, Version: RoutingSchemaVersion})
+			}
+		} else {
+			// A worker or job only calls its dependencies; it has no route of
+			// its own for anything to reach.
+			err = c.Routing.PutDeclaration(c.ServerID, ServiceRouteDeclaration{Role: ServiceRoleClientOnly, Reason: "SwarmOps " + spec.Kind + " without an inbound route", ServiceKey: route.ServiceKey, Version: RoutingSchemaVersion})
 		}
 		if err == nil {
 			err = c.applyApplicationDependencyBindings(ctx, actor, requestID, spec, route)
@@ -114,11 +142,48 @@ func (c *ControlPlane) DeployApplication(ctx context.Context, actor, requestID s
 		"delivery":  spec.DatabaseDelivery,
 		"domain":    spec.Domain,
 		"image":     spec.Image,
+		"kind":      spec.Kind,
 	})
 	return err
 }
 
+// withStoredSecrets fills each secret variable submitted without a value from
+// the stored application, so a redeployment never has to resend a secret and
+// the browser never has to hold one it did not type.
+//
+// An omitted secretEnv keeps every stored secret — a form that does not know
+// about secrets must not silently delete them — while an explicit empty
+// object removes them all.
+func (c *ControlPlane) withStoredSecrets(spec ApplicationSpec) ApplicationSpec {
+	if c.Apps == nil {
+		return spec
+	}
+	stored, found := c.Apps.Get(spec.Name)
+	if spec.SecretEnv == nil {
+		if found && len(stored.SecretEnv) > 0 {
+			spec.SecretEnv = stored.SecretEnv
+		}
+		return spec
+	}
+	if len(spec.SecretEnv) == 0 {
+		return spec
+	}
+	merged := make(map[string]string, len(spec.SecretEnv))
+	for key, value := range spec.SecretEnv {
+		if value == "" && found {
+			value = stored.SecretEnv[key]
+		}
+		merged[key] = value
+	}
+	spec.SecretEnv = merged
+	return spec
+}
+
 func (c *ControlPlane) applyApplicationDependencyBindings(ctx context.Context, actor, requestID string, spec ApplicationSpec, route RouteSpec) error {
+	return c.bindApplicationDependencies(ctx, actor, requestID, spec, route, false)
+}
+
+func (c *ControlPlane) bindApplicationDependencies(ctx context.Context, actor, requestID string, spec ApplicationSpec, route RouteSpec, beforeCaller bool) error {
 	bindings := make([]DependencyBinding, 0, len(spec.Databases)+3)
 	for _, engine := range spec.Databases {
 		definition, err := DatabaseDefinitionFor(engine)
@@ -126,6 +191,13 @@ func (c *ControlPlane) applyApplicationDependencyBindings(ctx context.Context, a
 			return err
 		}
 		bindings = append(bindings, DependencyBinding{CallerService: route.ServiceKey, Delivery: DependencyExisting, TargetRoute: managedDatabaseRoute(definition).Key, Version: RoutingSchemaVersion})
+	}
+	for _, dependency := range spec.DependsOn {
+		target, found := c.applicationRoute(dependency.Application)
+		if !found {
+			return fmt.Errorf("dependency %q has no route yet; deploy it before %q", dependency.Application, spec.Name)
+		}
+		bindings = append(bindings, DependencyBinding{CallerService: route.ServiceKey, Delivery: DependencyExisting, TargetRoute: target.Key, Version: RoutingSchemaVersion})
 	}
 	if spec.Backend != "" {
 		backendService := ApplicationNamespace + "-" + spec.Backend + "_" + ApplicationServiceName
@@ -135,9 +207,12 @@ func (c *ControlPlane) applyApplicationDependencyBindings(ctx context.Context, a
 		bindings = append(bindings, DependencyBinding{CallerService: route.ServiceKey, Delivery: DependencyExisting, TargetRoute: "swarmops-jaeger-otlp", Version: RoutingSchemaVersion})
 	}
 	for _, binding := range bindings {
-		if err := c.ApplyDependencyBinding(ctx, actor, requestID, binding); err != nil {
+		if err := c.applyDependencyBinding(ctx, actor, requestID, binding, beforeCaller); err != nil {
 			return err
 		}
+	}
+	if beforeCaller {
+		return nil
 	}
 	if spec.Metrics && serviceExists(ctx, c.Docker, "swarmops-observability_prometheus") {
 		return c.ApplyDependencyBinding(ctx, actor, requestID, DependencyBinding{CallerService: "swarmops-observability_prometheus", Delivery: DependencyExisting, TargetRoute: route.Key, Version: RoutingSchemaVersion})
@@ -176,7 +251,9 @@ func (c *ControlPlane) RemoveApplication(ctx context.Context, actor, requestID, 
 		// The controller stops holding credentials for an application that no
 		// longer exists. The database account and its data survive, in the
 		// same way a removed database keeps its volume.
-		c.Credentials.ForgetApplication(spec.Name)
+		if !c.databaseOwnedByAnother(spec.Name) {
+			c.Credentials.ForgetApplication(spec.Name)
+		}
 	}
 	c.record(actor, requestID, "application.remove", "stack/"+stack, err, nil)
 	return err
@@ -204,6 +281,9 @@ func (c *ControlPlane) SetApplicationDomain(ctx context.Context, actor, requestI
 	if !found {
 		return fmt.Errorf("application %q is not deployed by SwarmOps", name)
 	}
+	if !spec.Routed() {
+		return fmt.Errorf("a %s has no route, so it cannot take a domain", spec.Kind)
+	}
 	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
 	resolver = strings.TrimSpace(resolver)
 	if domain == "" {
@@ -228,8 +308,12 @@ func (c *ControlPlane) PlanApplication(ctx context.Context, spec ApplicationSpec
 	// it owns none yet, so an operator can read the exact Compose before any
 	// database account exists.
 	uris := make(map[string]string, len(spec.Databases))
+	owner := spec.Name
+	if spec.DatabaseOwner != "" {
+		owner = spec.DatabaseOwner
+	}
 	for _, engine := range spec.Databases {
-		if uri, found := c.Credentials.GetApplication(spec.Name, engine); found {
+		if uri, found := c.Credentials.GetApplication(owner, engine); found {
 			uris[engine] = uri
 		}
 	}
@@ -242,6 +326,7 @@ func (c *ControlPlane) PlanApplication(ctx context.Context, spec ApplicationSpec
 // of each attached database URI, because a stack may only mount a secret whose
 // name is inside its own namespace.
 func (c *ControlPlane) renderApplication(ctx context.Context, spec ApplicationSpec, uris map[string]string, requireDatabases bool) ([]byte, string, error) {
+	spec = c.withStoredSecrets(spec)
 	if err := spec.Validate(); err != nil {
 		return nil, "", err
 	}
@@ -251,8 +336,15 @@ func (c *ControlPlane) renderApplication(ctx context.Context, spec ApplicationSp
 	namespace := ApplicationNamespace
 	stack := spec.StackName(namespace)
 
-	input := ApplicationRenderInput{DatabaseURIs: map[string]string{}, Namespace: namespace, Spec: spec}
-	if c.Routing != nil && validClusterID(c.ServerID) {
+	input := ApplicationRenderInput{DatabaseURIs: map[string]string{}, URISecretVersions: map[string]string{}, Namespace: namespace, Spec: spec}
+	if len(spec.DependsOn) > 0 {
+		addresses, err := c.applicationDependencyAddresses(spec)
+		if err != nil {
+			return nil, "", err
+		}
+		input.DependencyAddresses = addresses
+	}
+	if spec.HTTPRouted() && c.Routing != nil && validClusterID(c.ServerID) {
 		state, stateErr := c.Routing.Snapshot(c.ServerID)
 		if stateErr != nil {
 			return nil, "", stateErr
@@ -281,7 +373,8 @@ func (c *ControlPlane) renderApplication(ctx context.Context, spec ApplicationSp
 			// application must still be previewable before it exists.
 			uri = "managed://pending/" + definition.Engine
 		}
-		input.DatabaseURIs[engine] = uri
+		input.DatabaseURIs[engine] = c.DatabaseSettings.DeliveredURI(engine, uri)
+		input.URISecretVersions[engine] = c.DatabaseSettings.URISecretVersion(engine)
 	}
 	if spec.Backend != "" {
 		backend, found := c.Apps.Get(spec.Backend)
@@ -339,6 +432,14 @@ func (c *ControlPlane) localImageNodeID(ctx context.Context) (string, error) {
 func (c *ControlPlane) applicationDesiredRoute(spec ApplicationSpec) RouteSpec {
 	stack := spec.StackName(ApplicationNamespace)
 	fallback := applicationRouteSpec(spec, stack)
+	if spec.Protocol == ProtocolTCP {
+		fallback = applicationTCPRouteSpec(spec, stack)
+		if existing, found := c.applicationRoute(spec.Name); found && existing.Protocol == RouteTCP {
+			// Keep the allocated listen port so callers' addresses stay valid.
+			fallback.ListenPort = existing.ListenPort
+		}
+		return fallback
+	}
 	if c.Routing == nil || !validClusterID(c.ServerID) {
 		return fallback
 	}
@@ -387,19 +488,33 @@ func (c *ControlPlane) prepareApplicationRouteNetwork(ctx context.Context, spec 
 // scoped to this application's stack. The value is identical to the shared
 // one; the separate object is what keeps the namespace boundary intact.
 func (c *ControlPlane) ensureApplicationSecrets(ctx context.Context, stack string, spec ApplicationSpec, uris map[string]string) error {
-	if len(spec.Databases) == 0 {
+	if len(spec.Databases) == 0 && len(spec.SecretEnv) == 0 {
 		return nil
 	}
 	existing, err := c.swarmSecretNames(ctx)
 	if err != nil {
 		return err
 	}
+	// Secret variables are content-addressed, so an existing name already
+	// holds exactly this value and a changed value is a new secret.
+	for _, key := range spec.SecretEnvKeys() {
+		name := secretEnvSecretName(stack, key, spec.SecretEnv[key])
+		if existing[name] {
+			continue
+		}
+		if _, err := c.CLI.RunInput(ctx, strings.NewReader(spec.SecretEnv[key]), "secret", "create", name, "-"); err != nil {
+			return fmt.Errorf("create application secret for %s: %w", key, err)
+		}
+	}
+	if spec.DatabaseDelivery != DeliverySecret {
+		return nil
+	}
 	for _, engine := range spec.Databases {
 		uri, found := uris[engine]
 		if !found {
 			return fmt.Errorf("managed database %q has no provisioned connection URI for %q", engine, spec.Name)
 		}
-		name := stack + "_" + engine + "_uri_v1"
+		name := stack + "_" + engine + "_uri_" + c.DatabaseSettings.URISecretVersion(engine)
 		if existing[name] {
 			continue
 		}
@@ -443,7 +558,7 @@ func (c *ControlPlane) Applications(ctx context.Context) ([]ApplicationStatus, e
 			RunningTasks:   tasks,
 			Service:        service,
 			State:          applicationState(outcome, deployed, tasks),
-			Spec:           spec,
+			Spec:           spec.Redacted(),
 			Stack:          spec.StackName(namespace),
 		}
 		if spec.Domain != "" {
@@ -498,4 +613,48 @@ func applicationState(outcome ApplicationOutcome, deployed bool, tasks uint64) s
 		return ApplicationStopped
 	}
 	return ApplicationFailed
+}
+
+// databaseOwnedByAnother reports whether another stored application uses
+// name's database accounts. Forgetting the credential would make that
+// application's next deployment rotate a password its tasks still use.
+func (c *ControlPlane) databaseOwnedByAnother(name string) bool {
+	for _, spec := range c.Apps.List() {
+		if spec.Name != name && spec.DatabaseOwner == name {
+			return true
+		}
+	}
+	return false
+}
+
+// applicationRoute returns the enabled route SwarmOps holds for application.
+func (c *ControlPlane) applicationRoute(application string) (RouteSpec, bool) {
+	if c.Routing == nil || !validClusterID(c.ServerID) {
+		return RouteSpec{}, false
+	}
+	state, err := c.Routing.Snapshot(c.ServerID)
+	if err != nil {
+		return RouteSpec{}, false
+	}
+	serviceKey := ApplicationNamespace + "-" + application + "_" + ApplicationServiceName
+	for _, route := range state.Routes {
+		if route.ServiceKey == serviceKey && route.Enabled {
+			return route, true
+		}
+	}
+	return RouteSpec{}, false
+}
+
+// applicationDependencyAddresses resolves each dependency to the address its
+// route answers on inside the cluster: host:port for TCP, a URL for HTTP.
+func (c *ControlPlane) applicationDependencyAddresses(spec ApplicationSpec) (map[string]string, error) {
+	addresses := make(map[string]string, len(spec.DependsOn))
+	for _, dependency := range spec.DependsOn {
+		route, found := c.applicationRoute(dependency.Application)
+		if !found {
+			return nil, fmt.Errorf("dependency %q has no route yet; deploy it before %q", dependency.Application, spec.Name)
+		}
+		addresses[dependency.Application] = dependencyEndpoint(route, route.Key+".swarmops.internal")
+	}
+	return addresses, nil
 }

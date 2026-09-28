@@ -252,8 +252,15 @@ func validateWorkloadCapacity(root map[string]any) error {
 		if !ok {
 			return fmt.Errorf("service %q must declare deploy settings", serviceName)
 		}
-		if mode, found := deploy["mode"]; found && strings.TrimSpace(fmt.Sprint(mode)) != "replicated" {
-			return fmt.Errorf("service %q must use replicated mode; global and job modes require a reviewed Git manifest", serviceName)
+		// A replicated job is bounded exactly like a replicated service: it
+		// states its replicas and reservations. Global modes are not, because
+		// their footprint grows with the cluster.
+		if mode, found := deploy["mode"]; found {
+			switch strings.TrimSpace(fmt.Sprint(mode)) {
+			case "replicated", "replicated-job":
+			default:
+				return fmt.Errorf("service %q must use replicated or replicated-job mode; global modes require a reviewed Git manifest", serviceName)
+			}
 		}
 		if _, err := composeReplicaCount(deploy["replicas"]); err != nil {
 			return fmt.Errorf("service %q replicas: %w", serviceName, err)

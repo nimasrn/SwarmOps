@@ -139,8 +139,12 @@ func applicationPasswordSecretName(application, engine string) string {
 // connection after this has a database to connect to.
 func (c *ControlPlane) EnsureApplicationDatabases(ctx context.Context, actor, requestID string, spec ApplicationSpec) (map[string]string, error) {
 	result := make(map[string]string, len(spec.Databases))
+	owner := spec.Name
+	if spec.DatabaseOwner != "" {
+		owner = spec.DatabaseOwner
+	}
 	for _, engine := range spec.Databases {
-		uri, err := c.ensureApplicationDatabase(ctx, actor, requestID, spec.Name, engine)
+		uri, err := c.ensureApplicationDatabase(ctx, actor, requestID, owner, engine)
 		if err != nil {
 			return nil, err
 		}

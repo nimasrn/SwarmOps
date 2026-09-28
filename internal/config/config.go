@@ -78,6 +78,7 @@ type Config struct {
 	LogsStackFile                 string
 	MongoImage                    string
 	MongoPasswordSecret           string
+	MongoReplicaSet               bool
 	MongoAppBootstrapFile         string
 	MongoStackFile                string
 	MutationEnabled               bool
@@ -173,6 +174,7 @@ func Load() (Config, error) {
 		LogsStackFile:          env("SWARMOPS_LOGS_STACK_FILE", filepath.Join(assetDir, "logs.yml")),
 		MongoImage:             env("MONGO_IMAGE", "mongo:8.2.3"),
 		MongoPasswordSecret:    env("SWARMOPS_MONGO_PASSWORD_SECRET", "swarmops_mongo_password_v1"),
+		MongoReplicaSet:        envBool("SWARMOPS_MONGO_REPLICA_SET", false),
 		MongoAppBootstrapFile:  env("SWARMOPS_MONGO_APP_BOOTSTRAP_FILE", filepath.Join(assetDir, "mongo-app-bootstrap.js")),
 		MongoStackFile:         env("SWARMOPS_MONGO_STACK_FILE", filepath.Join(assetDir, "mongo.yml")),
 		MutationEnabled:        envBool("SWARMOPS_MUTATIONS_ENABLED", false),

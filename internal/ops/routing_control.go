@@ -382,6 +382,15 @@ func (c *ControlPlane) DeclareServiceRouteRole(actor, requestID string, declarat
 }
 
 func (c *ControlPlane) ApplyDependencyBinding(ctx context.Context, actor, requestID string, binding DependencyBinding) error {
+	return c.applyDependencyBinding(ctx, actor, requestID, binding, false)
+}
+
+// applyDependencyBinding with beforeCaller set gives Traefik its alias on the
+// caller's route network before the caller service exists. It is only valid
+// for "existing" delivery, whose sole effect is that alias: a job has to be
+// able to reach its database on its very first run, because deploying it
+// waits for that run to finish.
+func (c *ControlPlane) applyDependencyBinding(ctx context.Context, actor, requestID string, binding DependencyBinding, beforeCaller bool) error {
 	if !c.Mutations {
 		return fmt.Errorf("cluster mutations are disabled")
 	}
@@ -423,7 +432,18 @@ func (c *ControlPlane) ApplyDependencyBinding(ctx context.Context, actor, reques
 			return fmt.Errorf("dependency target must be an enabled internal or both-scope route")
 		}
 	}
-	callerID, traefikID, err := c.routeServiceIDs(ctx, binding.CallerService)
+	var callerID, traefikID string
+	if beforeCaller {
+		if binding.Delivery != DependencyExisting {
+			return fmt.Errorf("only an existing-delivery dependency can be bound before its caller exists")
+		}
+		traefikID, err = c.traefikServiceID(ctx)
+		// The caller will be created on this network by its own Compose, so
+		// Traefik stands in for it; attaching Traefik is a no-op there.
+		callerID = traefikID
+	} else {
+		callerID, traefikID, err = c.routeServiceIDs(ctx, binding.CallerService)
+	}
 	if err != nil {
 		return err
 	}
@@ -1160,6 +1180,19 @@ func (c *ControlPlane) traefikMachineAdapter() (TraefikMachineAdapter, error) {
 		return nil, fmt.Errorf("selected manager requires the fixed Traefik machine adapter")
 	}
 	return adapter, nil
+}
+
+func (c *ControlPlane) traefikServiceID(ctx context.Context) (string, error) {
+	services, err := c.Docker.ListServices(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, service := range services {
+		if service.Spec.Name == traefikServiceName {
+			return service.ID, nil
+		}
+	}
+	return "", fmt.Errorf("Traefik singleton service was not found")
 }
 
 func (c *ControlPlane) routeServiceIDs(ctx context.Context, serviceKey string) (string, string, error) {

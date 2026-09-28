@@ -118,16 +118,16 @@ func (s *ApplicationStore) putTx(ctx context.Context, tx *sql.Tx, spec Applicati
 	}
 	now := s.now().UTC()
 	_, err := tx.ExecContext(ctx, `INSERT INTO applications
-		(name, image, port, replicas, cpus, memory_mib, plan, domain, resolver, backend, database_delivery,
+		(name, image, kind, port, protocol, replicas, cpus, memory_mib, plan, domain, resolver, backend, database_delivery, database_owner,
 		 health_path, metrics, metrics_path, metrics_port, tracing, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE image = VALUES(image), port = VALUES(port), replicas = VALUES(replicas),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE image = VALUES(image), kind = VALUES(kind), port = VALUES(port), protocol = VALUES(protocol), replicas = VALUES(replicas),
 		 cpus = VALUES(cpus), memory_mib = VALUES(memory_mib), plan = VALUES(plan), domain = VALUES(domain),
-		 resolver = VALUES(resolver), backend = VALUES(backend), database_delivery = VALUES(database_delivery),
+		 resolver = VALUES(resolver), backend = VALUES(backend), database_delivery = VALUES(database_delivery), database_owner = VALUES(database_owner),
 		 health_path = VALUES(health_path), metrics = VALUES(metrics), metrics_path = VALUES(metrics_path),
 		 metrics_port = VALUES(metrics_port), tracing = VALUES(tracing), updated_at = VALUES(updated_at)`,
-		spec.Name, spec.Image, spec.Port, spec.Replicas, spec.CPUs, spec.MemoryMiB, nullableText(spec.Plan),
-		nullableText(spec.Domain), nullableText(spec.Resolver), nullableText(spec.Backend), nullableText(spec.DatabaseDelivery),
+		spec.Name, spec.Image, spec.Kind, spec.Port, nullableText(spec.Protocol), spec.Replicas, spec.CPUs, spec.MemoryMiB, nullableText(spec.Plan),
+		nullableText(spec.Domain), nullableText(spec.Resolver), nullableText(spec.Backend), nullableText(spec.DatabaseDelivery), nullableText(spec.DatabaseOwner),
 		nullableText(spec.HealthPath), spec.Metrics, nullableText(spec.MetricsPath), nullablePort(spec.MetricsPort), spec.Tracing, now, now)
 	if sqlstore.IsDuplicate(err) {
 		// Two plans raced for one hostname; the UNIQUE key decided.
@@ -136,7 +136,7 @@ func (s *ApplicationStore) putTx(ctx context.Context, tx *sql.Tx, spec Applicati
 	if err != nil {
 		return fmt.Errorf("save application: %w", err)
 	}
-	for _, table := range []string{"application_env", "application_health_command", "application_databases", "application_database_env"} {
+	for _, table := range []string{"application_env", "application_health_command", "application_databases", "application_database_env", "application_dependency_env", "application_dependencies"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE application_name = ?", spec.Name); err != nil {
 			return fmt.Errorf("save application: %w", err)
 		}
@@ -146,8 +146,20 @@ func (s *ApplicationStore) putTx(ctx context.Context, tx *sql.Tx, spec Applicati
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO application_env (application_name, env_key, env_value_sealed) VALUES (?, ?, ?)", spec.Name, key, sealed); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO application_env (application_name, env_key, is_secret, env_value_sealed) VALUES (?, ?, FALSE, ?)", spec.Name, key, sealed); err != nil {
 			return fmt.Errorf("save application environment: %w", err)
+		}
+	}
+	for key, value := range spec.SecretEnv {
+		if value == "" {
+			return fmt.Errorf("secret environment variable %q has no value to store", key)
+		}
+		sealed, err := s.db.Seal(sqlstore.Purpose("application_env", "env_value_sealed", spec.Name, key), []byte(value))
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO application_env (application_name, env_key, is_secret, env_value_sealed) VALUES (?, ?, TRUE, ?)", spec.Name, key, sealed); err != nil {
+			return fmt.Errorf("save application secret environment: %w", err)
 		}
 	}
 	for position, argument := range spec.HealthCommand {
@@ -158,6 +170,16 @@ func (s *ApplicationStore) putTx(ctx context.Context, tx *sql.Tx, spec Applicati
 	for position, engine := range spec.Databases {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO application_databases (application_name, engine, position) VALUES (?, ?, ?)", spec.Name, engine, position); err != nil {
 			return fmt.Errorf("save application databases: %w", err)
+		}
+	}
+	for position, dependency := range spec.DependsOn {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO application_dependencies (application_name, dependency, position) VALUES (?, ?, ?)", spec.Name, dependency.Application, position); err != nil {
+			return fmt.Errorf("save application dependencies: %w", err)
+		}
+		for envPosition, name := range dependency.Env {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO application_dependency_env (application_name, dependency, position, env_name) VALUES (?, ?, ?, ?)", spec.Name, dependency.Application, envPosition, name); err != nil {
+				return fmt.Errorf("save application dependency environment: %w", err)
+			}
 		}
 	}
 	for engine, names := range spec.DatabaseEnv {
@@ -303,8 +325,8 @@ func (s *ApplicationStore) load(ctx context.Context, only string) ([]Application
 	if only != "" {
 		filter, args = " WHERE name = ?", []any{only}
 	}
-	rows, err := s.db.Pool().QueryContext(ctx, `SELECT name, image, port, replicas, cpus, memory_mib, plan, domain, resolver,
-		backend, database_delivery, health_path, metrics, metrics_path, metrics_port, tracing
+	rows, err := s.db.Pool().QueryContext(ctx, `SELECT name, image, kind, port, protocol, replicas, cpus, memory_mib, plan, domain, resolver,
+		backend, database_delivery, database_owner, health_path, metrics, metrics_path, metrics_port, tracing
 		FROM applications`+filter+` ORDER BY name`, args...)
 	if err != nil {
 		return nil, err
@@ -314,14 +336,16 @@ func (s *ApplicationStore) load(ctx context.Context, only string) ([]Application
 	index := map[string]int{}
 	for rows.Next() {
 		var spec ApplicationSpec
-		var plan, domain, resolver, backend, delivery, healthPath, metricsPath sql.NullString
+		var protocol, plan, domain, resolver, backend, delivery, owner, healthPath, metricsPath sql.NullString
 		var metricsPort sql.NullInt32
-		if err := rows.Scan(&spec.Name, &spec.Image, &spec.Port, &spec.Replicas, &spec.CPUs, &spec.MemoryMiB, &plan, &domain,
-			&resolver, &backend, &delivery, &healthPath, &spec.Metrics, &metricsPath, &metricsPort, &spec.Tracing); err != nil {
+		if err := rows.Scan(&spec.Name, &spec.Image, &spec.Kind, &spec.Port, &protocol, &spec.Replicas, &spec.CPUs, &spec.MemoryMiB, &plan, &domain,
+			&resolver, &backend, &delivery, &owner, &healthPath, &spec.Metrics, &metricsPath, &metricsPort, &spec.Tracing); err != nil {
 			return nil, err
 		}
 		spec.Plan, spec.Domain, spec.Resolver, spec.Backend = plan.String, domain.String, resolver.String, backend.String
 		spec.DatabaseDelivery, spec.HealthPath, spec.MetricsPath = delivery.String, healthPath.String, metricsPath.String
+		spec.DatabaseOwner = owner.String
+		spec.Protocol = protocol.String
 		spec.MetricsPort = uint16(metricsPort.Int32)
 		index[spec.Name] = len(specs)
 		specs = append(specs, spec)
@@ -336,10 +360,11 @@ func (s *ApplicationStore) load(ctx context.Context, only string) ([]Application
 	if only != "" {
 		childFilter = " WHERE application_name = ?"
 	}
-	if err := eachRow(ctx, s.db.Pool(), "SELECT application_name, env_key, env_value_sealed FROM application_env"+childFilter, args, func(rows *sql.Rows) error {
+	if err := eachRow(ctx, s.db.Pool(), "SELECT application_name, env_key, is_secret, env_value_sealed FROM application_env"+childFilter, args, func(rows *sql.Rows) error {
 		var name, key string
+		var secret bool
 		var sealed []byte
-		if err := rows.Scan(&name, &key, &sealed); err != nil {
+		if err := rows.Scan(&name, &key, &secret, &sealed); err != nil {
 			return err
 		}
 		value, err := s.db.Open(sqlstore.Purpose("application_env", "env_value_sealed", name, key), sealed)
@@ -347,6 +372,13 @@ func (s *ApplicationStore) load(ctx context.Context, only string) ([]Application
 			return err
 		}
 		spec := &specs[index[name]]
+		if secret {
+			if spec.SecretEnv == nil {
+				spec.SecretEnv = map[string]string{}
+			}
+			spec.SecretEnv[key] = string(value)
+			return nil
+		}
 		if spec.Env == nil {
 			spec.Env = map[string]string{}
 		}
@@ -385,6 +417,37 @@ func (s *ApplicationStore) load(ctx context.Context, only string) ([]Application
 			spec.DatabaseEnv = map[string][]string{}
 		}
 		spec.DatabaseEnv[engine] = append(spec.DatabaseEnv[engine], envName)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	dependencyIndex := map[string]map[string]int{}
+	if err := eachRow(ctx, s.db.Pool(), "SELECT application_name, dependency FROM application_dependencies"+childFilter+" ORDER BY application_name, position", args, func(rows *sql.Rows) error {
+		var name, dependency string
+		if err := rows.Scan(&name, &dependency); err != nil {
+			return err
+		}
+		spec := &specs[index[name]]
+		if dependencyIndex[name] == nil {
+			dependencyIndex[name] = map[string]int{}
+		}
+		dependencyIndex[name][dependency] = len(spec.DependsOn)
+		spec.DependsOn = append(spec.DependsOn, ApplicationDependency{Application: dependency})
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := eachRow(ctx, s.db.Pool(), "SELECT application_name, dependency, env_name FROM application_dependency_env"+childFilter+" ORDER BY application_name, dependency, position", args, func(rows *sql.Rows) error {
+		var name, dependency, envName string
+		if err := rows.Scan(&name, &dependency, &envName); err != nil {
+			return err
+		}
+		position, found := dependencyIndex[name][dependency]
+		if !found {
+			return nil
+		}
+		spec := &specs[index[name]]
+		spec.DependsOn[position].Env = append(spec.DependsOn[position].Env, envName)
 		return nil
 	}); err != nil {
 		return nil, err

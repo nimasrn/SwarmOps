@@ -16,6 +16,7 @@ const maxComposeBytes = 512 << 10
 
 var (
 	composeNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	secretFilePath     = regexp.MustCompile(`^/run/secrets/[A-Za-z0-9._-]{1,128}$`)
 	secretLikeKey      = regexp.MustCompile(`(?i)(password|secret|token|credential|api[_-]?key|private[_-]?key)`)
 )
 
@@ -358,11 +359,11 @@ func validateEnvironment(service string, value any) error {
 	if value == nil {
 		return nil
 	}
-	keys := make([]string, 0)
+	values := map[string]string{}
 	switch environment := value.(type) {
 	case map[string]any:
-		for key := range environment {
-			keys = append(keys, key)
+		for key, item := range environment {
+			values[key] = fmt.Sprint(item)
 		}
 	case []any:
 		for _, item := range environment {
@@ -370,12 +371,20 @@ func validateEnvironment(service string, value any) error {
 			if !ok {
 				return fmt.Errorf("service %q has a non-string environment value", service)
 			}
-			keys = append(keys, strings.SplitN(text, "=", 2)[0])
+			parts := strings.SplitN(text, "=", 2)
+			values[parts[0]] = ""
+			if len(parts) == 2 {
+				values[parts[0]] = parts[1]
+			}
 		}
 	default:
 		return fmt.Errorf("service %q environment must be a map or list", service)
 	}
-	for _, key := range keys {
+	for key, item := range values {
+		// NAME_FILE pointing into /run/secrets carries a path, not the value.
+		if strings.HasSuffix(key, "_FILE") && secretFilePath.MatchString(item) {
+			continue
+		}
 		if secretLikeKey.MatchString(key) {
 			return fmt.Errorf("service %q supplies secret-like environment variable %q; use an external Swarm secret", service, key)
 		}

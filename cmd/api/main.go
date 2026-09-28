@@ -30,7 +30,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const version = "0.23.1"
+const version = "0.24.0"
 
 // hostSnapshotFor exposes the enrolled machine agent's own host reading to the
 // control plane. Without it a host-native agent contributed nothing to node
@@ -246,6 +246,7 @@ func main() {
 			DatabaseSettings: ops.DatabaseSettings{
 				MongoImage:               cfg.MongoImage,
 				MongoPasswordSecret:      cfg.MongoPasswordSecret,
+				MongoReplicaSet:          cfg.MongoReplicaSet,
 				MongoAppBootstrapFile:    cfg.MongoAppBootstrapFile,
 				MongoStackFile:           cfg.MongoStackFile,
 				PostgresImage:            cfg.PostgresImage,

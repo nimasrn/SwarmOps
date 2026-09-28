@@ -114,8 +114,12 @@ services:
         reservations: {cpus: "0.25", memory: 128M}
 `
 	withGlobalMode := strings.Replace(base, "    deploy:\n", "    deploy:\n      mode: global\n", 1)
-	if err := ValidateApplicationStack("production-api", []byte(withGlobalMode)); err == nil || !strings.Contains(err.Error(), "replicated mode") {
+	if err := ValidateApplicationStack("production-api", []byte(withGlobalMode)); err == nil || !strings.Contains(err.Error(), "replicated-job mode") {
 		t.Fatalf("global mode error = %v", err)
+	}
+	withJobMode := strings.Replace(base, "    deploy:\n", "    deploy:\n      mode: replicated-job\n", 1)
+	if err := ValidateApplicationStack("production-api", []byte(withJobMode)); err != nil {
+		t.Fatalf("replicated job refused: %v", err)
 	}
 	// Replicas are the deployment's choice now; no ceiling was declared for
 	// them anywhere, and the live cluster decides whether Swarm can place them.

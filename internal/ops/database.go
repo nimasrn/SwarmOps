@@ -86,9 +86,14 @@ type DatabaseSettings struct {
 	// The AppBootstrap files are the reviewed per-application provisioning
 	// scripts. They are read by the controller and shipped to the cluster as
 	// an immutable Docker config, never referenced as a path on a manager.
-	MongoAppBootstrapFile    string
-	MongoImage               string
-	MongoPasswordSecret      string
+	MongoAppBootstrapFile string
+	MongoImage            string
+	MongoPasswordSecret   string
+	// MongoReplicaSet runs managed MongoDB as a single-member replica set so
+	// applications can use transactions. Connection strings then carry
+	// directConnection=true: a driver must keep using the in-cluster address
+	// it was given rather than the member hostname in the replica-set config.
+	MongoReplicaSet          bool
 	MongoStackFile           string
 	PostgresAppBootstrapFile string
 	PostgresImage            string
@@ -295,6 +300,36 @@ func (c *ControlPlane) deployDatabaseStack(ctx context.Context, definition Datab
 	return c.deployTrustedContent(ctx, raw, definition.Stack)
 }
 
+// MongoKeyFileSecret is the generated internal-authentication key a replica
+// set member needs whenever authorization is on.
+const MongoKeyFileSecret = "swarmops_mongo_keyfile_v1"
+
+// mongoReplicaSetHost is the member address in the replica-set config. It is
+// the task's own hostname, which only the member itself needs to resolve.
+const mongoReplicaSetHost = "swarmops-mongo-rs0:27017"
+
+// DeliveredURI is the connection string an application receives for engine.
+func (s DatabaseSettings) DeliveredURI(engine, uri string) string {
+	if engine != DatabaseMongo || !s.MongoReplicaSet || strings.Contains(uri, "directConnection=") || strings.HasPrefix(uri, "managed://") {
+		return uri
+	}
+	separator := "?"
+	if strings.Contains(uri, "?") {
+		separator = "&"
+	}
+	return uri + separator + "directConnection=true"
+}
+
+// URISecretVersion names the stack-scoped connection secret generation. The
+// replica-set URI differs from the standalone one, so switching modes must not
+// reuse a secret created under the other.
+func (s DatabaseSettings) URISecretVersion(engine string) string {
+	if engine == DatabaseMongo && s.MongoReplicaSet {
+		return "v2"
+	}
+	return "v1"
+}
+
 // RenderDatabaseStack replaces only the two documented templates in a managed
 // database asset: its pinned image and its generated password secret name. As
 // with the other trusted stacks an unresolved expression fails closed instead
@@ -324,7 +359,48 @@ func RenderDatabaseStack(engine string, source []byte, settings DatabaseSettings
 	if strings.Contains(rendered, "${") {
 		return nil, fmt.Errorf("managed %s stack has an unresolved template expression", definition.Engine)
 	}
+	if definition.Engine == DatabaseMongo && settings.MongoReplicaSet {
+		if rendered, err = renderMongoReplicaSet(rendered); err != nil {
+			return nil, err
+		}
+	}
 	return renderManagedRouteTemplates([]byte(rendered), map[string]RouteSpec{definition.Engine: managedDatabaseRoute(definition)})
+}
+
+// renderMongoReplicaSet turns the reviewed standalone asset into a
+// single-member replica set: the keyfile, a fixed hostname for the member,
+// and a health probe that initiates the set once and then reports its state.
+// Each edit must find its exact anchor, so a changed asset fails closed.
+func renderMongoReplicaSet(stack string) (string, error) {
+	initiate := `try { rs.status().ok } catch (e) { rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"` + mongoReplicaSetHost + `\"}]}).ok }`
+	edits := []struct{ anchor, replacement string }{
+		{`    command: ["mongod", "--bind_ip_all", "--auth"]`, `    command: ["mongod", "--bind_ip_all", "--auth", "--replSet", "rs0", "--keyFile", "/run/secrets/mongo_keyfile"]
+    hostname: swarmops-mongo-rs0`},
+		{`      - source: mongo_password
+        target: mongo_password
+        mode: 0400`, `      - source: mongo_password
+        target: mongo_password
+        mode: 0400
+      - source: mongo_keyfile
+        target: mongo_keyfile
+        uid: "999"
+        gid: "999"
+        mode: 0400`},
+		{`      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' || exit 1"]`, `      test: ["CMD-SHELL", "mongosh --quiet -u swarmops -p \"$$(cat /run/secrets/mongo_password)\" --authenticationDatabase admin --eval '` + initiate + `' | grep -qx 1"]`},
+		{`secrets:
+  mongo_password:`, `secrets:
+  mongo_keyfile:
+    external: true
+    name: ` + MongoKeyFileSecret + `
+  mongo_password:`},
+	}
+	for _, edit := range edits {
+		if strings.Count(stack, edit.anchor) != 1 {
+			return "", fmt.Errorf("managed MongoDB asset does not match the replica-set rendering; review deploy/stacks/swarmops-mongo.yml")
+		}
+		stack = strings.Replace(stack, edit.anchor, edit.replacement, 1)
+	}
+	return stack, nil
 }
 
 // databaseDefaultImage mirrors the default written into each checked-in asset.
@@ -389,6 +465,9 @@ func (c *ControlPlane) SetDatabase(ctx context.Context, actor, requestID, engine
 		if err = c.prepareManagedRouteNetworks(ctx, routes); err == nil {
 			err = c.ensureManagedCredentials(ctx, definition, secret, DatabaseURISecretName(definition.Engine))
 		}
+		if err == nil && definition.Engine == DatabaseMongo && c.DatabaseSettings.MongoReplicaSet {
+			err = c.ensureMongoKeyFile(ctx)
+		}
 		if err == nil {
 			err = c.deployDatabaseStack(ctx, definition, file)
 		}
@@ -434,4 +513,26 @@ func (c *ControlPlane) SetDatabase(ctx context.Context, actor, requestID, engine
 	}
 	c.record(actor, requestID, "database."+definition.Engine, "stack/"+definition.Stack, err, map[string]string{"enabled": fmt.Sprint(enabled)})
 	return err
+}
+
+// ensureMongoKeyFile creates the replica-set keyfile once. Like the password it
+// is generated here, written only into a Swarm secret, and never rotated: the
+// running member depends on the value it started with.
+func (c *ControlPlane) ensureMongoKeyFile(ctx context.Context) error {
+	names, err := c.swarmSecretNames(ctx)
+	if err != nil {
+		return err
+	}
+	if names[MongoKeyFileSecret] {
+		return nil
+	}
+	key := make([]byte, 756)
+	if _, err := rand.Read(key); err != nil {
+		return fmt.Errorf("generate MongoDB keyfile: %w", err)
+	}
+	encoded := base64.StdEncoding.EncodeToString(key)
+	if _, err := c.CLI.RunInput(ctx, strings.NewReader(encoded), "secret", "create", MongoKeyFileSecret, "-"); err != nil {
+		return fmt.Errorf("create MongoDB keyfile secret: %w", err)
+	}
+	return nil
 }

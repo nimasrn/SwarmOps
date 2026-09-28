@@ -11,6 +11,42 @@ Roadmap entries live in the site record rather than here, because a roadmap is
 read by people deciding whether to adopt SwarmOps, not by people reading the
 source.
 
+## 0.24.0 — 2026-09-28
+
+A product with an API, a background worker, a migration step, a scanner and
+secrets could not be deployed as generated applications. This release adds the
+missing shapes without adding free-form Compose.
+
+- **Workers and run-once jobs** — an application's `kind` is `web` (default),
+  `worker` (no port, no route, optional health command) or `job`. A job renders
+  as a `replicated-job` retried only on failure, runs again whenever its image or
+  settings change, and has its database aliases bound before it starts, because
+  deploying it waits for that run. Admission accepts `replicated-job`; global
+  modes still need a reviewed manifest.
+- **Secret variables** — `secretEnv` values are sealed at rest, copied into
+  content-addressed, stack-scoped Swarm secrets, and delivered as `NAME_FILE`
+  paths. Responses carry names only. An empty value keeps the stored one, and an
+  omitted field keeps every stored secret, so a form that does not know about
+  secrets cannot delete them. Compose policy now exempts a secret-looking
+  `NAME_FILE` whose value is a `/run/secrets/` path.
+- **Shared database accounts** — `databaseOwner` gives an application another
+  application's managed database accounts, so an API, its worker and its
+  migration job use one database. Removing the owner keeps the credential while
+  another application still uses it.
+- **Internal TCP applications and dependencies** — `protocol: "tcp"` gives a web
+  application an internal-only TCP route on an allocated listen port (the first
+  one adds a Traefik entrypoint and restarts the gateway). `dependsOn` binds a
+  caller to another application's route and delivers its address as
+  `<NAME>_ADDRESS` and under any listed variable names.
+- **Single-member MongoDB replica set** — with `SWARMOPS_MONGO_REPLICA_SET=true`
+  managed MongoDB runs with `--replSet` and a generated keyfile, initiates the set
+  from its health probe, and delivers connection strings with
+  `directConnection=true` so applications can use transactions. The
+  stack-scoped connection secret moves to a new generation, so applications
+  attached before the switch receive the new string on their next deployment.
+- Schema migration `0010` adds the kind, protocol, owner, secret flag and
+  dependency tables; existing applications load as `web`.
+
 ## 0.23.1 — 2026-09-16
 
 - **The gateway's own service needed a port, or it published nothing** — Traefik

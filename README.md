@@ -139,6 +139,45 @@ It does **not** make Docker’s root-equivalent socket harmless. The product
 reduces its exposure to a small, reviewed API rather than forwarding arbitrary
 Docker commands from a browser.
 
+### Workers, jobs, secrets, and internal dependencies
+
+An application is one of three kinds. `web` (the default) has a port and a
+route. `worker` runs continuously with no port or route of its own and may
+declare a `healthCommand`. `job` runs to completion as a Swarm replicated job,
+retried only on failure, and runs again whenever its image or settings change —
+the shape a database migration needs. Its database aliases are bound before it
+starts. Workers and jobs cannot claim a domain or expose metrics.
+
+`secretEnv` carries values that must not sit in the service environment. Each is
+sealed in controller state, copied into a content-addressed Swarm secret scoped
+to the application's stack, and delivered as `NAME_FILE=/run/secrets/…`; the
+application reads the file. Status responses return the names with empty
+values. Sending a name with an empty value keeps the stored value, omitting
+`secretEnv` keeps every stored secret, and `{}` removes them all.
+
+`databaseOwner` lets processes of one product share a database: an application
+naming `api` receives `api`'s managed database accounts instead of its own.
+
+A web application with `protocol: "tcp"` receives an internal-only TCP route on
+a listen port SwarmOps allocates between 10000 and 19999; the first such route
+adds a Traefik entrypoint, which restarts the gateway. Another application lists
+it in `dependsOn` to be bound to that route and to receive its address as
+`<NAME>_ADDRESS` plus any variable names it lists:
+
+```json
+{ "name": "api", "port": 8080, "dependsOn": [{ "application": "clamav", "env": ["CLAMAV_ADDRESS"] }] }
+```
+
+A dependency must be deployed first. Setting `SWARMOPS_MONGO_REPLICA_SET=true`
+runs managed MongoDB as a single-member replica set (with a generated keyfile)
+so applications can use transactions; connection strings then carry
+`directConnection=true`, and applications attached before the switch receive
+the new string on their next deployment.
+
+In `swarmops.json`, `kind`, `protocol`, `databaseOwner` and `dependsOn` are
+written as above, while `secretEnv` is a list of NAMES whose values the CLI reads
+from its own environment at deploy time; the file never holds a secret.
+
 ## Deploy from a terminal
 
 `swarmopsctl` speaks the same API as the console and needs nothing installed on
